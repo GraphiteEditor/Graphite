@@ -1181,6 +1181,32 @@ mod test_transform_layer {
 	}
 
 	#[tokio::test]
+	async fn a_cancelled_grab_is_taken_back_for_good_and_leaves_the_drawing_as_the_step_to_undo() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+		assert_eq!(get_layer_transform(&mut editor, layer).await.unwrap(), original_transform);
+
+		editor.handle_message(DocumentMessage::DocumentHistoryForward).await;
+		assert_eq!(get_layer_transform(&mut editor, layer).await.unwrap(), original_transform, "the cancelled grab can't be redone");
+
+		editor.handle_message(DocumentMessage::DocumentHistoryBackward).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "undo takes back the drawing, not the grab");
+	}
+
+	#[tokio::test]
 	async fn test_rotate_apply() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;

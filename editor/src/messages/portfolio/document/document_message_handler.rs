@@ -1,10 +1,10 @@
+use super::DocumentHistory;
 use super::node_graph::{document_node_definitions, node_inspector};
 use super::utility_types::error::EditorError;
 use super::utility_types::layers_in_view::LayersInView;
 use super::utility_types::misc::{ANGLE_STEP_MAX, ANGLE_STEP_MIN, GroupFolderType, SNAPPING_OPTION_GROUPS, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
-use super::{CursorMoveError, DocumentHistory};
 use crate::application::{Environment, GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, CURVATURE_COMB_DEFAULT_SCALE, CURVATURE_COMB_MAX_SCALE, CURVATURE_COMB_MIN_SCALE, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION,
@@ -470,11 +470,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::DocumentHistoryBackward => {
 				self.stage_edits_outside_transaction(&resource_storage.resources_mut());
-				self.undo_with_history(document_id, viewport, responses);
+				self.undo_with_history(document_id, responses);
 				self.resolve_unresolved_resources(document_id, responses);
 			}
 			DocumentMessage::DocumentHistoryForward => {
-				self.redo_with_history(document_id, viewport, responses);
+				self.redo_with_history(document_id, responses);
 				self.resolve_unresolved_resources(document_id, responses);
 			}
 			DocumentMessage::ChangeHistoryLine { rev, change } => {
@@ -1282,7 +1282,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let export_load_handle = resource_storage.resources();
 
 				responses.add(async move {
-					document.resources.collect_garbage(document.used_resources(false).as_ref());
+					document.resources.collect_garbage(document.used_resources().as_ref());
 					document.resources.embed_resources(resources_load_handle).await;
 
 					// Legacy .graphite blob with resources embedded inline, so it is self-contained and also
@@ -1678,7 +1678,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.end_storage_interaction();
 
 				self.network_interface.start_transaction();
-				self.history.push_undo(self.network_interface.clone());
 				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
@@ -1694,7 +1693,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			},
 			DocumentMessage::CancelTransaction => {
 				self.network_interface.finish_transaction();
-				self.history.discard_last_undo();
 			}
 			DocumentMessage::CommitTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
@@ -1721,9 +1719,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					return;
 				}
 
-				for _ in 0..undo_count {
-					self.undo(viewport, responses);
-				}
+				self.abort_steps(document_id, undo_count, &resource_storage.resources_mut(), responses);
 
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
@@ -2531,25 +2527,6 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Move the `Gdd` undo/redo cursor, swap in the interface rebuilt from it, and autosave so the legacy
-	/// document matches the cursor. `legacy_applied` records whether the legacy snapshot already applied, so a
-	/// failed rebuild knows whether the cursor must follow the interface back.
-	fn drive_storage_undo_redo(&mut self, document_id: DocumentId, legacy_applied: bool, undo: bool, responses: &mut VecDeque<Message>) {
-		match self.history.move_cursor(undo) {
-			Ok(rebuilt) => {
-				self.apply_gdd_cursor_rebuild(rebuilt, responses);
-				responses.add(PortfolioMessage::AutoSaveDocument { document_id });
-			}
-			Err(CursorMoveError::NotMoved) => {}
-			// Without the legacy snapshot the interface stayed put, so the cursor has to follow it back.
-			Err(CursorMoveError::RebuildFailed) => {
-				if !legacy_applied {
-					self.history.revert_cursor(undo);
-				}
-			}
-		}
-	}
-
 	/// Rebuild the resource registry from storage, or keep it on failure. `Resource` inputs resolve through it.
 	fn refresh_resource_registry(&mut self) {
 		let Some(storage) = self.history.storage() else { return };
@@ -2985,33 +2962,54 @@ impl DocumentMessageHandler {
 		paths
 	}
 
-	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
-		// The storage path skips `undo`, which settles a glide before the snapshot moves
+	pub fn undo_with_history(&mut self, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+		// Settled before storage moves, so the glide's offsets don't outlive the step
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 
-		// The legacy snapshot predates peers' writes, so follow only what storage changed
 		let stored_name = self.stored_name().map(str::to_string);
-		if self.history.undo_in_storage(self.is_in_session()) {
+		if self.history.undo(self.is_in_session()) {
 			self.follow_storage_changes(stored_name, responses);
 			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
-			return;
 		}
-		// A session's history is shared, so no legacy snapshot may be installed
-		if self.is_in_session() {
-			return;
-		}
-
-		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
-			self.history.push_redo(previous_network);
-			self.history.note_cursor_undo();
-			true
-		} else {
-			false
-		};
-		self.drive_storage_undo_redo(document_id, legacy_applied, true, responses);
 	}
 
-	/// Makes a History panel change in storage and drops the legacy snapshots, which are off the head's line.
+	pub fn redo_with_history(&mut self, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
+
+		let stored_name = self.stored_name().map(str::to_string);
+		if self.history.redo() {
+			self.follow_storage_changes(stored_name, responses);
+			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+		}
+	}
+
+	/// Takes back the open transaction along with the `undo_count - 1` steps before it, leaving nothing to redo.
+	fn abort_steps(&mut self, document_id: DocumentId, undo_count: usize, byte_store: &dyn ResourceStorage, responses: &mut VecDeque<Message>) {
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
+
+		// The open transaction's edits are staged so they can be taken back with the rest. One that changed nothing
+		// left no step, so the count holds one fewer.
+		let modified = self.network_interface.transaction_status() == TransactionStatus::Modified;
+		if modified {
+			self.commit_storage_snapshot(byte_store);
+		}
+		let steps = if modified { undo_count } else { undo_count.saturating_sub(1) };
+
+		let stored_name = self.stored_name().map(str::to_string);
+		let in_session = self.is_in_session();
+		let discarded = (0..steps).take_while(|_| self.history.discard_step(in_session)).count();
+		if discarded == 0 {
+			return;
+		}
+		// Staging this transaction's edits made storage's own redo unreachable
+		if modified {
+			self.history.clear_redo();
+		}
+		self.follow_storage_changes(stored_name, responses);
+		responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+	}
+
+	/// Makes a History panel change in storage and drops the steps redo could bring back, which are off the head's line.
 	fn change_history_line(&mut self, document_id: DocumentId, rev: Rev, change: LineChange, byte_store: &dyn ResourceStorage, responses: &mut VecDeque<Message>) {
 		if self.network_interface.transaction_status() != TransactionStatus::Finished {
 			return;
@@ -3024,7 +3022,7 @@ impl DocumentMessageHandler {
 		if !self.history.change_line(rev, change) {
 			return;
 		}
-		self.history.clear_legacy();
+		self.history.clear_redo();
 		self.follow_storage_changes(stored_name, responses);
 		responses.add(PortfolioMessage::AutoSaveDocument { document_id });
 		responses.add(OverlaysMessage::Draw);
@@ -3045,78 +3043,6 @@ impl DocumentMessageHandler {
 
 	pub(crate) fn is_in_session(&self) -> bool {
 		self.storage().is_some_and(|gdd| gdd.role().is_some())
-	}
-
-	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
-	fn install_history_snapshot(&mut self, mut network_interface: NodeNetworkInterface, viewport: &ViewportMessageHandler) -> NodeNetworkInterface {
-		// Set the previous network navigation metadata to the current navigation metadata
-		network_interface.copy_all_navigation_metadata(&self.network_interface);
-		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
-
-		// Update the metadata transform based on document PTZ
-		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		network_interface.set_document_to_viewport_transform(transform);
-
-		// Ensure document structure is loaded so that updating the selected nodes has the correct metadata
-		network_interface.load_structure();
-
-		std::mem::replace(&mut self.network_interface, network_interface)
-	}
-
-	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// If there is no history return and don't broadcast SelectionChanged
-		let network_interface = self.history.pop_undo()?;
-		// Settled first, so the interface stored for redo keeps none of the offsets of a glide underway
-		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
-		let previous_network = self.install_history_snapshot(network_interface, viewport);
-
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-
-		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
-		responses.add(NodeGraphMessage::UnloadWires);
-
-		Some(previous_network)
-	}
-	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
-		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
-
-		let stored_name = self.stored_name().map(str::to_string);
-		if self.history.redo_in_storage() {
-			self.follow_storage_changes(stored_name, responses);
-			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
-			return;
-		}
-		if self.is_in_session() {
-			return;
-		}
-
-		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
-			self.history.push_undo(previous_network);
-			self.history.forget_undo_note();
-			true
-		} else {
-			false
-		};
-		self.drive_storage_undo_redo(document_id, legacy_applied, false, responses);
-	}
-
-	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// If there is no history return and don't broadcast SelectionChanged
-		let network_interface = self.history.pop_redo()?;
-		// Settled first, as when undoing
-		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
-		let previous_network = self.install_history_snapshot(network_interface, viewport);
-
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-		responses.add(NodeGraphMessage::UnloadWires);
-		responses.add(NodeGraphMessage::SendWires);
-		Some(previous_network)
 	}
 
 	pub fn current_hash(&self) -> u64 {
@@ -4329,7 +4255,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn garbage_collect_resources(&mut self) {
-		let used_resources = self.used_resources(true);
+		let used_resources = self.used_resources();
 		self.resources.collect_garbage(&used_resources);
 	}
 
@@ -4337,12 +4263,11 @@ impl DocumentMessageHandler {
 		self.history.resource_gc_roots()
 	}
 
-	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {
+	/// The resources the current network references. One only history references lives on in storage, which an undo
+	/// restoring it brings back through the resource registry refresh.
+	pub fn used_resources(&self) -> Box<[ResourceId]> {
 		let mut resources = HashSet::new();
 		self.network_interface.collect_used_resources(&mut resources);
-		if include_history {
-			self.history.collect_used_resources(&mut resources);
-		}
 		resources.into_iter().collect::<Vec<_>>().into_boxed_slice()
 	}
 }

@@ -572,7 +572,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	let stored: std::collections::BTreeSet<_> = storage.registry().resources.keys().copied().collect();
 
 	// Every resource the restored network still references must be in the cursor.
-	let current: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	let current: std::collections::BTreeSet<_> = document.used_resources().iter().copied().collect();
 	assert!(
 		current.is_subset(&stored),
 		"cursor is missing a resource the restored network references: current={current:?} stored={stored:?}"
@@ -677,7 +677,7 @@ async fn pasted_image_resource_survives_inserting_a_node() {
 
 	let document = editor.active_document();
 	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
-	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	let used: std::collections::BTreeSet<_> = document.used_resources().iter().copied().collect();
 	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
 }
 
@@ -692,7 +692,7 @@ async fn pasted_image_resource_survives_storage_mounting_after_the_paste() {
 
 	let document = editor.active_document();
 	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
-	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	let used: std::collections::BTreeSet<_> = document.used_resources().iter().copied().collect();
 	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
 }
 
@@ -769,10 +769,7 @@ async fn resource_resolved_after_staging_stays_resolved_through_undo_and_redo() 
 		let document = editor.active_document();
 		let registry = &document.resources.registry;
 		assert!(registry.unresolved().next().is_none(), "{step} left a resource unresolved, which stops rendering");
-		assert!(
-			document.used_resources(false).iter().all(|id| registry.hash(id).is_some()),
-			"{step} left a used resource without its hash"
-		);
+		assert!(document.used_resources().iter().all(|id| registry.hash(id).is_some()), "{step} left a used resource without its hash");
 	}
 	assert_eq!(editor.active_document().resources.registry.hash(&resource_id), Some(hash));
 }

@@ -52,17 +52,22 @@ pub(crate) async fn finish_staged_rewrite<L: Layout>(working: &AnyContainer, lay
 impl<L: Layout> Gdd<L> {
 	/// Move the undo cursor back one commit (silent-zone reflog undo) and persist the new cursor. Returns
 	/// the undone `Rev`. The working registry is rewound in place by the reverse delta, so re-snapshot it
-	/// (alongside `head`) or a reopen would read a `registry.bin` inconsistent with the persisted cursor.
+	/// (alongside `head`) or a reopen would read a `registry.bin` inconsistent with the persisted cursor. What the undone
+	/// step named joins [`take_remote_changes`](Self::take_remote_changes), so the runtime can follow in place.
 	pub fn undo(&mut self) -> Result<Rev, Error> {
 		let rev = self.session.undo()?;
+		self.remote_changes.touched.extend(self.session.touched_between(self.session.head_rev(), rev));
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
 		Ok(rev)
 	}
 
-	/// Re-apply the most-recently-undone commit and persist the new cursor and re-snapshotted registry.
+	/// Re-apply the most-recently-undone commit and persist the new cursor and re-snapshotted registry. Records what it
+	/// named like [`undo`](Self::undo).
 	pub fn redo(&mut self) -> Result<Rev, Error> {
+		let from = self.session.head_rev();
 		let rev = self.session.redo()?;
+		self.remote_changes.touched.extend(self.session.touched_between(from, rev));
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
 		Ok(rev)

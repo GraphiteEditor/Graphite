@@ -9,19 +9,13 @@ use super::utility_types::network_interface::editor_delta::{EditorDelta, Staging
 use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage, collect_network_view_settings};
 use crate::messages::portfolio::history::utility_types::LineChange;
 
-/// Per-document undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor that is
-/// becoming the authoritative history. Owns the dual-stack bookkeeping push/pop/clear and the cursor's stage/retire/move
-/// lifecycle, so the handler drives history through one surface rather than three loose fields.
+/// Per-document undo/redo state, held by the `Gdd` working copy. Owns the staging, retirement, and the undo
+/// steps taken in storage, so the handler drives history through one surface.
 ///
-/// Not serialized: the legacy stacks are runtime-only, and a clone shares the working-copy container by
-/// `Arc`, so it keeps reading the live working copy.
+/// Not serialized: a clone shares the working-copy container by `Arc`, so it keeps reading the live working copy.
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug, Default)]
 pub struct DocumentHistory {
-	/// Stack of document network snapshots for previous history states.
-	legacy_undo_stack: VecDeque<NodeNetworkInterface>,
-	/// Stack of document network snapshots for future history states.
-	legacy_redo_stack: VecDeque<NodeNetworkInterface>,
 	/// The `Gdd` working copy: owns the CRDT `Session` and mirrors edits to disk. `None` until the mount
 	/// future built by `load_document` resolves.
 	#[derivative(Debug = "ignore")]
@@ -36,8 +30,8 @@ pub struct DocumentHistory {
 	/// moved without recording it (an upgrade on open), since the recorded batch would then describe only
 	/// part of the distance between the two.
 	needs_whole_document_stage: bool,
-	/// How storage undid each step on the legacy redo stack, aligned with its top.
-	undo_notes: Vec<UndoNote>,
+	/// How storage undid each step that redo can bring back, the latest last.
+	undo_notes: VecDeque<UndoNote>,
 }
 
 #[derive(Clone, Debug)]
@@ -50,55 +44,10 @@ enum UndoNote {
 	Cursor,
 }
 
-/// Why [`DocumentHistory::move_cursor`] produced no interface.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CursorMoveError {
-	/// Nothing to move to, unmounted, or the move itself failed. The cursor did not move.
-	NotMoved,
-	/// The cursor moved but the rebuild from it failed. It stays moved unless the caller reverts it.
-	RebuildFailed,
-}
-
 impl DocumentHistory {
-	// ===== Legacy snapshot stacks =====
-
-	/// Push a snapshot onto the undo stack, evicting the oldest entry past the history cap.
-	pub fn push_undo(&mut self, snapshot: NodeNetworkInterface) {
-		Self::push_capped(&mut self.legacy_undo_stack, snapshot);
-	}
-
-	/// Push a snapshot onto the redo stack, evicting the oldest entry past the history cap.
-	pub fn push_redo(&mut self, snapshot: NodeNetworkInterface) {
-		Self::push_capped(&mut self.legacy_redo_stack, snapshot);
-	}
-
-	/// Pop the most recent undo snapshot, or `None` when the stack is empty.
-	pub fn pop_undo(&mut self) -> Option<NodeNetworkInterface> {
-		self.legacy_undo_stack.pop_back()
-	}
-
-	/// Pop the most recent redo snapshot, or `None` when the stack is empty.
-	pub fn pop_redo(&mut self) -> Option<NodeNetworkInterface> {
-		self.legacy_redo_stack.pop_back()
-	}
-
-	/// Drop the most recently pushed undo snapshot (used to cancel a transaction that ended up unmodified).
-	pub fn discard_last_undo(&mut self) {
-		self.legacy_undo_stack.pop_back();
-	}
-
-	/// Clear the redo stack, called when a fresh edit invalidates the redo future.
+	/// Forget the steps redo could bring back, called when a fresh edit or a history line change leaves them behind.
 	pub fn clear_redo(&mut self) {
-		self.legacy_redo_stack.clear();
 		self.undo_notes.clear();
-	}
-
-	/// Add the resources referenced by every snapshot in both history stacks into `resources`, so
-	/// history-only resources stay alive for legacy undo/redo.
-	pub fn collect_used_resources(&self, resources: &mut HashSet<ResourceId>) {
-		for interface in self.legacy_undo_stack.iter().chain(&self.legacy_redo_stack) {
-			interface.collect_used_resources(resources);
-		}
 	}
 
 	// ===== Gdd working-copy cursor =====
@@ -137,75 +86,75 @@ impl DocumentHistory {
 		}
 	}
 
-	/// Undoes the latest step in storage alone. Returns whether storage undid it.
-	pub fn undo_in_storage(&mut self, in_session: bool) -> bool {
-		if self.legacy_undo_stack.is_empty() {
-			return false;
+	/// Undoes the latest step in storage, so it can be redone. Returns whether a step was undone.
+	pub fn undo(&mut self, in_session: bool) -> bool {
+		let Some(note) = self.undo_step(in_session) else { return false };
+		self.undo_notes.push_back(note);
+		if self.undo_notes.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+			self.undo_notes.pop_front();
 		}
+		true
+	}
+
+	/// Undoes the latest step in storage for good, as aborting it does. Returns whether a step was undone.
+	pub fn discard_step(&mut self, in_session: bool) -> bool {
+		self.undo_step(in_session).is_some()
+	}
+
+	/// Takes the latest step back: retracted while hot, dropped from a session's shared line once retired, or else
+	/// stepped over by the cursor.
+	fn undo_step(&mut self, in_session: bool) -> Option<UndoNote> {
 		// A failed retract may already have taken the step back, so no older step is undone after it
 		let retracted = match self.retract_storage_interaction() {
 			Ok(retracted) => retracted,
 			Err(error) => {
 				log::error!("Taking the storage interaction back failed: {error}");
-				return false;
+				return None;
 			}
 		};
-		let note = if let Some(ops) = retracted {
-			UndoNote::Retracted(ops)
-		} else if in_session && let Some(rev) = self.undo_retired_step() {
-			UndoNote::Dropped(rev)
-		} else {
-			return false;
-		};
-
-		if let Some(snapshot) = self.pop_undo() {
-			self.push_redo(snapshot);
+		if let Some(ops) = retracted {
+			return Some(UndoNote::Retracted(ops));
 		}
-		self.note_undo(note);
-		true
+		// A session's history is shared, so its cursor never moves
+		if in_session {
+			return self.undo_retired_step().map(UndoNote::Dropped);
+		}
+		self.move_cursor(true).then_some(UndoNote::Cursor)
 	}
 
-	/// Reverses [`undo_in_storage`](Self::undo_in_storage). Returns whether the next redo step was undone there.
-	pub fn redo_in_storage(&mut self) -> bool {
-		if self.legacy_redo_stack.is_empty() {
-			return false;
-		}
+	/// Brings back the latest undone step. Returns whether it was redone.
+	pub fn redo(&mut self) -> bool {
 		let reachable = self.storage.as_ref().is_some_and(|storage| storage.can_change_line());
-		let Some(note) = self
-			.undo_notes
-			.pop_if(|note| matches!(note, UndoNote::Retracted(_)) || (reachable && matches!(note, UndoNote::Dropped(_))))
-		else {
-			return false;
-		};
+		let Some(note) = self.undo_notes.pop_back() else { return false };
 
 		let redone = match &note {
 			UndoNote::Retracted(ops) => self.restage_ops(ops.clone()),
-			UndoNote::Dropped(rev) => self.redo_retired_step(*rev),
-			UndoNote::Cursor => true,
+			UndoNote::Dropped(rev) => reachable && self.redo_retired_step(*rev),
+			UndoNote::Cursor => self.move_cursor(false),
 		};
 		if !redone {
-			// The note stays paired with its redo snapshot
-			self.undo_notes.push(note);
-			return false;
+			self.undo_notes.push_back(note);
 		}
-		if let Some(snapshot) = self.pop_redo() {
-			self.push_undo(snapshot);
-		}
-		true
+		redone
 	}
 
-	pub fn note_cursor_undo(&mut self) {
-		self.note_undo(UndoNote::Cursor);
-	}
+	/// Move the cursor along the retired interaction chain, flushing any open interaction first. Returns whether it moved.
+	fn move_cursor(&mut self, undo: bool) -> bool {
+		self.retire_storage_interaction();
+		let Some(storage) = self.storage.as_mut() else { return false };
 
-	pub fn forget_undo_note(&mut self) {
-		self.undo_notes.pop();
-	}
-
-	fn note_undo(&mut self, note: UndoNote) {
-		self.undo_notes.push(note);
-		let evicted = self.undo_notes.len().saturating_sub(self.legacy_redo_stack.len());
-		self.undo_notes.drain(..evicted);
+		let moved = if undo {
+			if !storage.can_undo() {
+				return false;
+			}
+			storage.undo()
+		} else {
+			if !storage.can_redo() {
+				return false;
+			}
+			storage.redo()
+		};
+		moved.inspect_err(|error| log::error!("Storage undo/redo cursor move failed: {error}")).is_ok()
 	}
 
 	fn retract_storage_interaction(&mut self) -> Result<Option<Vec<document_graph_storage::RegistryDelta>>, document_format::Error> {
@@ -247,13 +196,6 @@ impl DocumentHistory {
 			LineChange::Restore => storage.redo_retired_step(rev),
 		};
 		result.inspect_err(|error| log::error!("Changing the history line with {change:?} failed: {error}")).is_ok()
-	}
-
-	/// Forgets the legacy snapshots once the head has moved off their line.
-	pub fn clear_legacy(&mut self) {
-		self.legacy_undo_stack.clear();
-		self.legacy_redo_stack.clear();
-		self.undo_notes.clear();
 	}
 
 	pub fn retire_storage_interaction(&mut self) {
@@ -360,32 +302,6 @@ impl DocumentHistory {
 		}
 	}
 
-	/// Move the `Gdd` undo/redo cursor along the retired interaction chain, flushing any open interaction
-	/// first, and rebuild the interface from the rewound registry using the declaration cache.
-	pub fn move_cursor(&mut self, undo: bool) -> Result<NodeNetworkInterface, CursorMoveError> {
-		self.retire_storage_interaction();
-
-		let storage = self.storage.as_mut().ok_or(CursorMoveError::NotMoved)?;
-
-		let moved = if undo {
-			if !storage.can_undo() {
-				return Err(CursorMoveError::NotMoved);
-			}
-			storage.undo().map(|_| ())
-		} else {
-			if !storage.can_redo() {
-				return Err(CursorMoveError::NotMoved);
-			}
-			storage.redo().map(|_| ())
-		};
-		if let Err(error) = moved {
-			log::error!("Storage undo/redo cursor move failed: {error}");
-			return Err(CursorMoveError::NotMoved);
-		}
-
-		self.rebuild_interface().ok_or(CursorMoveError::RebuildFailed)
-	}
-
 	/// Build a new interface from the working registry and cached declarations. `None` when it doesn't convert.
 	pub fn rebuild_interface(&self) -> Option<NodeNetworkInterface> {
 		let storage = self.storage.as_ref()?;
@@ -436,24 +352,6 @@ impl DocumentHistory {
 				log::error!("Failed to deserialize a received ProtoNode declaration: {error}");
 				false
 			}
-		}
-	}
-
-	/// Step the cursor back the other way, undoing a [`move_cursor`](Self::move_cursor) in the `undo`
-	/// direction whose rebuild failed.
-	pub fn revert_cursor(&mut self, undo: bool) {
-		let Some(storage) = self.storage.as_mut() else { return };
-
-		let reverted = if undo { storage.redo() } else { storage.undo() };
-		if let Err(error) = reverted {
-			log::error!("Storage undo/redo cursor revert failed: {error}");
-		}
-	}
-
-	fn push_capped(stack: &mut VecDeque<NodeNetworkInterface>, snapshot: NodeNetworkInterface) {
-		stack.push_back(snapshot);
-		if stack.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-			stack.pop_front();
 		}
 	}
 }
