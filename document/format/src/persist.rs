@@ -500,7 +500,7 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Move the head back to an ancestor, keeping the later line as a branch. A non-retiring peer asks the retirer.
+	/// Move the head to an ancestor or a branch, keeping the line it was on as a branch. A non-retiring peer asks the retirer.
 	#[cfg(feature = "network")]
 	pub fn move_head(&mut self, rev: Rev) -> Result<(), Error> {
 		if self.retires_locally() {

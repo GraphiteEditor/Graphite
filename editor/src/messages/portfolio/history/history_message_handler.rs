@@ -812,6 +812,35 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn removing_a_step_is_undone_and_redone_like_any_other() {
+		let mut editor = three_rectangles().await;
+		let second = rows(&editor)[1].id.clone();
+		editor.handle_message(HistoryMessage::RemoveStep { id: second }).await;
+		assert_eq!(layer_count(&editor), 2);
+
+		editor.handle_message(DocumentMessage::DocumentHistoryBackward).await;
+		assert_eq!(layer_count(&editor), 3, "undo brings the removed rectangle back");
+		editor.handle_message(DocumentMessage::DocumentHistoryForward).await;
+		assert_eq!(layer_count(&editor), 2, "redo removes it again");
+		editor.handle_message(DocumentMessage::DocumentHistoryBackward).await;
+		assert_eq!(layer_count(&editor), 3, "and undo takes the removal back again");
+	}
+
+	#[tokio::test]
+	async fn undoing_a_step_not_yet_in_history_keeps_it_listed_as_undone() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = three_rectangles().await;
+		editor.drag_tool(ToolType::Ellipse, 0., 150., 100., 250., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DocumentHistoryBackward).await;
+
+		let rows = rows(&editor);
+		assert_eq!(rows[0].label, "Drew an Ellipse");
+		assert!(rows[0].undone, "the ellipse stays on the panel, undone");
+		assert!(rows[1].head);
+	}
+
+	#[tokio::test]
 	async fn removing_a_step_and_then_an_earlier_one_reopens() {
 		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::build_interface_from_storage;
 

@@ -2996,6 +2996,10 @@ impl DocumentMessageHandler {
 
 		// The legacy snapshot predates peers' writes, so follow only what storage changed
 		let stored_name = self.stored_name().map(str::to_string);
+		// Alone, the step enters history first, so undo leaves it on the History panel like the steps before it
+		if !self.is_in_session() {
+			self.history.retire_storage_interaction();
+		}
 		if self.history.undo_in_storage(self.is_in_session()) {
 			self.follow_storage_changes(stored_name, responses);
 			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
