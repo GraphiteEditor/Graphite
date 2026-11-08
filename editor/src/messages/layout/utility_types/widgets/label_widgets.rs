@@ -106,6 +106,26 @@ pub struct ImageLabel {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
+pub struct ProgressBar {
+	// Content
+	/// How much of the bar is filled, from 0 to 1.
+	#[widget_builder(constructor)]
+	pub fraction: f64,
+	/// Text shown over the bar.
+	pub label: String,
+
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
+#[derivative(Debug, PartialEq)]
 pub struct ShortcutLabel {
 	// Content
 	// This is wrapped in an Option to satisfy the requirement that widgets implement Default

@@ -560,6 +560,7 @@ impl LayoutGroup {
 				Widget::NumberInput(x) => &mut x.tooltip_description,
 				Widget::ParameterChainToggle(x) => &mut x.tooltip_description,
 				Widget::PopoverButton(x) => &mut x.tooltip_description,
+				Widget::ProgressBar(x) => &mut x.tooltip_description,
 				Widget::TextAreaInput(x) => &mut x.tooltip_description,
 				Widget::TextButton(x) => &mut x.tooltip_description,
 				Widget::TextInput(x) => &mut x.tooltip_description,
@@ -964,6 +965,7 @@ pub enum Widget {
 	ParameterExposeButton(ParameterExposeButton),
 	ReferencePointInput(ReferencePointInput),
 	PopoverButton(PopoverButton),
+	ProgressBar(ProgressBar),
 	RadioInput(RadioInput),
 	Separator(Separator),
 	SliderInput(SliderInput),
@@ -1001,7 +1003,7 @@ impl Widget {
 			Self::TextInput(widget) => &mut widget.disabled,
 			Self::TextLabel(widget) => &mut widget.disabled,
 			Self::VisualColorPickersInput(widget) => &mut widget.disabled,
-			Self::ImageButton(_) | Self::ImageLabel(_) | Self::ShortcutLabel(_) | Self::ParameterChainToggle(_) | Self::Separator(_) | Self::WorkingColorsInput(_) => {
+			Self::ImageButton(_) | Self::ImageLabel(_) | Self::ProgressBar(_) | Self::ShortcutLabel(_) | Self::ParameterChainToggle(_) | Self::Separator(_) | Self::WorkingColorsInput(_) => {
 				return;
 			}
 		};
@@ -1122,6 +1124,7 @@ impl DiffUpdate {
 				Widget::ShortcutLabel(widget) => widget.shortcut.as_mut(),
 				Widget::IconLabel(_)
 				| Widget::ImageLabel(_)
+				| Widget::ProgressBar(_)
 				| Widget::MathExpressionInput(_)
 				| Widget::NodeCatalog(_)
 				| Widget::ReferencePointInput(_)

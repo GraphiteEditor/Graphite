@@ -360,7 +360,7 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
-			Widget::ImageLabel(_) => {}
+			Widget::ImageLabel(_) | Widget::ProgressBar(_) => {}
 			Widget::MathExpressionInput(math_expression_input) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (math_expression_input.on_commit.callback)(&()),

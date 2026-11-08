@@ -345,6 +345,10 @@ pub enum NodeGraphMessage {
 	UpdateEvaluationErrors {
 		errors: Vec<NodeEvaluationError>,
 	},
+	/// The progress of the nodes with work in progress, by their full path from the root network.
+	UpdateNodeProgress {
+		progress: Vec<(Vec<NodeId>, f64)>,
+	},
 	UpdateActionButtons,
 	UpdateGraphBarRight,
 	UpdateInSelectedNetwork,
@@ -457,6 +461,7 @@ impl NodeGraphMessage {
 			| Self::UpdateNewNodeGraph
 			| Self::UpdateTypes { .. }
 			| Self::UpdateEvaluationErrors { .. }
+			| Self::UpdateNodeProgress { .. }
 			| Self::UpdateActionButtons
 			| Self::UpdateGraphBarRight
 			| Self::UpdateInSelectedNetwork
