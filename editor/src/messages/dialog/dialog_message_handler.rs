@@ -4,6 +4,7 @@ use crate::messages::dialog::simple_dialogs::{ConfirmRestartDialog, LicensesThir
 use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
+use graphene_std::units::{DEFAULT_PIXELS_PER_INCH, TypedLength};
 
 #[derive(ExtractField)]
 pub struct DialogMessageContext<'a> {
@@ -156,7 +157,9 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				self.new_document_dialog = NewDocumentDialogMessageHandler {
 					name: portfolio.generate_new_document_name(None),
 					infinite: false,
-					dimensions: glam::UVec2::new(1920, 1080),
+					width: TypedLength::pixels(1920.),
+					height: TypedLength::pixels(1080.),
+					pixels_per_inch: DEFAULT_PIXELS_PER_INCH,
 				};
 				self.new_document_dialog.send_dialog_to_frontend(responses);
 			}
