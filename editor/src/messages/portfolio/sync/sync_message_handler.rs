@@ -171,10 +171,10 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				refresh_session_views(responses);
 			}
 			SyncMessage::RefreshPanel => {
-				let layout = session_panel_layout(documents, active_document_id, preferences);
+				let layout = collaboration_panel_layout(documents, active_document_id, preferences);
 				responses.add(LayoutMessage::SendLayout {
 					layout,
-					layout_target: LayoutTarget::SessionPanel,
+					layout_target: LayoutTarget::CollaborationPanel,
 				});
 			}
 			SyncMessage::Poll => {
@@ -226,7 +226,7 @@ impl SyncMessageHandler {
 	fn host(&mut self, document_id: DocumentId, gdd: &mut GddV1, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) {
 		let Some(token) = self.connect_document(document_id, gdd, preferences, responses) else { return };
 		responses.add(FrontendMessage::TriggerSessionLinkCopy { token: token.to_string() });
-		responses.add(WorkspaceMessage::FocusPanel { panel_type: PanelType::Session });
+		responses.add(WorkspaceMessage::FocusPanel { panel_type: PanelType::Collaboration });
 	}
 
 	fn connect_document(&mut self, document_id: DocumentId, gdd: &mut GddV1, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> Option<SessionToken> {
@@ -534,7 +534,7 @@ fn refresh_session_views(responses: &mut VecDeque<Message>) {
 	responses.add(SyncMessage::RefreshPanel);
 }
 
-fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>, preferences: &PreferencesMessageHandler) -> Layout {
+fn collaboration_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>, preferences: &PreferencesMessageHandler) -> Layout {
 	let heading = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).bold(true).widget_instance()]);
 	let note = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).multiline(true).widget_instance()]);
 	let user_name = preferences.user_name.as_str();

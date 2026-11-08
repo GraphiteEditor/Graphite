@@ -207,9 +207,9 @@
 				editor.renameDocument(newName);
 			}}
 			sessionAction={(tabIndex) => {
-				// The Session panel shows the active document
+				// The Collaboration panel shows the active document
 				editor.selectDocument($portfolio.documents[tabIndex].id);
-				editor.focusPanel("Session");
+				editor.focusPanel("Collaboration");
 			}}
 			tabActiveIndex={$portfolio.activeDocumentIndex}
 			groupDropAction={groupDrop}

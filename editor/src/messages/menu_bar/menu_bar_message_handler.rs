@@ -24,7 +24,7 @@ pub struct MenuBarMessageHandler {
 	pub show_storage_preferences: bool,
 	pub make_path_editable_is_allowed: bool,
 	pub data_panel_open: bool,
-	pub session_panel_open: bool,
+	pub collaboration_panel_open: bool,
 	pub history_panel_open: bool,
 	pub layers_panel_open: bool,
 	pub inspector_open: bool,
@@ -689,10 +689,10 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::ToggleDataPanelOpen))
 							.on_commit(|_| WorkspaceMessage::ToggleDataPanelOpen.into())
 							.disabled(self.focus_document),
-						MenuListEntry::new("Session")
-							.label("Session")
-							.icon(if self.session_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.on_commit(|_| WorkspaceMessage::ToggleSessionPanelOpen.into())
+						MenuListEntry::new("Collaboration")
+							.label("Collaboration")
+							.icon(if self.collaboration_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.on_commit(|_| WorkspaceMessage::ToggleCollaborationPanelOpen.into())
 							.disabled(self.focus_document),
 						MenuListEntry::new("History")
 							.label("History")

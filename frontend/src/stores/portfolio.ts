@@ -42,7 +42,7 @@ export const inspectorLayout = persistedLayout("inspectorLayout");
 export const dataPanelLayout = persistedLayout("dataPanelLayout");
 export const dataPanelContextLayout = persistedLayout("dataPanelContextLayout");
 export const dataPanelPathLayout = persistedLayout("dataPanelPathLayout");
-export const sessionPanelLayout = persistedLayout("sessionPanelLayout");
+export const collaborationPanelLayout = persistedLayout("collaborationPanelLayout");
 export const layersPanelControlBarLeftLayout = persistedLayout("layersPanelControlBarLeftLayout");
 export const layersPanelBottomBarLeftLayout = persistedLayout("layersPanelBottomBarLeftLayout");
 export const layersPanelBottomBarRightLayout = persistedLayout("layersPanelBottomBarRightLayout");
@@ -147,8 +147,8 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayout(dataPanelPathLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("SessionPanel", (data) => {
-		patchLayout(sessionPanelLayout, data);
+	subscriptions.subscribeLayoutUpdate("CollaborationPanel", (data) => {
+		patchLayout(collaborationPanelLayout, data);
 	});
 
 	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
@@ -214,7 +214,7 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	subscriptions.unsubscribeLayoutUpdate("DataPanelContext");
 	subscriptions.unsubscribeLayoutUpdate("DataPanelPath");
-	subscriptions.unsubscribeLayoutUpdate("SessionPanel");
+	subscriptions.unsubscribeLayoutUpdate("CollaborationPanel");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomLeftBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomRightBar");

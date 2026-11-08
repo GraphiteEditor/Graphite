@@ -12,7 +12,7 @@ pub enum PanelType {
 	#[serde(alias = "Properties")]
 	Inspector,
 	Data,
-	Session,
+	Collaboration,
 	History,
 }
 
@@ -24,7 +24,7 @@ impl From<String> for PanelType {
 			"Layers" => PanelType::Layers,
 			"Inspector" | "Properties" => PanelType::Inspector,
 			"Data" => PanelType::Data,
-			"Session" => PanelType::Session,
+			"Collaboration" => PanelType::Collaboration,
 			"History" => PanelType::History,
 			_ => panic!("Unknown panel type: {value}"),
 		}
@@ -33,7 +33,7 @@ impl From<String> for PanelType {
 
 impl PanelType {
 	pub fn non_document_panels() -> &'static [PanelType] {
-		&[PanelType::Layers, PanelType::Inspector, PanelType::Data, PanelType::Session, PanelType::History]
+		&[PanelType::Layers, PanelType::Inspector, PanelType::Data, PanelType::Collaboration, PanelType::History]
 	}
 }
 
@@ -305,10 +305,10 @@ impl WorkspacePanelLayout {
 	/// - Data: below the document in the left column (root child 0)
 	/// - Inspector: top of the right column (root child 1)
 	/// - Layers: bottom of the right column (root child 1)
-	/// - Session, History: a tab beside the Inspector or Layers, otherwise placed like that panel
+	/// - Collaboration, History: a tab beside the Inspector or Layers, otherwise placed like that panel
 	fn restore_panel_to_default_position(&mut self, panel_type: PanelType) {
 		let beside = match panel_type {
-			PanelType::Session => Some(PanelType::Inspector),
+			PanelType::Collaboration => Some(PanelType::Inspector),
 			PanelType::History => Some(PanelType::Layers),
 			_ => None,
 		};
@@ -334,9 +334,9 @@ impl WorkspacePanelLayout {
 
 		// Determine which root child column to insert into and at which position
 		let (root_child_index, insert_at_end) = match panel_type {
-			PanelType::Data => (0, true),                            // Left column, after document
-			PanelType::Inspector | PanelType::Session => (1, false), // Right column, at top
-			PanelType::Layers | PanelType::History => (1, true),     // Right column, at bottom
+			PanelType::Data => (0, true),                                  // Left column, after document
+			PanelType::Inspector | PanelType::Collaboration => (1, false), // Right column, at top
+			PanelType::Layers | PanelType::History => (1, true),           // Right column, at bottom
 			_ => (1, true),
 		};
 
@@ -421,7 +421,7 @@ impl Default for WorkspacePanelLayout {
 									subdivision: PanelLayoutSubdivision::PanelGroup {
 										id: PanelGroupId(1),
 										state: PanelGroupState {
-											tabs: vec![PanelType::Inspector, PanelType::Session],
+											tabs: vec![PanelType::Inspector],
 											active_tab_index: 0,
 										},
 									},

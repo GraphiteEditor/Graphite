@@ -34,7 +34,7 @@ pub enum WorkspaceMessage {
 		panel_type: PanelType,
 	},
 	ToggleDataPanelOpen,
-	ToggleSessionPanelOpen,
+	ToggleCollaborationPanelOpen,
 	ToggleHistoryPanelOpen,
 	ToggleInspectorOpen,
 	ToggleLayersPanelOpen,
