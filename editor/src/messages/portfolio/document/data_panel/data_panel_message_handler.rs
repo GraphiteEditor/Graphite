@@ -25,7 +25,7 @@ use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::Footprint;
 use graphene_std::transform::{ReferencePoint, ScaleType};
-use graphene_std::units::{Angle, Length};
+use graphene_std::units::{Angle, AngleVec2, Length, LengthVec2};
 use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod,
 	WeldMethod,
@@ -404,6 +404,8 @@ macro_rules! inspectable_types {
 			List<f64>,
 			List<Length>,
 			List<Angle>,
+			List<LengthVec2>,
+			List<AngleVec2>,
 			List<i64>,
 			List<bool>,
 			List<DVec2>,
@@ -466,6 +468,8 @@ macro_rules! inspectable_types {
 			Item<f64>,
 			Item<Length>,
 			Item<Angle>,
+			Item<LengthVec2>,
+			Item<AngleVec2>,
 			Item<i64>,
 			Item<bool>,
 			Item<DVec2>,
@@ -1123,6 +1127,31 @@ impl TableItemLayout for Angle {
 	}
 	fn identifier(&self) -> String {
 		format!("{}°", format_f64(round_away_float_noise(self.degrees())))
+	}
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
+	}
+}
+
+impl TableItemLayout for LengthVec2 {
+	fn type_name() -> &'static str {
+		"Length Vec2"
+	}
+	fn identifier(&self) -> String {
+		format_dvec2(self.pixels())
+	}
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
+	}
+}
+
+impl TableItemLayout for AngleVec2 {
+	fn type_name() -> &'static str {
+		"Angle Vec2"
+	}
+	fn identifier(&self) -> String {
+		let degrees = self.degrees();
+		format!("({}°, {}°)", format_rounded(degrees.x, 3), format_rounded(degrees.y, 3))
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
 		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]

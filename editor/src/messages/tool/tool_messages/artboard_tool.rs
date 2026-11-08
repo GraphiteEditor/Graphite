@@ -484,7 +484,7 @@ impl Fsm for ArtboardToolFsmState {
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
 						location: start.min(end).round(),
-						dimensions: (start.round() - end.round()).abs(),
+						dimensions: graphene_std::units::TypedLengthVec2::pixels((start.round() - end.round()).abs()),
 						background: graphene_std::Color::WHITE,
 						clip: true,
 					})

@@ -1,6 +1,6 @@
 use crate::grid_topology::Lattice;
 use core_types::list::{Item, List};
-use core_types::units::{Angle, Length};
+use core_types::units::{Angle, AngleVec2, Length, LengthVec2};
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
@@ -251,7 +251,7 @@ pub enum QrCodeError {
 }
 
 /// Generates a QR code from the input text.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeQrCode"), name("QR Code"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeQrCode"), name("QR Code"), version(2))]
 fn qr_code(
 	_: impl Ctx,
 	_primary: (),
@@ -259,15 +259,14 @@ fn qr_code(
 	#[default("https://graphite.art")]
 	text: Item<String>,
 	#[widget(ParsedWidgetOverride::Hidden)] has_size: Item<bool>,
-	#[unit(" px")]
 	#[hard(1..)]
-	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
-	size: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "optional_length")]
+	size: Item<Length>,
 	error_correction: Item<QRCodeErrorCorrectionLevel>,
 	individual_squares: Item<bool>,
 ) -> Result<Item<Vector>, QrCodeError> {
 	let (text, error_correction) = (text.into_element(), error_correction.into_element());
-	let (has_size, size, individual_squares) = (*has_size.element(), *size.element(), *individual_squares.element());
+	let (has_size, size, individual_squares) = (*has_size.element(), size.element().pixels(), *individual_squares.element());
 
 	let ecc = match error_correction {
 		QRCodeErrorCorrectionLevel::Low => qrcodegen::QrCodeEcc::Low,
@@ -307,9 +306,7 @@ fn qr_code(
 fn arrow(
 	_: impl Ctx,
 	_primary: (),
-	#[unit(" px")]
-	#[default(100., 0.)]
-	arrow_to: Item<DVec2>,
+	#[default(100., 0.)] arrow_to: Item<LengthVec2>,
 	#[hard(0..)]
 	#[default(10)]
 	shaft_width: Item<Length>,
@@ -320,33 +317,18 @@ fn arrow(
 	#[default(20)]
 	head_length: Item<Length>,
 ) -> Item<Vector> {
-	let (arrow_to, shaft_width, head_width, head_length) = (*arrow_to.element(), shaft_width.element().pixels(), head_width.element().pixels(), head_length.element().pixels());
+	let (arrow_to, shaft_width, head_width, head_length) = (
+		arrow_to.element().pixels(),
+		shaft_width.element().pixels(),
+		head_width.element().pixels(),
+		head_length.element().pixels(),
+	);
 	Vector::item_from_bezpath(&shapes::arrow_bezpath(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length))
 }
 
-#[node_macro::node(category("Vector: Geometry"), icon("NodeLine"))]
-fn line(
-	_: impl Ctx,
-	_primary: (),
-	#[unit(" px")]
-	#[default(100., 100.)]
-	line_to: Item<DVec2>,
-) -> Item<Vector> {
-	Vector::item_from_bezpath(&shapes::line_bezpath(DVec2::ZERO, *line_to.element()))
-}
-
-trait GridSpacing {
-	fn as_dvec2(&self) -> DVec2;
-}
-impl GridSpacing for f64 {
-	fn as_dvec2(&self) -> DVec2 {
-		DVec2::splat(*self)
-	}
-}
-impl GridSpacing for DVec2 {
-	fn as_dvec2(&self) -> DVec2 {
-		*self
-	}
+#[node_macro::node(category("Vector: Geometry"), icon("NodeLine"), version(2))]
+fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: Item<LengthVec2>) -> Item<Vector> {
+	Vector::item_from_bezpath(&shapes::line_bezpath(DVec2::ZERO, line_to.element().pixels()))
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -356,8 +338,8 @@ pub enum GridError {
 }
 
 /// Generates a rectangular or isometric grid of points with the chosen number of columns and rows, joined into paths by the chosen topology.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeGrid"), inspector("grid_inspector"))]
-fn grid<T: GridSpacing>(
+#[node_macro::node(category("Vector: Geometry"), icon("NodeGrid"), inspector("grid_inspector"), version(2))]
+fn grid(
 	_: impl Ctx,
 	_primary: (),
 	lattice: Item<GridType>,
@@ -371,14 +353,11 @@ fn grid<T: GridSpacing>(
 	#[default(10)]
 	#[hard(0..)]
 	rows: Item<i64>,
-	#[unit(" px")]
+	/// The width and height of each cell. An isometric grid uses only the height, which its angles derive the width from.
 	#[hard(0..)]
-	#[default(10)]
-	#[implementations(f64, DVec2)]
-	spacing: Item<T>,
-	#[unit("°")]
-	#[default(30., 30.)]
-	angles: Item<DVec2>,
+	#[default(10., 10.)]
+	spacing: Item<LengthVec2>,
+	#[default(30., 30.)] angles: Item<AngleVec2>,
 ) -> Result<Item<Vector>, GridError> {
 	let (grid_type, topology, staggered, columns, rows, angles) = (
 		lattice.into_element(),
@@ -390,12 +369,12 @@ fn grid<T: GridSpacing>(
 	);
 	let (columns, rows) = (columns as u32, rows as u32);
 
-	let (x_spacing, y_spacing) = spacing.element().as_dvec2().into();
-	let (angle_a, angle_b) = angles.into();
+	let (x_spacing, y_spacing) = spacing.element().pixels().into();
+	let (angle_a, angle_b) = angles.radians().into();
 
 	// Isometric grid spacing based on the two skew angles. Unused for rectangular grids.
-	let tan_a = angle_a.to_radians().tan();
-	let tan_b = angle_b.to_radians().tan();
+	let tan_a = angle_a.tan();
+	let tan_b = angle_b.tan();
 	if grid_type.is_isometric() && tan_a + tan_b == 0. {
 		return Err(GridError::AnglesCancelOut);
 	}
@@ -526,8 +505,8 @@ mod tests {
 				item(false),
 				item(5_i64),
 				item(5_i64),
-				item(0.),
-				item((0., 0.).into()),
+				item(LengthVec2::from_pixels(DVec2::splat(0.))),
+				item(AngleVec2::from_degrees(DVec2::new(0., 0.))),
 			)
 			.is_err()
 		);
@@ -539,8 +518,8 @@ mod tests {
 			item(false),
 			item(5_i64),
 			item(5_i64),
-			item(90.),
-			item((90., 90.).into()),
+			item(LengthVec2::from_pixels(DVec2::splat(90.))),
+			item(AngleVec2::from_degrees(DVec2::new(90., 90.))),
 		)
 		.unwrap();
 
@@ -553,8 +532,8 @@ mod tests {
 			item(false),
 			item(5_i64),
 			item(5_i64),
-			item(10.),
-			item((30., 30.).into()),
+			item(LengthVec2::from_pixels(DVec2::splat(10.))),
+			item(AngleVec2::from_degrees(DVec2::new(30., 30.))),
 		)
 		.unwrap();
 		let paths = shared_paths_from_item_attributes(&grid);
@@ -577,8 +556,8 @@ mod tests {
 			item(false),
 			item(5_i64),
 			item(5_i64),
-			item(10.),
-			item((40., 30.).into()),
+			item(LengthVec2::from_pixels(DVec2::splat(10.))),
+			item(AngleVec2::from_degrees(DVec2::new(40., 30.))),
 		)
 		.unwrap();
 		let paths = shared_paths_from_item_attributes(&grid);
@@ -602,8 +581,8 @@ mod tests {
 			item(false),
 			item(3_i64),
 			item(3_i64),
-			item(10.),
-			item((30., 30.).into()),
+			item(LengthVec2::from_pixels(DVec2::splat(10.))),
+			item(AngleVec2::from_degrees(DVec2::new(30., 30.))),
 		)
 		.unwrap();
 		let paths = shared_paths_from_item_attributes(&grid);
@@ -624,8 +603,8 @@ mod tests {
 			item(false),
 			item(3_i64),
 			item(4_i64),
-			item(10.),
-			item((30., 30.).into()),
+			item(LengthVec2::from_pixels(DVec2::splat(10.))),
+			item(AngleVec2::from_degrees(DVec2::new(30., 30.))),
 		)
 		.unwrap();
 		let paths = shared_paths_from_item_attributes(&grid);
@@ -647,8 +626,8 @@ mod tests {
 			item(false),
 			item(3_i64),
 			item(3_i64),
-			item(10.),
-			item((30., 30.).into()),
+			item(LengthVec2::from_pixels(DVec2::splat(10.))),
+			item(AngleVec2::from_degrees(DVec2::new(30., 30.))),
 		)
 		.unwrap();
 		let paths = shared_paths_from_item_attributes(&grid);
@@ -695,7 +674,7 @@ mod tests {
 			(),
 			item("https://graphite.art".to_string()),
 			item(false),
-			item(1.),
+			item(Length::from_pixels(1.)),
 			item(QRCodeErrorCorrectionLevel::Low),
 			item(true),
 		)
@@ -707,7 +686,15 @@ mod tests {
 
 	#[test]
 	fn qr_code_reports_text_too_long() {
-		let qr = qr_code((), (), item("x".repeat(3000)), item(false), item(1.), item(QRCodeErrorCorrectionLevel::High), item(true));
+		let qr = qr_code(
+			(),
+			(),
+			item("x".repeat(3000)),
+			item(false),
+			item(Length::from_pixels(1.)),
+			item(QRCodeErrorCorrectionLevel::High),
+			item(true),
+		);
 		assert!(matches!(qr, Err(QrCodeError::TextTooLong(_))));
 	}
 

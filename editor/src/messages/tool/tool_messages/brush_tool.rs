@@ -380,7 +380,7 @@ impl BrushToolData {
 			}
 
 			if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER) {
-				self.transform = get_current_transform(&node.inputs) * self.transform;
+				self.transform = get_current_transform(&node.inputs, document.network_interface.pixels_per_inch()) * self.transform;
 			}
 		}
 

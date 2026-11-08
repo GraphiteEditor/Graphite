@@ -21,7 +21,7 @@ use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType};
-use graphene_std::units::{Angle, AngleUnit, Length, LengthUnit};
+use graphene_std::units::{Angle, AngleUnit, AngleVec2, Length, LengthUnit, LengthVec2};
 use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod,
 	WeldMethod,
@@ -323,6 +323,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				AnimationCurve,
 				Length,
 				Angle,
+				LengthVec2,
+				AngleVec2,
 				LengthUnit,
 				AngleUnit,
 			)
@@ -378,6 +380,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		DAffine2,
 		Length,
 		Angle,
+		LengthVec2,
+		AngleVec2,
 		BlendMode,
 		GradientForm,
 		GradientSpread,
@@ -490,12 +494,18 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	// Numeric wires cast between numeric element types, splat to fill both axes of a `DVec2` connector, and format into a `String` connector
 	node_types.extend(convert_adapter_wildcard!(from: f64, to: [i64, DVec2, String]));
 	node_types.extend(convert_adapter_wildcard!(from: i64, to: [f64, DVec2, String]));
-	// A number wire may feed a length or angle connector, read in pixels or degrees as their fields show them
-	node_types.extend(convert_adapter_wildcard!(from: f64, to: [Length, Angle]));
-	node_types.extend(convert_adapter_wildcard!(from: i64, to: [Length, Angle]));
+	// A number or Vec2 wire may feed a length or angle connector, read in pixels or degrees as their fields show them
+	node_types.extend(convert_adapter_wildcard!(from: f64, to: [Length, Angle, LengthVec2, AngleVec2]));
+	node_types.extend(convert_adapter_wildcard!(from: i64, to: [Length, Angle, LengthVec2, AngleVec2]));
+	node_types.extend(convert_adapter_wildcard!(from: DVec2, to: [LengthVec2, AngleVec2]));
+	// A length or angle wire may fill both axes of a pair of them
+	node_types.extend(convert_adapter_node!(from_element: Length, element: LengthVec2));
+	node_types.extend(convert_adapter_node!(from_element: Angle, element: AngleVec2));
 	// Length and angle wires may feed a ranked String connector by formatting each element with its unit
 	node_types.extend(convert_adapter_node!(from_element: Length, element: String));
 	node_types.extend(convert_adapter_node!(from_element: Angle, element: String));
+	node_types.extend(convert_adapter_node!(from_element: LengthVec2, element: String));
+	node_types.extend(convert_adapter_node!(from_element: AngleVec2, element: String));
 	// A bool embeds in number types as exactly 0 or 1 and formats as text as true or false, but deliberately has no `DVec2` row, which would silently turn a stray bool wire into (1., 1.)
 	node_types.extend(convert_adapter_wildcard!(from: bool, to: [f64, i64, String]));
 	// Position and transform wires may feed a ranked `String` connector by formatting each element as text
@@ -544,7 +554,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				identifier: ProtoNodeIdentifier::new("transform_nodes::transform_nodes::TransformNode"),
 				graphene_std::transform_nodes::TransformListNode<_, _, _, _, _>,
 				input: Context,
-				fn_params: [Context => List<$element>, Context => Item<DVec2>, Context => Item<f64>, Context => Item<DVec2>, Context => Item<DVec2>]
+				fn_params: [Context => List<$element>, Context => Item<LengthVec2>, Context => Item<Angle>, Context => Item<DVec2>, Context => Item<AngleVec2>]
 			)
 		};
 	}

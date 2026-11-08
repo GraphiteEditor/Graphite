@@ -3,7 +3,7 @@ use convert_case::{Case, Casing};
 use graph_craft::concrete;
 use graph_craft::document::value;
 use graph_craft::proto::{NodeMetadata, RegistryValueSource};
-use graphene_std::units::{Angle, Length};
+use graphene_std::units::{Angle, AngleVec2, Length, LengthVec2};
 use graphene_std::{NodeCompileMetadata, core_types};
 use indoc::formatdoc;
 use std::collections::HashSet;
@@ -175,6 +175,8 @@ fn write_inputs(page: &mut std::fs::File, valid_input_types: &[Vec<core_types::T
 						// A length or angle shows just its number, followed by the unit its type implies
 						value::TaggedValue::Length(length) => format!("{:?}", length.value),
 						value::TaggedValue::Angle(angle) => format!("{:?}", angle.value),
+						value::TaggedValue::LengthVec2(lengths) => format!("{:?}", lengths.value),
+						value::TaggedValue::AngleVec2(angles) => format!("{:?}", angles.value),
 						value => value.to_debug_string(),
 					}),
 			};
@@ -221,9 +223,9 @@ fn implied_unit(ty: &core_types::Type) -> Option<&'static str> {
 		other => other,
 	};
 
-	if *element == concrete!(Length) {
+	if *element == concrete!(Length) || *element == concrete!(LengthVec2) {
 		Some(" px")
-	} else if *element == concrete!(Angle) {
+	} else if *element == concrete!(Angle) || *element == concrete!(AngleVec2) {
 		Some("°")
 	} else {
 		None

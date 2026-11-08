@@ -13,6 +13,7 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::units::TypedLengthVec2;
 use std::collections::VecDeque;
 
 #[derive(Clone, PartialEq, Debug, Default)]
@@ -40,7 +41,7 @@ impl Line {
 	pub fn create_node() -> NodeTemplate {
 		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER);
 		let node_type = resolve_document_node_type(&identifier).expect("Line node can't be found");
-		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false))])
+		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::LengthVec2(TypedLengthVec2::pixels(DVec2::ZERO)), false))])
 	}
 
 	pub fn update_shape(
@@ -70,9 +71,11 @@ impl Line {
 		// Compute line_to in document space
 		let line_to = document_points[1] - document_points[0];
 
+		let input_connector = InputConnector::node(node_id, graphene_std::vector::generator_nodes::line::LineToInput);
+		let line_to = graph_modification_utils::length_vec2_in_unit_of_input(&document.network_interface, &input_connector, line_to);
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::line::LineToInput),
-			input: NodeInput::value(TaggedValue::DVec2(line_to), false),
+			input_connector,
+			input: NodeInput::value(line_to, false),
 		});
 		let document_to_viewport = document.metadata().document_to_viewport;
 		let downstream = document.metadata().downstream_transform_to_viewport(layer);
@@ -94,9 +97,7 @@ impl Line {
 				let node_inputs =
 					NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
 
-				let Some(&TaggedValue::DVec2(line_to)) = node_inputs[1].as_value() else {
-					return None;
-				};
+				let line_to = node_inputs[1].as_value()?.as_length_vec2_pixels(document.network_interface.pixels_per_inch())?;
 
 				// Line goes from local origin (0,0) to line_to, positioned by the Transform node
 				let transform = document.metadata().transform_to_viewport(layer);
@@ -168,7 +169,6 @@ mod test_line_tool {
 	use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
-	use graph_craft::document::value::TaggedValue;
 
 	/// Get the line's document-space start and end points by reading line_to from the node
 	/// and computing the actual positions via the layer's transform.
@@ -181,9 +181,7 @@ mod test_line_tool {
 			.selected_visible_and_unlocked_layers(network_interface)
 			.filter_map(|layer| {
 				let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
-				let Some(&TaggedValue::DVec2(line_to)) = node_inputs[1].as_value() else {
-					return None;
-				};
+				let line_to = node_inputs[1].as_value()?.as_length_vec2_pixels(network_interface.pixels_per_inch())?;
 
 				let transform_to_doc = document.metadata().transform_to_document(layer);
 				let doc_start = transform_to_doc.transform_point2(DVec2::ZERO);

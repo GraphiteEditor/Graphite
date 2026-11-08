@@ -429,6 +429,8 @@ pub fn make_type_user_readable(ty: &str) -> String {
 		.replace("DVec2", "Vec2")
 		.replace("IVec2", "Vec2")
 		.replace("UVec2", "Vec2")
+		.replace("LengthVec2", "Length Vec2")
+		.replace("AngleVec2", "Angle Vec2")
 		.replace("&str", "String")
 		// The numeric ladder's rung names label its wires
 		.replace("f64", "Number")

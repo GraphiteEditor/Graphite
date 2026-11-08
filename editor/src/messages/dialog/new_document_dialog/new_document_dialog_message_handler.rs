@@ -1,12 +1,13 @@
 use crate::messages::dialog::document_setup_dialog::resolution_row;
 use crate::messages::layout::layout_message_handler::unit_suffix;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::node_inspector::length_decimal_places;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::units::{DEFAULT_PIXELS_PER_INCH, LengthUnit, TypedLength};
+use graphene_std::units::{DEFAULT_PIXELS_PER_INCH, LengthUnit, TypedLength, TypedLengthVec2};
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, ExtractField)]
@@ -54,10 +55,11 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 				});
 
 				let dimensions = self.artboard_dimensions();
+				let pixels = dimensions.to_length_vec2(self.pixels_per_inch).pixels();
 				if self.infinite {
 					// Infinite canvas: add a locked white background layer
 					graph_modification_utils::new_background_layer(0, responses);
-				} else if dimensions.x > 0. && dimensions.y > 0. {
+				} else if pixels.x > 0. && pixels.y > 0. {
 					// Finite canvas: create an artboard with the specified dimensions
 					responses.add(GraphOperationMessage::NewArtboard {
 						id: NodeId::new(),
@@ -66,7 +68,7 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 						background: Color::WHITE,
 						clip: true,
 					});
-					responses.add(NavigationMessage::CanvasPan { delta: dimensions });
+					responses.add(NavigationMessage::CanvasPan { delta: pixels });
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -142,6 +144,7 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 			NumberInput::new(Some(length.value))
 				.label(label)
 				.unit(unit_suffix(length.unit.symbol()))
+				.display_decimal_places(length_decimal_places(length.unit, self.pixels_per_inch))
 				.kept_units(LengthUnit::ALL.iter().map(|unit| unit.symbol().to_string()).collect())
 				.pixels_per_inch(self.pixels_per_inch)
 				.min(0.)
@@ -176,10 +179,12 @@ impl NewDocumentDialogMessageHandler {
 		})
 	}
 
-	/// The artboard's size in whole pixels, converting a dimension typed in a physical unit at the chosen resolution.
-	pub fn artboard_dimensions(&self) -> DVec2 {
-		let pixels = |length: TypedLength| length.to_length(self.pixels_per_inch).pixels().round();
-		DVec2::new(pixels(self.width), pixels(self.height))
+	/// The artboard's size in the unit both dimensions share, like an A4 page in millimeters.
+	pub fn artboard_dimensions(&self) -> TypedLengthVec2 {
+		TypedLengthVec2 {
+			value: DVec2::new(self.width.value, self.height.value),
+			unit: self.width.unit,
+		}
 	}
 }
 
@@ -204,6 +209,7 @@ mod tests {
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::ARTBOARD_DIMENSIONS_INPUT_INDEX;
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::document::value::TaggedValue;
+	use graphene_std::units::{LengthUnit, TypedLengthVec2};
 	use std::collections::HashMap;
 
 	/// Commits text into the dialog's number field with this label or tooltip label, as the frontend sends a typed entry.
@@ -234,15 +240,17 @@ mod tests {
 			.await;
 	}
 
-	fn artboard_dimensions(editor: &EditorTestUtils) -> Option<DVec2> {
+	fn artboard_dimensions(editor: &EditorTestUtils) -> Option<TaggedValue> {
 		let network_interface = &editor.active_document().network_interface;
 		let artboard = network_interface.all_artboards().into_iter().next()?;
 		let node = network_interface.document_network().nodes.get(&artboard.to_node())?;
 
-		match node.inputs.get(ARTBOARD_DIMENSIONS_INPUT_INDEX)?.as_value()? {
-			TaggedValue::DVec2(dimensions) => Some(*dimensions),
-			_ => None,
-		}
+		node.inputs.get(ARTBOARD_DIMENSIONS_INPUT_INDEX)?.as_value().cloned()
+	}
+
+	fn artboard_pixels(editor: &EditorTestUtils) -> Option<DVec2> {
+		let pixels_per_inch = editor.active_document().network_interface.pixels_per_inch();
+		artboard_dimensions(editor)?.as_length_vec2_pixels(pixels_per_inch).map(DVec2::round)
 	}
 
 	#[tokio::test]
@@ -252,11 +260,11 @@ mod tests {
 		type_into_field(&mut editor, "Resolution", "300");
 		create_document(&mut editor).await;
 		assert_eq!(editor.active_document().network_interface.pixels_per_inch(), 300.);
-		assert_eq!(artboard_dimensions(&editor), Some(DVec2::new(1920., 1080.)));
+		assert_eq!(artboard_pixels(&editor), Some(DVec2::new(1920., 1080.)));
 
 		editor.handle_message(DocumentMessage::Undo).await;
 		assert_eq!(editor.active_document().network_interface.pixels_per_inch(), 300.);
-		assert_eq!(artboard_dimensions(&editor), Some(DVec2::new(1920., 1080.)));
+		assert_eq!(artboard_pixels(&editor), Some(DVec2::new(1920., 1080.)));
 	}
 
 	#[tokio::test]
@@ -268,7 +276,7 @@ mod tests {
 		// The height of 1080 px at 96 PPI became 285.75 mm, so it grows with the resolution like the width
 		type_into_field(&mut editor, "Resolution", "300");
 		create_document(&mut editor).await;
-		assert_eq!(artboard_dimensions(&editor), Some(DVec2::new(2480., 3375.)));
+		assert_eq!(artboard_pixels(&editor), Some(DVec2::new(2480., 3375.)));
 	}
 
 	#[tokio::test]
@@ -281,6 +289,41 @@ mod tests {
 		// The lengths stay in millimeters, so their size in pixels follows a resolution chosen after them
 		type_into_field(&mut editor, "Resolution", "300");
 		create_document(&mut editor).await;
-		assert_eq!(artboard_dimensions(&editor), Some(DVec2::new(2480., 3508.)));
+		assert_eq!(artboard_pixels(&editor), Some(DVec2::new(2480., 3508.)));
+
+		// The artboard keeps the millimeters, so changing the resolution later keeps the page's physical size
+		let a4 = TaggedValue::LengthVec2(TypedLengthVec2 {
+			value: DVec2::new(210., 297.),
+			unit: LengthUnit::Millimeter,
+		});
+		assert_eq!(artboard_dimensions(&editor), Some(a4));
+	}
+
+	#[tokio::test]
+	async fn moving_an_artboard_sized_in_millimeters_keeps_its_millimeters() {
+		let mut editor = EditorTestUtils::create();
+		editor.dispatch(DialogMessage::RequestNewDocumentDialog);
+		type_into_field(&mut editor, "W", "210mm");
+		type_into_field(&mut editor, "H", "297mm");
+		create_document(&mut editor).await;
+		let a4 = artboard_dimensions(&editor);
+
+		// Tools move and nudge an artboard by resizing it to its own size in whole pixels, which 793.7 x 1122.5 px rounds to
+		let layer = editor
+			.active_document()
+			.network_interface
+			.all_artboards()
+			.into_iter()
+			.next()
+			.expect("the document should have an artboard");
+		let dimensions = artboard_pixels(&editor).expect("the artboard should have dimensions");
+		editor
+			.handle_message(GraphOperationMessage::ResizeArtboard {
+				layer,
+				location: DVec2::new(10., 0.),
+				dimensions,
+			})
+			.await;
+		assert_eq!(artboard_dimensions(&editor), a4);
 	}
 }

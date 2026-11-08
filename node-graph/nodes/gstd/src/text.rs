@@ -44,18 +44,16 @@ fn text(
 	#[widget(ParsedWidgetOverride::Hidden)]
 	has_max_width: Item<bool>,
 	/// The maximum width that the text block can occupy before wrapping to a new line. Otherwise, lines do not wrap.
-	#[unit(" px")]
 	#[hard(1..)]
-	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
-	max_width: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "optional_length")]
+	max_width: Item<Length>,
 	/// Whether the *Max Height* property is enabled so that lines beyond it are not drawn.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	has_max_height: Item<bool>,
 	/// The maximum height that the text block can occupy. Excess lines are not drawn.
-	#[unit(" px")]
 	#[hard(1..)]
-	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
-	max_height: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "optional_length")]
+	max_height: Item<Length>,
 	/// The horizontal alignment of each line of text within its surrounding box. To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: Item<TextAlign>,
@@ -63,7 +61,7 @@ fn text(
 	let text = text.into_element();
 	let font = font.into_element();
 	let (size, line_height, letter_spacing, letter_tilt) = (size.element().pixels(), *line_height.element(), letter_spacing.element().pixels(), letter_tilt.element().degrees());
-	let (has_max_width, max_width, has_max_height, max_height) = (*has_max_width.element(), *max_width.element(), *has_max_height.element(), *max_height.element());
+	let (has_max_width, max_width, has_max_height, max_height) = (*has_max_width.element(), max_width.element().pixels(), *has_max_height.element(), max_height.element().pixels());
 	let align = align.into_element();
 
 	let mut item = Item::new_from_element(text);

@@ -2483,9 +2483,9 @@ mod test_shape_tool {
 
 		let layer = editor.get_selected_layer().await.expect("the new line should be selected");
 		let document = editor.active_document();
-		let Some(&TaggedValue::DVec2(line_to)) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface)
+		let Some(line_to) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface)
 			.find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))
-			.and_then(|inputs| inputs[1].as_value())
+			.and_then(|inputs| inputs[1].as_value()?.as_length_vec2_pixels(document.network_interface.pixels_per_inch()))
 		else {
 			panic!("the new layer should be a line")
 		};

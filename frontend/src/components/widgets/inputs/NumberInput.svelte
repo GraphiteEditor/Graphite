@@ -121,7 +121,7 @@
 	let sliderAbortTimeout1: ReturnType<typeof setTimeout> | undefined;
 	let sliderAbortTimeout2: ReturnType<typeof setTimeout> | undefined;
 
-	$: watchValue(value, unit, min, max);
+	$: watchValue(value, unit, min, max, displayDecimalPlaces);
 	$: if (exact !== undefined && !editing) text = exact;
 	$: present = exact !== undefined || value !== undefined;
 	// A number of only one digit, like `0` or `-1`, has no other digit to move the underline to, so it isn't shown
@@ -179,8 +179,8 @@
 	// TRACKING AND UPDATING THE VALUE
 	// ===============================
 
-	// Called only when `value`, its unit, or its bounds are changed from outside this component.
-	function watchValue(value: number | undefined, unit: string, min: number | undefined, max: number | undefined) {
+	// Called only when `value`, its unit, its bounds, or its displayed precision are changed from outside this component.
+	function watchValue(value: number | undefined, unit: string, min: number | undefined, max: number | undefined, decimalPlaces: number) {
 		// Don't update if the slider is currently being dragged (we don't want the backend fighting with the user's drag)
 		if (rangeSliderClickDragState === "Dragging") return;
 
@@ -202,7 +202,7 @@
 		if (typeof min === "number") sanitized = Math.max(sanitized, min);
 		if (typeof max === "number") sanitized = Math.min(sanitized, max);
 
-		text = displayText(sanitized, unit);
+		text = displayText(sanitized, unit, decimalPlaces);
 	}
 
 	// Rounds half away from zero, the graph's one Number to Integer rule, where `Math.round` would carry -1.5 up to -1
@@ -359,10 +359,10 @@
 	// ================
 
 	// Calculates the string to display when the field is not being edited.
-	function displayText(displayValue: number | undefined, unit: string): string {
+	function displayText(displayValue: number | undefined, unit: string, precision = displayDecimalPlaces): string {
 		if (displayValue === undefined) return "-";
 
-		const decimalPlaces = Math.max(displayDecimalPlaces, 0);
+		const decimalPlaces = Math.max(precision, 0);
 		const roundingPower = 10 ** decimalPlaces;
 
 		// Values within floating point noise of zero (including -0) display as unsigned zero, unless the field's decimal precision is fine enough to display them

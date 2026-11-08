@@ -5299,7 +5299,7 @@ mod document_message_handler_tests {
 			.handle_message(GraphOperationMessage::NewArtboard {
 				id: NodeId::new(),
 				location: DVec2::ZERO,
-				dimensions: DVec2::splat(200.),
+				dimensions: graphene_std::units::TypedLengthVec2::pixels(DVec2::splat(200.)),
 				background: Color::WHITE,
 				clip: true,
 			})

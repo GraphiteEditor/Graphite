@@ -274,11 +274,9 @@ pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerN
 pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
 	use graphene_std::transform_nodes::transform::*;
 
-	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).parameter_value(TranslationInput)? {
-		Some(*origin)
-	} else {
-		None
-	}
+	NodeGraphLayer::new(layer, network_interface)
+		.parameter_value(TranslationInput)?
+		.as_length_vec2_pixels(network_interface.pixels_per_inch())
 }
 
 pub fn get_viewport_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
@@ -655,15 +653,11 @@ pub fn get_text<'a>(
 	let Some(&TaggedValue::Bool(has_max_width)) = parameters.value(text::HasMaxWidthInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::Number(max_width)) = parameters.value(text::MaxWidthInput) else {
-		return None;
-	};
+	let max_width = parameters.value(text::MaxWidthInput)?.as_length_pixels(pixels_per_inch)?;
 	let Some(&TaggedValue::Bool(has_max_height)) = parameters.value(text::HasMaxHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::Number(max_height)) = parameters.value(text::MaxHeightInput) else {
-		return None;
-	};
+	let max_height = parameters.value(text::MaxHeightInput)?.as_length_pixels(pixels_per_inch)?;
 	let letter_tilt = parameters.value(text::LetterTiltInput)?.as_angle_degrees()?;
 	let Some(&TaggedValue::TextAlign(align)) = parameters.value(text::AlignInput) else { return None };
 
@@ -1114,6 +1108,18 @@ pub fn length_in_unit_of_input(network_interface: &NodeNetworkInterface, input_c
 pub fn angle_in_unit_of_input(network_interface: &NodeNetworkInterface, input_connector: &InputConnector, degrees: f64) -> TaggedValue {
 	let existing = network_interface.input_from_connector(input_connector, &[]).and_then(NodeInput::as_value);
 	existing.unwrap_or(&TaggedValue::None).angle_in_same_unit(degrees)
+}
+
+/// A pair of lengths in pixels as a value for the input at `input_connector`, kept in the unit its current value was typed in.
+pub fn length_vec2_in_unit_of_input(network_interface: &NodeNetworkInterface, input_connector: &InputConnector, pixels: DVec2) -> TaggedValue {
+	let existing = network_interface.input_from_connector(input_connector, &[]).and_then(NodeInput::as_value);
+	existing.unwrap_or(&TaggedValue::None).length_vec2_in_same_unit(pixels, network_interface.pixels_per_inch())
+}
+
+/// A pair of angles in degrees as a value for the input at `input_connector`, kept in the unit its current value was typed in.
+pub fn angle_vec2_in_unit_of_input(network_interface: &NodeNetworkInterface, input_connector: &InputConnector, degrees: DVec2) -> TaggedValue {
+	let existing = network_interface.input_from_connector(input_connector, &[]).and_then(NodeInput::as_value);
+	existing.unwrap_or(&TaggedValue::None).angle_vec2_in_same_unit(degrees)
 }
 
 /// Checks if a specified layer uses an upstream node matching the given name.

@@ -4,7 +4,7 @@ use core_types::list::{Item, List};
 use core_types::math::midpoint::apply_midpoint_inverse;
 use core_types::math::spread::spread_factors;
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
-use core_types::units::Angle;
+use core_types::units::{Angle, AngleVec2, LengthVec2};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, Interrupt, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -12,7 +12,7 @@ use graphic_types::{Artboard, Generator, Graphic, Vector};
 use vector_types::Gradient;
 
 /// Applies the specified transform to the input content.
-#[node_macro::node(category("Transform"), icon("NodeTransform"))]
+#[node_macro::node(category("Transform"), icon("NodeTransform"), version(2))]
 fn transform<T: Send + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	#[implementations(
@@ -28,20 +28,20 @@ fn transform<T: Send + 'static>(
 		Context -> Item<Generator>,
 	)]
 	content: impl Node<Context<'static>, Output = Item<T>>,
-	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: Item<DVec2>,
-	#[widget(ParsedWidgetOverride::Custom = "transform_rotation")] rotation: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: Item<LengthVec2>,
+	#[widget(ParsedWidgetOverride::Custom = "transform_rotation")] rotation: Item<Angle>,
 	#[widget(ParsedWidgetOverride::Custom = "transform_scale")]
 	#[default(1., 1.)]
 	scale: Item<DVec2>,
 	// TODO: Replace this pair of shear angles with a single `f64` skew angle
 	#[widget(ParsedWidgetOverride::Custom = "transform_skew")]
 	#[hard(-89.9..89.9)]
-	skew: Item<DVec2>,
+	skew: Item<AngleVec2>,
 ) -> Result<Item<T>, Interrupt> {
 	let (translation, rotation, scale, skew) = (*translation.element(), *rotation.element(), *scale.element(), *skew.element());
 
-	let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
-	let skew = DAffine2::from_cols_array(&[1., skew.y.to_radians().tan(), skew.x.to_radians().tan(), 1., 0., 0.]);
+	let trs = DAffine2::from_scale_angle_translation(scale, rotation.radians(), translation.pixels());
+	let skew = DAffine2::from_cols_array(&[1., skew.y().radians().tan(), skew.x().radians().tan(), 1., 0., 0.]);
 	let matrix = trs * skew;
 
 	let footprint = ctx.try_footprint().copied();
@@ -61,19 +61,19 @@ fn transform<T: Send + 'static>(
 
 /// The whole-`List` counterpart of `transform`, composing the matrix onto every item of a rank-1 content wire.
 /// Registered under the `TransformNode` identifier by manual registry rows, since the macro's element-wise variants require an `Item`-peeling primary.
-#[node_macro::node(category(""), skip_impl)]
+#[node_macro::node(category(""), skip_impl, version(2))]
 fn transform_list<T: Send + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	content: impl Node<Context<'static>, Output = List<T>>,
-	translation: Item<DVec2>,
-	rotation: Item<f64>,
+	translation: Item<LengthVec2>,
+	rotation: Item<Angle>,
 	scale: Item<DVec2>,
-	#[hard(-89.9..89.9)] skew: Item<DVec2>,
+	#[hard(-89.9..89.9)] skew: Item<AngleVec2>,
 ) -> Result<List<T>, Interrupt> {
 	let (translation, rotation, scale, skew) = (*translation.element(), *rotation.element(), *scale.element(), *skew.element());
 
-	let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
-	let skew = DAffine2::from_cols_array(&[1., skew.y.to_radians().tan(), skew.x.to_radians().tan(), 1., 0., 0.]);
+	let trs = DAffine2::from_scale_angle_translation(scale, rotation.radians(), translation.pixels());
+	let skew = DAffine2::from_cols_array(&[1., skew.y().radians().tan(), skew.x().radians().tan(), 1., 0., 0.]);
 	let matrix = trs * skew;
 
 	let footprint = ctx.try_footprint().copied();

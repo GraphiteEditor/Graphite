@@ -1,6 +1,7 @@
 //! Lengths and angles as the node graph carries them, and the units an input remembers its value was typed in.
 
 use dyn_any::DynAny;
+use glam::DVec2;
 use math_parser::quantity::Quantity;
 use math_parser::units::Unit;
 use math_parser::value::Value;
@@ -80,8 +81,74 @@ impl Angle {
 	}
 }
 
-/// Arithmetic that keeps a measurement's meaning: sums and differences of like measurements, scaling by a plain number, and the
-/// plain ratio of two like measurements.
+/// A pair of distances across the canvas along its X and Y axes, measured in pixels, like a position, an offset, or a size.
+#[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(transparent))]
+pub struct LengthVec2(DVec2);
+
+impl LengthVec2 {
+	pub const ZERO: Self = Self(DVec2::ZERO);
+
+	pub const fn from_pixels(pixels: DVec2) -> Self {
+		Self(pixels)
+	}
+
+	pub const fn pixels(self) -> DVec2 {
+		self.0
+	}
+
+	pub fn new(x: Length, y: Length) -> Self {
+		Self(DVec2::new(x.pixels(), y.pixels()))
+	}
+
+	pub const fn x(self) -> Length {
+		Length::from_pixels(self.0.x)
+	}
+
+	pub const fn y(self) -> Length {
+		Length::from_pixels(self.0.y)
+	}
+
+	pub fn abs(self) -> Self {
+		Self(self.0.abs())
+	}
+}
+
+/// A pair of angles for the X and Y axes, like the shear angles of a skew, which node bodies read in radians or degrees as their math needs.
+/// Like an [`Angle`], it's held in degrees.
+#[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(transparent))]
+pub struct AngleVec2(DVec2);
+
+impl AngleVec2 {
+	pub const ZERO: Self = Self(DVec2::ZERO);
+
+	pub fn from_radians(radians: DVec2) -> Self {
+		Self(DVec2::new(radians.x.to_degrees(), radians.y.to_degrees()))
+	}
+
+	pub const fn from_degrees(degrees: DVec2) -> Self {
+		Self(degrees)
+	}
+
+	pub fn radians(self) -> DVec2 {
+		DVec2::new(self.0.x.to_radians(), self.0.y.to_radians())
+	}
+
+	pub const fn degrees(self) -> DVec2 {
+		self.0
+	}
+
+	pub const fn x(self) -> Angle {
+		Angle::from_degrees(self.0.x)
+	}
+
+	pub const fn y(self) -> Angle {
+		Angle::from_degrees(self.0.y)
+	}
+}
+
+/// Arithmetic that keeps a measurement's meaning: sums and differences of like measurements, and scaling by a plain number.
 macro_rules! measurement_arithmetic {
 	($($measurement:ident),*) => {
 		$(
@@ -139,13 +206,6 @@ macro_rules! measurement_arithmetic {
 				}
 			}
 
-			impl Div for $measurement {
-				type Output = f64;
-				fn div(self, divisor: Self) -> f64 {
-					self.0 / divisor.0
-				}
-			}
-
 			impl Sum for $measurement {
 				fn sum<I: Iterator<Item = Self>>(iterator: I) -> Self {
 					Self(iterator.map(|measurement| measurement.0).sum())
@@ -154,7 +214,22 @@ macro_rules! measurement_arithmetic {
 		)*
 	};
 }
-measurement_arithmetic!(Length, Angle);
+measurement_arithmetic!(Length, Angle, LengthVec2, AngleVec2);
+
+/// The plain ratio of two like measurements.
+macro_rules! measurement_ratio {
+	($($measurement:ident),*) => {
+		$(
+			impl Div for $measurement {
+				type Output = f64;
+				fn div(self, divisor: Self) -> f64 {
+					self.0 / divisor.0
+				}
+			}
+		)*
+	};
+}
+measurement_ratio!(Length, Angle);
 
 impl std::fmt::Display for Length {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -165,6 +240,19 @@ impl std::fmt::Display for Length {
 impl std::fmt::Display for Angle {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}°", self.degrees())
+	}
+}
+
+impl std::fmt::Display for LengthVec2 {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "({} px, {} px)", self.0.x, self.0.y)
+	}
+}
+
+impl std::fmt::Display for AngleVec2 {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let degrees = self.degrees();
+		write!(f, "({}°, {}°)", degrees.x, degrees.y)
 	}
 }
 
@@ -379,6 +467,59 @@ impl TypedAngle {
 	}
 }
 
+/// A pair of lengths as typed into an input, sharing one unit, kept in it like a [`TypedLength`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TypedLengthVec2 {
+	pub value: DVec2,
+	pub unit: LengthUnit,
+}
+
+impl TypedLengthVec2 {
+	pub const fn pixels(pixels: DVec2) -> Self {
+		Self {
+			value: pixels,
+			unit: LengthUnit::Pixel,
+		}
+	}
+
+	pub fn to_length_vec2(self, pixels_per_inch: f64) -> LengthVec2 {
+		LengthVec2::from_pixels(DVec2::new(
+			self.unit.convert(self.value.x, LengthUnit::Pixel, pixels_per_inch),
+			self.unit.convert(self.value.y, LengthUnit::Pixel, pixels_per_inch),
+		))
+	}
+}
+
+/// A pair of angles as typed into an input, sharing one unit, kept in it like a [`TypedAngle`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, DynAny, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TypedAngleVec2 {
+	pub value: DVec2,
+	pub unit: AngleUnit,
+}
+
+impl TypedAngleVec2 {
+	pub const fn degrees(degrees: DVec2) -> Self {
+		Self {
+			value: degrees,
+			unit: AngleUnit::Degree,
+		}
+	}
+
+	pub fn to_angle_vec2(self) -> AngleVec2 {
+		AngleVec2::from_degrees(DVec2::new(self.unit.to_angle(self.value.x).degrees(), self.unit.to_angle(self.value.y).degrees()))
+	}
+
+	/// The angles in degrees, exactly as typed when they were typed in degrees.
+	pub fn to_degrees(self) -> DVec2 {
+		match self.unit {
+			AngleUnit::Degree => self.value,
+			_ => self.to_angle_vec2().degrees(),
+		}
+	}
+}
+
 // A plain number wired into a length or angle reads in the unit its field shows, pixels or degrees
 impl crate::ops::Convert<Length, ()> for f64 {
 	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> Length {
@@ -404,6 +545,55 @@ impl crate::ops::Convert<Angle, ()> for i64 {
 	}
 }
 
+// A single number, length, or angle wired into a pair fills both of its axes, like a number wired into a Vec2
+impl crate::ops::Convert<LengthVec2, ()> for f64 {
+	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> LengthVec2 {
+		LengthVec2::from_pixels(DVec2::splat(self))
+	}
+}
+
+impl crate::ops::Convert<LengthVec2, ()> for i64 {
+	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> LengthVec2 {
+		LengthVec2::from_pixels(DVec2::splat(self as f64))
+	}
+}
+
+impl crate::ops::Convert<LengthVec2, ()> for Length {
+	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> LengthVec2 {
+		LengthVec2::new(self, self)
+	}
+}
+
+impl crate::ops::Convert<AngleVec2, ()> for f64 {
+	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> AngleVec2 {
+		AngleVec2::from_degrees(DVec2::splat(self))
+	}
+}
+
+impl crate::ops::Convert<AngleVec2, ()> for i64 {
+	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> AngleVec2 {
+		AngleVec2::from_degrees(DVec2::splat(self as f64))
+	}
+}
+
+impl crate::ops::Convert<AngleVec2, ()> for Angle {
+	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> AngleVec2 {
+		AngleVec2::from_degrees(DVec2::splat(self.degrees()))
+	}
+}
+
+impl crate::ops::Convert<LengthVec2, ()> for DVec2 {
+	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> LengthVec2 {
+		LengthVec2::from_pixels(self)
+	}
+}
+
+impl crate::ops::Convert<AngleVec2, ()> for DVec2 {
+	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> AngleVec2 {
+		AngleVec2::from_degrees(self)
+	}
+}
+
 impl crate::ops::Convert<String, ()> for Length {
 	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> String {
 		format!("{} px", crate::math::float_noise::round_away_float_noise(self.pixels()))
@@ -413,6 +603,20 @@ impl crate::ops::Convert<String, ()> for Length {
 impl crate::ops::Convert<String, ()> for Angle {
 	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> String {
 		format!("{}°", crate::math::float_noise::round_away_float_noise(self.degrees()))
+	}
+}
+
+impl crate::ops::Convert<String, ()> for LengthVec2 {
+	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> String {
+		let round = crate::math::float_noise::round_away_float_noise;
+		format!("({} px, {} px)", round(self.0.x), round(self.0.y))
+	}
+}
+
+impl crate::ops::Convert<String, ()> for AngleVec2 {
+	fn convert(self, _: crate::transform::Footprint, _converter: ()) -> String {
+		let (round, degrees) = (crate::math::float_noise::round_away_float_noise, self.degrees());
+		format!("({}°, {}°)", round(degrees.x), round(degrees.y))
 	}
 }
 
@@ -432,6 +636,24 @@ impl crate::misc::Clampable for Angle {
 	}
 	fn clamp_hard_max(self, max: f64) -> Self {
 		Self(self.0.min(max))
+	}
+}
+
+impl crate::misc::Clampable for LengthVec2 {
+	fn clamp_hard_min(self, min: f64) -> Self {
+		Self(self.0.max(DVec2::splat(min)))
+	}
+	fn clamp_hard_max(self, max: f64) -> Self {
+		Self(self.0.min(DVec2::splat(max)))
+	}
+}
+
+impl crate::misc::Clampable for AngleVec2 {
+	fn clamp_hard_min(self, min: f64) -> Self {
+		Self(self.0.max(DVec2::splat(min)))
+	}
+	fn clamp_hard_max(self, max: f64) -> Self {
+		Self(self.0.min(DVec2::splat(max)))
 	}
 }
 

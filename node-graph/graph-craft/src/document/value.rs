@@ -6,7 +6,7 @@ use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::transfer_curve::TransferCurve;
 use core_types::transform::Footprint;
-use core_types::units::{Angle, AngleUnit, DEFAULT_PIXELS_PER_INCH, Length, LengthUnit, TypedAngle, TypedLength};
+use core_types::units::{Angle, AngleUnit, AngleVec2, DEFAULT_PIXELS_PER_INCH, Length, LengthUnit, LengthVec2, TypedAngle, TypedAngleVec2, TypedLength, TypedLengthVec2};
 use core_types::{CacheHash, Color, ContextModification, MemoHash, Node, Poll, RuntimeHandle, SourceId, Type, TypeDescriptor};
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -89,6 +89,10 @@ macro_rules! tagged_value {
 			Length(TypedLength),
 			/// An angle in the unit it was typed in, materializing as an `Item<Angle>`.
 			Angle(TypedAngle),
+			/// A pair of lengths sharing the unit they were typed in, materializing as an `Item<LengthVec2>` in pixels, converted like a `Length`.
+			LengthVec2(TypedLengthVec2),
+			/// A pair of angles sharing the unit they were typed in, materializing as an `Item<AngleVec2>`.
+			AngleVec2(TypedAngleVec2),
 			/// Stored as the `GradientRamp` exchange struct (nested `{ stops: { color, position?, midpoint? } }`), materializing as an `Item<Gradient>` at runtime. Aliases recover legacy on-disk shapes.
 			/// (Old documents stored flat stops, a tuple list, or the ancient full `Gradient` struct under the legacy `"Gradient"` tag, all routed by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(alias = "Gradient", alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
@@ -140,6 +144,8 @@ macro_rules! tagged_value {
 					Self::TransferCurve(points) => points.cache_hash(state),
 					Self::Length(length) => length.cache_hash(state),
 					Self::Angle(angle) => angle.cache_hash(state),
+					Self::LengthVec2(lengths) => lengths.cache_hash(state),
+					Self::AngleVec2(angles) => angles.cache_hash(state),
 					Self::GradientRamp(ramp) => ramp.cache_hash(state),
 					Self::Strokes(strokes) => strokes.cache_hash(state),
 					Self::BrushCache(cache) => cache.cache_hash(state),
@@ -199,6 +205,8 @@ macro_rules! tagged_value {
 					Self::TransferCurve(points) => Box::new(Item::new_from_element(TransferCurve::from(points))),
 					Self::Length(length) => Box::new(Item::new_from_element(length.to_length(DEFAULT_PIXELS_PER_INCH))),
 					Self::Angle(angle) => Box::new(Item::new_from_element(angle.to_angle())),
+					Self::LengthVec2(lengths) => Box::new(Item::new_from_element(lengths.to_length_vec2(DEFAULT_PIXELS_PER_INCH))),
+					Self::AngleVec2(angles) => Box::new(Item::new_from_element(angles.to_angle_vec2())),
 					Self::GradientRamp(ramp) => Box::new(Item::<Gradient>::from(ramp)),
 					Self::Strokes(strokes) => {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
@@ -261,6 +269,8 @@ macro_rules! tagged_value {
 					Self::TransferCurve(points) => Arc::new(Item::new_from_element(TransferCurve::from(points))),
 					Self::Length(length) => Arc::new(Item::new_from_element(length.to_length(DEFAULT_PIXELS_PER_INCH))),
 					Self::Angle(angle) => Arc::new(Item::new_from_element(angle.to_angle())),
+					Self::LengthVec2(lengths) => Arc::new(Item::new_from_element(lengths.to_length_vec2(DEFAULT_PIXELS_PER_INCH))),
+					Self::AngleVec2(angles) => Arc::new(Item::new_from_element(angles.to_angle_vec2())),
 					Self::GradientRamp(ramp) => Arc::new(Item::<Gradient>::from(ramp)),
 					Self::Strokes(strokes) => {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
@@ -298,6 +308,8 @@ macro_rules! tagged_value {
 					Self::TransferCurve(_) => item!(TransferCurve),
 					Self::Length(_) => item!(Length),
 					Self::Angle(_) => item!(Angle),
+					Self::LengthVec2(_) => item!(LengthVec2),
+					Self::AngleVec2(_) => item!(AngleVec2),
 					Self::GradientRamp(_) => item!(Gradient),
 					Self::Strokes(_) => list!(Stroke),
 					Self::BrushCache(_) => item!(BrushCache),
@@ -343,6 +355,10 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<Length>>() => Ok(TaggedValue::Length(TypedLength::pixels(input.downcast::<Item<Length>>().unwrap().into_element().pixels()))),
 					x if x == TypeId::of::<Angle>() => Ok(TaggedValue::Angle(TypedAngle::degrees(input.downcast::<Angle>().unwrap().degrees()))),
 					x if x == TypeId::of::<Item<Angle>>() => Ok(TaggedValue::Angle(TypedAngle::degrees(input.downcast::<Item<Angle>>().unwrap().into_element().degrees()))),
+					x if x == TypeId::of::<LengthVec2>() => Ok(TaggedValue::LengthVec2(TypedLengthVec2::pixels(input.downcast::<LengthVec2>().unwrap().pixels()))),
+					x if x == TypeId::of::<Item<LengthVec2>>() => Ok(TaggedValue::LengthVec2(TypedLengthVec2::pixels(input.downcast::<Item<LengthVec2>>().unwrap().into_element().pixels()))),
+					x if x == TypeId::of::<AngleVec2>() => Ok(TaggedValue::AngleVec2(TypedAngleVec2::degrees(input.downcast::<AngleVec2>().unwrap().degrees()))),
+					x if x == TypeId::of::<Item<AngleVec2>>() => Ok(TaggedValue::AngleVec2(TypedAngleVec2::degrees(input.downcast::<Item<AngleVec2>>().unwrap().into_element().degrees()))),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*input.downcast::<Gradient>().unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*input.downcast::<Item<Gradient>>().unwrap()))),
 					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(input.downcast::<List<Stroke>>().unwrap().into_iter().map(Item::into_element).collect())),
@@ -383,6 +399,10 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<Length>>() => Ok(TaggedValue::Length(TypedLength::pixels(input.downcast_ref::<Item<Length>>().unwrap().element().pixels()))),
 					x if x == TypeId::of::<Angle>() => Ok(TaggedValue::Angle(TypedAngle::degrees(input.downcast_ref::<Angle>().unwrap().degrees()))),
 					x if x == TypeId::of::<Item<Angle>>() => Ok(TaggedValue::Angle(TypedAngle::degrees(input.downcast_ref::<Item<Angle>>().unwrap().element().degrees()))),
+					x if x == TypeId::of::<LengthVec2>() => Ok(TaggedValue::LengthVec2(TypedLengthVec2::pixels(input.downcast_ref::<LengthVec2>().unwrap().pixels()))),
+					x if x == TypeId::of::<Item<LengthVec2>>() => Ok(TaggedValue::LengthVec2(TypedLengthVec2::pixels(input.downcast_ref::<Item<LengthVec2>>().unwrap().element().pixels()))),
+					x if x == TypeId::of::<AngleVec2>() => Ok(TaggedValue::AngleVec2(TypedAngleVec2::degrees(input.downcast_ref::<AngleVec2>().unwrap().degrees()))),
+					x if x == TypeId::of::<Item<AngleVec2>>() => Ok(TaggedValue::AngleVec2(TypedAngleVec2::degrees(input.downcast_ref::<Item<AngleVec2>>().unwrap().element().degrees()))),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Gradient>().unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Item<Gradient>>().unwrap()))),
 					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(input.downcast_ref::<List<Stroke>>().unwrap().iter_element_values().cloned().collect())),
@@ -416,6 +436,8 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<TransferCurve>() { return Some(TaggedValue::TransferCurve(TransferCurve::default().points().to_vec())) }
 						if name == std::any::type_name::<Length>() { return Some(TaggedValue::Length(TypedLength::default())) }
 						if name == std::any::type_name::<Angle>() { return Some(TaggedValue::Angle(TypedAngle::default())) }
+						if name == std::any::type_name::<LengthVec2>() { return Some(TaggedValue::LengthVec2(TypedLengthVec2::default())) }
+						if name == std::any::type_name::<AngleVec2>() { return Some(TaggedValue::AngleVec2(TypedAngleVec2::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<Stroke>>() { return Some(TaggedValue::Strokes(Vec::new())) }
 						if name == std::any::type_name::<BrushCache>() { return Some(TaggedValue::BrushCache(Default::default())) }
@@ -468,6 +490,8 @@ macro_rules! tagged_value {
 					Self::TransferCurve(points) => format!("TransferCurve({points:?})"),
 					Self::Length(length) => format!("Length({} {})", length.value, length.unit.symbol()),
 					Self::Angle(angle) => format!("Angle({} {})", angle.value, angle.unit.symbol()),
+					Self::LengthVec2(lengths) => format!("LengthVec2({} {}, {} {})", lengths.value.x, lengths.unit.symbol(), lengths.value.y, lengths.unit.symbol()),
+					Self::AngleVec2(angles) => format!("AngleVec2({} {}, {} {})", angles.value.x, angles.unit.symbol(), angles.value.y, angles.unit.symbol()),
 					Self::GradientRamp(ramp) => format!("GradientRamp({ramp:?})"),
 					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
 					Self::BrushCache(cache) => format!("{cache:?}"),
@@ -653,6 +677,49 @@ impl TaggedValue {
 		})
 	}
 
+	/// A pair of lengths' value in pixels, whether stored as typed lengths or as a plain Vec2 of pixels.
+	pub fn as_length_vec2_pixels(&self, pixels_per_inch: f64) -> Option<DVec2> {
+		match self {
+			Self::LengthVec2(lengths) => Some(lengths.to_length_vec2(pixels_per_inch).pixels()),
+			Self::DVec2(pixels) => Some(*pixels),
+			_ => None,
+		}
+	}
+
+	/// A pair of lengths in pixels as a value for an input of them, kept in the unit `self` was typed in, like a dragged position that stays in millimeters.
+	pub fn length_vec2_in_same_unit(&self, pixels: DVec2, pixels_per_inch: f64) -> Self {
+		let unit = match self {
+			Self::LengthVec2(lengths) => lengths.unit,
+			Self::Length(length) => length.unit,
+			_ => LengthUnit::Pixel,
+		};
+		Self::LengthVec2(TypedLengthVec2 {
+			value: DVec2::new(LengthUnit::Pixel.convert(pixels.x, unit, pixels_per_inch), LengthUnit::Pixel.convert(pixels.y, unit, pixels_per_inch)),
+			unit,
+		})
+	}
+
+	/// A pair of angles' value in degrees, whether stored as typed angles or as a plain Vec2 of degrees.
+	pub fn as_angle_vec2_degrees(&self) -> Option<DVec2> {
+		match self {
+			Self::AngleVec2(angles) => Some(angles.to_degrees()),
+			Self::DVec2(degrees) => Some(*degrees),
+			_ => None,
+		}
+	}
+
+	/// A pair of angles in degrees as a value for an input of them, kept in the unit `self` was typed in.
+	pub fn angle_vec2_in_same_unit(&self, degrees: DVec2) -> Self {
+		let unit = match self {
+			Self::AngleVec2(angles) => angles.unit,
+			_ => AngleUnit::Degree,
+		};
+		Self::AngleVec2(TypedAngleVec2 {
+			value: DVec2::new(unit.from_degrees(degrees.x), unit.from_degrees(degrees.y)),
+			unit,
+		})
+	}
+
 	pub fn to_primitive_string(&self) -> String {
 		match self {
 			TaggedValue::None => "()".to_string(),
@@ -830,6 +897,8 @@ impl TaggedValue {
 					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(core_types::misc::parse_f64_list(string)),
 					() if ty == TypeId::of::<Length>() => to_number(string).map(|pixels| TaggedValue::Length(TypedLength::pixels(pixels)))?,
 					() if ty == TypeId::of::<Angle>() => to_number(string).map(|degrees| TaggedValue::Angle(TypedAngle::degrees(degrees)))?,
+					() if ty == TypeId::of::<LengthVec2>() => to_dvec2(string).map(|pixels| TaggedValue::LengthVec2(TypedLengthVec2::pixels(pixels)))?,
+					() if ty == TypeId::of::<AngleVec2>() => to_dvec2(string).map(|degrees| TaggedValue::AngleVec2(TypedAngleVec2::degrees(degrees)))?,
 					_ => {
 						log::error!("No parser for a default value of type `{}`: {string}", concrete_type.name);
 						return None;

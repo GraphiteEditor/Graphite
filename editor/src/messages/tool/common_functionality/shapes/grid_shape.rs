@@ -12,6 +12,7 @@ use crate::messages::tool::common_functionality::snap_session::{PointOptions, Sn
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::units::TypedLengthVec2;
 use graphene_std::vector::misc::GridType;
 use std::collections::VecDeque;
 
@@ -92,7 +93,7 @@ impl Grid {
 			None,
 			None,
 			None,
-			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
+			Some(NodeInput::value(TaggedValue::LengthVec2(TypedLengthVec2::pixels(DVec2::ZERO)), false)),
 		])
 	}
 
@@ -133,16 +134,20 @@ impl Grid {
 		let dimensions = dimensions / viewport_zoom(document);
 
 		// Set dimensions/spacing
+		let spacing_input = InputConnector::node(node_id, SpacingInput);
+		let spacing = graph_modification_utils::length_vec2_in_unit_of_input(&document.network_interface, &spacing_input, dimensions);
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, SpacingInput),
-			input: NodeInput::value(TaggedValue::DVec2(dimensions), false),
+			input_connector: spacing_input,
+			input: NodeInput::value(spacing, false),
 		});
 
 		// Set angle for isometric grids
 		if let Some(angle_deg) = angle {
+			let angles_input = InputConnector::node(node_id, AnglesInput);
+			let angles = graph_modification_utils::angle_vec2_in_unit_of_input(&document.network_interface, &angles_input, DVec2::splat(angle_deg));
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, AnglesInput),
-				input: NodeInput::value(TaggedValue::DVec2(DVec2::splat(angle_deg)), false),
+				input_connector: angles_input,
+				input: NodeInput::value(angles, false),
 			});
 		}
 

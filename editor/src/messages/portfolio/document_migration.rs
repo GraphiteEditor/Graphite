@@ -3536,9 +3536,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Preserve primary input connection
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		// Set arrow_to = end - start
-		document
-			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 1),
+			NodeInput::value(TaggedValue::LengthVec2(graphene_std::units::TypedLengthVec2::pixels(end - start)), false),
+			network_path,
+		);
 		// Preserve shaft_width, head_width, head_length (shifted from indices 3,4,5 to 2,3,4)
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[3].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[4].clone(), network_path);
@@ -3558,7 +3560,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				return None;
 			};
 			let mut transform_template = transform_node_type.default_node_template();
-			transform_template.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
+			transform_template.inputs[1] = NodeInput::value(TaggedValue::LengthVec2(graphene_std::units::TypedLengthVec2::pixels(start)), false);
 
 			let transform_id = NodeId::new();
 
@@ -3601,9 +3603,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Preserve primary input connection
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		// Set line_to = end - start
-		document
-			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 1),
+			NodeInput::value(TaggedValue::LengthVec2(graphene_std::units::TypedLengthVec2::pixels(end - start)), false),
+			network_path,
+		);
 
 		// Find downstream connection to insert Transform node
 		let downstream = document
@@ -3619,7 +3623,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				return None;
 			};
 			let mut transform_template = transform_node_type.default_node_template();
-			transform_template.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
+			transform_template.inputs[1] = NodeInput::value(TaggedValue::LengthVec2(graphene_std::units::TypedLengthVec2::pixels(start)), false);
 
 			let transform_id = NodeId::new();
 

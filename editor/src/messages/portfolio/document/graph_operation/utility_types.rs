@@ -15,7 +15,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::units::{TypedAngle, TypedLength};
+use graphene_std::units::{TypedAngle, TypedLength, TypedLengthVec2};
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
@@ -69,12 +69,12 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Creates an artboard as the primary export for the document network.
-	pub fn create_artboard(&mut self, new_id: NodeId, location: DVec2, dimensions: DVec2, background: Color, clip: bool) -> LayerNodeIdentifier {
+	pub fn create_artboard(&mut self, new_id: NodeId, location: DVec2, dimensions: TypedLengthVec2, background: Color, clip: bool) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_network_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::type_default(list!(Artboard), true)),
 			Some(NodeInput::type_default(list!(Graphic), true)),
-			Some(NodeInput::value(TaggedValue::DVec2(location), false)),
-			Some(NodeInput::value(TaggedValue::DVec2(dimensions), false)),
+			Some(NodeInput::value(TaggedValue::LengthVec2(TypedLengthVec2::pixels(location)), false)),
+			Some(NodeInput::value(TaggedValue::LengthVec2(dimensions), false)),
 			Some(NodeInput::value(TaggedValue::Color(background), false)),
 			Some(NodeInput::value(TaggedValue::Bool(clip), false)),
 		]);
@@ -202,9 +202,9 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(typesetting.letter_spacing)), false)),
 				Some(NodeInput::value(TaggedValue::Angle(TypedAngle::degrees(typesetting.letter_tilt)), false)),
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_width.is_some()), false)),
-				Some(NodeInput::value(TaggedValue::Number(typesetting.max_width.unwrap_or(100.)), false)),
+				Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(typesetting.max_width.unwrap_or(100.))), false)),
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_height.is_some()), false)),
-				Some(NodeInput::value(TaggedValue::Number(typesetting.max_height.unwrap_or(100.)), false)),
+				Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(typesetting.max_height.unwrap_or(100.))), false)),
 				Some(NodeInput::value(TaggedValue::TextAlign(typesetting.align), false)),
 			]);
 		let text_to_vector = resolve_proto_node_type(graphene_std::text::text_to_vector::IDENTIFIER)
@@ -730,13 +730,14 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		// `composed_old` = T_n * T_{n-1} * ... * T_1, `prior_combined` = same product without T_n
+		let pixels_per_inch = self.network_interface.pixels_per_inch();
 		let compose = |ids: &[_]| {
 			ids.iter().fold(DAffine2::IDENTITY, |acc, transform_id| {
 				self.network_interface
 					.document_network()
 					.nodes
 					.get(transform_id)
-					.map_or(acc, |document_node| acc * transform_utils::get_current_transform(&document_node.inputs))
+					.map_or(acc, |document_node| acc * transform_utils::get_current_transform(&document_node.inputs, pixels_per_inch))
 			})
 		};
 		let prior_combined = compose(prior_transforms);
@@ -895,7 +896,10 @@ impl<'a> ModifyInputsContext<'a> {
 			.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false)
 			.and_then(|transform_node_id| {
 				let document_node = self.network_interface.document_network().nodes.get(&transform_node_id)?;
-				Some((transform_utils::get_current_transform(&document_node.inputs), transform_node_id))
+				Some((
+					transform_utils::get_current_transform(&document_node.inputs, self.network_interface.pixels_per_inch()),
+					transform_node_id,
+				))
 			})
 			.unzip();
 		let layer_transform = layer_transform.unwrap_or_default();
@@ -933,7 +937,7 @@ impl<'a> ModifyInputsContext<'a> {
 					let local_transform = metadata.local_transforms.get(&layer.to_node()).copied().unwrap_or(DAffine2::IDENTITY);
 					let current_transform_node_value = transform_node_id
 						.and_then(|id| self.network_interface.document_network().nodes.get(&id))
-						.map(|node| transform_utils::get_current_transform(&node.inputs))
+						.map(|node| transform_utils::get_current_transform(&node.inputs, self.network_interface.pixels_per_inch()))
 						.unwrap_or(DAffine2::IDENTITY);
 					parent_inverse * transform * local_transform.inverse() * current_transform_node_value
 				} else {
@@ -1021,16 +1025,37 @@ impl<'a> ModifyInputsContext<'a> {
 			dimensions.y = -dimensions.y;
 			location.y -= dimensions.y;
 		}
-		self.set_input_with_refresh(
-			InputConnector::node_at_index(artboard_node_id, ARTBOARD_LOCATION_INPUT_INDEX),
-			NodeInput::value(TaggedValue::DVec2(location), false),
-			false,
-		);
-		self.set_input_with_refresh(
-			InputConnector::node_at_index(artboard_node_id, ARTBOARD_DIMENSIONS_INPUT_INDEX),
-			NodeInput::value(TaggedValue::DVec2(dimensions), false),
-			false,
-		);
+
+		// Each stays in the unit it was typed in, and a component that already rounds to the requested whole pixels stays as typed, so moving an artboard sized in millimeters keeps them
+		let pixels_per_inch = self.network_interface.pixels_per_inch();
+		for (index, pixels) in [(ARTBOARD_LOCATION_INPUT_INDEX, location), (ARTBOARD_DIMENSIONS_INPUT_INDEX, dimensions)] {
+			let input_connector = InputConnector::node_at_index(artboard_node_id, index);
+			let existing = self
+				.network_interface
+				.input_from_connector(&input_connector, &[])
+				.and_then(NodeInput::as_value)
+				.cloned()
+				.unwrap_or(TaggedValue::None);
+			let existing_lengths = match existing {
+				TaggedValue::LengthVec2(lengths) => Some(lengths),
+				TaggedValue::DVec2(pixels) => Some(TypedLengthVec2::pixels(pixels)),
+				_ => None,
+			};
+
+			let mut value = existing.length_vec2_in_same_unit(pixels, pixels_per_inch);
+			if let (Some(existing_lengths), TaggedValue::LengthVec2(lengths)) = (existing_lengths, &mut value) {
+				let existing_pixels = existing_lengths.to_length_vec2(pixels_per_inch).pixels();
+				for axis in 0..2 {
+					if existing_pixels[axis].round() == pixels[axis] {
+						lengths.value[axis] = existing_lengths.value[axis];
+					}
+				}
+			}
+
+			if value != existing {
+				self.set_input_with_refresh(input_connector, NodeInput::value(value, false), false);
+			}
+		}
 	}
 
 	/// Set the input, refresh the Inspector, and run the document graph if skip_rerender is false

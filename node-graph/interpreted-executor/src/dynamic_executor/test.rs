@@ -4,6 +4,7 @@ use core_types::list::{Item, List};
 use core_types::{item, list};
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::units::{TypedAngle, TypedAngleVec2, TypedLengthVec2};
 use graphene_std::vector::Vector;
 
 #[test]
@@ -155,10 +156,10 @@ fn transform_network(content: TaggedValue, rotation: TaggedValue) -> ProtoNetwor
 	let mut nodes = vec![(NodeId(0), ProtoNode::value(ConstructionArgs::Value(content.into()), vec![NodeId(0)]))];
 
 	let parameters = [
-		(TaggedValue::DVec2(glam::DVec2::new(5., 0.)), "DVec2"),
-		(rotation, "f64"),
+		(TaggedValue::LengthVec2(TypedLengthVec2::pixels(glam::DVec2::new(5., 0.))), "LengthVec2"),
+		(rotation, "Angle"),
 		(TaggedValue::DVec2(glam::DVec2::ONE), "DVec2"),
-		(TaggedValue::DVec2(glam::DVec2::ZERO), "DVec2"),
+		(TaggedValue::AngleVec2(TypedAngleVec2::degrees(glam::DVec2::ZERO)), "AngleVec2"),
 	];
 	let mut transform_inputs = vec![NodeId(0)];
 	let mut next_id = 1;
@@ -186,7 +187,7 @@ fn transform_network(content: TaggedValue, rotation: TaggedValue) -> ProtoNetwor
 fn transform_composes_onto_item_wire() {
 	use glam::{DAffine2, DVec2};
 
-	let network = transform_network(TaggedValue::TypeDefault(item!(Vector)), TaggedValue::Number(0.));
+	let network = transform_network(TaggedValue::TypeDefault(item!(Vector)), TaggedValue::Angle(TypedAngle::degrees(0.)));
 	let output = network.output;
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("Transform should resolve its rank-0 variant");
@@ -292,10 +293,10 @@ fn value_wires_materialize_as_items_at_resolution() {
 
 	let values = [
 		TaggedValue::DAffine2(DAffine2::IDENTITY),
-		TaggedValue::DVec2(DVec2::new(7., 0.)),
-		TaggedValue::Number(0.),
+		TaggedValue::LengthVec2(TypedLengthVec2::pixels(DVec2::new(7., 0.))),
+		TaggedValue::Angle(TypedAngle::degrees(0.)),
 		TaggedValue::DVec2(DVec2::ONE),
-		TaggedValue::DVec2(DVec2::ZERO),
+		TaggedValue::AngleVec2(TypedAngleVec2::degrees(DVec2::ZERO)),
 	];
 	let mut nodes: Vec<_> = values
 		.into_iter()

@@ -138,6 +138,20 @@ impl Preprocessor {
 						new_nodes.push((id, conversion));
 						id
 					}
+					TaggedValue::LengthVec2(lengths) if lengths.unit.is_physical() => {
+						let id = producer_node_id(&graphene_std::math_nodes::units::vec_2_to_length_vec_2::IDENTIFIER, (consumer_id, input_index));
+						let conversion = DocumentNode {
+							inputs: vec![
+								NodeInput::value(TaggedValue::DVec2(lengths.value), false),
+								NodeInput::value(TaggedValue::LengthUnit(lengths.unit), false),
+								NodeInput::scope(graphene_std::units::PIXELS_PER_INCH_SCOPE),
+							],
+							implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::units::vec_2_to_length_vec_2::IDENTIFIER),
+							..Default::default()
+						};
+						new_nodes.push((id, conversion));
+						id
+					}
 					TaggedValue::AnimationCurve(curve) => {
 						let id = producer_node_id(&graphene_core::animation::evaluate_curve::IDENTIFIER, (consumer_id, input_index));
 						let curve_node = DocumentNode {

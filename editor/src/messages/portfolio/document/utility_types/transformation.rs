@@ -57,7 +57,7 @@ impl OriginalTransforms {
 		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), layer, network_interface)?;
 
 		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
-		Some(transform_utils::get_current_transform(&document_node.inputs))
+		Some(transform_utils::get_current_transform(&document_node.inputs, network_interface.pixels_per_inch()))
 	}
 
 	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {

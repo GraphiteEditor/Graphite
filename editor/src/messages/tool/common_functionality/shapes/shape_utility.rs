@@ -188,8 +188,7 @@ pub fn clicked_on_shape_endpoints(layer: LayerNodeIdentifier, document: &Documen
 	let node_graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
 	let endpoint = line_like_shape_nodes.iter().find_map(|id| {
 		let node_inputs = node_graph_layer.find_node_inputs(id)?;
-		let &TaggedValue::DVec2(endpoint) = node_inputs[1].as_value()? else { return None };
-		Some(endpoint)
+		node_inputs[1].as_value()?.as_length_vec2_pixels(document.network_interface.pixels_per_inch())
 	});
 	let Some(endpoint) = endpoint else { return false };
 
@@ -630,15 +629,17 @@ pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMe
 
 	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
-	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::Integer(columns)), Some(&TaggedValue::Integer(rows)), Some(&TaggedValue::DVec2(angles))) = (
-		parameters.value(LatticeInput),
-		parameters.value(SpacingInput),
-		parameters.value(ColumnsInput),
-		parameters.value(RowsInput),
-		parameters.value(AnglesInput),
-	) else {
+	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::Integer(columns)), Some(&TaggedValue::Integer(rows))) =
+		(parameters.value(LatticeInput), parameters.value(ColumnsInput), parameters.value(RowsInput))
+	else {
 		return None;
 	};
+
+	// The spacing is a pair of lengths, or one length for both axes
+	let pixels_per_inch = document.network_interface.pixels_per_inch();
+	let spacing = parameters.value(SpacingInput)?;
+	let spacing = spacing.as_length_vec2_pixels(pixels_per_inch).or_else(|| spacing.as_length_pixels(pixels_per_inch).map(DVec2::splat))?;
+	let angles = parameters.value(AnglesInput)?.as_angle_vec2_degrees()?;
 
 	Some((grid_type, spacing, columns.max(0) as u32, rows.max(0) as u32, angles))
 }

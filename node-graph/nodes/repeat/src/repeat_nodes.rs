@@ -2,7 +2,7 @@ use crate::gcore::Context;
 use core::f64::consts::TAU;
 use core_types::list::{Item, List};
 use core_types::transform::{ApplyTransform, Footprint};
-use core_types::units::{Angle, Length};
+use core_types::units::{Angle, Length, LengthVec2};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, ExtractFootprint, InjectFootprint, InjectVarArgs, Interrupt, NodeError, OwnedContextImpl, Poll};
 use glam::{DAffine2, DVec2, I64Vec2};
 use graphic_types::Generator;
@@ -77,10 +77,9 @@ fn repeat_array<T: Send + Clone + 'static>(
 		Context -> List<Artboard>,
 	)]
 	content: impl Node<Context<'static>, Output = List<T>>,
-	#[unit(" px")]
 	#[default(100., 100.)]
 	// TODO: When using a custom Inspector layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Inspector. Investigation is needed.
-	direction: Item<DVec2>,
+	direction: Item<LengthVec2>,
 	#[range]
 	#[soft(-360..360)]
 	angle: Item<Angle>,
@@ -88,7 +87,7 @@ fn repeat_array<T: Send + Clone + 'static>(
 	#[hard(1..)]
 	count: Item<i64>,
 ) -> Result<List<T>, Interrupt> {
-	let (direction, angle, count) = (direction.into_element(), angle.into_element().radians(), count.into_element());
+	let (direction, angle, count) = (direction.into_element().pixels(), angle.into_element().radians(), count.into_element());
 	// A single copy has no steps between copies, so the denominator is kept at 1 to avoid `0. / 0.` producing a NaN transform
 	let total = (count - 1).max(1) as f64;
 
@@ -451,7 +450,7 @@ mod test {
 		let repeated = super::repeat_array(
 			context,
 			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
-			Item::new_from_element(direction),
+			Item::new_from_element(LengthVec2::from_pixels(direction)),
 			Item::new_from_element(Angle::ZERO),
 			Item::new_from_element(count),
 		)
@@ -472,7 +471,7 @@ mod test {
 		let repeated = super::repeat_array(
 			context,
 			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
-			Item::new_from_element(DVec2::new(12., 10.)),
+			Item::new_from_element(LengthVec2::from_pixels(DVec2::new(12., 10.))),
 			Item::new_from_element(Angle::from_degrees(45.)),
 			Item::new_from_element(1),
 		)
@@ -496,7 +495,7 @@ mod test {
 		let repeated = super::repeat_array(
 			context,
 			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
-			Item::new_from_element(direction),
+			Item::new_from_element(LengthVec2::from_pixels(direction)),
 			Item::new_from_element(Angle::ZERO),
 			Item::new_from_element(count),
 		)

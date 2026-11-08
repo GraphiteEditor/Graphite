@@ -3,6 +3,7 @@ use crate::consts::{
 	COLOR_OVERLAY_BLUE, DRAG_THRESHOLD, GRADIENT_MIDPOINT_DIAMOND_RADIUS, GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN, GRADIENT_STOP_MIN_VIEWPORT_GAP, MANIPULATOR_GROUP_MARKER_SIZE,
 	SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD,
 };
+use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasis, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -429,7 +430,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 		};
 
 		if reference == transform_reference {
-			transforms_downstream_to_upstream.push(read_transform_node_value(&document_node.inputs));
+			transforms_downstream_to_upstream.push(transform_utils::get_current_transform(&document_node.inputs, network_interface.pixels_per_inch()));
 		} else if reference == gradient_form_reference
 			&& gradient_form.is_none()
 			&& let Some(TaggedValue::GradientForm(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
@@ -446,34 +447,6 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 		gradient_form: gradient_form.unwrap_or_default(),
 		settings: get_chain_source_gradient_settings(layer, network_interface).unwrap_or_default(),
 	}
-}
-
-/// Reconstruct the `DAffine2` produced by a 'Transform' node from its translation, rotation, scale, and skew inputs.
-fn read_transform_node_value(inputs: &[graph_craft::document::NodeInput]) -> DAffine2 {
-	let translation = inputs
-		.get(1)
-		.and_then(|input| input.as_value())
-		.and_then(|value| if let TaggedValue::DVec2(v) = value { Some(*v) } else { None })
-		.unwrap_or(DVec2::ZERO);
-	let rotation_degrees = inputs
-		.get(2)
-		.and_then(|input| input.as_value())
-		.and_then(|value| if let TaggedValue::Number(v) = value { Some(*v) } else { None })
-		.unwrap_or(0.);
-	let scale = inputs
-		.get(3)
-		.and_then(|input| input.as_value())
-		.and_then(|value| if let TaggedValue::DVec2(v) = value { Some(*v) } else { None })
-		.unwrap_or(DVec2::ONE);
-	let skew = inputs
-		.get(4)
-		.and_then(|input| input.as_value())
-		.and_then(|value| if let TaggedValue::DVec2(v) = value { Some(*v) } else { None })
-		.unwrap_or(DVec2::ZERO);
-
-	let trs = DAffine2::from_scale_angle_translation(scale, rotation_degrees.to_radians(), translation);
-	let skew_matrix = DAffine2::from_cols_array(&[1., skew.y.to_radians().tan(), skew.x.to_radians().tan(), 1., 0., 0.]);
-	trs * skew_matrix
 }
 
 /// Whether two adjacent stops are too closely packed in viewport space for a midpoint diamond to be shown or interacted with.

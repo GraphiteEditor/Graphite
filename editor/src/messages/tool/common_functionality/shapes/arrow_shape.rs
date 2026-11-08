@@ -14,7 +14,7 @@ use crate::messages::tool::common_functionality::snap_session::{SnapSession, Sna
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::units::TypedLength;
+use graphene_std::units::{TypedLength, TypedLengthVec2};
 use std::collections::VecDeque;
 
 #[derive(Default)]
@@ -26,10 +26,10 @@ impl Arrow {
 		let node_type = resolve_document_node_type(&identifier).expect("Arrow node can't be found");
 		node_type.node_template_input_override([
 			None,
-			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),                       // arrow_to
-			Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(shaft_width)), false)), // shaft_width
-			Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(head_width)), false)),  // head_width
-			Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(head_length)), false)), // head_length
+			Some(NodeInput::value(TaggedValue::LengthVec2(TypedLengthVec2::pixels(DVec2::ZERO)), false)), // arrow_to
+			Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(shaft_width)), false)),         // shaft_width
+			Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(head_width)), false)),          // head_width
+			Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(head_length)), false)),         // head_length
 		])
 	}
 
@@ -58,9 +58,11 @@ impl Arrow {
 
 		let document_to_viewport = document.metadata().document_to_viewport;
 
+		let input_connector = InputConnector::node(node_id, graphene_std::vector::generator_nodes::arrow::ArrowToInput);
+		let arrow_to = graph_modification_utils::length_vec2_in_unit_of_input(&document.network_interface, &input_connector, arrow_to);
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::arrow::ArrowToInput),
-			input: NodeInput::value(TaggedValue::DVec2(arrow_to), false),
+			input_connector,
+			input: NodeInput::value(arrow_to, false),
 		});
 		let downstream = document.metadata().downstream_transform_to_viewport(layer);
 		let scope = downstream.inverse() * document_to_viewport;
@@ -81,7 +83,7 @@ impl Arrow {
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.filter_map(|layer| {
 				let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::arrow::IDENTIFIER))?;
-				let Some(&TaggedValue::DVec2(arrow_to)) = node_inputs[1].as_value() else { return None };
+				let arrow_to = node_inputs[1].as_value()?.as_length_vec2_pixels(document.network_interface.pixels_per_inch())?;
 
 				let transform = document.metadata().transform_to_viewport(layer);
 				let viewport_start = transform.transform_point2(DVec2::ZERO);

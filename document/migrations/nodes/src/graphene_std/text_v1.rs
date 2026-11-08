@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 const SIZE: usize = 3;
 const LETTER_SPACING: usize = 5;
 const LETTER_TILT: usize = 6;
+const MAX_WIDTH: usize = 8;
+const MAX_HEIGHT: usize = 10;
 
 /// Frozen mirror of the `TaggedValue` variants this migration reads and writes.
 #[derive(Serialize, Deserialize)]
@@ -36,7 +38,7 @@ enum AngleUnit {
 	Degree,
 }
 
-/// The size and letter spacing are lengths and the letter tilt is an angle, which keep the numbers of pixels and degrees they held. Wired numbers still feed them, read as pixels and degrees.
+/// The size, letter spacing, and max sizes are lengths and the letter tilt is an angle, which keep the numbers of pixels and degrees they held. Wired numbers still feed them, read as pixels and degrees.
 #[migration("graphene_std::text::TextNode"@1 => @2)]
 pub fn text_v1(node: &Node, inputs: &mut Inputs) {
 	let number_at = |slot: usize| match node.inputs().get(slot).and_then(|slot| literal_of::<Tagged>(&slot.input)) {
@@ -44,7 +46,7 @@ pub fn text_v1(node: &Node, inputs: &mut Inputs) {
 		_ => None,
 	};
 
-	for slot in [SIZE, LETTER_SPACING] {
+	for slot in [SIZE, LETTER_SPACING, MAX_WIDTH, MAX_HEIGHT] {
 		if let Some(pixels) = number_at(slot) {
 			inputs.set(slot as u32, length(pixels));
 		}
@@ -118,9 +120,9 @@ mod tests {
 				length(2.),
 				angle(10.),
 				number(0.),
-				number(100.),
+				length(100.),
 				number(0.),
-				number(100.),
+				length(100.),
 				number(0.)
 			]
 		);

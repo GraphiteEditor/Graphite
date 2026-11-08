@@ -929,17 +929,21 @@ impl Fsm for TextToolFsmState {
 						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxWidthInput),
 						input: NodeInput::value(TaggedValue::Bool(true), false),
 					});
+					let max_width_input = InputConnector::node(node_id, graphene_std::text::text::MaxWidthInput);
+					let max_width = graph_modification_utils::length_in_unit_of_input(&document.network_interface, &max_width_input, size_layer.x);
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxWidthInput),
-						input: NodeInput::value(TaggedValue::Number(size_layer.x), false),
+						input_connector: max_width_input,
+						input: NodeInput::value(max_width, false),
 					});
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxHeightInput),
 						input: NodeInput::value(TaggedValue::Bool(true), false),
 					});
+					let max_height_input = InputConnector::node(node_id, graphene_std::text::text::MaxHeightInput);
+					let max_height = graph_modification_utils::length_in_unit_of_input(&document.network_interface, &max_height_input, size_layer.y);
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxHeightInput),
-						input: NodeInput::value(TaggedValue::Number(size_layer.y), false),
+						input_connector: max_height_input,
+						input: NodeInput::value(max_height, false),
 					});
 					responses.add(GraphOperationMessage::TransformSet {
 						layer: dragging_layer.id,

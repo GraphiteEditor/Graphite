@@ -1,5 +1,6 @@
 use core_types::list::{Item, List};
 use core_types::transform::TransformMut;
+use core_types::units::LengthVec2;
 use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::Generator;
@@ -9,7 +10,7 @@ use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 
 /// Constructs a single-element `Artboard[]` with the given content and metadata stored as row attributes.
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), version(2))]
 fn create_artboard<T: IntoGraphicList>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// Graphics to include within the artboard.
@@ -26,18 +27,16 @@ fn create_artboard<T: IntoGraphicList>(
 	)]
 	content: impl Node<Context<'static>, Output = T>,
 	/// Coordinate of the top-left corner of the artboard within the document.
-	#[unit(" px")]
-	location: Item<DVec2>,
+	location: Item<LengthVec2>,
 	/// Width and height of the artboard within the document.
-	#[unit(" px")]
-	dimensions: Item<DVec2>,
+	dimensions: Item<LengthVec2>,
 	/// Color of the artboard background.
 	background: Item<Color>,
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
 	clip: Item<bool>,
 ) -> Result<Item<Artboard>, Interrupt> {
-	let (location, dimensions, clip) = (location.into_element(), dimensions.into_element(), clip.into_element());
+	let (location, dimensions, clip) = (location.into_element().pixels(), dimensions.into_element().pixels(), clip.into_element());
 
 	let footprint = ctx.try_footprint().copied();
 	let mut new_ctx = OwnedContextImpl::from(ctx);

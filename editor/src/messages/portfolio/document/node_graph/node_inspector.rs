@@ -32,7 +32,7 @@ use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
-use graphene_std::units::{Angle, AngleUnit, Length, LengthUnit, TypedAngle, TypedLength};
+use graphene_std::units::{Angle, AngleUnit, AngleVec2, Length, LengthUnit, LengthVec2, TypedAngle, TypedAngleVec2, TypedLength, TypedLengthVec2};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod, WeldMethod,
@@ -404,6 +404,8 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 					false => text_widget(default_info).into(),
 				},
 				Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", unit.unwrap_or(""), None, false, false),
+				Some(x) if id_is::<LengthVec2>(x) => length_vec2_widget(default_info, "X", "Y", bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)),
+				Some(x) if id_is::<AngleVec2>(x) => angle_vec2_widget(default_info, "X", "Y", bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)),
 				Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
 				Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
 				Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
@@ -1217,6 +1219,24 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 /// A number row gated by the bool input at `bool_input_index`, drawn as a checkbox in the assist slot after the label like the
 /// Opacity node's toggles, so the caller passes `blank_assist = false`. Given a `slider`, a range slider spanning it sits between them.
 pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, number_props: NumberInput, slider: Option<SliderRange>) -> Vec<WidgetInstance> {
+	optional_number_widget(parameter_widgets_info, bool_input_index, number_props, |parameter_widgets_info, number_props| match slider {
+		Some(slider) => range_slider_widget(parameter_widgets_info, number_props, slider),
+		None => number_widget(parameter_widgets_info, number_props),
+	})
+}
+
+/// Like [`optional_f64_widget`], for a length parameter. Its field keeps any length unit typed into it.
+pub fn optional_length_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, number_props: NumberInput) -> Vec<WidgetInstance> {
+	optional_number_widget(parameter_widgets_info, bool_input_index, number_props, length_widget)
+}
+
+/// The row of an optional parameter, with its `field` built by the caller.
+fn optional_number_widget(
+	parameter_widgets_info: ParameterWidgetsInfo,
+	bool_input_index: usize,
+	number_props: NumberInput,
+	field: impl FnOnce(ParameterWidgetsInfo, NumberInput) -> Vec<WidgetInstance>,
+) -> Vec<WidgetInstance> {
 	let node_id = parameter_widgets_info.node_id;
 	let enabled = parameter_widgets_info
 		.document_node
@@ -1227,10 +1247,7 @@ pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_in
 	let exposed = parameter_widgets_info.is_exposed();
 
 	let number_props = number_props.disabled(enabled == Some(false));
-	let mut widgets = match slider {
-		Some(slider) => range_slider_widget(parameter_widgets_info, number_props, slider),
-		None => number_widget(parameter_widgets_info, number_props),
-	};
+	let mut widgets = field(parameter_widgets_info, number_props);
 
 	if !exposed {
 		widgets.splice(label_count..label_count, optional_parameter_assist(enabled, node_id, bool_input_index));
@@ -1357,6 +1374,12 @@ pub fn length_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 	let length = match input.as_non_exposed_value() {
 		Some(&TaggedValue::Length(length)) => length,
 		Some(&TaggedValue::Number(pixels)) => TypedLength::pixels(pixels),
+		// A pair shows its `y`, which the "Grid" node's isometric spacing keeps from its rectangular height
+		Some(&TaggedValue::LengthVec2(lengths)) => TypedLength {
+			value: lengths.value.y,
+			unit: lengths.unit,
+		},
+		Some(&TaggedValue::DVec2(pixels)) => TypedLength::pixels(pixels.y),
 		_ => return widgets,
 	};
 
@@ -1367,6 +1390,7 @@ pub fn length_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 		number_props
 			.value(Some(length.value))
 			.unit(unit_suffix(length.unit.symbol()))
+			.display_decimal_places(length_decimal_places(length.unit, pixels_per_inch))
 			.kept_units(LengthUnit::ALL.iter().map(|unit| unit.symbol().to_string()).collect())
 			.pixels_per_inch(pixels_per_inch)
 			.on_update(parameter_widgets_info.update_value(|input: &NumberInput| {
@@ -1447,11 +1471,28 @@ pub fn angle_slider_widget(parameter_widgets_info: ParameterWidgetsInfo, number_
 	widgets
 }
 
+/// The decimal places a field shows a length in, resolving about a hundredth of a pixel in any unit, so `0.125 in` doesn't display as `0.13 in`.
+pub(crate) fn length_decimal_places(unit: LengthUnit, pixels_per_inch: f64) -> u32 {
+	decimal_places_for_size(unit.convert(1., LengthUnit::Pixel, pixels_per_inch))
+}
+
+/// The decimal places a field shows an angle in, resolving about a hundredth of a degree in any unit.
+fn angle_decimal_places(unit: AngleUnit) -> u32 {
+	decimal_places_for_size(unit.to_angle(1.).degrees())
+}
+
+/// Two decimal places for a unit the size of the field's base unit (a pixel or a degree), and one more for each power of ten larger it is.
+fn decimal_places_for_size(base_units_per_unit: f64) -> u32 {
+	let extra = base_units_per_unit.log10().ceil();
+	if extra.is_finite() { (2. + extra.clamp(0., 7.)) as u32 } else { 2 }
+}
+
 /// The number field showing an angle in the unit it was typed in, which keeps any angle unit typed into it.
 fn angle_field(number_props: NumberInput, angle: TypedAngle) -> NumberInput {
 	number_props
 		.value(Some(angle.value))
 		.unit(unit_suffix(angle.unit.symbol()))
+		.display_decimal_places(angle_decimal_places(angle.unit))
 		.kept_units(AngleUnit::ALL.iter().map(|unit| unit.symbol().to_string()).collect())
 		.on_commit(commit_value)
 }
@@ -1463,6 +1504,126 @@ fn typed_angle(input: &NumberInput) -> TaggedValue {
 		value: input.value.unwrap_or_default(),
 		unit,
 	})
+}
+
+/// A pair of lengths' X and Y number fields, which share the unit the pair was typed in, with the fields' bounds given in pixels.
+/// Typing another length unit into either field moves both into it, converting the other component so its length stays the same.
+pub fn length_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, number_props: NumberInput) -> LayoutGroup {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(input) = parameter_widgets_info.input() else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::row(vec![]);
+	};
+	let lengths = match input.as_non_exposed_value() {
+		Some(&TaggedValue::LengthVec2(lengths)) => lengths,
+		Some(&TaggedValue::DVec2(pixels)) => TypedLengthVec2::pixels(pixels),
+		// One length stands for both components, like the "Grid" node's isometric spacing
+		Some(&TaggedValue::Length(length)) => TypedLengthVec2 {
+			value: DVec2::splat(length.value),
+			unit: length.unit,
+		},
+		Some(&TaggedValue::Number(pixels)) => TypedLengthVec2::pixels(DVec2::splat(pixels)),
+		_ => return LayoutGroup::row(widgets),
+	};
+
+	let pixels_per_inch = parameter_widgets_info.network_interface.pixels_per_inch();
+	// A field limited to integers would convert a typed physical length into its pixels, so whole pixels are enforced only on a pair in pixels
+	let whole_pixels = number_props.is_integer;
+	let number_props = bounds_in_unit(number_props, |pixels| LengthUnit::Pixel.convert(pixels, lengths.unit, pixels_per_inch));
+	let field = |component: f64, label: &str| {
+		number_props
+			.clone()
+			.is_integer(false)
+			.label(label)
+			.value(Some(component))
+			.unit(unit_suffix(lengths.unit.symbol()))
+			.display_decimal_places(length_decimal_places(lengths.unit, pixels_per_inch))
+			.kept_units(LengthUnit::ALL.iter().map(|unit| unit.symbol().to_string()).collect())
+			.pixels_per_inch(pixels_per_inch)
+			.on_commit(commit_value)
+	};
+
+	// The edited component takes the typed unit, and the other converts into it
+	let typed = move |input: &NumberInput, edited_axis: usize| {
+		let unit = math_parser::units::Unit::named(input.unit.trim()).and_then(LengthUnit::from_unit).unwrap_or_default();
+		let mut value = DVec2::new(
+			lengths.unit.convert(lengths.value.x, unit, pixels_per_inch),
+			lengths.unit.convert(lengths.value.y, unit, pixels_per_inch),
+		);
+		value[edited_axis] = input.value.unwrap_or_default();
+		if whole_pixels && unit == LengthUnit::Pixel {
+			value = value.round();
+		}
+		TaggedValue::LengthVec2(TypedLengthVec2 { value, unit })
+	};
+
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		field(lengths.value.x, x)
+			.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| typed(input, 0)))
+			.widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		field(lengths.value.y, y)
+			.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| typed(input, 1)))
+			.widget_instance(),
+	]);
+
+	LayoutGroup::row(widgets)
+}
+
+/// A pair of angles' X and Y number fields, which share the unit the pair was typed in, with the fields' bounds given in degrees.
+/// Typing another angle unit into either field moves both into it, converting the other component so its angle stays the same.
+pub fn angle_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, number_props: NumberInput) -> LayoutGroup {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(input) = parameter_widgets_info.input() else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::row(vec![]);
+	};
+	let angles = match input.as_non_exposed_value() {
+		Some(&TaggedValue::AngleVec2(angles)) => angles,
+		Some(&TaggedValue::DVec2(degrees)) => TypedAngleVec2::degrees(degrees),
+		_ => return LayoutGroup::row(widgets),
+	};
+
+	let number_props = bounds_in_unit(number_props, |degrees| angles.unit.from_degrees(degrees));
+	let field = |component: f64, label: &str| {
+		number_props
+			.clone()
+			.label(label)
+			.value(Some(component))
+			.unit(unit_suffix(angles.unit.symbol()))
+			.display_decimal_places(angle_decimal_places(angles.unit))
+			.kept_units(AngleUnit::ALL.iter().map(|unit| unit.symbol().to_string()).collect())
+			.on_commit(commit_value)
+	};
+
+	// The edited component takes the typed unit, and the other converts into it
+	let typed = move |input: &NumberInput, edited_axis: usize| {
+		let unit = math_parser::units::Unit::named(input.unit.trim()).and_then(AngleUnit::from_unit).unwrap_or_default();
+		let degrees = angles.to_degrees();
+		let mut value = if unit == angles.unit {
+			angles.value
+		} else {
+			DVec2::new(unit.from_degrees(degrees.x), unit.from_degrees(degrees.y))
+		};
+		value[edited_axis] = input.value.unwrap_or_default();
+		TaggedValue::AngleVec2(TypedAngleVec2 { value, unit })
+	};
+
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		field(angles.value.x, x)
+			.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| typed(input, 0)))
+			.widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		field(angles.value.y, y)
+			.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| typed(input, 1)))
+			.widget_instance(),
+	]);
+
+	LayoutGroup::row(widgets)
 }
 
 // TODO: Auto-generate this enum dropdown menu widget
@@ -2933,14 +3094,14 @@ pub(crate) fn grid_inspector(node_id: NodeId, context: &mut NodeInspectorContext
 
 	if let Some(grid_type) = grid_type {
 		if grid_type.is_isometric() {
-			let spacing = LayoutGroup::row(number_widget(
+			let spacing = LayoutGroup::row(length_widget(
 				ParameterWidgetsInfo::new(node_id, SpacingInput, true, context),
-				NumberInput::default().label("H").min(0.).unit(" px"),
+				NumberInput::default().label("H").min(0.),
 			));
-			let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false, false);
+			let angles = angle_vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", NumberInput::default());
 			widgets.extend([spacing, angles]);
 		} else {
-			let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false, false);
+			let spacing = length_vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", NumberInput::default().min(0.));
 			widgets.push(spacing);
 		}
 	}

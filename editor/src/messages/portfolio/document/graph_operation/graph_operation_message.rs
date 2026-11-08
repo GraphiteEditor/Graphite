@@ -7,6 +7,7 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::units::TypedLengthVec2;
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, VectorModificationType};
 use std::sync::Arc;
@@ -136,7 +137,7 @@ pub enum GraphOperationMessage {
 	NewArtboard {
 		id: NodeId,
 		location: DVec2,
-		dimensions: DVec2,
+		dimensions: TypedLengthVec2,
 		background: Color,
 		clip: bool,
 	},

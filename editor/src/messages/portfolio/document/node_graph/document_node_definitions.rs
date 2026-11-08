@@ -17,6 +17,7 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::{concrete, list};
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType};
+use graphene_std::units::TypedLengthVec2;
 use graphene_std::vector::Vector;
 use graphene_std::*;
 use std::collections::{HashMap, VecDeque};
@@ -242,8 +243,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				inputs: vec![
 					NodeInput::type_default(list!(Artboard), true),
 					NodeInput::type_default(list!(Graphic), true),
-					NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-					NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
+					NodeInput::value(TaggedValue::LengthVec2(TypedLengthVec2::pixels(DVec2::ZERO)), false),
+					NodeInput::value(TaggedValue::LengthVec2(TypedLengthVec2::pixels(DVec2::new(1920., 1080.))), false),
 					NodeInput::value(TaggedValue::Color(Color::WHITE), false),
 					NodeInput::value(TaggedValue::Bool(true), false),
 				],
@@ -709,6 +710,41 @@ type InputInspector = HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodeInspect
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 static INPUT_OVERRIDES: once_cell::sync::Lazy<InputInspector> = once_cell::sync::Lazy::new(static_input_inspector);
 
+/// A number field set up from the proto node parameter's metadata, which only proto nodes have.
+fn proto_parameter_number_input(node_id: NodeId, index: usize, context: &mut NodeInspectorContext) -> NumberInput {
+	let mut number_input = NumberInput::default();
+	// The field is cloned so the lock is released before the caller builds the row, which locks the node metadata again
+	if let Some(field) = context
+		.network_interface
+		.implementation(&node_id, context.selection_network_path)
+		.and_then(|implementation| if let DocumentNodeImplementation::ProtoNode(id) = implementation { Some(id) } else { None })
+		.and_then(|proto_node_identifier| registry::NODE_METADATA.lock().unwrap().get(proto_node_identifier)?.fields.get(index).cloned())
+	{
+		if let Some(unit) = field.unit {
+			number_input = number_input.unit(unit);
+		}
+		// Typing is clamped only by the hard bounds; the slider extent prefers the soft bounds (see `inspector_row_from_type`)
+		if let Some(hard_min) = field.number_hard_min {
+			number_input = number_input.min(hard_min);
+		}
+		if let Some(hard_max) = field.number_hard_max {
+			number_input = number_input.max(hard_max);
+		}
+		if field.number_mode_range {
+			number_input = number_input
+				.mode_range()
+				.range_min(field.number_soft_min.or(field.number_hard_min))
+				.range_max(field.number_soft_max.or(field.number_hard_max));
+		}
+		number_input = number_input.is_integer(false);
+		if let Some(number_step) = field.number_step {
+			number_input = number_input.step(number_step);
+		}
+	};
+
+	number_input
+}
+
 /// Defines the logic for inputs to display a custom Inspector widget.
 fn static_input_inspector() -> InputInspector {
 	let mut map: InputInspector = HashMap::new();
@@ -812,50 +848,21 @@ fn static_input_inspector() -> InputInspector {
 		}),
 	);
 	map.insert(
-		// The custom number input settings are only available on proto nodes
-		"optional_f64".to_string(),
+		// A length row gated by the bool input before it. Its field keeps any length unit typed into it and gives its bounds in pixels.
+		"optional_length".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut number_input = NumberInput::default();
-			// The field is cloned so the lock is released before building the row below, which locks the node metadata again
-			if let Some(field) = context
-				.network_interface
-				.implementation(&node_id, context.selection_network_path)
-				.and_then(|implementation| if let DocumentNodeImplementation::ProtoNode(id) = implementation { Some(id) } else { None })
-				.and_then(|proto_node_identifier| registry::NODE_METADATA.lock().unwrap().get(proto_node_identifier)?.fields.get(index).cloned())
-			{
-				if let Some(unit) = field.unit {
-					number_input = number_input.unit(unit);
-				}
-				// Typing is clamped only by the hard bounds; the slider extent prefers the soft bounds (see `inspector_row_from_type`)
-				if let Some(hard_min) = field.number_hard_min {
-					number_input = number_input.min(hard_min);
-				}
-				if let Some(hard_max) = field.number_hard_max {
-					number_input = number_input.max(hard_max);
-				}
-				if field.number_mode_range {
-					number_input = number_input
-						.mode_range()
-						.range_min(field.number_soft_min.or(field.number_hard_min))
-						.range_max(field.number_soft_max.or(field.number_hard_max));
-				}
-				number_input = number_input.is_integer(false);
-				if let Some(number_step) = field.number_step {
-					number_input = number_input.step(number_step);
-				}
-			};
-			// NOTE: The bool input MUST be at the input index directly before the f64 input!
-			Ok(vec![LayoutGroup::row(node_inspector::optional_f64_widget(
+			let number_input = proto_parameter_number_input(node_id, index, context);
+			// NOTE: The bool input MUST be at the input index directly before the length input!
+			Ok(vec![LayoutGroup::row(node_inspector::optional_length_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
-				None,
 			))])
 		}),
 	);
 	map.insert(
-		// Like `optional_f64`, but with a 0-100% range slider beside the number input, double-click restoring the full 100%.
-		// As with `optional_f64`, the bool input must be at the input index directly before the f64 input.
+		// A number row gated by the bool input before it, with a 0-100% range slider beside the number input, double-click restoring the full 100%.
+		// The bool input must be at the input index directly before the f64 input.
 		"optional_percentage".to_string(),
 		Box::new(|node_id, index, context| {
 			let number_input = NumberInput::default().mode_increment().unit("%").min(0.).max(100.);
@@ -957,15 +964,15 @@ fn static_input_inspector() -> InputInspector {
 				.and_then(|value| value.as_bool())
 				.unwrap_or_default();
 
-			Ok(vec![node_inspector::vec2_widget(
-				ParameterWidgetsInfo::at_index(node_id, index, true, context),
-				&x,
-				&y,
-				&unit,
-				min,
-				is_integer,
-				false,
-			)])
+			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+
+			// A pair measured in pixels is a pair of lengths, which keeps any length unit typed into it
+			if unit.trim() == "px" {
+				let number_props = NumberInput::default().min(min.unwrap_or(f64::NEG_INFINITY)).is_integer(is_integer);
+				return Ok(vec![node_inspector::length_vec2_widget(info, &x, &y, number_props)]);
+			}
+
+			Ok(vec![node_inspector::vec2_widget(info, &x, &y, &unit, min, is_integer, false)])
 		}),
 	);
 	map.insert(
@@ -1225,46 +1232,16 @@ fn static_input_inspector() -> InputInspector {
 	map.insert(
 		"transform_rotation".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut widgets = node_inspector::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
-
-			let document_node = node_inspector::get_document_node(node_id, context)?;
-			let Some(input) = document_node.inputs.get(index) else {
-				return Err("Input not found in transform rotation input override".to_string());
-			};
-			if let Some(&TaggedValue::Number(val)) = input.as_non_exposed_value() {
-				widgets.extend_from_slice(&[
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					NumberInput::new(Some(val))
-						.unit("°")
-						.mode(NumberInputMode::Range)
-						.range_min(Some(-180.))
-						.range_max(Some(180.))
-						.on_update(node_inspector::update_value_at_index(
-							|number_input: &NumberInput| TaggedValue::Number(number_input.value.unwrap()),
-							node_id,
-							index,
-						))
-						.on_commit(node_inspector::commit_value)
-						.widget_instance(),
-				]);
-			}
-
-			Ok(vec![LayoutGroup::row(widgets)])
+			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			let number_props = NumberInput::default().mode(NumberInputMode::Range).range_min(Some(-180.)).range_max(Some(180.));
+			Ok(vec![LayoutGroup::row(node_inspector::angle_widget(info, number_props))])
 		}),
 	);
-	// Translation uses a Vec2 widget with X/Y labels and a "px" unit suffix
 	map.insert(
 		"transform_translation".to_string(),
 		Box::new(|node_id, index, context| {
-			Ok(vec![node_inspector::vec2_widget(
-				ParameterWidgetsInfo::at_index(node_id, index, true, context),
-				"X",
-				"Y",
-				" px",
-				None,
-				false,
-				false,
-			)])
+			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![node_inspector::length_vec2_widget(info, "X", "Y", NumberInput::default())])
 		}),
 	);
 	// Scale uses a Vec2 widget with W/H labels and an "x" unit suffix
@@ -1282,48 +1259,11 @@ fn static_input_inspector() -> InputInspector {
 			)])
 		}),
 	);
-	// Skew has a custom override that maps to degrees
 	map.insert(
 		"transform_skew".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut widgets = node_inspector::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
-
-			let document_node = node_inspector::get_document_node(node_id, context)?;
-			let Some(input) = document_node.inputs.get(index) else {
-				return Err("Input not found in transform skew input override".to_string());
-			};
-			if let Some(&TaggedValue::DVec2(val)) = input.as_non_exposed_value() {
-				widgets.extend_from_slice(&[
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					NumberInput::new(Some(val.x))
-						.label("X")
-						.unit("°")
-						.min(-89.9)
-						.max(89.9)
-						.on_update(node_inspector::update_value_at_index(
-							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), val.y)),
-							node_id,
-							index,
-						))
-						.on_commit(node_inspector::commit_value)
-						.widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					NumberInput::new(Some(val.y))
-						.label("Y")
-						.unit("°")
-						.min(-89.9)
-						.max(89.9)
-						.on_update(node_inspector::update_value_at_index(
-							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, input.value.unwrap())),
-							node_id,
-							index,
-						))
-						.on_commit(node_inspector::commit_value)
-						.widget_instance(),
-				]);
-			}
-
-			Ok(vec![LayoutGroup::row(widgets)])
+			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![node_inspector::angle_vec2_widget(info, "X", "Y", NumberInput::default().min(-89.9).max(89.9))])
 		}),
 	);
 	map.insert(
@@ -1717,9 +1657,9 @@ mod test {
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
 	}
 
-	// Guards the `optional_f64` widget override against holding the node metadata lock while building rows that lock it again
+	// Guards the `optional_length` widget override against holding the node metadata lock while building rows that lock it again
 	#[tokio::test]
-	async fn optional_f64_inspector_row_builds() {
+	async fn optional_length_inspector_row_builds() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 

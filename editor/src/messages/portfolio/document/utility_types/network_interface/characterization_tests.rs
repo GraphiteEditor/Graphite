@@ -33,7 +33,7 @@ fn new_artboard_message(id: NodeId) -> GraphOperationMessage {
 	GraphOperationMessage::NewArtboard {
 		id,
 		location: DVec2::ZERO,
-		dimensions: DVec2::new(400., 300.),
+		dimensions: graphene_std::units::TypedLengthVec2::pixels(DVec2::new(400., 300.)),
 		background: Color::WHITE,
 		clip: false,
 	}

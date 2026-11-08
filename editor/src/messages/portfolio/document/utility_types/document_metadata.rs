@@ -190,7 +190,9 @@ impl DocumentMetadata {
 		let transform = local_transform.unwrap_or_else(|| {
 			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), layer, network_interface);
 			let transform_node = transform_node_id.and_then(|id| network_interface.document_node(&id, &[]));
-			transform_node.map(|node| transform_utils::get_current_transform(node.inputs.as_slice())).unwrap_or_default()
+			transform_node
+				.map(|node| transform_utils::get_current_transform(node.inputs.as_slice(), network_interface.pixels_per_inch()))
+				.unwrap_or_default()
 		});
 
 		footprint * transform

@@ -8,7 +8,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_APPEARANCE, ATTR_ID, ATTR_PATHS, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
 use core_types::math::spread::spread_factors;
 use core_types::transform::{Footprint, Transform};
-use core_types::units::{Angle, Length};
+use core_types::units::{Angle, Length, LengthVec2};
 use core_types::uuid::NodeId;
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
@@ -1083,11 +1083,11 @@ pub mod extrude_algorithms {
 	}
 }
 
-#[node_macro::node(category("Vector: Deform"), icon("NodeExtrude"), path(core_types::vector))]
-fn extrude<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, direction: Item<DVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<V> {
+#[node_macro::node(category("Vector: Deform"), icon("NodeExtrude"), path(core_types::vector), version(2))]
+fn extrude<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, direction: Item<LengthVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
-		let (direction, joining_algorithm) = (*direction.element(), *joining_algorithm.element());
+		let (direction, joining_algorithm) = (direction.element().pixels(), *joining_algorithm.element());
 
 		edit_item_geometry(&mut source, |vector, paths| extrude_algorithms::extrude(vector, paths, direction, joining_algorithm));
 		source
@@ -3829,9 +3829,9 @@ fn reverse_paths<V: MapVectorItems + Send + Sync + 'static>(
 	})
 }
 
-#[node_macro::node(category("Vector: Measure"), icon("NodePointInside"), path(core_types::vector))]
-fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<bool> {
-	let point = point.into_element();
+#[node_macro::node(category("Vector: Measure"), icon("NodePointInside"), path(core_types::vector), version(2))]
+fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<LengthVec2>) -> Item<bool> {
+	let point = point.into_element().pixels();
 	let paths = paths_from_item_attributes(&source).unwrap_or_else(|| no_paths());
 	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let inside = source.element().check_point_inside_shape(paths, transform, point);
