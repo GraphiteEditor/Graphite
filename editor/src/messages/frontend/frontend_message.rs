@@ -273,6 +273,10 @@ pub enum FrontendMessage {
 	UpdateDocumentArtwork {
 		svg: String,
 	},
+	/// How far the work in progress of the active document has come from 0 to 1 (none when it has no work in progress).
+	UpdateDocumentProgress {
+		progress: Option<f64>,
+	},
 	UpdateRenderStatus {
 		status: RenderStatus,
 	},

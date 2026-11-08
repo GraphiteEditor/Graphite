@@ -531,6 +531,11 @@ impl NodeGraphExecutor {
 
 						if self.node_progress != node_progress {
 							responses.add(NodeGraphMessage::UpdateNodeProgress { progress: node_progress.clone() });
+
+							// The document as a whole shows the mean progress of its nodes with work in progress
+							let document_progress = (!node_progress.is_empty()).then(|| node_progress.iter().map(|(_, progress)| progress).sum::<f64>() / node_progress.len() as f64);
+							responses.add(FrontendMessage::UpdateDocumentProgress { progress: document_progress });
+
 							self.node_progress = node_progress;
 							responses.add(InspectorMessage::Refresh);
 						}

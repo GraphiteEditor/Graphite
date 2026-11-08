@@ -742,6 +742,9 @@
 						{#if isWeb && !["Error", "Panic"].includes($document.renderStatus)}
 							<TextLabel class="shader-compiling-overlay" italic={true} classes={{ show: !firstArtworkReceived }}>Initializing Renderer…</TextLabel>
 						{/if}
+						{#if typeof $document.progress === "number"}
+							<div class="render-progress" style:width={`${Math.min(Math.max($document.progress, 0), 1) * 100}%`}></div>
+						{/if}
 						{#if $document.renderStatus === "Error"}
 							<LayoutCol class="render-status-overlay">
 								<TextLabel>
@@ -1003,6 +1006,18 @@
 									opacity: 1;
 								}
 							}
+						}
+
+						.render-progress {
+							position: absolute;
+							left: 0;
+							bottom: 0;
+							// Above the error overlays
+							z-index: 1;
+							height: 2px;
+							background: var(--color-warning-yellow);
+							pointer-events: none;
+							transition: width 0.1s linear;
 						}
 
 						.render-status-overlay {

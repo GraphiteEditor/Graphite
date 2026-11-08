@@ -16,6 +16,8 @@ type DocumentStoreState = {
 	graphViewOverlayOpen: boolean;
 	fadeArtwork: number;
 	renderStatus: RenderStatus;
+	// How far the work in progress of the document has come from 0 to 1, if it has any
+	progress: number | undefined;
 };
 const initialState: DocumentStoreState = {
 	toolOptionsLayout: createLayout(),
@@ -26,6 +28,7 @@ const initialState: DocumentStoreState = {
 	graphViewOverlayOpen: false,
 	fadeArtwork: 100,
 	renderStatus: "Rendering",
+	progress: undefined,
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -92,6 +95,13 @@ export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
+	subscriptions.subscribeFrontendMessage("UpdateDocumentProgress", (data) => {
+		update((state) => {
+			state.progress = data.progress;
+			return state;
+		});
+	});
+
 	return { subscribe, remoteCursorsStore };
 }
 
@@ -102,6 +112,7 @@ export function destroyDocumentStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
 	subscriptions.unsubscribeFrontendMessage("UpdateRenderStatus");
+	subscriptions.unsubscribeFrontendMessage("UpdateDocumentProgress");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentCursors");
 	subscriptions.unsubscribeLayoutUpdate("ToolOptions");
 	subscriptions.unsubscribeLayoutUpdate("DocumentBar");
