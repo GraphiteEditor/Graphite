@@ -9,7 +9,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::node_reference_button;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, LAYER_SECONDARY_INPUT_INDEX, NodeNetworkInterface, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, LAYER_SECONDARY_INPUT_INDEX, NodeNetworkInterface, OutputConnector, wire_feeds_proto_input};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
 use crate::messages::portfolio::ingest::utility_types::{DataTransferItem, IngestAction, TypeFilter};
 use crate::messages::prelude::*;
@@ -1344,6 +1344,20 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
+		// A length or angle left over from rows that took one reads as the number its field showed, pixels or degrees
+		Some(TaggedValue::Length(_) | TaggedValue::Angle(_)) => {
+			let number = input
+				.as_non_exposed_value()
+				.and_then(|value| value.as_length_pixels(parameter_widgets_info.network_interface.pixels_per_inch()).or_else(|| value.as_angle_degrees()));
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				number_props
+					.value(number)
+					.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::Number(x.value.unwrap())))
+					.on_commit(commit_value)
+					.widget_instance(),
+			]);
+		}
 		_ => {}
 	}
 
@@ -1718,6 +1732,74 @@ fn wire_element(ty: &Type) -> Type {
 	match ty.nested_type() {
 		Type::Item(element) | Type::List(element) => (**element).clone(),
 		other => other.clone(),
+	}
+}
+
+/// The length or angle type of the field an unwired input shows, where the node's rows take one there among other types.
+/// The rows fitting the node's other known inputs decide it when they all need one type there. Otherwise a length or angle the input holds keeps its field.
+fn measurement_input_type(node_id: NodeId, input_index: usize, identifier: &graph_craft::ProtoNodeIdentifier, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<Type> {
+	let rows = interpreted_executor::node_registry::NODE_REGISTRY.get(identifier)?;
+	let measurements = [concrete!(Length), concrete!(Angle)];
+	let element_at = |inputs: &[Type], index: usize| inputs.get(index).map(wire_element);
+
+	let offered: Vec<Type> = rows.keys().filter_map(|row| element_at(&row.inputs, input_index)).collect();
+	if !offered.iter().any(|element| measurements.contains(element)) {
+		return None;
+	}
+
+	// Only an unwired input shows a field
+	let held_measurement = |index: usize| match network_interface.input_from_connector(&InputConnector::node_at_index(node_id, index), network_path) {
+		Some(NodeInput::Value { tagged_value, .. }) => Some(wire_element(&tagged_value.ty())).filter(|element| measurements.contains(element)),
+		_ => None,
+	};
+	let Some(NodeInput::Value { .. }) = network_interface.input_from_connector(&InputConnector::node_at_index(node_id, input_index), network_path) else {
+		return None;
+	};
+	let held = held_measurement(input_index).filter(|held| offered.contains(held));
+
+	// Wired inputs, through the conversions ahead of them, and inputs holding a length or angle decide which rows fit, unlike a plain number, which may be the one to change
+	enum Known {
+		Wired(Type),
+		Held(Type),
+	}
+	let known_inputs: Vec<(usize, Known)> = (0..network_interface.number_of_inputs(&node_id, network_path))
+		.filter(|&index| index != input_index)
+		.filter_map(|index| match network_interface.input_from_connector(&InputConnector::node_at_index(node_id, index), network_path)? {
+			NodeInput::Node { .. } | NodeInput::Import { .. } => {
+				let wired = network_interface.input_type_not_invalid(&InputConnector::node_at_index(node_id, index), network_path);
+				Some((index, Known::Wired(wired.compiled_nested_type()?.clone())))
+			}
+			NodeInput::Value { .. } => Some((index, Known::Held(held_measurement(index)?))),
+			_ => None,
+		})
+		.collect();
+	if known_inputs.is_empty() {
+		return held;
+	}
+
+	let fits = |row: &graphene_std::NodeIOTypes, exactly: bool| {
+		known_inputs.iter().all(|(index, known)| match known {
+			Known::Wired(source) if exactly => element_at(&row.inputs, *index) == Some(wire_element(source)),
+			Known::Wired(source) => row.inputs.get(*index).is_some_and(|connector| wire_feeds_proto_input(identifier, *index, source, connector)),
+			Known::Held(element) => element_at(&row.inputs, *index).as_ref() == Some(element),
+		})
+	};
+
+	// The compiler takes a row the wires feed as they are over one they would be converted into
+	let exact: Vec<&graphene_std::NodeIOTypes> = rows.keys().filter(|row| fits(row, true)).collect();
+	let fitting = if exact.is_empty() { rows.keys().filter(|row| fits(row, false)).collect() } else { exact };
+	let needed: Vec<(Type, Type)> = fitting
+		.iter()
+		.filter_map(|row| Some((element_at(&row.inputs, input_index)?, wire_element(&row.return_value))))
+		.collect();
+	let Some((first, _)) = needed.first() else { return held };
+
+	// A number reads in pixels or degrees where it gives what a length or angle would, so rows taking either call for the length or angle
+	let plain = concrete!(f64);
+	match needed.iter().find(|(element, _)| measurements.contains(element)) {
+		Some((measurement, output)) if needed.iter().all(|(element, result)| element == measurement || (*element == plain && result == output)) => Some(measurement.clone()),
+		None if needed.iter().all(|(element, _)| element == first) => None,
+		_ => held,
 	}
 }
 
@@ -3585,6 +3667,10 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 							default_type = field.default_type.clone();
 						}
 
+						if let Some(measurement) = measurement_input_type(node_id, input_index, &proto_node_identifier, context.network_interface, context.selection_network_path) {
+							break 'early_return measurement;
+						}
+
 						if let Some(default) = default_type {
 							break 'early_return default;
 						}
@@ -4326,6 +4412,46 @@ mod tests {
 		// The element of a stored value and of the row that accepts it agree, which is what selects the dropdown entry
 		assert_eq!(wire_element(&TaggedValue::Integer(0).ty()), wire_element(&item!(i64)));
 		assert_ne!(wire_element(&TaggedValue::Integer(0).ty()), wire_element(&item!(f64)));
+	}
+
+	/// The field the second input of a node shows with a length wired into its first, which feeds a circle's radius so it compiles.
+	async fn second_input_field_beside_a_wired_length(target: graph_craft::ProtoNodeIdentifier) -> Option<Type> {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+
+		let mut editor = crate::test_utils::EditorTestUtils::create();
+		editor.new_document().await;
+
+		// The length comes from an Add of two lengths
+		let add = graphene_std::math_nodes::add::IDENTIFIER;
+		let source = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(add), 0, 0).await;
+		for input_index in 0..2 {
+			let value = Box::new(TaggedValue::Length(graphene_std::units::TypedLength::pixels(1.)));
+			editor.handle_message(NodeGraphMessage::SetInputValue { node_id: source, input_index, value }).await;
+		}
+
+		// Only the nodes feeding the document's output are compiled, which resolves the types of their wires
+		let node = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(target.clone()), 10, 0).await;
+		let circle = editor
+			.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::circle::IDENTIFIER), 20, 0)
+			.await;
+		for (output_connector, input_connector) in [
+			(OutputConnector::node(source, 0), InputConnector::primary_input(node)),
+			(OutputConnector::node(node, 0), InputConnector::node_at_index(circle, 1)),
+			(OutputConnector::node(circle, 0), InputConnector::Export(0)),
+		] {
+			editor.handle_message(NodeGraphMessage::CreateWire { output_connector, input_connector }).await;
+		}
+
+		measurement_input_type(node, 1, &target, &editor.active_document().network_interface, &[])
+	}
+
+	#[tokio::test]
+	async fn a_number_beside_a_wired_length_shows_as_a_length_where_it_reads_in_pixels() {
+		assert_eq!(second_input_field_beside_a_wired_length(graphene_std::math_nodes::add::IDENTIFIER).await, Some(concrete!(Length)));
+		assert_eq!(second_input_field_beside_a_wired_length(graphene_std::math_nodes::clamp::IDENTIFIER).await, Some(concrete!(Length)));
+
+		// A divisor of a length is a plain number, which a length would turn into a ratio
+		assert_eq!(second_input_field_beside_a_wired_length(graphene_std::math_nodes::divide::IDENTIFIER).await, None);
 	}
 
 	fn description(expression: &str) -> Option<String> {

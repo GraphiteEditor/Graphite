@@ -95,6 +95,12 @@ fn type_feeds_input(source: &Type, connector: &Type, conversions: Option<&Adapte
 		.any(|adapted| adapted == connector || Promotion::exists_between(adapted, connector))
 }
 
+/// Whether a wire of the `source` type can feed the proto node's input at `input_index`, registered as `connector`, through the conversions
+/// the compiler places ahead of that input.
+pub(crate) fn wire_feeds_proto_input(proto_node_identifier: &ProtoNodeIdentifier, input_index: usize, source: &Type, connector: &Type) -> bool {
+	type_feeds_input(source, connector, input_conversions(proto_node_identifier).get(input_index).copied().flatten())
+}
+
 // This file contains utility methods for interfacing with the resolved types returned from the compiler
 #[derive(Debug, Default)]
 pub struct ResolvedDocumentNodeTypes {

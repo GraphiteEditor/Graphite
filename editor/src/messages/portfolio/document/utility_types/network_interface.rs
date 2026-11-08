@@ -37,6 +37,7 @@ mod view;
 pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
 pub use layout_pass::NetworkLayout;
 pub use reconcile::{ReconcileError, Reconciled};
+pub(crate) use resolved_types::wire_feeds_proto_input;
 use store::Guarded;
 pub use store::NodeLocator;
 pub use structure::vector_outline_targets;
