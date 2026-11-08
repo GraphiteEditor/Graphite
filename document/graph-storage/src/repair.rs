@@ -27,6 +27,70 @@ struct Chain {
 	bottom: Option<NodeInput>,
 }
 
+/// Which of a dropped step's ops the line still needs, and the nodes they add. `registry` is the line with the step.
+/// A subgraph the step added stays, with what the step put in it, while a node it didn't add is built from it, as a
+/// later layer reuses the one the first layer brought. Resources stay too, since what refers to them isn't tracked.
+pub(crate) fn still_needed(registry: &Registry, dropped: &[RegistryDelta]) -> (Vec<usize>, HashSet<NodeId>) {
+	let added_networks: HashSet<NetworkId> = dropped
+		.iter()
+		.filter_map(|op| match op {
+			RegistryDelta::AddNetwork { id, .. } => Some(*id),
+			_ => None,
+		})
+		.collect();
+	let added_nodes: HashSet<NodeId> = dropped
+		.iter()
+		.filter_map(|op| match op {
+			RegistryDelta::AddNode { id, .. } => Some(*id),
+			_ => None,
+		})
+		.collect();
+	let built_from = |node: &crate::Node| match node.implementation() {
+		crate::Implementation::Network(network) if added_networks.contains(network) => Some(*network),
+		_ => None,
+	};
+
+	let mut needed: HashSet<NetworkId> = registry
+		.node_instances
+		.iter()
+		.filter(|(id, _)| !added_nodes.contains(id))
+		.filter_map(|(_, node)| built_from(node))
+		.collect();
+	// A needed subgraph's own nodes need the subgraphs they are built from
+	loop {
+		let nested: Vec<NetworkId> = registry
+			.node_instances
+			.values()
+			.filter(|node| needed.contains(&node.network()))
+			.filter_map(|node| built_from(node))
+			.filter(|network| !needed.contains(network))
+			.collect();
+		if nested.is_empty() {
+			break;
+		}
+		needed.extend(nested);
+	}
+
+	let kept_nodes: HashSet<NodeId> = registry.node_instances.iter().filter(|(_, node)| needed.contains(&node.network())).map(|(&id, _)| id).collect();
+	let kept = dropped
+		.iter()
+		.enumerate()
+		.filter(|(_, op)| match op {
+			RegistryDelta::AddNetwork { id, .. } | RegistryDelta::SetNetworkExport { id, .. } | RegistryDelta::ChangeNetworkAttribute { id, .. } => needed.contains(id),
+			RegistryDelta::AddNode { id, .. }
+			| RegistryDelta::ChangeNodeInput { id, .. }
+			| RegistryDelta::SetNodeInputs { id, .. }
+			| RegistryDelta::SetNodeImplementation { id, .. }
+			| RegistryDelta::ChangeNodeAttribute { id, .. }
+			| RegistryDelta::ChangeNodeInputAttribute { id, .. } => kept_nodes.contains(id),
+			RegistryDelta::AddResource { .. } | RegistryDelta::SetResourceHash { .. } | RegistryDelta::AddSource { .. } => true,
+			_ => false,
+		})
+		.map(|(index, _)| index)
+		.collect();
+	(kept, kept_nodes)
+}
+
 /// The ops that repair `registry`, which is `before` with `replayed` folded in. `intended` is the document as the
 /// replayed step left it when it was made, and `gone` the nodes it must not have, as those the step deleted.
 /// - A node in `gone`, or in neither `before` nor `intended`, is removed. A newer write to a node revives it over an
@@ -52,6 +116,7 @@ pub(crate) fn repair_ops(before: &Registry, registry: &Registry, intended: &Regi
 			ops.push(RegistryDelta::RemoveNode { id, snapshot });
 		}
 	}
+	restore_subgraphs(&mut registry, intended, &mut ops);
 
 	let live = |id: &NodeId| registry.node_instances.contains_key(id);
 	let placed_by_step: HashSet<NodeId> = replayed.iter().flat_map(placed_nodes).filter(live).collect();
@@ -93,8 +158,12 @@ pub(crate) fn repair_ops(before: &Registry, registry: &Registry, intended: &Regi
 			let after = wanted.nodes[..position].iter().rev().find_map(|above| nodes.iter().position(|node| node == above));
 			nodes.insert(after.map_or(0, |index| index + 1), *id);
 		}
-		// What the chain rests on, as long as nothing else sits on it
-		let bottom = [earlier.bottom, wanted.bottom].into_iter().flatten().find(|bottom| match bottom {
+		// What the chain rests on, as long as nothing else sits on it. A chain of nodes rests on what the last node rested
+		// on in an order that had nodes too, since an empty one holds the head slot's own value, of another type.
+		let alike = |order: &Chain| order.nodes.is_empty() == nodes.is_empty();
+		let mut orders = [&earlier, &wanted];
+		orders.sort_by_key(|order| !alike(order));
+		let bottom = orders.into_iter().filter_map(|order| order.bottom.clone()).find(|bottom| match bottom {
 			NodeInput::Node { id, .. } => live(id) && home(id).is_none(),
 			_ => true,
 		});
@@ -135,6 +204,33 @@ pub(crate) fn repair_ops(before: &Registry, registry: &Registry, intended: &Regi
 		}
 	}
 	ops
+}
+
+/// Gives a node built from a subgraph the line lacks that subgraph back as `intended` has it, with what is in it, as
+/// a step brought back onto a line without the earlier step that added it needs.
+fn restore_subgraphs(registry: &mut Registry, intended: &Registry, ops: &mut Vec<RegistryDelta>) {
+	let lacking = |registry: &Registry, node: &crate::Node| match node.implementation() {
+		crate::Implementation::Network(network) if !registry.networks.contains_key(network) && intended.networks.contains_key(network) => Some(*network),
+		_ => None,
+	};
+	let mut missing: BTreeSet<NetworkId> = registry.node_instances.values().filter_map(|node| lacking(registry, node)).collect();
+	while let Some(network) = missing.pop_first() {
+		let content = intended.networks[&network].clone();
+		registry.networks.insert(network, content.clone());
+		ops.push(RegistryDelta::AddNetwork { id: network, network: content });
+
+		let mut inside: Vec<(&NodeId, &crate::Node)> = intended
+			.node_instances
+			.iter()
+			.filter(|(id, node)| node.network() == network && !registry.node_instances.contains_key(id))
+			.collect();
+		inside.sort_by_key(|(id, _)| **id);
+		for (&id, node) in inside {
+			missing.extend(lacking(registry, node));
+			registry.node_instances.insert(id, node.clone());
+			ops.push(RegistryDelta::AddNode { id, node: node.clone() });
+		}
+	}
 }
 
 fn on(id: NodeId) -> NodeInput {

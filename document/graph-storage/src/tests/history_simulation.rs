@@ -8,8 +8,17 @@
 use crate::{Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ROOT_NETWORK, Registry, RegistryDelta, Rev, Session, UserId, Value};
 use std::collections::HashSet;
 
-/// What every layer's implementation names, so nodes need no proto-node declarations.
+/// What every layer's implementation names, so nodes need no proto-node declarations. The first layer drawn brings it,
+/// as the editor's first layer brings the subgraph every later one is built from.
 const LEAF: NetworkId = NetworkId(1);
+
+/// What the export holds while the stack is empty, of another type than what the bottom layer rests on.
+fn empty_export() -> NodeInput {
+	NodeInput::Value {
+		value: Value::from(serde_json::json!("empty")),
+		exposed: false,
+	}
+}
 
 /// A small xorshift generator, so a seed fixes the run.
 struct Random(u64);
@@ -89,14 +98,19 @@ fn random_edit(random: &mut Random, session: &mut Session) -> Vec<RegistryDelta>
 			let mut node = Node::new(ROOT_NETWORK, Implementation::Network(LEAF), 2);
 			node.inputs[0].input = layers.first().map_or_else(|| value(0), |&top| on(top));
 			node.inputs[1].input = value(random.below(100));
-			let mut ops = vec![
+			let leaf = (!registry.networks.contains_key(&LEAF)).then(|| RegistryDelta::AddNetwork {
+				id: LEAF,
+				network: Network::default(),
+			});
+			let mut ops: Vec<RegistryDelta> = leaf.into_iter().collect();
+			ops.extend([
 				RegistryDelta::AddNode { id, node },
 				RegistryDelta::SetNetworkExport {
 					id: ROOT_NETWORK,
 					index: 0,
 					export: Some(on(id)),
 				},
-			];
+			]);
 			// The layer below moves into the stack under the new one, as the editor records with its position
 			if let Some(&below) = layers.first() {
 				ops.push(super::crdt::change_node_attribute(below, "position", serde_json::json!(random.below(100))));
@@ -151,6 +165,7 @@ fn summarize(ops: &[RegistryDelta]) -> String {
 			RegistryDelta::RemoveNode { id, .. } => format!("remove {}", short(id)),
 			RegistryDelta::ChangeNodeInput { id, index, new_input } => format!("{}.{index} = {}", short(id), input(new_input)),
 			RegistryDelta::SetNetworkExport { export, .. } => format!("export = {}", export.as_ref().map_or("none".to_string(), input)),
+			RegistryDelta::AddNetwork { id, .. } => format!("add network {}", id.0),
 			other => format!("{other:?}"),
 		})
 		.collect::<Vec<_>>()
@@ -270,7 +285,15 @@ fn assert_well_formed(context: &str, registry: &Registry) {
 			assert!(stacked_on.insert(*id), "{context}: two layers or the export sit on {id:?}");
 		}
 	}
+	for (id, node) in &registry.node_instances {
+		if let Implementation::Network(network) = &node.implementation {
+			assert!(registry.networks.contains_key(network), "{context}: {id:?} is built from {network:?}, which is gone");
+		}
+	}
 	let layers = stack(registry);
+	if let Some(bottom) = layers.last() {
+		assert_ne!(below(registry, *bottom), empty_export(), "{context}: the bottom layer {bottom:?} rests on the empty export's value");
+	}
 	let unique: HashSet<NodeId> = layers.iter().copied().collect();
 	assert_eq!(unique.len(), layers.len(), "{context}: the stack loops: {layers:?}");
 	let stray: Vec<&NodeId> = registry.node_instances.keys().filter(|id| !unique.contains(id)).collect();
@@ -307,17 +330,18 @@ fn fresh_follower(host: &Session) -> Session {
 fn simulate(seed: u64, steps: usize, log: &mut Vec<String>) -> Session {
 	let mut random = Random::new(seed);
 	let mut host = Session::with_identity(PeerId(1), UserId(1));
-	let networks = [
+	let document = [
 		RegistryDelta::AddNetwork {
 			id: ROOT_NETWORK,
 			network: Network::default(),
 		},
-		RegistryDelta::AddNetwork {
-			id: LEAF,
-			network: Network::default(),
+		RegistryDelta::SetNetworkExport {
+			id: ROOT_NETWORK,
+			index: 0,
+			export: Some(empty_export()),
 		},
 	];
-	host.stage_ops(networks).expect("stage the networks");
+	host.stage_ops(document).expect("stage the document");
 	retire_step(&mut host);
 	let mut follower = fresh_follower(&host);
 
@@ -355,7 +379,7 @@ fn simulate(seed: u64, steps: usize, log: &mut Vec<String>) -> Session {
 			}
 			9 => {
 				let steps = line_steps(&host);
-				// The first step adds the networks, which nothing can do without
+				// The first step makes the document, which nothing can do without
 				let Some(target) = random.pick(&steps[..steps.len().saturating_sub(1)]) else { continue };
 				log.push(format!("{step}: remove {target:?}"));
 				let (mut added, _) = added_and_removed(&host, target);

@@ -453,15 +453,32 @@ impl Session {
 		let mut sources: Vec<(Option<&Delta>, Option<Rev>)> = Vec::with_capacity(position);
 		let mut parent = Some(base);
 		let mut replayed = Vec::new();
-		let mut before = scratch.working_registry.clone();
 		let known = self.known_inputs();
+
+		// What the later steps build on stays, ahead of them
+		let dropped: Vec<&Delta> = newest_first[position..].iter().rev().collect();
+		let (kept, kept_nodes) = match position {
+			0 => Default::default(),
+			_ => crate::repair::still_needed(&self.document.retired_snapshot, &dropped.iter().map(|delta| delta.kind.clone()).collect::<Vec<_>>()),
+		};
+		for original in kept.into_iter().map(|index| dropped[index]) {
+			let reverse = crate::prior::capture(&scratch.working_registry, &original.kind);
+			scratch.apply_op_with(RegistryTarget::Working, original.kind.clone(), original.timestamp, ApplyMode::Idempotent)?;
+			let copy = Delta::new(parent, original.timestamp.peer, original.timestamp, original.kind.clone(), reverse);
+			parent = Some(copy.id);
+			copies.push(copy);
+			sources.push((None, None));
+		}
+		let mut before = scratch.working_registry.clone();
+
 		// What the removed step added must not come back through a later step writing to it
-		let gone: HashSet<NodeId> = newest_first[position..]
+		let gone: HashSet<NodeId> = dropped
 			.iter()
 			.filter_map(|delta| match &delta.kind {
 				RegistryDelta::AddNode { id, .. } => Some(*id),
 				_ => None,
 			})
+			.filter(|id| !kept_nodes.contains(id))
 			.collect();
 		for original in newest_first[..position].iter().rev() {
 			let reverse = crate::prior::capture(&scratch.working_registry, &original.kind);
@@ -500,8 +517,11 @@ impl Session {
 		for (copy, _) in copies.iter().zip(&sources).filter(|(_, (original, _))| original.is_none()) {
 			touched.record(&copy.kind);
 		}
+		// A kept op minted on its own parent is the original, attributes and all
 		for copy in &copies {
-			self.document.history.push(copy.clone());
+			if !self.document.history.contains(copy.id) {
+				self.document.history.push(copy.clone());
+			}
 		}
 		for (&(original, closing), copy) in sources.iter().zip(&copies) {
 			if let Some(original) = original {

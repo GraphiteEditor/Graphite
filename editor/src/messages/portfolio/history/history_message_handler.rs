@@ -786,4 +786,54 @@ mod tests {
 		let violations = document.network_interface.validate_invariants();
 		assert!(violations.is_empty(), "{violations:#?}");
 	}
+
+	async fn three_rectangles() -> crate::test_utils::EditorTestUtils {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		for x in [0., 150., 300.] {
+			editor.drag_tool(ToolType::Rectangle, x, 0., x + 100., 100., ModifierKeys::empty()).await;
+			editor.handle_message(DocumentMessage::StartTransaction).await;
+			editor.handle_message(DocumentMessage::EndTransaction).await;
+			editor.active_document_mut().retire_storage_interaction();
+		}
+		editor
+	}
+
+	fn rows(editor: &crate::test_utils::EditorTestUtils) -> Vec<HistoryRow> {
+		let document = editor.active_document();
+		let gdd = document.storage().expect("every document has a working copy");
+		panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None).rows
+	}
+
+	fn layer_count(editor: &crate::test_utils::EditorTestUtils) -> usize {
+		editor.active_document().metadata().all_layers().count()
+	}
+
+	#[tokio::test]
+	async fn removing_a_step_and_then_an_earlier_one_reopens() {
+		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::build_interface_from_storage;
+
+		let mut editor = three_rectangles().await;
+		let second = rows(&editor)[1].id.clone();
+		editor.handle_message(HistoryMessage::RemoveStep { id: second }).await;
+		// The first rectangle's step brought the layer subgraph the third one is built from
+		let first = rows(&editor).into_iter().filter(|row| row.label.contains("Rectangle")).last().expect("the first rectangle").id;
+		editor.handle_message(HistoryMessage::RemoveStep { id: first }).await;
+		assert_eq!(layer_count(&editor), 1);
+		let violations = editor.active_document().network_interface.validate_invariants();
+		assert!(violations.is_empty(), "{violations:#?}");
+
+		let document = editor.active_document();
+		let gdd = document.storage().expect("every document has a working copy").clone();
+		let registry = gdd.registry().clone();
+		let (working, layout) = gdd.into_storage();
+		let reopened = document_format::GddV1::open_in(working, layout).await.expect("reopen");
+		assert_eq!(reopened.registry(), &registry);
+		let (network, nodes, networks) = reopened.registry().to_runtime_with_full_metadata(document.declarations(), reopened.blobs()).expect("convert");
+		let interface = build_interface_from_storage(network, nodes, networks).expect("rebuild");
+		let violations = interface.validate_invariants();
+		assert!(violations.is_empty(), "{violations:#?}");
+	}
 }
