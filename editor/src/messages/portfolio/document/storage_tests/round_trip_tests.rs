@@ -9,7 +9,7 @@ use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{NodeMetadataSource, PeerId, UserId, to_value};
-use graph_craft::application_io::resource::HashMapResourceStorage;
+use graph_craft::application_io::resource::{DataSource, HashMapResourceStorage, ResourceHash, ResourceId};
 use std::sync::Arc;
 
 use super::test_support::{RoundTrip, node_locations, node_paths, round_trip_through_gdd};
@@ -695,6 +695,114 @@ async fn pasted_image_resource_survives_storage_mounting_after_the_paste() {
 	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
 	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
 	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
+}
+
+/// Pastes an image and points it at a resource from `source` that is staged before it resolves, then resolves it, giving the resource and its hash.
+async fn image_resource_resolved_after_staging(editor: &mut EditorTestUtils, source: DataSource) -> (ResourceId, ResourceHash) {
+	use graph_craft::document::DocumentNodeImplementation;
+	use graph_craft::document::value::TaggedValue;
+	use graphene_std::raster_nodes::std_nodes::image;
+
+	editor.new_document().await;
+	// A hash the runtime has but storage lacks is drift to this check, and it's the state under test
+	editor.dispatch(PreferencesMessage::ValidateStorageRoundTrip { enabled: false });
+	let byte_store = mount_in_memory_storage(editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, false);
+	editor.handle_message(paste_named_image()).await;
+
+	// Point the image at a resource that is still being fetched, so its entry is staged without a hash
+	let image_node_id = editor
+		.active_document()
+		.network_interface
+		.document_network()
+		.nodes
+		.iter()
+		.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == image::IDENTIFIER))
+		.map(|(id, _)| *id)
+		.expect("the pasted image should be an Image node");
+	let resource_id = ResourceId::new();
+	editor.active_document_mut().resources.registry.push_source_back(&resource_id, source.clone());
+	editor.dispatch(DocumentMessage::StartTransaction);
+	editor.dispatch(NodeGraphMessage::SetInputValue {
+		node_id: image_node_id,
+		input_index: image::ResourceInput::INDEX,
+		value: TaggedValue::Resource(resource_id).into(),
+	});
+	editor.dispatch(DocumentMessage::CommitTransaction);
+	let stored = editor
+		.active_document()
+		.storage()
+		.expect("storage mounted")
+		.registry()
+		.resources
+		.get(&resource_id)
+		.map(|entry| entry.hash);
+	assert_eq!(stored, Some(None), "storage should hold the resource without its hash");
+
+	// The fetch finishes, which caches a font's hash for a later resolve
+	let data: Arc<[u8]> = Image::new(2, 2, Color::BLACK).to_png().into();
+	let hash = ResourceHash::from(data.as_ref());
+	let document_id = editor.portfolio_message_handler().active_document_id.expect("a document is open");
+	editor.dispatch(ResourceStorageMessage::Store { data });
+	editor.dispatch(PortfolioMessage::DocumentPassMessage {
+		document_id,
+		message: ResourceMessage::Resolved { resource_id, source, hash }.into(),
+	});
+
+	(resource_id, hash)
+}
+
+/// Undo and redo keep the hash of a resource resolved after its entry was staged.
+#[tokio::test]
+async fn resource_resolved_after_staging_stays_resolved_through_undo_and_redo() {
+	let mut editor = EditorTestUtils::create();
+	// An embedded source can't be fetched again, so only the runtime's resolution keeps it resolved
+	let (resource_id, hash) = image_resource_resolved_after_staging(&mut editor, DataSource::Embedded).await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	// Undo and redo the rectangle, then the step that set the resource
+	for (message, step) in [
+		(DocumentMessage::Undo, "undoing the rectangle"),
+		(DocumentMessage::Redo, "redoing the rectangle"),
+		(DocumentMessage::Undo, "undoing the rectangle again"),
+		(DocumentMessage::Undo, "undoing the resource change"),
+		(DocumentMessage::Redo, "redoing the resource change"),
+	] {
+		editor.dispatch(message);
+		let document = editor.active_document();
+		let registry = &document.resources.registry;
+		assert!(registry.unresolved().next().is_none(), "{step} left a resource unresolved, which stops rendering");
+		assert!(
+			document.used_resources(false).iter().all(|id| registry.hash(id).is_some()),
+			"{step} left a used resource without its hash"
+		);
+	}
+	assert_eq!(editor.active_document().resources.registry.hash(&resource_id), Some(hash));
+}
+
+/// A resource that history leaves without its hash is resolved again.
+#[tokio::test]
+async fn resource_left_unresolved_by_history_is_resolved_again() {
+	let mut editor = EditorTestUtils::create();
+	// A font resolves again from its cached hash, without a download
+	let font = DataSource::Font {
+		family: "Test Family".into(),
+		style: Some("Regular (400)".into()),
+	};
+	let (resource_id, hash) = image_resource_resolved_after_staging(&mut editor, font).await;
+
+	// No snapshot uses the resource once its step is undone, so collection drops the runtime's resolution
+	editor.dispatch(DocumentMessage::Undo);
+	editor.active_document_mut().garbage_collect_resources();
+	assert!(
+		editor.active_document().resources.registry.info(&resource_id).is_none(),
+		"garbage collection should drop the undone step's resource"
+	);
+
+	editor.dispatch(DocumentMessage::Redo);
+	let registry = &editor.active_document().resources.registry;
+	assert_eq!(registry.hash(&resource_id), Some(hash), "redoing the step should resolve its resource again");
+	assert!(registry.unresolved().next().is_none(), "redoing the step left a resource unresolved, which stops rendering");
 }
 
 /// Mount a fresh in-memory `Gdd` onto the active document so `commit_storage_snapshot` (the real

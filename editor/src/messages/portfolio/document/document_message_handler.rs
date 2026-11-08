@@ -471,11 +471,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::DocumentHistoryBackward => {
 				self.stage_edits_outside_transaction(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
-				self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses)
+				self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses);
+				self.resolve_unresolved_resources(document_id, responses);
 			}
-			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryForward => {
+				self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses);
+				self.resolve_unresolved_resources(document_id, responses);
+			}
 			DocumentMessage::ChangeHistoryLine { rev, change } => {
-				self.change_history_line(document_id, rev, change, &resource_storage.resources_mut(), preferences.validate_storage_round_trip, responses)
+				self.change_history_line(document_id, rev, change, &resource_storage.resources_mut(), preferences.validate_storage_round_trip, responses);
+				self.resolve_unresolved_resources(document_id, responses);
 			}
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
@@ -2557,9 +2562,38 @@ impl DocumentMessageHandler {
 	fn refresh_resource_registry(&mut self) {
 		let Some(storage) = self.history.storage() else { return };
 
-		match storage.registry().to_resource_registry() {
-			Ok(resource_registry) => self.resources.registry = resource_registry,
-			Err(error) => log::error!("Failed to rebuild the resource registry from storage: {error}"),
+		let mut resource_registry = match storage.registry().to_resource_registry() {
+			Ok(resource_registry) => resource_registry,
+			Err(error) => {
+				log::error!("Failed to rebuild the resource registry from storage: {error}");
+				return;
+			}
+		};
+
+		// Preserve completed resolutions across undo and redo
+		let stored_resources = &storage.registry().resources;
+		for resolved in self.resources.registry.resolved() {
+			let Some(&hash) = resolved.hash else { continue };
+
+			match resource_registry.info(&resolved.id) {
+				// Storage has its own hash, or a peer changed where the resource comes from
+				Some(stored) if stored.hash.is_some() || stored.sources != resolved.sources => continue,
+				Some(_) => {}
+				// Kept for a redo of the undone step that added it
+				None if !stored_resources.contains_key(&resolved.id) => resolved.sources.iter().for_each(|source| resource_registry.push_source_back(&resolved.id, source.clone())),
+				// Storage holds it with neither a hash nor sources
+				None => continue,
+			}
+			resource_registry.resolve(&resolved.id, hash);
+		}
+
+		self.resources.registry = resource_registry;
+	}
+
+	/// Queues resolving the resources that history left without a hash, as applying a peer's changes does.
+	fn resolve_unresolved_resources(&self, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+		if self.resources.registry.unresolved().next().is_some() {
+			responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 		}
 	}
 
