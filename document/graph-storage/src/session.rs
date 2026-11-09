@@ -960,6 +960,11 @@ impl Session {
 		}
 	}
 
+	/// Forget the latest undone interaction, so redo can't bring it back.
+	pub fn forget_latest_undo(&mut self) -> Option<Rev> {
+		self.document.redo_stack.pop()
+	}
+
 	pub fn can_redo(&self) -> bool {
 		!self.document.redo_stack.is_empty()
 	}

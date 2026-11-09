@@ -98,7 +98,15 @@ impl DocumentHistory {
 
 	/// Undoes the latest step in storage without a way to redo it. Returns whether a step was undone.
 	pub fn discard_step(&mut self, in_session: bool) -> bool {
-		self.undo_step(in_session).is_some()
+		let Some(note) = self.undo_step(in_session) else { return false };
+
+		if matches!(note, UndoNote::Cursor)
+			&& let Some(storage) = self.storage.as_mut()
+			&& let Err(error) = storage.forget_latest_undo()
+		{
+			log::error!("Forgetting the discarded step failed: {error}");
+		}
+		true
 	}
 
 	/// Takes the latest step back. A hot step is retracted, a retired one is dropped from a session's shared line,

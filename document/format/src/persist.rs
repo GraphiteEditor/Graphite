@@ -73,6 +73,15 @@ impl<L: Layout> Gdd<L> {
 		Ok(rev)
 	}
 
+	/// Forget the latest undone commit, so redo can't bring it back, and persist the cursor.
+	pub fn forget_latest_undo(&mut self) -> Result<Option<Rev>, Error> {
+		let forgotten = self.session.forget_latest_undo();
+		if forgotten.is_some() {
+			self.persist_session_state()?;
+		}
+		Ok(forgotten)
+	}
+
 	/// Set the person using this device. `peer` must be unused, so the previous user keeps their steps. Refused while connected.
 	pub fn set_user(&mut self, user: UserId, peer: PeerId) -> Result<(), Error> {
 		if self.session.user() == user {

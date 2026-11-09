@@ -1266,3 +1266,15 @@ fn the_span_an_undo_walks_names_only_the_undone_step() {
 	let redone = session.redo().expect("redo");
 	assert_eq!(session.touched_between(from, redone).networks, [NetworkId(2)].into_iter().collect());
 }
+
+#[test]
+fn a_forgotten_undo_cannot_be_redone() {
+	let mut session = Session::with_peer(PeerId(1));
+	step(&mut session, add_network(1));
+	let tip = step(&mut session, add_network(2));
+
+	session.undo().expect("undo");
+	assert_eq!(session.forget_latest_undo(), Some(tip));
+	assert!(!session.can_redo());
+	assert!(session.redo_stack().is_empty());
+}
