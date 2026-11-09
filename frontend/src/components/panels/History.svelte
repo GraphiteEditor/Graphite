@@ -7,10 +7,12 @@
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { HistoryStore } from "/src/stores/history";
+	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const editor = getContext<EditorWrapper>("editor");
 	const history = getContext<HistoryStore>("history");
+	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	// Relative times age while the panel stays open
 	let now = Date.now();
@@ -184,7 +186,7 @@
 							<span class="label">{delta.label}</span>
 							<span class="meta">
 								{#if $history.collaborating || !delta.mine}<span class="author">{delta.author}</span>{/if}
-								{#if delta.time}{$history.collaborating || !delta.mine ? "· " : ""}{when(delta.time, now)}{/if}
+								{#if delta.time && when(delta.time, now) !== when(row.time, now)}{$history.collaborating || !delta.mine ? "· " : ""}{when(delta.time, now)}{/if}
 							</span>
 						</div>
 					</div>
@@ -196,7 +198,7 @@
 				<TextButton label="Show older" action={() => editor.loadMoreHistory()} />
 			</div>
 		{/if}
-		{#if $history.rows.length === 0 && $history.progress.length === 0}
+		{#if $portfolio.documents.length > 0 && $history.rows.length === 0 && $history.progress.length === 0}
 			<TextLabel italic={true}>Nothing in the history yet.</TextLabel>
 		{/if}
 	</LayoutCol>

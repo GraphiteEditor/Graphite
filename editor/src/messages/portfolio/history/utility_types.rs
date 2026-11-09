@@ -39,7 +39,7 @@ pub struct HistoryRow {
 	pub color: String,
 	/// Milliseconds since the Unix epoch, if the retirer recorded it.
 	pub time: Option<f64>,
-	pub deltas: usize,
+	pub deltas: u32,
 	/// Branches off the shown line, each by its tip.
 	pub branches: Vec<HistoryBranch>,
 	pub undone: bool,
@@ -76,7 +76,7 @@ pub struct HistoryProgressRow {
 	pub anonymous: bool,
 	pub mine: bool,
 	pub color: String,
-	pub ops: usize,
+	pub ops: u32,
 	/// Still being made, not closed and waiting.
 	pub open: bool,
 }

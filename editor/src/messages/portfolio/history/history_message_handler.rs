@@ -348,7 +348,7 @@ impl View<'_> {
 			mine: person.mine,
 			color: person.color,
 			time: group.iter().find_map(|delta| delta.retired_at()).map(|ms| ms as f64),
-			deltas: shown.len(),
+			deltas: shown.len() as u32,
 			branches,
 			undone,
 			abandoned: !undone && !self.head_line.contains(&closing.id),
@@ -368,10 +368,11 @@ impl View<'_> {
 		HistoryBranch { id: tip.to_string(), label }
 	}
 
-	/// The name someone gave the step, else what its tool did, else a summary of its changes.
+	/// The name someone gave the step, else what its tool did, else "New Document" for the first step, else a summary of its changes.
 	fn label(&self, group: &[&Delta]) -> String {
 		let closing = group[0];
-		let named = self.metadata.rev_label(closing.id).or_else(|| closing.action());
+		let starts_document = group.last().is_some_and(|oldest| oldest.parent.is_none());
+		let named = self.metadata.rev_label(closing.id).or_else(|| closing.action()).or_else(|| starts_document.then_some("New Document"));
 		named.map(str::to_string).unwrap_or_else(|| self.names.summarize(group.iter().map(|delta| &delta.kind)))
 	}
 }
@@ -384,7 +385,7 @@ fn progress_row(people: &People, names: &Names, peer: PeerId, ops: &[&RegistryDe
 		anonymous: person.anonymous,
 		mine: person.mine,
 		color: person.color,
-		ops: foreground(ops, |kind| kind).len(),
+		ops: foreground(ops, |kind| kind).len() as u32,
 		open,
 	}
 }
