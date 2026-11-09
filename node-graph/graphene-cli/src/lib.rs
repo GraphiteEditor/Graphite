@@ -46,11 +46,13 @@ pub async fn open_gdd(archive: &[u8]) -> Result<GddV1, Box<dyn Error>> {
 	Ok(gdd)
 }
 
-/// Open `path` as a `.gdd` if it starts with archive magic bytes, otherwise as a legacy JSON document. `with_names` also collects its display names.
+/// Open `path` as a `.gdd` if it is named `.gdd` or starts with archive magic bytes, otherwise as a legacy JSON document. `with_names` also collects its display names.
 pub async fn open_document(path: &Path, with_names: bool) -> Result<OpenedDocument, Box<dyn Error>> {
 	let bytes = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
 
-	if ArchiveFormat::detect(&bytes).is_none() {
+	// A file named `.gdd` stays on the archive path, so a damaged one reports the archive error
+	let named_gdd = path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("gdd"));
+	if !named_gdd && ArchiveFormat::detect(&bytes).is_none() {
 		let document_string = String::from_utf8(bytes).map_err(|error| format!("Document {} is neither a .gdd archive nor text: {error}", path.display()))?;
 		return Ok(OpenedDocument {
 			gdd: None,
