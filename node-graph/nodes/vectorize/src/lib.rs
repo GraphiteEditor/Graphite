@@ -1,5 +1,4 @@
 mod convert;
-mod progress;
 mod slices;
 
 pub use convert::{ATTR_OLLEV_REPEAT, RepeatStructure};
@@ -144,19 +143,18 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 			width,
 			height,
 		};
-		let options = ollev::TraceOptions {
-			tolerance,
-			detail: ollev::Detail::Scaled(detail),
-			max_pixels,
-			host: CAPABILITIES,
-			stages,
-			..Default::default()
-		};
+		let mut options = ollev::TraceOptions::default();
+		options.tolerance = tolerance;
+		options.detail = ollev::Detail::Scaled(detail);
+		options.max_pixels = max_pixels;
+		options.host = CAPABILITIES;
+		options.stages = stages;
+
 		ollev::Tracing::new(&source, &options)
 	};
 
 	let pixels_to_document = image_transform * DAffine2::from_scale(DVec2::new(1. / width as f64, 1. / height as f64));
-	slot.poll(hasher.finish(), slice, stages.translucency, start, |model| convert::model_to_graphic(model, pixels_to_document))
+	slot.poll(hasher.finish(), slice, start, |model| convert::model_to_graphic(model, pixels_to_document))
 }
 
 #[cfg(test)]
