@@ -1111,3 +1111,44 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	assert_eq!(storage.session().history().count(), history_base);
 	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 }
+
+/// Draws three ellipses, undoes all of them, redoes them and one more, then undoes once. `retire` retires each
+/// drawing first, so the steps undo through the cursor rather than by retraction.
+async fn redone_steps_undo_one_at_a_time(retire: bool) {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let byte_store = mount_in_memory_storage(&mut editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+
+	for offset in [0., 200., 400.] {
+		editor.draw_ellipse(offset, 0., offset + 100., 100.).await;
+		if retire {
+			editor.active_document_mut().retire_storage_interaction();
+		}
+	}
+	let layer_count = |editor: &EditorTestUtils| editor.active_document().metadata().all_layers().count();
+	assert_eq!(layer_count(&editor), 3);
+
+	for expected in [2, 1, 0] {
+		editor.handle_message(DocumentMessage::Undo).await;
+		assert_eq!(layer_count(&editor), expected, "undoing down to {expected} ellipses");
+	}
+	for expected in [1, 2, 3, 3] {
+		editor.handle_message(DocumentMessage::Redo).await;
+		assert_eq!(layer_count(&editor), expected, "redoing up to {expected} ellipses");
+	}
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(layer_count(&editor), 2, "undo takes back only the last redone ellipse");
+	assert_cursor_matches_runtime(editor.active_document(), "after undoing a redone step");
+}
+
+#[tokio::test]
+async fn redone_hot_steps_undo_one_at_a_time() {
+	redone_steps_undo_one_at_a_time(false).await;
+}
+
+#[tokio::test]
+async fn redone_retired_steps_undo_one_at_a_time() {
+	redone_steps_undo_one_at_a_time(true).await;
+}

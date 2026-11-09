@@ -576,7 +576,7 @@ impl<L: Layout> Gdd<L> {
 			self.remote_changes.touched.record(op);
 		}
 		self.stage_ops(ops)?;
-		Ok(())
+		self.end_interaction()
 	}
 
 	/// Retire what is due at `now_ms`. Open interactions never retire. `idle` means the editor is between steps.
