@@ -1,4 +1,3 @@
-use crate::progress::TraceProgress;
 use core_types::list::List;
 use core_types::runtime::Instant;
 use core_types::{NodeError, Poll};
@@ -31,18 +30,17 @@ struct Trace {
 	shown: List<Graphic>,
 	/// The revision of the scene in `shown`.
 	revision: Option<u64>,
-	progress: TraceProgress,
+	/// How much of the trace is done from 0 to 1, as ollev last reported it.
+	progress: f64,
 }
 
 impl TraceSlot {
 	/// Advances the trace of `inputs` by `slice`, replacing any trace of other inputs with one from `start`, which also gives where the traced pixels lie.
-	/// Traces translucent layers if `translucency`.
 	/// Returns the latest showable scene, partial until the trace is done.
 	pub fn poll(
 		&self,
 		inputs: u64,
 		slice: Duration,
-		translucency: bool,
 		start: impl FnOnce() -> Result<(ollev::Tracing, DAffine2), ollev::TraceError>,
 		convert: impl Fn(&Model, DAffine2) -> List<Graphic>,
 	) -> Poll<List<Graphic>> {
@@ -58,7 +56,7 @@ impl TraceSlot {
 					pixels_to_document,
 					shown: List::new(),
 					revision: None,
-					progress: TraceProgress::new(translucency),
+					progress: 0.,
 				},
 				Err(error) => return Poll::fallback(List::new(), error),
 			},
@@ -68,7 +66,7 @@ impl TraceSlot {
 			let deadline = Instant::now() + slice;
 			let progress = &mut trace.progress;
 			let step = tracing.step(|checkpoint| {
-				progress.observe(checkpoint.stage, checkpoint.fraction);
+				*progress = checkpoint.overall;
 				if Instant::now() >= deadline { ControlFlow::Break(()) } else { ControlFlow::Continue(()) }
 			});
 			match step {
@@ -105,7 +103,7 @@ impl TraceSlot {
 	/// How much of the slot's trace is done from 0 to 1, while it is not yet done.
 	pub fn progress(&self) -> Option<f64> {
 		let held = self.lock();
-		held.as_ref().filter(|trace| trace.tracing.is_some()).map(|trace| trace.progress.fraction())
+		held.as_ref().filter(|trace| trace.tracing.is_some()).map(|trace| trace.progress)
 	}
 
 	/// Stops the slot's trace, keeping the scene traced so far as the result for its inputs.
