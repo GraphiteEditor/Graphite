@@ -313,6 +313,11 @@
 			&.delta {
 				min-height: 24px;
 				font-size: 11px;
+
+				// Lines up with the step's label, past its thumbnail and the gap after it
+				.text {
+					padding-left: 42px;
+				}
 			}
 
 			&.comparison {
