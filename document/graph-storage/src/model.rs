@@ -142,8 +142,7 @@ mod tests {
 		assert_eq!(tagged, graph_craft::document::value::TaggedValue::None);
 	}
 
-	/// A `SetExport(None)` truncation leaves a trailing empty slot. Such a network is value-equal to
-	/// the same network without that slot, so the soak oracle doesn't false-report drift.
+	/// A `SetExport(None)` truncation leaves a trailing empty slot, which doesn't change the network's value.
 	#[test]
 	fn trailing_empty_export_slot_is_value_equal() {
 		let compact = Network {

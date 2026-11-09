@@ -269,7 +269,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				match container.write_non_blocking(legacy_path(), document.serialize_document().as_bytes()) {
 					Ok(()) => {
-						document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+						document.commit_storage_snapshot(&resource_storage.resources_mut());
 						document.set_auto_save_state(true);
 					}
 					Err(error) => {
@@ -1344,7 +1344,7 @@ impl PortfolioMessageHandler {
 				let resources = resource_storage.resources_mut();
 				document.set_storage(*gdd, declarations, resources.storage());
 				document.require_whole_document_stage();
-				document.commit_storage_snapshot(&resources, preferences.validate_storage_round_trip);
+				document.commit_storage_snapshot(&resources);
 				document.retire_storage_interaction();
 			}
 			None => {

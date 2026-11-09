@@ -50,10 +50,6 @@ impl EditorTestUtils {
 
 		editor.dispatch(PortfolioMessage::Init);
 
-		// Tests run with `.gdd` storage on and the dual-write soak validation enabled, so storage round-trip drift fails loud.
-		editor.dispatch(PreferencesMessage::SaveAsGdd { enabled: true });
-		editor.dispatch(PreferencesMessage::ValidateStorageRoundTrip { enabled: true });
-
 		editor
 	}
 

@@ -1,3 +1,4 @@
+#[cfg(test)]
 pub(crate) mod document_diff;
 mod document_history;
 mod document_message;
@@ -14,7 +15,6 @@ pub mod overlays;
 pub mod resource;
 pub mod utility_types;
 
-pub(crate) use document_diff::diff_networks;
 pub(crate) use document_history::{CursorMoveError, DocumentHistory};
 #[doc(inline)]
 pub use document_message::{DocumentMessage, DocumentMessageDiscriminant};

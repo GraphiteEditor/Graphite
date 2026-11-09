@@ -1,8 +1,7 @@
 //! End-to-end storage round-trip tests: drive real edits through the editor, push the document
 //! through a fresh in-memory `Gdd` (stage → retire → persist), reopen from the same container, and
 //! assert the reopened document matches. Exercises the full persistence pipeline (conversion,
-//! postcard codecs, hot-op retirement, file layout, replay-on-open) that the debug-only
-//! `verify_storage_round_trip` only checks in-process without an actual save/reopen.
+//! postcard codecs, hot-op retirement, file layout, replay-on-open).
 
 use crate::messages::resource_storage::ResourcesHandle;
 use document_container::AnyContainer;
@@ -185,7 +184,7 @@ async fn edit_after_open_commits_cleanly() {
 	// Mirror the live sequence via the real `commit_storage_snapshot`: initial commit after open, then a
 	// deletion, then commit again. Deletion (not addition) is the trigger, since it emits a `RemoveNode`
 	// whose retire/reverse is where "Target node does not exist" surfaced live.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	let layer = editor.active_document().metadata().all_layers().next().expect("at least one layer");
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
@@ -334,7 +333,7 @@ async fn live_undo_shadows_storage_cursor() {
 
 	let byte_store = mount_in_memory_storage(&mut editor);
 	// Capture the loaded state as the base interaction, then make a real edit (fires CommitTransaction).
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	let before_edit = editor.active_document().network_interface.document_network().clone();
 	editor.draw_ellipse(50., 50., 150., 150.).await;
 	let after_edit = editor.active_document().network_interface.document_network().clone();
@@ -475,7 +474,7 @@ async fn live_undo_new_document_draw_rect() {
 
 	let byte_store = mount_in_memory_storage(&mut editor);
 	// Mount-time snapshot: capture the new-document graph as the base interaction.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	let before_rect = editor.active_document().network_interface.document_network().clone();
 	editor.draw_rect(0., 0., 100., 100.).await;
@@ -562,7 +561,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	editor.new_document().await;
 
 	let byte_store = mount_in_memory_storage(&mut editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	editor.handle_message(paste_named_image()).await;
 
@@ -594,7 +593,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	editor.new_document().await;
 
 	let byte_store = mount_in_memory_storage(&mut editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	let base = editor.active_document().network_interface.document_network().clone();
 
 	editor.draw_rect(0., 0., 100., 100.).await;
@@ -615,7 +614,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	// cached for redo though its node is gone, so a naive snapshot would re-detect it as a new `AddResource`
 	// and retire a phantom interaction, knocking the cursor out of lockstep. Scoping the snapshot to
 	// network-referenced resources must keep this a no-op.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	// Second undo: removes the rectangle, back to the loaded base. The cursor must step a second interaction
 	// and land on the base, not one short.
@@ -634,7 +633,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 }
 
 /// Assert the `Gdd` cursor's stored registry matches a fresh `from_runtime` of the current interface (node
-/// set, network set, per-network export wiring), mirroring the live `verify_cursor_matches_runtime` check.
+/// set, network set, per-network export wiring).
 /// The runtime's resource set may be a superset (it keeps undone resources alive for redo), but every
 /// resource the current network references must be present.
 fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
@@ -670,11 +669,11 @@ async fn pasted_image_resource_survives_inserting_a_node() {
 	editor.new_document().await;
 
 	let byte_store = mount_in_memory_storage(&mut editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	editor.handle_message(paste_named_image()).await;
 	editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vectorize_nodes::vectorize::IDENTIFIER)).await;
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	let document = editor.active_document();
 	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
@@ -689,7 +688,7 @@ async fn pasted_image_resource_survives_storage_mounting_after_the_paste() {
 
 	editor.handle_message(paste_named_image()).await;
 	let byte_store = mount_in_memory_storage(&mut editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	let document = editor.active_document();
 	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
@@ -704,10 +703,8 @@ async fn image_resource_resolved_after_staging(editor: &mut EditorTestUtils, sou
 	use graphene_std::raster_nodes::std_nodes::image;
 
 	editor.new_document().await;
-	// A hash the runtime has but storage lacks is drift to this check, and it's the state under test
-	editor.dispatch(PreferencesMessage::ValidateStorageRoundTrip { enabled: false });
 	let byte_store = mount_in_memory_storage(editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, false);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	editor.handle_message(paste_named_image()).await;
 
 	// Point the image at a resource that is still being fetched, so its entry is staged without a hash
@@ -836,7 +833,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let byte_store = mount_in_memory_storage(&mut editor);
 
 	// First autosave: captures the loaded document. `verify_storage_round_trip` panics on drift.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	let history_after_open = editor.active_document().storage().unwrap().session().history().count();
 
 	// Snapshot the network, then make a real modification.
@@ -845,7 +842,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let after_edit = editor.active_document().network_interface.document_network().clone();
 	assert_ne!(before_edit, after_edit, "drawing a rectangle should change the document network");
 
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	editor.active_document_mut().retire_storage_interaction();
 	let history_after_edit = editor.active_document().storage().unwrap().session().history().count();
 	assert!(
@@ -859,7 +856,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	assert_eq!(after_undo, before_edit, "undo should restore the pre-edit network");
 
 	// Autosaving the undone state still round-trips cleanly (no drift panic).
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 }
 
 /// Manual edits ride a saved document as a folded `VectorModification`, so opening the artworks carrying the most
@@ -1086,13 +1083,13 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let byte_store = mount_in_memory_storage(&mut editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	editor.active_document_mut().retire_storage_interaction();
 	let history_base = editor.active_document().storage().unwrap().session().history().count();
 	let before_edit = editor.active_document().network_interface.document_network().clone();
 
 	editor.draw_rect(64., 64., 192., 192.).await;
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	let after_edit = editor.active_document().network_interface.document_network().clone();
 	assert_ne!(after_edit, before_edit);
 	assert!(!editor.active_document().storage().unwrap().session().hot_log().is_empty(), "the step is hot");
@@ -1102,7 +1099,7 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	let storage = editor.active_document().storage().unwrap();
 	assert!(storage.session().hot_log().is_empty(), "the step was taken back, not retired: {:?}", storage.session().hot_log());
 	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	// The step held for redo keeps its declaration bytes from collection
 	let storage = editor.active_document().storage().unwrap();
 	assert!(
@@ -1115,5 +1112,5 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	let storage = editor.active_document().storage().unwrap();
 	assert!(!storage.session().hot_log().is_empty(), "the redone step is staged afresh");
 	assert_eq!(storage.session().history().count(), history_base);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 }

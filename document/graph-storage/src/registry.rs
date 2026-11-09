@@ -1,4 +1,4 @@
-use crate::{Attributes, Implementation, NetworkId, NodeId, PeerId, ROOT_NETWORK, Registry, ResourceId, ResourceStore, SourceKey, TimeStamp, Tombstone};
+use crate::{Attributes, Implementation, NetworkId, NodeId, ROOT_NETWORK, Registry, ResourceStore, Tombstone};
 use std::collections::{HashMap, HashSet};
 
 impl Registry {
@@ -97,36 +97,6 @@ impl Registry {
 
 		true
 	}
-
-	/// True if the relative timestamp order on every shared timestamped slot agrees across
-	/// the two registries. Catches LWW-bookkeeping bugs that `value_equal` deliberately ignores.
-	///
-	/// For every pair of shared keys (a, b), checks that `self[a].cmp(self[b])` and
-	/// `other[a].cmp(other[b])` are compatible: `Equal` on either side is always compatible;
-	/// otherwise both sides must agree on direction. Equality on one side imposes no order, so
-	/// a registry with all-equal timestamps trivially passes against any other.
-	///
-	/// Slots present in only one registry are skipped. O(N²) in the number of shared timestamped
-	/// slots; intended for debug-only use.
-	pub fn order_consistent(&self, other: &Self) -> bool {
-		let self_stamps = collect_timestamps(self);
-		let other_stamps = collect_timestamps(other);
-
-		let shared: Vec<(TimestampKey, TimeStamp, TimeStamp)> = self_stamps.into_iter().filter_map(|(key, ts)| other_stamps.get(&key).map(|other_ts| (key, ts, *other_ts))).collect();
-
-		for i in 0..shared.len() {
-			for j in (i + 1)..shared.len() {
-				let self_order = shared[i].1.cmp(&shared[j].1);
-				let other_order = shared[i].2.cmp(&shared[j].2);
-				use std::cmp::Ordering::*;
-				let compatible = matches!((self_order, other_order), (Equal, _) | (_, Equal) | (Less, Less) | (Greater, Greater));
-				if !compatible {
-					return false;
-				}
-			}
-		}
-		true
-	}
 }
 
 pub(crate) fn attributes_value_equal(a: &Attributes, b: &Attributes) -> bool {
@@ -149,88 +119,4 @@ pub(crate) fn resources_value_equal(a: &ResourceStore, b: &ResourceStore) -> boo
 				&& entry.live_sources().all(|(key, value)| other.source(key).is_some_and(|other_value| value.source == other_value.source))
 		})
 	})
-}
-
-/// Stable identity for any timestamp in a `Registry`, tombstoned content and existence stamps included. Used by
-/// `order_consistent`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-enum TimestampKey {
-	/// A whole-entity stamp under its field name: presence, a shape or floor, a removal.
-	Node(NodeId, &'static str),
-	NodeInput(NodeId, usize),
-	NodeInputFloor(NodeId, usize),
-	NodeInputAttribute(NodeId, usize, String),
-	NodeAttribute(NodeId, String),
-	Network(NetworkId, &'static str),
-	NetworkExport(NetworkId, usize),
-	NetworkAttribute(NetworkId, String),
-	DocumentAttribute(String),
-	Resource(ResourceId, &'static str),
-	ResourceSource(ResourceId, SourceKey),
-	Document(&'static str),
-	PeerRegistration(PeerId),
-}
-
-fn collect_timestamps(registry: &Registry) -> HashMap<TimestampKey, TimeStamp> {
-	let mut out = HashMap::new();
-	let nodes = registry.node_instances.iter().chain(registry.removed_nodes.iter().map(|(id, mark)| (id, &mark.content)));
-	for (&id, node) in nodes {
-		for (field, timestamp) in [
-			("presence", node.presence),
-			("network", node.network_timestamp),
-			("inputs", node.inputs_timestamp),
-			("implementation", node.implementation_timestamp),
-			("attributes", node.attributes.floor()),
-		] {
-			out.insert(TimestampKey::Node(id, field), timestamp);
-		}
-		for (i, slot) in node.inputs.iter().enumerate() {
-			out.insert(TimestampKey::NodeInput(id, i), slot.timestamp);
-			out.insert(TimestampKey::NodeInputFloor(id, i), slot.attributes.floor());
-			for (key, value) in &slot.attributes {
-				out.insert(TimestampKey::NodeInputAttribute(id, i, key.clone()), value.timestamp);
-			}
-		}
-		for (key, value) in &node.attributes {
-			out.insert(TimestampKey::NodeAttribute(id, key.clone()), value.timestamp);
-		}
-	}
-	let networks = registry.networks.iter().chain(registry.removed_networks.iter().map(|(id, mark)| (id, &mark.content)));
-	for (&id, network) in networks {
-		for (field, timestamp) in [("presence", network.presence), ("exports", network.exports_timestamp), ("attributes", network.attributes.floor())] {
-			out.insert(TimestampKey::Network(id, field), timestamp);
-		}
-		for (i, slot) in network.exports.iter().enumerate() {
-			out.insert(TimestampKey::NetworkExport(id, i), slot.timestamp);
-		}
-		for (key, value) in &network.attributes {
-			out.insert(TimestampKey::NetworkAttribute(id, key.clone()), value.timestamp);
-		}
-	}
-	out.insert(TimestampKey::Document("attributes"), registry.attributes.floor());
-	for (key, value) in &registry.attributes {
-		out.insert(TimestampKey::DocumentAttribute(key.clone()), value.timestamp);
-	}
-	let resources = registry.resources.iter().chain(registry.removed_resources.iter().map(|(id, mark)| (id, &mark.content)));
-	for (&id, entry) in resources {
-		for (field, timestamp) in [("presence", entry.presence), ("hash", entry.hash_timestamp), ("sources", entry.sources_timestamp)] {
-			out.insert(TimestampKey::Resource(id, field), timestamp);
-		}
-		for (source_key, source_value) in &entry.sources {
-			out.insert(TimestampKey::ResourceSource(id, *source_key), source_value.timestamp);
-		}
-	}
-	for (&id, mark) in &registry.removed_nodes {
-		out.insert(TimestampKey::Node(id, "removed"), mark.timestamp);
-	}
-	for (&id, mark) in &registry.removed_networks {
-		out.insert(TimestampKey::Network(id, "removed"), mark.timestamp);
-	}
-	for (&id, mark) in &registry.removed_resources {
-		out.insert(TimestampKey::Resource(id, "removed"), mark.timestamp);
-	}
-	for (&peer, registration) in &registry.peer_users {
-		out.insert(TimestampKey::PeerRegistration(peer), registration.timestamp);
-	}
-	out
 }

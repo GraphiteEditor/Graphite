@@ -312,7 +312,6 @@ impl Dispatcher {
 					menu_bar_message_handler.inspector_open = layout.is_panel_present(PanelType::Inspector);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
-					menu_bar_message_handler.show_storage_preferences = self.message_handlers.preferences_message_handler.show_storage_preferences;
 
 					if let Some(document) = self
 						.message_handlers

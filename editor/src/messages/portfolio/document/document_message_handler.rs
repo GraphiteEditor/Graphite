@@ -1,4 +1,3 @@
-use super::document_diff::diff_networks;
 use super::node_graph::{document_node_definitions, node_inspector};
 use super::utility_types::error::EditorError;
 use super::utility_types::layers_in_view::LayersInView;
@@ -470,16 +469,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.chain_node_range_selection_reference = None;
 			}
 			DocumentMessage::DocumentHistoryBackward => {
-				self.stage_edits_outside_transaction(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
-				self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses);
+				self.stage_edits_outside_transaction(&resource_storage.resources_mut());
+				self.undo_with_history(document_id, viewport, responses);
 				self.resolve_unresolved_resources(document_id, responses);
 			}
 			DocumentMessage::DocumentHistoryForward => {
-				self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses);
+				self.redo_with_history(document_id, viewport, responses);
 				self.resolve_unresolved_resources(document_id, responses);
 			}
 			DocumentMessage::ChangeHistoryLine { rev, change } => {
-				self.change_history_line(document_id, rev, change, &resource_storage.resources_mut(), preferences.validate_storage_round_trip, responses);
+				self.change_history_line(document_id, rev, change, &resource_storage.resources_mut(), responses);
 				self.resolve_unresolved_resources(document_id, responses);
 			}
 			DocumentMessage::DocumentStructureChanged => {
@@ -1261,16 +1260,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
-				// Save as a `.gdd` container or a plain legacy `.graphite`, per the editor preference.
-				let save_as_gdd = preferences.save_as_gdd;
 				let include_history = preferences.save_with_history;
-				let extension = if save_as_gdd { GDD_FILE_EXTENSION } else { FILE_EXTENSION };
-				let name = format!("{}.{}", self.name.clone(), extension);
 
-				// Keep the path's extension in sync with the chosen format so bytes and filename agree.
+				// Saved as a `.gdd` container under the `.graphite` extension
+				let name = format!("{}.{FILE_EXTENSION}", self.name.clone());
+
+				// A document opened from a `.gdd` file is saved back under the `.graphite` extension
 				let path = match message {
 					DocumentMessage::SaveDocumentAs => None,
-					_ => self.path.clone().map(|path| path.with_extension(extension)),
+					_ => self.path.clone().map(|path| path.with_extension(FILE_EXTENSION)),
 				};
 				if path.is_some() || environment.is_web() {
 					responses.add(DocumentMessage::MarkAsSaved);
@@ -1291,13 +1289,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					// serves as the .gdd recovery fallback.
 					let legacy_document = document.serialize_document().into_bytes();
 
-					// A .gdd exports the working copy with the legacy blob embedded, falling back to the bare
+					// Export the working copy with the legacy blob embedded, falling back to the bare
 					// blob when there is no working copy or the export fails.
-					let content = match (save_as_gdd, document.history.storage()) {
-						(false, _) => legacy_document,
-						(true, Some(storage)) => storage
+					let content = match document.history.storage() {
+						Some(storage) => storage
 							.export_to_bytes(
-								document_format::ExportFormat::Xz,
+								document_format::ExportFormat::Zip,
 								document_format::ExportOptions {
 									include_history,
 									..Default::default()
@@ -1310,7 +1307,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 								log::error!("Save: building .gdd export failed, falling back to legacy .graphite: {error}");
 								legacy_document
 							}),
-						(true, None) => {
+						None => {
 							log::warn!("Save: working copy not mounted yet, saving legacy .graphite only");
 							legacy_document
 						}
@@ -1323,7 +1320,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						folder,
 						filters: vec![FileFilter {
 							name: "Graphite Document".into(),
-							extensions: vec![extension.into()],
+							extensions: vec![FILE_EXTENSION.into()],
 							mime_types: Vec::new(),
 						}],
 						content: content.into(),
@@ -1677,7 +1674,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
-				self.stage_edits_outside_transaction(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+				self.stage_edits_outside_transaction(&resource_storage.resources_mut());
 				self.end_storage_interaction();
 
 				self.network_interface.start_transaction();
@@ -1706,7 +1703,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.network_interface.finish_transaction();
 				self.history.clear_redo();
 
-				self.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+				self.commit_storage_snapshot(&resource_storage.resources_mut());
 
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
@@ -2472,7 +2469,7 @@ impl DocumentMessageHandler {
 	/// The batch boundary: everything the interface recorded since the last one is this commit's batch.
 	/// Draining happens whether or not a working copy is mounted, so the buffer cannot grow across a
 	/// session that never mounts one.
-	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage) {
 		self.network_interface.settle_definitions();
 		let deltas = self.network_interface.take_deltas();
 		if self.history.storage().is_none() {
@@ -2481,18 +2478,13 @@ impl DocumentMessageHandler {
 
 		let view_settings = self.storage_view_settings();
 		self.history.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, byte_store);
-
-		// The interface lags the registry until peer changes are applied
-		if validate && self.pending_remote.is_empty() {
-			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
-		}
 	}
 
 	/// Stages edits made after a transaction finished, such as those queued behind an `AddTransaction`, whose commit runs
 	/// first. They belong to the undo step that just ended, so they must reach storage before it closes.
-	fn stage_edits_outside_transaction(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+	fn stage_edits_outside_transaction(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage) {
 		if self.network_interface.transaction_status() == TransactionStatus::Finished && self.network_interface.has_deltas() {
-			self.commit_storage_snapshot(byte_store, validate);
+			self.commit_storage_snapshot(byte_store);
 		}
 	}
 
@@ -2540,18 +2532,18 @@ impl DocumentMessageHandler {
 	}
 
 	/// Move the `Gdd` undo/redo cursor, swap in the interface rebuilt from it, and autosave so the legacy
-	/// document matches the cursor. `had_oracle` records whether the legacy snapshot already applied, so the
-	/// rebuild can be compared against it.
-	fn drive_storage_undo_redo(&mut self, document_id: DocumentId, had_oracle: bool, undo: bool, validate: bool, responses: &mut VecDeque<Message>) {
+	/// document matches the cursor. `legacy_applied` records whether the legacy snapshot already applied, so a
+	/// failed rebuild knows whether the cursor must follow the interface back.
+	fn drive_storage_undo_redo(&mut self, document_id: DocumentId, legacy_applied: bool, undo: bool, responses: &mut VecDeque<Message>) {
 		match self.history.move_cursor(undo) {
 			Ok(rebuilt) => {
-				self.apply_gdd_cursor_rebuild(rebuilt, had_oracle, validate, responses);
+				self.apply_gdd_cursor_rebuild(rebuilt, responses);
 				responses.add(PortfolioMessage::AutoSaveDocument { document_id });
 			}
 			Err(CursorMoveError::NotMoved) => {}
 			// Without the legacy snapshot the interface stayed put, so the cursor has to follow it back.
 			Err(CursorMoveError::RebuildFailed) => {
-				if !had_oracle {
+				if !legacy_applied {
 					self.history.revert_cursor(undo);
 				}
 			}
@@ -2635,7 +2627,7 @@ impl DocumentMessageHandler {
 
 		match self.history.rebuild_interface() {
 			Some(rebuilt) => {
-				self.apply_gdd_cursor_rebuild(rebuilt, false, false, responses);
+				self.apply_gdd_cursor_rebuild(rebuilt, responses);
 				true
 			}
 			None => {
@@ -2678,14 +2670,10 @@ impl DocumentMessageHandler {
 	}
 
 	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
-	fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, validate: bool, responses: &mut VecDeque<Message>) {
+	fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, responses: &mut VecDeque<Message>) {
 		rebuilt.copy_all_transient_view_state(&self.network_interface);
 		std::mem::swap(&mut rebuilt.resolved_types, &mut self.network_interface.resolved_types);
 		rebuilt.load_structure();
-
-		if validate && had_oracle {
-			self.compare_rebuild_against_legacy(&rebuilt);
-		}
 
 		self.network_interface = rebuilt;
 		self.pending_remote = Default::default();
@@ -2694,27 +2682,11 @@ impl DocumentMessageHandler {
 		}
 		self.refresh_resource_registry();
 
-		if validate {
-			let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();
-			self.history.verify_cursor_matches_runtime(&self.network_interface, &self.resources.registry, &current_resources);
-		}
-
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SendWires);
-	}
-
-	/// Check if the rebuilt network equals the legacy-restored one. Logs drift (panics in tests).
-	fn compare_rebuild_against_legacy(&self, rebuilt: &NodeNetworkInterface) {
-		let legacy = self.network_interface.document_network();
-		let candidate = rebuilt.document_network();
-		if candidate != legacy {
-			log::error!("undo/redo rebuild diverged from the legacy snapshot\n{}", diff_networks(legacy, candidate));
-			#[cfg(test)]
-			panic!("undo/redo rebuild diverged from the legacy snapshot")
-		}
 	}
 
 	pub fn serialize_document(&self) -> String {
@@ -3013,7 +2985,7 @@ impl DocumentMessageHandler {
 		paths
 	}
 
-	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
 		// The storage path skips `undo`, which settles a glide before the snapshot moves
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 
@@ -3036,17 +3008,17 @@ impl DocumentMessageHandler {
 		} else {
 			false
 		};
-		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
+		self.drive_storage_undo_redo(document_id, legacy_applied, true, responses);
 	}
 
 	/// Makes a History panel change in storage and drops the legacy snapshots, which are off the head's line.
-	fn change_history_line(&mut self, document_id: DocumentId, rev: Rev, change: LineChange, byte_store: &dyn ResourceStorage, validate: bool, responses: &mut VecDeque<Message>) {
+	fn change_history_line(&mut self, document_id: DocumentId, rev: Rev, change: LineChange, byte_store: &dyn ResourceStorage, responses: &mut VecDeque<Message>) {
 		if self.network_interface.transaction_status() != TransactionStatus::Finished {
 			return;
 		}
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 		responses.add(EventMessage::ToolAbort);
-		self.stage_edits_outside_transaction(byte_store, validate);
+		self.stage_edits_outside_transaction(byte_store);
 		self.history.retire_storage_interaction();
 		let stored_name = self.stored_name().map(str::to_string);
 		if !self.history.change_line(rev, change) {
@@ -3108,7 +3080,7 @@ impl DocumentMessageHandler {
 
 		Some(previous_network)
 	}
-	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 
 		let stored_name = self.stored_name().map(str::to_string);
@@ -3128,7 +3100,7 @@ impl DocumentMessageHandler {
 		} else {
 			false
 		};
-		self.drive_storage_undo_redo(document_id, legacy_applied, false, validate, responses);
+		self.drive_storage_undo_redo(document_id, legacy_applied, false, responses);
 	}
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {

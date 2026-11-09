@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::collections::{BTreeMap, HashSet};
 
-use document_graph_storage::{Declarations, Registry, Value};
+use document_graph_storage::{Declarations, Value};
 use graph_craft::application_io::resource::{ResourceHash, ResourceId, ResourceRegistry, ResourceStorage};
 
 use super::utility_types::network_interface::NodeNetworkInterface;
@@ -10,7 +10,7 @@ use super::utility_types::network_interface::storage_metadata::{StorageMetadataV
 use crate::messages::portfolio::history::utility_types::LineChange;
 
 /// Per-document undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor that is
-/// becoming the authoritative history. Owns the dual-stack bookkeeping push/pop/clear and the cursor's stage/retire/move/verify
+/// becoming the authoritative history. Owns the dual-stack bookkeeping push/pop/clear and the cursor's stage/retire/move
 /// lifecycle, so the handler drives history through one surface rather than three loose fields.
 ///
 /// Not serialized: the legacy stacks are runtime-only, and a clone shares the working-copy container by
@@ -320,8 +320,7 @@ impl DocumentHistory {
 
 	/// Stages what the store recorded since the last drain.
 	///
-	/// This and the whole-document conversion produce the same registry for the same edit, which
-	/// `verify_round_trip` checks when the `validate_storage_round_trip` preference is on. They differ in
+	/// This and the whole-document conversion produce the same registry for the same edit. They differ in
 	/// what they cost and in what they can miss: a conversion sees every change however it was made,
 	/// while this sees only what went through the store, so a write that bypasses it is not persisted.
 	fn stage_recorded(
@@ -448,89 +447,6 @@ impl DocumentHistory {
 		let reverted = if undo { storage.redo() } else { storage.undo() };
 		if let Err(error) = reverted {
 			log::error!("Storage undo/redo cursor revert failed: {error}");
-		}
-	}
-
-	// Soak round-trip verification (runtime-gated by `validate_storage_round_trip`)
-	// These log drift rather than panicking, since the soak can run in release where a crash is
-	// unacceptable; tests still fail loud via the `#[cfg(test)]` panics.
-
-	/// Soak check: the stored registry should equal a fresh `from_runtime`, and a `to_runtime` of it should
-	/// equal the original network.
-	pub fn verify_round_trip(&self, interface: &NodeNetworkInterface, registry: &ResourceRegistry) {
-		use super::diff_networks;
-		use super::document_diff::diff_registries;
-
-		let Some(storage) = &self.storage else { return };
-		let peer = storage.session().peer();
-
-		let network = interface.document_network();
-		let metadata_view = StorageMetadataView::new(interface);
-
-		let conversion = match Registry::convert_from_runtime(network, &metadata_view, registry, peer) {
-			Ok(conversion) => conversion,
-			Err(error) => {
-				log::error!("storage round-trip: from_runtime failed: {error}");
-				return;
-			}
-		};
-		let target = &conversion.registry;
-		let declarations = &conversion.declarations;
-
-		let stored = storage.registry();
-		if !stored.value_equal(target) {
-			log::error!("storage round-trip: registry value drift after commit\n{}", diff_registries(stored, target));
-			#[cfg(test)]
-			panic!("storage round-trip: registry value drift after commit");
-		}
-		if !stored.order_consistent(target) {
-			log::error!("storage round-trip: timestamp order inconsistent between stored and target");
-			#[cfg(test)]
-			panic!("storage round-trip: timestamp order inconsistent between stored and target");
-		}
-
-		let (round_tripped, _entries) = match stored.to_runtime_with_metadata(declarations, storage.blobs()) {
-			Ok(result) => result,
-			Err(error) => {
-				log::error!("storage round-trip: to_runtime failed: {error}");
-				return;
-			}
-		};
-		if &round_tripped != network {
-			log::error!("storage round-trip: network drift after to_runtime\n{}", diff_networks(network, &round_tripped));
-			#[cfg(test)]
-			panic!("storage round-trip: network drift after to_runtime");
-		}
-	}
-
-	/// Soak check: after a cursor move, the cursor's registry should equal a fresh `from_runtime` of the
-	/// current (legacy-restored) interface. `current_resources` are the resources the live network
-	/// references; history-only resources the cursor dropped are expected, not drift.
-	pub fn verify_cursor_matches_runtime(&self, interface: &NodeNetworkInterface, registry: &ResourceRegistry, current_resources: &HashSet<ResourceId>) {
-		use super::document_diff::diff_registries;
-
-		let Some(storage) = &self.storage else { return };
-		let peer = storage.session().peer();
-
-		let network = interface.document_network();
-		let metadata_view = StorageMetadataView::new(interface);
-
-		let Ok(mut conversion) = Registry::convert_from_runtime(network, &metadata_view, registry, peer) else {
-			log::error!("undo/redo shadow: from_runtime failed");
-			return;
-		};
-
-		let stored = storage.registry();
-
-		// The cursor reverts the interaction's `AddResource` while the runtime keeps the resource alive for
-		// legacy redo, so a history-only resource the cursor dropped is expected. Drop those before comparing.
-		conversion.registry.resources.retain(|id, _| stored.resources.contains_key(id) || current_resources.contains(id));
-
-		if !stored.value_equal(&conversion.registry) {
-			log::error!(
-				"undo/redo shadow: cursor registry diverged from the restored interface\n{}",
-				diff_registries(stored, &conversion.registry)
-			);
 		}
 	}
 
