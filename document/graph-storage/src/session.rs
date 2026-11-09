@@ -728,6 +728,11 @@ impl Session {
 		Ok(scratch)
 	}
 
+	/// The document as it was once `rev` was done, folded from history.
+	pub fn registry_at(&self, rev: Rev) -> Result<Registry, CrdtError> {
+		Ok(self.fold_scratch_at(Some(rev))?.working_registry)
+	}
+
 	pub fn history_len(&self) -> usize {
 		self.document.history.len()
 	}

@@ -437,10 +437,25 @@ impl DocumentHistory {
 
 	/// Build a new interface from the working registry and cached declarations. `None` when it doesn't convert.
 	pub fn rebuild_interface(&self) -> Option<NodeNetworkInterface> {
+		self.interface_from(self.storage.as_ref()?.registry())
+	}
+
+	/// Build an interface showing the document once `rev` was done, as history folds it. `None` when it doesn't convert.
+	pub fn interface_at(&self, rev: document_graph_storage::Rev) -> Option<NodeNetworkInterface> {
+		let registry = self
+			.storage
+			.as_ref()?
+			.session()
+			.registry_at(rev)
+			.inspect_err(|error| log::error!("Folding history at {rev:?} failed: {error}"))
+			.ok()?;
+		self.interface_from(&registry)
+	}
+
+	fn interface_from(&self, registry: &document_graph_storage::Registry) -> Option<NodeNetworkInterface> {
 		let storage = self.storage.as_ref()?;
 
-		storage
-			.registry()
+		registry
 			.to_runtime_with_full_metadata(&self.declarations, storage.blobs())
 			.map_err(|error| error.to_string())
 			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()))

@@ -62,11 +62,40 @@
 		const input = node.querySelector("[data-input-element]");
 		if (input instanceof HTMLElement) input.focus();
 	}
+
+	$: previewedRow = $history.rows.find((row) => row.id === $history.previewing);
+
+	// Alone, steps not yet in history enter it as the pointer comes, so they can be acted on like the rest
+	function retirePending() {
+		if (pendingHead) editor.retirePendingHistory();
+	}
+
+	function togglePreview(e: MouseEvent, row: { id: string; head: boolean }) {
+		if (e.target instanceof Element && e.target.closest("[data-row-control]")) return;
+
+		const showsCurrent = row.id === $history.previewing || (row.head && !pendingHead);
+		editor.previewHistoryInteraction(showsCurrent ? undefined : row.id);
+	}
 </script>
 
-<LayoutCol class="history-panel">
-	{#if $history.following}
-		<LayoutRow class="following">
+<LayoutCol class="history-panel" on:pointerenter={retirePending}>
+	{#if previewedRow}
+		<LayoutRow class="banner">
+			<TextLabel>Previewing</TextLabel>
+			<LayoutRow class="banner-actions">
+				{#if !$history.collaborating}
+					<TextButton
+						label="Go back to here"
+						tooltipDescription="Make this step current. The steps since stay as a branch. Editing while previewing does the same."
+						action={() => previewedRow && editor.goBackToHistoryInteraction(previewedRow.id)}
+					/>
+				{/if}
+				<TextButton label="Back to now" tooltipDescription="Show the current state again. Esc does the same." action={() => editor.previewHistoryInteraction(undefined)} />
+			</LayoutRow>
+		</LayoutRow>
+	{/if}
+	{#if $history.following && !previewedRow}
+		<LayoutRow class="banner">
 			<TextLabel>Viewing a branch</TextLabel>
 			<TextButton label="Back to now" action={() => editor.followHistoryBranch(undefined)} />
 		</LayoutRow>
@@ -94,10 +123,19 @@
 			</div>
 		{/each}
 		{#each $history.rows as row (row.id)}
-			<div class="row" class:head={row.head && !pendingHead} class:undone={row.undone} class:abandoned={row.abandoned}>
+			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+			<div
+				class="row"
+				class:head={row.head && !pendingHead}
+				class:previewed={row.id === $history.previewing}
+				class:undone={row.undone}
+				class:abandoned={row.abandoned}
+				on:click={(e) => togglePreview(e, row)}
+			>
 				{#if row.deltas > 1}
 					<button
 						class="expand"
+						data-row-control
 						class:expanded={row.expanded}
 						data-tooltip-label={row.expanded ? "Hide the changes" : "Show the changes"}
 						on:click={() => editor.expandHistoryInteraction(row.id, !row.expanded)}
@@ -110,7 +148,7 @@
 				>
 				<div class="text">
 					{#if renamingId === row.id}
-						<span class="editing" use:focusInput on:focusout={() => (renamingId = undefined)}>
+						<span class="editing" data-row-control use:focusInput on:focusout={() => (renamingId = undefined)}>
 							<TextInput value={row.named ? row.label : ""} placeholder={row.label} on:commitText={({ detail }) => commitName(row.id, detail)} />
 						</span>
 					{:else}
@@ -122,7 +160,7 @@
 						{count(row.deltas, "change", "changes")}
 					</span>
 					{#if row.tags.length > 0 || taggingId === row.id || (row.head && !pendingHead) || row.undone || row.abandoned}
-						<span class="tags">
+						<span class="tags" data-row-control>
 							{#if row.head && !pendingHead}<span class="marker">Current</span>{/if}
 							{#if row.undone}<span class="marker">Undone</span>{/if}
 							{#if row.abandoned}<span class="marker">Branch</span>{/if}
@@ -137,14 +175,14 @@
 						</span>
 					{/if}
 					{#if row.branches.length > 0}
-						<span class="branches">
+						<span class="branches" data-row-control>
 							{#each row.branches as branch (branch.id)}
 								<button class="chip branch" data-tooltip-label="Show this branch" on:click={() => editor.followHistoryBranch(branch.id)}>↳ {branch.label}</button>
 							{/each}
 						</span>
 					{/if}
 				</div>
-				<span class="actions">
+				<span class="actions" data-row-control>
 					<button class="chip" data-tooltip-label="Name this step" on:click={() => (renamingId = row.id)}>Name</button>
 					<button class="chip" data-tooltip-label="Tag this step" on:click={() => (taggingId = row.id)}>Tag</button>
 					{#if row.undone || row.abandoned}
@@ -209,11 +247,24 @@
 		flex-grow: 1;
 		padding: 4px 0;
 
-		.following {
+		.banner {
 			flex: 0 0 auto;
 			align-items: center;
 			justify-content: space-between;
+			gap: 4px;
 			padding: 0 8px 4px 8px;
+
+			.text-label {
+				min-width: 0;
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+
+			.banner-actions {
+				flex: 0 0 auto;
+				gap: 4px;
+			}
 		}
 
 		.row {
@@ -225,6 +276,19 @@
 
 			&.head {
 				background: var(--color-3-darkgray);
+			}
+
+			&:not(.delta) {
+				cursor: pointer;
+
+				&:hover {
+					background: var(--color-4-dimgray);
+				}
+			}
+
+			&.previewed {
+				background: var(--color-5-dullgray);
+				box-shadow: inset 2px 0 var(--color-e-nearwhite);
 			}
 
 			&.undone,

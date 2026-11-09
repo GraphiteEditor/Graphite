@@ -6,3 +6,4 @@ pub mod utility_types;
 pub use history_message::{HistoryMessage, HistoryMessageDiscriminant};
 #[doc(inline)]
 pub use history_message_handler::{HistoryMessageContext, HistoryMessageHandler};
+pub(crate) use history_message_handler::{Place, place};

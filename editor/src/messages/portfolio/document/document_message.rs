@@ -60,6 +60,9 @@ pub enum DocumentMessage {
 		rev: document_graph_storage::Rev,
 		change: crate::messages::portfolio::history::utility_types::LineChange,
 	},
+	PreviewHistoryStep {
+		rev: Option<document_graph_storage::Rev>,
+	},
 	DocumentStructureChanged,
 	DrawArtboardOverlays {
 		context: OverlayContext,

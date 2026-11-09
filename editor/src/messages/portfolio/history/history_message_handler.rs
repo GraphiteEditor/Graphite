@@ -1,6 +1,7 @@
 use super::utility_types::{HistoryBranch, HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow, LineChange};
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
 use crate::messages::portfolio::sync::identity::{anonymous_name, user_color};
 use crate::messages::portfolio::sync::now_ms;
 use crate::messages::prelude::*;
@@ -28,6 +29,8 @@ pub struct HistoryMessageHandler {
 	expanded: BTreeSet<Rev>,
 	limit: usize,
 	following: Option<Rev>,
+	/// The step the active document was last seen previewing, so the panel shows the head's line again once it ends.
+	previewed: Option<Rev>,
 	last_sent: Option<u64>,
 }
 
@@ -64,13 +67,24 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 			}
 			HistoryMessage::LoadMore => self.limit = self.limit.max(PAGE) + PAGE,
 			HistoryMessage::Follow { id } => self.following = id.as_deref().and_then(parse_rev),
+			HistoryMessage::Preview { id } => responses.add(DocumentMessage::PreviewHistoryStep {
+				rev: id.as_deref().and_then(parse_rev),
+			}),
+			HistoryMessage::RetirePending => {
+				let Some(document) = context.active_document_id.and_then(|id| context.documents.get_mut(&id)) else {
+					return;
+				};
+				if !document.is_in_session() && document.network_interface.transaction_status() == TransactionStatus::Finished {
+					document.retire_storage_interaction();
+				}
+			}
 			HistoryMessage::GoBack { id } => {
 				let Some((gdd, rev)) = active_storage(&context).zip(parse_rev(&id)) else { return };
+				responses.add(DocumentMessage::PreviewHistoryStep { rev: None });
 				match place(gdd.session(), rev) {
 					Some(Place::Undone(steps)) => (0..steps).for_each(|_| responses.add(DocumentMessage::Redo)),
 					Some(Place::Line(0)) => {}
-					Some(Place::Line(_)) => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::MoveHead }),
-					None => log::warn!("The History panel asked to go to {rev:?}, which is not on the head's line"),
+					Some(Place::Line(_)) | None => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::MoveHead }),
 				}
 			}
 			HistoryMessage::RemoveStep { id } => {
@@ -80,6 +94,7 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 			}
 			HistoryMessage::BringBack { id } => {
 				let Some((gdd, rev)) = active_storage(&context).zip(parse_rev(&id)) else { return };
+				responses.add(DocumentMessage::PreviewHistoryStep { rev: None });
 				match place(gdd.session(), rev) {
 					Some(Place::Undone(steps)) => (0..steps).for_each(|_| responses.add(DocumentMessage::Redo)),
 					Some(Place::Line(_)) => {}
@@ -114,15 +129,23 @@ impl HistoryMessageHandler {
 		if self.following.is_some_and(|tip| gdd.is_none_or(|gdd| gdd.session().delta(tip).is_none())) {
 			self.following = None;
 		}
+		let previewing = document.and_then(|document| document.previewed_history_step());
+		if self.previewed.is_some() && previewing.is_none() {
+			self.following = None;
+		}
+		self.previewed = previewing;
 		let limit = self.limit.max(PAGE);
-		let fingerprint = fingerprint(context.active_document_id, gdd, limit, &self.expanded, self.following);
+		let fingerprint = fingerprint(context.active_document_id, gdd, limit, &self.expanded, self.following, previewing);
 		if self.last_sent == Some(fingerprint) {
 			return;
 		}
 		self.last_sent = Some(fingerprint);
 		let state = document
 			.zip(gdd)
-			.map(|(document, gdd)| panel_state(gdd, document.declarations(), limit, &self.expanded, self.following))
+			.map(|(document, gdd)| HistoryPanelState {
+				previewing: previewing.map(|rev| rev.to_string()),
+				..panel_state(gdd, document.declarations(), limit, &self.expanded, self.following)
+			})
 			.unwrap_or_default();
 		responses.add(FrontendMessage::UpdateHistoryPanel { state });
 	}
@@ -141,14 +164,15 @@ fn parse_rev(id: &str) -> Option<Rev> {
 }
 
 /// Where an interaction sits relative to the head.
-enum Place {
+pub(crate) enum Place {
 	/// On the head's line, this many interactions back.
 	Line(usize),
 	/// Undone above the head, this many redos forward.
 	Undone(usize),
 }
 
-fn place(session: &Session, rev: Rev) -> Option<Place> {
+/// Where `rev` is relative to the head. `None` for a step on a branch.
+pub(crate) fn place(session: &Session, rev: Rev) -> Option<Place> {
 	let head = session.head_rev();
 	let (kept, _) = line(session, head, None, usize::MAX);
 	if let Some(steps) = interactions(&kept).iter().position(|group| group[0].id == rev) {
@@ -163,9 +187,9 @@ fn place(session: &Session, rev: Rev) -> Option<Place> {
 }
 
 /// A hash of the panel's inputs, cheap enough for every frame.
-fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>) -> u64 {
+fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>, previewing: Option<Rev>) -> u64 {
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
-	(document_id, limit, expanded, following).hash(&mut hasher);
+	(document_id, limit, expanded, following, previewing).hash(&mut hasher);
 	if let Some(gdd) = gdd {
 		let session = gdd.session();
 		(session.history_len(), session.head_rev(), session.redo_stack(), session.hot_log().len(), session.pending_action()).hash(&mut hasher);
@@ -230,6 +254,7 @@ fn panel_state(gdd: &GddV1, declarations: &Declarations, limit: usize, expanded:
 		progress: progress_rows(session, &people, &names),
 		more,
 		following: following.map(|tip| tip.to_string()),
+		previewing: None,
 		collaborating,
 	}
 }
@@ -825,6 +850,43 @@ mod tests {
 		assert_eq!(layer_count(&editor), 2, "redo removes it again");
 		editor.handle_message(DocumentMessage::DocumentHistoryBackward).await;
 		assert_eq!(layer_count(&editor), 3, "and undo takes the removal back again");
+	}
+
+	#[tokio::test]
+	async fn previewing_a_step_shows_it_until_the_preview_ends_without_changing_history() {
+		let mut editor = three_rectangles().await;
+		let before = rows(&editor);
+		let first = before[2].id.clone();
+
+		editor.handle_message(HistoryMessage::Preview { id: Some(first.clone()) }).await;
+		assert_eq!(layer_count(&editor), 1, "the first rectangle's step shows one rectangle");
+		assert_eq!(editor.active_document().previewed_history_step(), parse_rev(&first));
+
+		editor.handle_message(HistoryMessage::Preview { id: None }).await;
+		assert_eq!(layer_count(&editor), 3);
+		assert_eq!(editor.active_document().previewed_history_step(), None);
+		assert_eq!(rows(&editor), before, "previewing leaves history as it was");
+	}
+
+	#[tokio::test]
+	async fn editing_while_previewing_continues_from_the_previewed_step() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = three_rectangles().await;
+		let first = rows(&editor)[2].id.clone();
+
+		editor.handle_message(HistoryMessage::Preview { id: Some(first.clone()) }).await;
+		editor.drag_tool(ToolType::Ellipse, 0., 150., 100., 250., ModifierKeys::empty()).await;
+		editor.active_document_mut().retire_storage_interaction();
+
+		assert_eq!(editor.active_document().previewed_history_step(), None);
+		assert_eq!(layer_count(&editor), 2, "the ellipse is drawn next to the first rectangle only");
+		let rows = rows(&editor);
+		assert_eq!(rows[0].label, "Drew an Ellipse");
+		let previewed = rows.iter().find(|row| row.id == first).expect("the previewed step is on the line");
+		assert_eq!(previewed.branches.len(), 1, "the steps after it stay as a branch");
+		let violations = editor.active_document().network_interface.validate_invariants();
+		assert!(violations.is_empty(), "{violations:#?}");
 	}
 
 	#[tokio::test]
