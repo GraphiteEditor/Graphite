@@ -9,8 +9,7 @@ use super::utility_types::network_interface::editor_delta::{EditorDelta, Staging
 use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage, collect_network_view_settings};
 use crate::messages::portfolio::history::utility_types::LineChange;
 
-/// Per-document undo/redo state, held by the `Gdd` working copy. Owns the staging, retirement, and the undo
-/// steps taken in storage, so the handler drives history through one surface.
+/// Per-document undo/redo state, kept in the `Gdd` working copy.
 ///
 /// Not serialized: a clone shares the working-copy container by `Arc`, so it keeps reading the live working copy.
 #[derive(derivative::Derivative)]
@@ -30,7 +29,7 @@ pub struct DocumentHistory {
 	/// moved without recording it (an upgrade on open), since the recorded batch would then describe only
 	/// part of the distance between the two.
 	needs_whole_document_stage: bool,
-	/// How storage undid each step that redo can bring back, the latest last.
+	/// How storage undid each step that redo can bring back, latest last.
 	undo_notes: VecDeque<UndoNote>,
 }
 
@@ -45,7 +44,7 @@ enum UndoNote {
 }
 
 impl DocumentHistory {
-	/// Forget the steps redo could bring back, called when a fresh edit or a history line change leaves them behind.
+	/// Forget the steps redo could bring back.
 	pub fn clear_redo(&mut self) {
 		self.undo_notes.clear();
 	}
@@ -89,6 +88,7 @@ impl DocumentHistory {
 	/// Undoes the latest step in storage, so it can be redone. Returns whether a step was undone.
 	pub fn undo(&mut self, in_session: bool) -> bool {
 		let Some(note) = self.undo_step(in_session) else { return false };
+
 		self.undo_notes.push_back(note);
 		if self.undo_notes.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.undo_notes.pop_front();
@@ -96,13 +96,13 @@ impl DocumentHistory {
 		true
 	}
 
-	/// Undoes the latest step in storage for good, as aborting it does. Returns whether a step was undone.
+	/// Undoes the latest step in storage without a way to redo it. Returns whether a step was undone.
 	pub fn discard_step(&mut self, in_session: bool) -> bool {
 		self.undo_step(in_session).is_some()
 	}
 
-	/// Takes the latest step back: retracted while hot, dropped from a session's shared line once retired, or else
-	/// stepped over by the cursor.
+	/// Takes the latest step back. A hot step is retracted, a retired one is dropped from a session's shared line,
+	/// and otherwise the cursor moves back over it.
 	fn undo_step(&mut self, in_session: bool) -> Option<UndoNote> {
 		// A failed retract may already have taken the step back, so no older step is undone after it
 		let retracted = match self.retract_storage_interaction() {
@@ -124,12 +124,12 @@ impl DocumentHistory {
 
 	/// Brings back the latest undone step. Returns whether it was redone.
 	pub fn redo(&mut self) -> bool {
-		let reachable = self.storage.as_ref().is_some_and(|storage| storage.can_change_line());
 		let Some(note) = self.undo_notes.pop_back() else { return false };
 
+		let line_reachable = self.storage.as_ref().is_some_and(|storage| storage.can_change_line());
 		let redone = match &note {
 			UndoNote::Retracted(ops) => self.restage_ops(ops.clone()),
-			UndoNote::Dropped(rev) => reachable && self.redo_retired_step(*rev),
+			UndoNote::Dropped(rev) => line_reachable && self.redo_retired_step(*rev),
 			UndoNote::Cursor => self.move_cursor(false),
 		};
 		if !redone {

@@ -547,7 +547,7 @@ impl Session {
 		Ok(touched)
 	}
 
-	/// What the deltas from `tip` back along its parents to `base`, exclusive, named. The span an undo or redo walked.
+	/// What the deltas from `tip` back along its parents to `base` named, without `base` itself.
 	pub fn touched_between(&self, base: Option<Rev>, tip: Rev) -> Touched {
 		let mut touched = Touched::default();
 		let mut cursor = Some(tip);

@@ -2987,13 +2987,12 @@ impl DocumentMessageHandler {
 	fn abort_steps(&mut self, document_id: DocumentId, undo_count: usize, byte_store: &dyn ResourceStorage, responses: &mut VecDeque<Message>) {
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 
-		// The open transaction's edits are staged so they can be taken back with the rest. One that changed nothing
-		// left no step, so the count holds one fewer.
-		let modified = self.network_interface.transaction_status() == TransactionStatus::Modified;
-		if modified {
+		let open_transaction_has_edits = self.network_interface.transaction_status() == TransactionStatus::Modified;
+		if open_transaction_has_edits {
+			// Staged so they are taken back with the steps before them
 			self.commit_storage_snapshot(byte_store);
 		}
-		let steps = if modified { undo_count } else { undo_count.saturating_sub(1) };
+		let steps = if open_transaction_has_edits { undo_count } else { undo_count.saturating_sub(1) };
 
 		let stored_name = self.stored_name().map(str::to_string);
 		let in_session = self.is_in_session();
@@ -3001,8 +3000,9 @@ impl DocumentMessageHandler {
 		if discarded == 0 {
 			return;
 		}
-		// Staging this transaction's edits made storage's own redo unreachable
-		if modified {
+
+		// Staging the open transaction's edits made storage's own redo unreachable
+		if open_transaction_has_edits {
 			self.history.clear_redo();
 		}
 		self.follow_storage_changes(stored_name, responses);
@@ -4263,8 +4263,7 @@ impl DocumentMessageHandler {
 		self.history.resource_gc_roots()
 	}
 
-	/// The resources the current network references. One only history references lives on in storage, which an undo
-	/// restoring it brings back through the resource registry refresh.
+	/// The resources the current network references.
 	pub fn used_resources(&self) -> Box<[ResourceId]> {
 		let mut resources = HashSet::new();
 		self.network_interface.collect_used_resources(&mut resources);
