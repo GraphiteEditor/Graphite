@@ -68,6 +68,8 @@ struct Capture {
 	pixels: Option<Pixels>,
 	/// The frontend got a close-up of what the step changed.
 	detailed: bool,
+	/// The area to render close up once the document shows this step and no tool is mid-gesture.
+	close_up: Option<[DVec2; 2]>,
 	/// Orders the captures so the oldest is dropped first.
 	taken: u64,
 }
@@ -190,8 +192,9 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 }
 
 impl HistoryMessageHandler {
-	/// Asks for the newest step to be captured once no tool is mid-gesture, since a capture shows the document as it renders
-	/// now, and once it is, for the steps before it that weren't. One capture is asked for at a time.
+	/// Asks for the newest step to be captured once no tool is mid-gesture and no past step is previewed, since a capture
+	/// shows the document as it renders now, and once it is, for the steps before it that weren't. One capture is asked for
+	/// at a time.
 	fn request_capture(&mut self, context: &HistoryMessageContext) {
 		self.captures.retain(|id, _| context.documents.contains_key(id));
 		let Some(document_id) = context.active_document_id else { return };
@@ -200,9 +203,15 @@ impl HistoryMessageHandler {
 			return;
 		}
 		let Some(step) = document.storage().and_then(|gdd| current_stamp(gdd.session())) else { return };
-		let captured = self.captures.get(&document_id).is_some_and(|captures| captures.contains_key(&step));
-		if !captured {
-			if context.executor.submit_document_capture(document, document_id, step, None) {
+		// The whole document until the step is captured, then its close-up, with `None` asking for the whole document
+		let live_render = match self.captures.get(&document_id).and_then(|captures| captures.get(&step)) {
+			None => Some(None),
+			Some(own) if !own.detailed => own.close_up.map(Some),
+			Some(_) => None,
+		};
+		let shows_current_step = document.previewed_history_step().is_none();
+		if shows_current_step && let Some(close_up) = live_render {
+			if context.executor.submit_document_capture(document, document_id, step, close_up) {
 				self.requested = Some((document_id, step));
 			}
 			return;
@@ -231,7 +240,9 @@ impl HistoryMessageHandler {
 	}
 
 	/// Keeps a capture that still shows its step, with where each layer was, and gives the frontend its image. When the
-	/// step before kept its pixels, asks for what changed close up, which comes back to be tinted by how it changed.
+	/// step before kept its pixels, notes the area that changed to be rendered close up, which comes back to be tinted by
+	/// how it changed. A past state asks for it at once, while the document waits until it shows the step with no tool
+	/// mid-gesture.
 	fn receive_capture(&mut self, document_id: DocumentId, step: TimeStamp, capture: DocumentCapture, context: &HistoryMessageContext, responses: &mut VecDeque<Message>) {
 		let Some(document) = context.documents.get(&document_id) else { return };
 		let Some(session) = document.storage().map(GddV1::session) else { return };
@@ -245,15 +256,17 @@ impl HistoryMessageHandler {
 			.and_then(|before| Some((before, before.pixels.as_ref()?)));
 
 		if let Some(own) = captures.get(&step) {
-			let Some(((before, before_pixels), (frame, CaptureImage::Pixels(close_up)))) = before.zip(capture.detail) else {
-				return;
-			};
-			let tinted = tint_changes(&close_up, frame, before_pixels, before.frame, &changed_areas(&before.layers, &own.layers));
+			let tinted = before.zip(capture.detail).and_then(|((before, before_pixels), (frame, image))| match image {
+				CaptureImage::Pixels(close_up) => Some(tint_changes(&close_up, frame, before_pixels, before.frame, &changed_areas(&before.layers, &own.layers))),
+				CaptureImage::Svg(_) => None,
+			});
+			if let Some(own) = captures.get_mut(&step) {
+				own.close_up = None;
+				own.detailed = tinted.is_some();
+			}
+			let Some(tinted) = tinted else { return };
 			responses.add(image_message(detail_id(step), CaptureImage::Pixels(tinted)));
 			self.images_sent += 1;
-			if let Some(own) = captures.get_mut(&step) {
-				own.detailed = true;
-			}
 			return;
 		}
 
@@ -312,22 +325,18 @@ impl HistoryMessageHandler {
 			layers,
 			pixels,
 			detailed: false,
+			close_up: detail.filter(|_| past.is_none()),
 			taken,
 		};
 		captures.insert(step, own);
 		responses.add(image_message(shot_id(step), capture.image));
 		self.images_sent += 1;
 
-		let Some(detail) = detail else { return };
-		let asked = match past {
-			Some(past) => {
-				let asked = context.executor.submit_past_capture(document_id, step, past.network.clone(), past.layers.clone(), Some(detail));
-				self.past = asked.then_some(past);
-				asked
-			}
-			None => context.executor.submit_document_capture(document, document_id, step, Some(detail)),
-		};
-		if asked {
+		if let Some(past) = past
+			&& let Some(detail) = detail
+			&& context.executor.submit_past_capture(document_id, step, past.network.clone(), past.layers.clone(), Some(detail))
+		{
+			self.past = Some(past);
 			self.requested = Some((document_id, step));
 		}
 	}
@@ -1077,11 +1086,42 @@ mod tests {
 
 	/// Runs the graph and captures the current step, then lets the editor take in what comes back, a close-up included.
 	async fn capture_now(editor: &mut crate::test_utils::EditorTestUtils) -> (TimeStamp, Vec<FrontendMessage>) {
+		let (step, mut responses) = capture_whole_now(editor).await;
+
+		// The panel asks for the close-up on a later tick, once the document is idle
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let close_up = portfolio
+			.history
+			.captures
+			.get(&document_id)
+			.and_then(|captures| captures.get(&step))
+			.and_then(|capture| capture.close_up);
+		if let Some(close_up) = close_up {
+			let document = &portfolio.documents[&document_id];
+			assert!(portfolio.executor.submit_document_capture(document, document_id, step, Some(close_up)));
+			responses.extend(take_in_capture(editor).await);
+		}
+		(step, responses)
+	}
+
+	/// Runs the graph and captures the whole document at the current step, leaving its close-up to be asked for.
+	async fn capture_whole_now(editor: &mut crate::test_utils::EditorTestUtils) -> (TimeStamp, Vec<FrontendMessage>) {
+		let gdd = editor.active_document().storage().expect("every document has a working copy");
+		let step = current_stamp(gdd.session()).expect("the document has a step");
+		evaluate_graph(editor);
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = &portfolio.documents[&document_id];
+		assert!(portfolio.executor.submit_document_capture(document, document_id, step, None), "the runtime holds this document's graph");
+		(step, take_in_capture(editor).await)
+	}
+
+	/// Hands the runtime the active document's graph to run, as the viewport does before the panel captures it.
+	fn evaluate_graph(editor: &mut crate::test_utils::EditorTestUtils) {
 		use glam::UVec2;
 		use graphene_std::application_io::TimingInformation;
 
-		let gdd = editor.active_document().storage().expect("every document has a working copy");
-		let step = current_stamp(gdd.session()).expect("the document has a step");
 		let portfolio = editor.portfolio_message_handler_mut();
 		let document_id = portfolio.active_document_id.unwrap();
 		let document = portfolio.documents.get_mut(&document_id).unwrap();
@@ -1089,15 +1129,16 @@ mod tests {
 			.executor
 			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO)
 			.unwrap();
-		assert!(portfolio.executor.submit_document_capture(document, document_id, step, None), "the runtime holds this document's graph");
+	}
 
+	async fn take_in_capture(editor: &mut crate::test_utils::EditorTestUtils) -> Vec<FrontendMessage> {
 		let mut responses = Vec::new();
 		for _ in 0..2 {
 			editor.runtime.update();
 			editor.runtime.run().await;
 			responses.extend(editor.dispatch(Message::Wake));
 		}
-		(step, responses)
+		responses
 	}
 
 	/// The pixels, or else the SVG, the frontend got under `id`.
@@ -1204,6 +1245,38 @@ mod tests {
 		assert!(reddened, "the rectangle should show where it was, tinted as removed");
 	}
 
+	/// A close-up renders the document as it is, so it waits for a gesture underway to end rather than show it half done
+	/// in the area measured before it.
+	#[tokio::test]
+	async fn a_close_up_waits_for_the_gesture_underway_to_end() {
+		use crate::test_utils::test_prelude::*;
+
+		fn asks_for_a_capture(editor: &mut EditorTestUtils) -> bool {
+			let portfolio = editor.portfolio_message_handler_mut();
+			let context = HistoryMessageContext {
+				documents: &mut portfolio.documents,
+				active_document_id: portfolio.active_document_id,
+				panel_open: true,
+				executor: &portfolio.executor,
+			};
+			portfolio.history.request_capture(&context);
+			portfolio.history.requested.is_some()
+		}
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		capture_now(&mut editor).await;
+		editor.drag_tool(ToolType::Ellipse, 150., 0., 250., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::StartTransaction).await;
+		capture_whole_now(&mut editor).await;
+
+		assert!(!asks_for_a_capture(&mut editor), "the close-up waits while a transaction is open");
+		editor.handle_message(DocumentMessage::EndTransaction).await;
+		evaluate_graph(&mut editor);
+		assert!(asks_for_a_capture(&mut editor), "and is asked for once it ends");
+	}
+
 	#[tokio::test]
 	async fn a_capture_taken_while_hot_stays_with_its_step_in_history() {
 		use crate::test_utils::test_prelude::*;
@@ -1219,6 +1292,7 @@ mod tests {
 			layers: BTreeMap::new(),
 			pixels: None,
 			detailed: false,
+			close_up: None,
 			taken: 0,
 		};
 		let captures = HashMap::from([(step, capture)]);
