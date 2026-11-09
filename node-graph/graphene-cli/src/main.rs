@@ -140,10 +140,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		if ArchiveFormat::detect(&archive).is_none() {
 			return Err("ExtractLegacyDoc requires a .gdd document".into());
 		}
+
 		let gdd = open_gdd(&archive).await?;
 		let Some(legacy_doc) = gdd.read_legacy_document().await else {
 			return Err("gdd file did not contain a legacy .graphite document".into());
 		};
+
 		// Saved documents carry the `.graphite` extension too, so the extracted file is named apart from its source
 		let new_path = path.with_extension("legacy.graphite");
 		std::fs::write(&new_path, legacy_doc).map_err(|error| format!("Failed to write .graphite file: {error}"))?;

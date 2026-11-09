@@ -1260,8 +1260,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
-				// Always saved as a `.gdd` container, under the `.graphite` extension. Opening tells it apart from a legacy file by its magic bytes.
 				let include_history = preferences.save_with_history;
+
+				// Saved as a `.gdd` container under the `.graphite` extension
 				let name = format!("{}.{FILE_EXTENSION}", self.name.clone());
 
 				// A document opened from a `.gdd` file is saved back under the `.graphite` extension
