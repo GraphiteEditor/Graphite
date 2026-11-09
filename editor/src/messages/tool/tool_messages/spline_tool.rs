@@ -92,6 +92,9 @@ impl ToolMetadata for SplineTool {
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::Spline
 	}
+	fn default_line_weight(&self) -> Option<f64> {
+		Some(self.options.drawing.default_line_weight)
+	}
 }
 
 impl ToolEditTarget for SplineTool {
@@ -122,6 +125,7 @@ impl LayoutHolder for SplineTool {
 		widgets.push(
 			IconButton::new("SwapHorizontal", 16)
 				.tooltip_label("Swap Fill/Stroke Colors")
+				.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapFillAndStroke))
 				.on_update(|_| {
 					SplineToolMessage::UpdateOptions {
 						options: SplineOptionsUpdate::SwapFillAndStroke,

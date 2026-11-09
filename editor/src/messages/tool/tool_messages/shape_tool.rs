@@ -462,6 +462,7 @@ impl LayoutHolder for ShapeTool {
 			widgets.push(
 				IconButton::new("SwapHorizontal", 16)
 					.tooltip_label("Swap Fill/Stroke Colors")
+					.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapFillAndStroke))
 					.on_update(|_| {
 						ShapeToolMessage::UpdateOptions {
 							options: ShapeOptionsUpdate::SwapFillAndStroke,
@@ -639,6 +640,14 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 				swap_fill_and_stroke(&mut self.options.drawing, context.document, responses);
 				// Persist the new swap state as the current shape mode's default
 				self.options.shape_colors_swapped.insert(self.tool_data.current_shape, self.options.drawing.colors_swapped);
+				if !has_paintable_selection(context.document) {
+					if let Some(enabled) = self.options.drawing.fill.enabled {
+						self.options.shape_fill_defaults.insert(self.tool_data.current_shape, enabled);
+					}
+					if let Some(enabled) = self.options.drawing.stroke.enabled {
+						self.options.shape_stroke_defaults.insert(self.tool_data.current_shape, enabled);
+					}
+				}
 			}
 			ShapeOptionsUpdate::WorkingColorsChanged => {
 				apply_working_colors(&mut self.options.drawing, context.global_tool_data, context.document);
@@ -735,6 +744,9 @@ impl ToolMetadata for ShapeTool {
 	}
 	fn tool_type(&self) -> ToolType {
 		ToolType::Shape
+	}
+	fn default_line_weight(&self) -> Option<f64> {
+		Some(self.options.drawing.default_line_weight)
 	}
 }
 

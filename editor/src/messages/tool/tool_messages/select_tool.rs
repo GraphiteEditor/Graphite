@@ -157,6 +157,9 @@ impl ToolMetadata for SelectTool {
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::Select
 	}
+	fn default_line_weight(&self) -> Option<f64> {
+		Some(self.drawing.default_line_weight)
+	}
 }
 
 impl ToolEditTarget for SelectTool {
@@ -264,6 +267,7 @@ impl LayoutHolder for SelectTool {
 			widgets.push(
 				IconButton::new("SwapHorizontal", 16)
 					.tooltip_label("Swap Fill/Stroke Colors")
+					.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapFillAndStroke))
 					.on_update(|_| {
 						SelectToolMessage::SelectOptions {
 							options: SelectOptionsUpdate::SwapFillAndStroke,
