@@ -1,5 +1,39 @@
 //! What the History panel shows, as the frontend receives it, and the changes it asks of the head's line.
 
+use glam::DVec2;
+use graph_craft::document::NodeId;
+use std::collections::HashMap;
+
+/// The document as rendered once a step is done, for the History panel to show and compare.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DocumentCapture {
+	/// The whole document.
+	pub image: CaptureImage,
+	/// The document area `image` shows.
+	pub frame: [DVec2; 2],
+	/// The area asked for in detail, and its image.
+	pub detail: Option<([DVec2; 2], CaptureImage)>,
+	/// The proto node giving each layer's own content, whose ID changes with that content.
+	pub layer_sources: HashMap<NodeId, NodeId>,
+	/// Where each layer's own content lies, measured alike for the current state and past ones, which the editor holds no
+	/// layer metadata for.
+	pub layer_bounds: Option<HashMap<NodeId, [DVec2; 2]>>,
+}
+
+/// A capture rendered like the layer thumbnails: pixels from Vello, or an SVG for the frontend to draw when the GPU is unavailable.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum CaptureImage {
+	Pixels(Pixels),
+	Svg(String),
+}
+
+/// Straight RGBA pixels, row by row.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Pixels {
+	pub size: glam::UVec2,
+	pub rgba: Vec<u8>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LineChange {
 	/// Moves the shared head to an earlier interaction and keeps the later steps as a branch.
@@ -48,6 +82,17 @@ pub struct HistoryRow {
 	pub head: bool,
 	pub expanded: bool,
 	pub details: Vec<HistoryDeltaRow>,
+	/// How the document looked once this step was done, if the panel was open to capture it.
+	pub thumbnail: Option<HistoryThumbnail>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HistoryThumbnail {
+	/// The ID the frontend received the whole document's image under.
+	pub whole: String,
+	/// The ID of a close-up of what the step changed, tinted by how, when the step before was captured too.
+	pub detail: Option<String>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -79,4 +124,5 @@ pub struct HistoryProgressRow {
 	pub ops: usize,
 	/// Still being made, not closed and waiting.
 	pub open: bool,
+	pub thumbnail: Option<HistoryThumbnail>,
 }

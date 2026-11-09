@@ -1,5 +1,6 @@
 use super::evaluated_output;
 use crate::messages::frontend::FrontendMessage;
+use crate::messages::portfolio::history::utility_types::{CaptureImage, DocumentCapture, Pixels};
 #[cfg(feature = "gpu")]
 use atlas::ThumbnailAtlasLayout;
 use glam::{DAffine2, DVec2, UVec2};
@@ -29,6 +30,14 @@ mod atlas;
 
 /// The time thumbnails are evaluated at, so they don't depend on the playhead.
 const THUMBNAIL_TIME: f64 = 0.;
+
+/// Finds the proto node compiled from the document node at a path.
+pub type SourceLookup<'a> = &'a dyn Fn(&[NodeId]) -> Option<NodeId>;
+
+/// Looks paths up in what `executor` last compiled.
+pub fn compiled_sources(executor: &DynamicExecutor) -> impl Fn(&[NodeId]) -> Option<NodeId> + '_ {
+	|path| executor.tree().source_map().get(path).map(|(id, _)| *id)
+}
 
 /// The size in pixels of a thumbnail rendered at this device pixel ratio.
 #[cfg_attr(
@@ -85,11 +94,11 @@ impl Thumbnails {
 	}
 
 	/// Finds the proto node giving each layer's content in the newly compiled graph, marking the layers whose proto node changed as stale.
-	pub fn update_sources(&mut self, layer_paths: &[Vec<NodeId>], network: &NodeNetwork, executor: &DynamicExecutor) {
+	pub fn update_sources(&mut self, layer_paths: &[Vec<NodeId>], network: &NodeNetwork, source_of: SourceLookup) {
 		// O(layers * depth)
 		let sources: HashMap<NodeId, NodeId> = layer_paths
 			.iter()
-			.filter_map(|layer_path| Some((*layer_path.last()?, thumbnail_source(layer_path, network, executor)?)))
+			.filter_map(|layer_path| Some((*layer_path.last()?, thumbnail_source(layer_path, network, source_of)?)))
 			.collect();
 
 		// A proto node's ID hashes everything upstream of it, so a layer whose source kept its ID shows the same content
@@ -224,22 +233,76 @@ impl Thumbnails {
 	}
 
 	async fn render_svg(&mut self, layer: NodeId, content: &ThumbnailContent, responses: &mut VecDeque<FrontendMessage>) {
-		let bounds = content.bounds();
-		let footprint = Footprint {
-			transform: DAffine2::from_translation(bounds[0]),
-			resolution: (bounds[1] - bounds[0]).abs().as_uvec2(),
-			quality: RenderQuality::Full,
-		};
-		let render_params = RenderParams {
-			footprint,
-			thumbnail: true,
-			..Default::default()
-		};
-		let mut render = SvgRender::new();
-		content.graphic().render_svg(&mut render, &render_params);
-		render.format_svg(bounds[0], bounds[1]);
+		self.show_svg(layer, content.svg(), responses).await;
+	}
 
-		self.show_svg(layer, render.svg.to_svg_string(), responses).await;
+	/// Renders the whole document as the network's export gives it, and the area `detail` close up, the way layer
+	/// thumbnails are rendered, along with what each layer currently shows.
+	pub async fn capture_document(
+		&self,
+		network: &NodeNetwork,
+		executor: &DynamicExecutor,
+		source_of: SourceLookup<'_>,
+		editor_api: &PlatformEditorApi,
+		detail: Option<[DVec2; 2]>,
+	) -> Option<DocumentCapture> {
+		let content = match network.exports.first().and_then(|export| network.input_source(&[], export)) {
+			Some(source) => {
+				let content_node = source_of(source.as_slice())?;
+				ThumbnailContent::evaluate(executor, content_node)?
+			}
+			// Nothing reaches the export, so the document shows nothing
+			None => ThumbnailContent::Graphics(List::default()),
+		};
+
+		let frame = content.bounds();
+		let frames: Vec<[DVec2; 2]> = std::iter::once(frame).chain(detail).collect();
+		let mut images: Vec<CaptureImage> = match self.render_frames_with_vello(&content, &frames, editor_api).await {
+			Some(pixels) => pixels.into_iter().map(CaptureImage::Pixels).collect(),
+			None => frames.iter().map(|&frame| CaptureImage::Svg(content.svg_of(frame))).collect(),
+		};
+		let detail_image = (images.len() > 1).then(|| images.pop()).flatten();
+		Some(DocumentCapture {
+			image: images.pop()?,
+			frame,
+			detail: detail.zip(detail_image),
+			layer_sources: self.sources.clone(),
+			layer_bounds: None,
+		})
+	}
+
+	pub fn scale(&self) -> f64 {
+		self.scale
+	}
+
+	/// Where each layer's own content lies, from the content its thumbnail shows.
+	pub fn layer_bounds(&self, executor: &DynamicExecutor) -> HashMap<NodeId, [DVec2; 2]> {
+		let bounds = |source: NodeId| ThumbnailContent::evaluate(executor, source)?.content_bounds();
+		self.sources.iter().filter_map(|(&layer, &source)| Some((layer, bounds(source)?))).collect()
+	}
+
+	/// Renders each frame of the content into a cell the size of a layer thumbnail, giving none if Vello is unavailable.
+	#[cfg(feature = "gpu")]
+	async fn render_frames_with_vello(&self, content: &ThumbnailContent, frames: &[[DVec2; 2]], editor_api: &PlatformEditorApi) -> Option<Vec<Pixels>> {
+		let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
+		let cell_size = cell_size(self.scale);
+		let size = UVec2::new(cell_size.x * frames.len() as u32, cell_size.y);
+
+		let texture = executor.render_vello(size, DAffine2::IDENTITY, &mut |scene| atlas::draw_frames(scene, cell_size, content, frames));
+		let texture = texture.inspect_err(|error| log::error!("Failed to render the document capture: {error}")).ok()?;
+		let raster = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await;
+		let (pixels, _, _) = raster.to_flat_u8();
+
+		let cell = |index: usize| Pixels {
+			size: cell_size,
+			rgba: atlas::cell_pixels(&pixels, size.x, cell_size, UVec2::new(index as u32 * cell_size.x, 0)),
+		};
+		Some((0..frames.len()).map(cell).collect())
+	}
+
+	#[cfg(not(feature = "gpu"))]
+	async fn render_frames_with_vello(&self, _content: &ThumbnailContent, _frames: &[[DVec2; 2]], _editor_api: &PlatformEditorApi) -> Option<Vec<Pixels>> {
+		None
 	}
 
 	/// Draws the SVG into the canvases the layer's rows show, so the browser rasterizes it once rather than keeping it in the page.
@@ -344,8 +407,35 @@ impl ThumbnailContent {
 		}
 	}
 
+	fn svg(&self) -> String {
+		self.svg_of(self.bounds())
+	}
+
+	/// The SVG of the area `bounds`.
+	fn svg_of(&self, bounds: [DVec2; 2]) -> String {
+		let footprint = Footprint {
+			transform: DAffine2::from_translation(bounds[0]),
+			resolution: (bounds[1] - bounds[0]).abs().as_uvec2(),
+			quality: RenderQuality::Full,
+		};
+		let render_params = RenderParams {
+			footprint,
+			thumbnail: true,
+			..Default::default()
+		};
+		let mut render = SvgRender::new();
+		self.graphic().render_svg(&mut render, &render_params);
+		render.format_svg(bounds[0], bounds[1]);
+		render.svg.to_svg_string()
+	}
+
 	/// The area the thumbnail shows, centered on the content at the thumbnail's aspect ratio.
 	fn bounds(&self) -> [DVec2; 2] {
+		expand_to_thumbnail_aspect(self.content_bounds().unwrap_or([DVec2::ZERO, DVec2::ONE]))
+	}
+
+	/// Where the content lies, if it has any extent.
+	fn content_bounds(&self) -> Option<[DVec2; 2]> {
 		let bounds = match self {
 			// Text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::TextList` content
 			Self::Graphics(graphics) => graphene_std::renderer::graphic_list_bounding_box(graphics, DAffine2::IDENTITY),
@@ -354,16 +444,15 @@ impl ThumbnailContent {
 			Self::Text(text) => graphene_std::renderer::text_list_bounding_box(text, DAffine2::IDENTITY),
 		};
 
-		let bounds = match bounds {
-			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
-			_ => [DVec2::ZERO, DVec2::ONE],
-		};
-		expand_to_thumbnail_aspect(bounds)
+		match bounds {
+			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => Some(bounds),
+			_ => None,
+		}
 	}
 }
 
 /// The proto node giving the content a layer's thumbnail shows, which is only what the layer adds if it extends the stack below it.
-fn thumbnail_source(layer_path: &[NodeId], network: &NodeNetwork, executor: &DynamicExecutor) -> Option<NodeId> {
+fn thumbnail_source(layer_path: &[NodeId], network: &NodeNetwork, source_of: SourceLookup) -> Option<NodeId> {
 	let output = network.output_source(layer_path, 0)?;
 
 	// A hidden layer, or one passing through what's below it, has nothing of its own to show
@@ -379,7 +468,7 @@ fn thumbnail_source(layer_path: &[NodeId], network: &NodeNetwork, executor: &Dyn
 		output
 	};
 
-	executor.tree().source_map().get(source.as_slice()).map(|(id, _)| *id)
+	source_of(source.as_slice())
 }
 
 /// Converts the other kinds of graphical content into a graphic.
@@ -445,6 +534,7 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 #[cfg(test)]
 mod tests {
 	use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
+	use crate::messages::portfolio::history::utility_types::CaptureImage;
 	use crate::test_utils::test_prelude::*;
 	use glam::UVec2;
 	use graph_craft::document::NodeId;
@@ -465,6 +555,30 @@ mod tests {
 
 	fn compiled_id(editor: &EditorTestUtils, path: &[NodeId]) -> Option<NodeId> {
 		editor.runtime.executor.tree().source_map().get(path).map(|(id, _)| *id)
+	}
+
+	#[tokio::test]
+	async fn a_document_capture_shows_the_document_and_what_each_layer_shows() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 10., 10.).await;
+		let layer = editor.get_selected_layer().await.expect("The drawn rectangle should be selected").to_node();
+
+		compile_and_run(&mut editor).await;
+		let runtime = &editor.runtime;
+		let network = runtime.old_graph.as_ref().expect("The document should have compiled");
+		let capture = runtime
+			.thumbnails
+			.capture_document(network, &runtime.executor, &super::compiled_sources(&runtime.executor), &runtime.editor_api, None)
+			.await;
+		let capture = capture.expect("The document should render");
+		match &capture.image {
+			CaptureImage::Pixels(pixels) => assert!(pixels.rgba.chunks(4).any(|pixel| pixel[3] > 0), "The rectangle should be drawn"),
+			CaptureImage::Svg(svg) => assert!(svg.contains("<path"), "The rectangle should be drawn: {svg}"),
+		}
+		assert!(capture.layer_sources.contains_key(&layer), "The rectangle's layer should have its content");
+		let [min, max] = capture.frame;
+		assert!(min.cmple(DVec2::ZERO).all() && max.cmpge(DVec2::splat(10.)).all(), "The frame {min} to {max} should hold the rectangle");
 	}
 
 	#[tokio::test]
