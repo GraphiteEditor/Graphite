@@ -629,8 +629,8 @@ impl TaggedValue {
 
 	pub fn from_primitive_string(string: &str, ty: &Type) -> Option<Self> {
 		fn to_number<T: FromStr>(input: &str) -> Option<T> {
-			// Stringified tokens separate a negative number's minus sign from its digits (e.g. "- 180.")
-			input.split_whitespace().collect::<String>().parse().ok()
+			// Ignores stringified tokens' spacing (e.g. "- 180.") and digit separators (e.g. "1_000_000")
+			input.chars().filter(|character| !character.is_whitespace() && *character != '_').collect::<String>().parse().ok()
 		}
 
 		fn to_dvec2(input: &str) -> Option<DVec2> {

@@ -230,6 +230,7 @@ import NodeIsNonzero from "/../branding/assets/16x16-nodes/node-is-nonzero.svg";
 import NodeItemAtIndex from "/../branding/assets/16x16-nodes/node-item-at-index.svg";
 import NodeIterate from "/../branding/assets/16x16-nodes/node-iterate.svg";
 import NodeJitterPoints from "/../branding/assets/16x16-nodes/node-jitter-points.svg";
+import NodeLSystem from "/../branding/assets/16x16-nodes/node-l-system.svg";
 import NodeLeastCommonMultiple from "/../branding/assets/16x16-nodes/node-least-common-multiple.svg";
 import NodeLerp from "/../branding/assets/16x16-nodes/node-lerp.svg";
 import NodeLessThan from "/../branding/assets/16x16-nodes/node-less-than.svg";
@@ -375,6 +376,7 @@ import NodeText from "/../branding/assets/16x16-nodes/node-text.svg";
 import NodeThreshold from "/../branding/assets/16x16-nodes/node-threshold.svg";
 import NodeTransform from "/../branding/assets/16x16-nodes/node-transform.svg";
 import NodeTriangulate from "/../branding/assets/16x16-nodes/node-triangulate.svg";
+import NodeTurtlePath from "/../branding/assets/16x16-nodes/node-turtle-path.svg";
 import NodeUngroup from "/../branding/assets/16x16-nodes/node-ungroup.svg";
 import NodeUnweld from "/../branding/assets/16x16-nodes/node-unweld.svg";
 import NodeVaryFillColors from "/../branding/assets/16x16-nodes/node-vary-fill-colors.svg";
@@ -524,6 +526,7 @@ export const ICON_16X16_NODES = {
 	NodeLogicalNot: { svg: NodeLogicalNot, size: 16 },
 	NodeLogicalOr: { svg: NodeLogicalOr, size: 16 },
 	NodeLoremIpsum: { svg: NodeLoremIpsum, size: 16 },
+	NodeLSystem: { svg: NodeLSystem, size: 16 },
 	NodeMagnitude: { svg: NodeMagnitude, size: 16 },
 	NodeMakeOpaque: { svg: NodeMakeOpaque, size: 16 },
 	NodeMandelbrot: { svg: NodeMandelbrot, size: 16 },
@@ -657,6 +660,7 @@ export const ICON_16X16_NODES = {
 	NodeThreshold: { svg: NodeThreshold, size: 16 },
 	NodeTransform: { svg: NodeTransform, size: 16 },
 	NodeTriangulate: { svg: NodeTriangulate, size: 16 },
+	NodeTurtlePath: { svg: NodeTurtlePath, size: 16 },
 	NodeUngroup: { svg: NodeUngroup, size: 16 },
 	NodeUnweld: { svg: NodeUnweld, size: 16 },
 	NodeVaryFillColors: { svg: NodeVaryFillColors, size: 16 },

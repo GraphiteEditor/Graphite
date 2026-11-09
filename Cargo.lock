@@ -7265,6 +7265,7 @@ dependencies = [
  "graphene-hash",
  "graphene-resource",
  "ipsum",
+ "math-parser",
  "node-macro",
  "parley",
  "rand",
