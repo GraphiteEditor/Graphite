@@ -264,9 +264,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::GarbageCollectResources);
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
-				let Some(document) = self.documents.get_mut(&document_id).filter(|document| document.previewed_history_step().is_none()) else {
+				let Some(document) = self.documents.get_mut(&document_id) else { return };
+				if document.previewed_history_step().is_some() {
+					responses.add(PersistentStateMessage::WriteState);
 					return;
-				};
+				}
 				let Some(container) = document.container.clone() else { return };
 
 				match container.write_non_blocking(legacy_path(), document.serialize_document().as_bytes()) {

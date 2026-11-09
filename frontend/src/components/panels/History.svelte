@@ -125,7 +125,7 @@
 		{#each $history.rows as row (row.id)}
 			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 			<div
-				class="row"
+				class="row step"
 				class:head={row.head && !pendingHead}
 				class:previewed={row.id === $history.previewing}
 				class:undone={row.undone}
@@ -278,7 +278,7 @@
 				background: var(--color-3-darkgray);
 			}
 
-			&:not(.delta) {
+			&.step {
 				cursor: pointer;
 
 				&:hover {
