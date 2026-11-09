@@ -53,19 +53,33 @@ impl<L: Layout> Gdd<L> {
 	/// Move the undo cursor back one commit (silent-zone reflog undo) and persist the new cursor. Returns
 	/// the undone `Rev`. The working registry is rewound in place by the reverse delta, so re-snapshot it
 	/// (alongside `head`) or a reopen would read a `registry.bin` inconsistent with the persisted cursor.
+	/// Records what the step named for [`take_remote_changes`](Self::take_remote_changes).
 	pub fn undo(&mut self) -> Result<Rev, Error> {
 		let rev = self.session.undo()?;
+		self.remote_changes.touched.extend(self.session.touched_between(self.session.head_rev(), rev));
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
 		Ok(rev)
 	}
 
-	/// Re-apply the most-recently-undone commit and persist the new cursor and re-snapshotted registry.
+	/// Re-apply the most-recently-undone commit and persist the new cursor and re-snapshotted registry. Records what
+	/// the step named like [`undo`](Self::undo).
 	pub fn redo(&mut self) -> Result<Rev, Error> {
+		let from = self.session.head_rev();
 		let rev = self.session.redo()?;
+		self.remote_changes.touched.extend(self.session.touched_between(from, rev));
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
 		Ok(rev)
+	}
+
+	/// Forget the latest undone commit, so redo can't bring it back, and persist the cursor.
+	pub fn forget_latest_undo(&mut self) -> Result<Option<Rev>, Error> {
+		let forgotten = self.session.forget_latest_undo();
+		if forgotten.is_some() {
+			self.persist_session_state()?;
+		}
+		Ok(forgotten)
 	}
 
 	/// Set the person using this device. `peer` must be unused, so the previous user keeps their steps. Refused while connected.
@@ -562,7 +576,7 @@ impl<L: Layout> Gdd<L> {
 			self.remote_changes.touched.record(op);
 		}
 		self.stage_ops(ops)?;
-		Ok(())
+		self.end_interaction()
 	}
 
 	/// Retire what is due at `now_ms`. Open interactions never retire. `idle` means the editor is between steps.

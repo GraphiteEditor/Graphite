@@ -547,6 +547,18 @@ impl Session {
 		Ok(touched)
 	}
 
+	/// What the deltas from `tip` back along its parents to `base` named, without `base` itself.
+	pub fn touched_between(&self, base: Option<Rev>, tip: Rev) -> Touched {
+		let mut touched = Touched::default();
+		let mut cursor = Some(tip);
+		while cursor != base {
+			let Some(delta) = cursor.and_then(|rev| self.document.history.get(rev)) else { break };
+			touched.record(&delta.kind);
+			cursor = delta.parent;
+		}
+		touched
+	}
+
 	/// What the deltas on the head's line but not on `base`'s named, merged branches included. Fails unless `base` is
 	/// on the head's line.
 	fn touched_since(&self, base: Option<Rev>) -> Result<Touched, CrdtError> {
@@ -946,6 +958,11 @@ impl Session {
 			}
 			current = parent;
 		}
+	}
+
+	/// Forget the latest undone interaction, so redo can't bring it back.
+	pub fn forget_latest_undo(&mut self) -> Option<Rev> {
+		self.document.redo_stack.pop()
 	}
 
 	pub fn can_redo(&self) -> bool {

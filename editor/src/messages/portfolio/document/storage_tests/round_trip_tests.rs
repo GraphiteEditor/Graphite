@@ -572,7 +572,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	let stored: std::collections::BTreeSet<_> = storage.registry().resources.keys().copied().collect();
 
 	// Every resource the restored network still references must be in the cursor.
-	let current: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	let current: std::collections::BTreeSet<_> = document.used_resources().iter().copied().collect();
 	assert!(
 		current.is_subset(&stored),
 		"cursor is missing a resource the restored network references: current={current:?} stored={stored:?}"
@@ -677,7 +677,7 @@ async fn pasted_image_resource_survives_inserting_a_node() {
 
 	let document = editor.active_document();
 	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
-	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	let used: std::collections::BTreeSet<_> = document.used_resources().iter().copied().collect();
 	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
 }
 
@@ -692,7 +692,7 @@ async fn pasted_image_resource_survives_storage_mounting_after_the_paste() {
 
 	let document = editor.active_document();
 	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
-	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	let used: std::collections::BTreeSet<_> = document.used_resources().iter().copied().collect();
 	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
 }
 
@@ -769,10 +769,7 @@ async fn resource_resolved_after_staging_stays_resolved_through_undo_and_redo() 
 		let document = editor.active_document();
 		let registry = &document.resources.registry;
 		assert!(registry.unresolved().next().is_none(), "{step} left a resource unresolved, which stops rendering");
-		assert!(
-			document.used_resources(false).iter().all(|id| registry.hash(id).is_some()),
-			"{step} left a used resource without its hash"
-		);
+		assert!(document.used_resources().iter().all(|id| registry.hash(id).is_some()), "{step} left a used resource without its hash");
 	}
 	assert_eq!(editor.active_document().resources.registry.hash(&resource_id), Some(hash));
 }
@@ -1113,4 +1110,45 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	assert!(!storage.session().hot_log().is_empty(), "the redone step is staged afresh");
 	assert_eq!(storage.session().history().count(), history_base);
 	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+}
+
+/// Draws three ellipses, undoes all of them, redoes them and one more, then undoes once. `retire` retires each
+/// drawing first, so the steps undo through the cursor rather than by retraction.
+async fn redone_steps_undo_one_at_a_time(retire: bool) {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let byte_store = mount_in_memory_storage(&mut editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+
+	for offset in [0., 200., 400.] {
+		editor.draw_ellipse(offset, 0., offset + 100., 100.).await;
+		if retire {
+			editor.active_document_mut().retire_storage_interaction();
+		}
+	}
+	let layer_count = |editor: &EditorTestUtils| editor.active_document().metadata().all_layers().count();
+	assert_eq!(layer_count(&editor), 3);
+
+	for expected in [2, 1, 0] {
+		editor.handle_message(DocumentMessage::Undo).await;
+		assert_eq!(layer_count(&editor), expected, "undoing down to {expected} ellipses");
+	}
+	for expected in [1, 2, 3, 3] {
+		editor.handle_message(DocumentMessage::Redo).await;
+		assert_eq!(layer_count(&editor), expected, "redoing up to {expected} ellipses");
+	}
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(layer_count(&editor), 2, "undo takes back only the last redone ellipse");
+	assert_cursor_matches_runtime(editor.active_document(), "after undoing a redone step");
+}
+
+#[tokio::test]
+async fn redone_hot_steps_undo_one_at_a_time() {
+	redone_steps_undo_one_at_a_time(false).await;
+}
+
+#[tokio::test]
+async fn redone_retired_steps_undo_one_at_a_time() {
+	redone_steps_undo_one_at_a_time(true).await;
 }

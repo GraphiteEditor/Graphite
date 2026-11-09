@@ -15,7 +15,7 @@ pub mod overlays;
 pub mod resource;
 pub mod utility_types;
 
-pub(crate) use document_history::{CursorMoveError, DocumentHistory};
+pub(crate) use document_history::DocumentHistory;
 #[doc(inline)]
 pub use document_message::{DocumentMessage, DocumentMessageDiscriminant};
 #[doc(inline)]
