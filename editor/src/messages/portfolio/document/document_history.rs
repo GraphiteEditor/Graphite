@@ -38,6 +38,16 @@ pub struct DocumentHistory {
 	needs_whole_document_stage: bool,
 	/// How storage undid each step on the legacy redo stack, aligned with its top.
 	undo_notes: Vec<UndoNote>,
+	/// The head moves the History panel made, newest last, for undo to take back once the head is again where one left it.
+	line_undo: Vec<LineMove>,
+	/// The head moves undo took back, for redo to make again.
+	line_redo: Vec<LineMove>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LineMove {
+	from: document_graph_storage::Rev,
+	to: document_graph_storage::Rev,
 }
 
 #[derive(Clone, Debug)]
@@ -91,6 +101,7 @@ impl DocumentHistory {
 	pub fn clear_redo(&mut self) {
 		self.legacy_redo_stack.clear();
 		self.undo_notes.clear();
+		self.line_redo.clear();
 	}
 
 	/// Add the resources referenced by every snapshot in both history stacks into `resources`, so
@@ -139,8 +150,9 @@ impl DocumentHistory {
 
 	/// Undoes the latest step in storage alone. Returns whether storage undid it.
 	pub fn undo_in_storage(&mut self, in_session: bool) -> bool {
+		// The edits since a History panel change have their snapshots there, so the change is next once none are left
 		if self.legacy_undo_stack.is_empty() {
-			return false;
+			return self.move_line_back(true);
 		}
 		// A failed retract may already have taken the step back, so no older step is undone after it
 		let retracted = match self.retract_storage_interaction() {
@@ -168,7 +180,7 @@ impl DocumentHistory {
 	/// Reverses [`undo_in_storage`](Self::undo_in_storage). Returns whether the next redo step was undone there.
 	pub fn redo_in_storage(&mut self) -> bool {
 		if self.legacy_redo_stack.is_empty() {
-			return false;
+			return self.move_line_back(false);
 		}
 		let reachable = self.storage.as_ref().is_some_and(|storage| storage.can_change_line());
 		let Some(note) = self
@@ -241,12 +253,48 @@ impl DocumentHistory {
 		let Some(storage) = self.storage.as_mut().filter(|storage| storage.can_change_line()) else {
 			return false;
 		};
+		let from = storage.session().head_rev();
 		let result = match change {
 			LineChange::MoveHead => storage.move_head(rev),
 			LineChange::Remove => storage.drop_step(rev),
 			LineChange::Restore => storage.redo_retired_step(rev),
 		};
-		result.inspect_err(|error| log::error!("Changing the history line with {change:?} failed: {error}")).is_ok()
+		if result.inspect_err(|error| log::error!("Changing the history line with {change:?} failed: {error}")).is_err() {
+			return false;
+		}
+		// A guest's change is made by the host, so its head has not moved yet
+		if let (Some(from), Some(to)) = (from, storage.session().head_rev())
+			&& from != to
+		{
+			self.line_undo.push(LineMove { from, to });
+			self.line_undo.drain(..self.line_undo.len().saturating_sub(crate::consts::MAX_UNDO_HISTORY_LEN));
+			self.line_redo.clear();
+		}
+		true
+	}
+
+	/// Takes back the newest History panel change, or makes again the newest one taken back, if the head is where it left
+	/// the head. Returns whether storage moved.
+	fn move_line_back(&mut self, undo: bool) -> bool {
+		let Some(storage) = self.storage.as_mut().filter(|storage| storage.can_change_line()) else {
+			return false;
+		};
+		let (stack, other) = if undo {
+			(&mut self.line_undo, &mut self.line_redo)
+		} else {
+			(&mut self.line_redo, &mut self.line_undo)
+		};
+		let Some(&LineMove { from, to }) = stack.last() else { return false };
+		let (here, target) = if undo { (to, from) } else { (from, to) };
+		if storage.session().head_rev() != Some(here) {
+			return false;
+		}
+		if let Err(error) = storage.move_head(target) {
+			log::error!("Moving the history line back failed: {error}");
+			return false;
+		}
+		other.extend(stack.pop());
+		true
 	}
 
 	/// Forgets the legacy snapshots once the head has moved off their line.

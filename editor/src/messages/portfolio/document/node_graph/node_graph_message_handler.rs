@@ -19,7 +19,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::edit_target::{EditTarget, ResolvedEditTarget};
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
-use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
+use crate::messages::tool::common_functionality::utility_functions::{make_path_editable_is_allowed, name_layer_action};
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use crate::messages::viewport::Position;
@@ -450,10 +450,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(NodeGraphMessage::DeleteNodes {
-					node_ids: selected_nodes.selected_nodes().cloned().collect::<Vec<_>>(),
-					delete_children,
-				});
+				let node_ids: Vec<NodeId> = selected_nodes.selected_nodes().cloned().collect();
+				let layers = node_ids.iter().filter(|node_id| network_interface.is_layer(node_id, selection_network_path)).count();
+				if !node_ids.is_empty() {
+					responses.add(match (layers == node_ids.len(), node_ids.len()) {
+						(true, _) => name_layer_action("Deleted", layers),
+						(false, 1) => DocumentMessage::NameInteraction { action: "Deleted a Node".into() },
+						(false, count) => DocumentMessage::NameInteraction {
+							action: format!("Deleted {count} Nodes"),
+						},
+					});
+				}
+				responses.add(NodeGraphMessage::DeleteNodes { node_ids, delete_children });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);

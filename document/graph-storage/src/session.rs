@@ -24,6 +24,8 @@ pub struct Session {
 	/// What the ops this peer took back named. A retirement racing the take-back may still name them, and this peer may
 	/// hold the only copy, so they stay garbage collection roots for the life of the session.
 	taken_back_resources: HashSet<ResourceHash>,
+	/// What this peer's open interaction is doing, for its closing marker to carry.
+	action: Option<String>,
 }
 
 impl Session {
@@ -47,6 +49,7 @@ impl Session {
 			remote_tips: HashMap::new(),
 			runtime_base: None,
 			taken_back_resources: HashSet::new(),
+			action: None,
 		}
 	}
 
@@ -343,6 +346,7 @@ impl Session {
 			remote_tips: HashMap::new(),
 			runtime_base: None,
 			taken_back_resources: HashSet::new(),
+			action: None,
 		}
 	}
 
@@ -393,6 +397,10 @@ impl Session {
 			return Ok(None);
 		}
 		self.runtime_base = None;
+		// The name belongs to the open interaction being taken back
+		if closed_before == own.len() {
+			self.action = None;
+		}
 		let (touched, taken) = self.document.retract_hot_ops(&ids);
 		self.taken_back_resources.extend(taken.iter().filter_map(|hot_op| hot_op.op.resource_hash()));
 		let ops = taken.into_iter().map(|hot_op| hot_op.op).filter(|op| !matches!(op, RegistryDelta::Meta)).collect();
@@ -437,23 +445,90 @@ impl Session {
 		}
 		let position = newest_first.iter().position(|delta| delta.id == undone).ok_or(CrdtError::NotFoundInHistory(undone))?;
 
-		// Minted on a scratch fold first, so a failing copy changes nothing.
+		// Minted on a scratch fold first, so a failing copy changes nothing. Each copied interaction ends with the
+		// repairs it needs on the changed line.
 		let mut scratch = self.fold_scratch_at(Some(base))?;
 		let mut copies = Vec::with_capacity(position);
+		// Per copy, the delta it carries attributes from, and the repair now closing that delta's interaction
+		let mut sources: Vec<(Option<&Delta>, Option<Rev>)> = Vec::with_capacity(position);
 		let mut parent = Some(base);
+		let mut replayed = Vec::new();
+		let known = self.known_inputs();
+
+		// What the later steps build on stays, ahead of them
+		let dropped: Vec<&Delta> = newest_first[position..].iter().rev().collect();
+		let (kept, kept_nodes) = match position {
+			0 => Default::default(),
+			_ => crate::repair::still_needed(&self.document.retired_snapshot, &dropped.iter().map(|delta| delta.kind.clone()).collect::<Vec<_>>()),
+		};
+		for original in kept.into_iter().map(|index| dropped[index]) {
+			let reverse = crate::prior::capture(&scratch.working_registry, &original.kind);
+			scratch.apply_op_with(RegistryTarget::Working, original.kind.clone(), original.timestamp, ApplyMode::Idempotent)?;
+			let copy = Delta::new(parent, original.timestamp.peer, original.timestamp, original.kind.clone(), reverse);
+			parent = Some(copy.id);
+			copies.push(copy);
+			sources.push((None, None));
+		}
+		let mut before = scratch.working_registry.clone();
+
+		// What the removed step added must not come back through a later step writing to it
+		let gone: HashSet<NodeId> = dropped
+			.iter()
+			.filter_map(|delta| match &delta.kind {
+				RegistryDelta::AddNode { id, .. } => Some(*id),
+				_ => None,
+			})
+			.filter(|id| !kept_nodes.contains(id))
+			.collect();
 		for original in newest_first[..position].iter().rev() {
 			let reverse = crate::prior::capture(&scratch.working_registry, &original.kind);
 			scratch.apply_op_with(RegistryTarget::Working, original.kind.clone(), original.timestamp, ApplyMode::Idempotent)?;
 			let copy = Delta::new(parent, original.timestamp.peer, original.timestamp, original.kind.clone(), reverse);
 			parent = Some(copy.id);
 			copies.push(copy);
+			sources.push((Some(original), None));
+			replayed.push(original.kind.clone());
+			if !original.is_interaction_end() {
+				continue;
+			}
+			let closing_index = sources.len() - 1;
+			for op in crate::repair::repair_ops(
+				&before,
+				&scratch.working_registry,
+				&self.fold_scratch_at(Some(original.id))?.working_registry,
+				&std::mem::take(&mut replayed),
+				&gone,
+				&known,
+			) {
+				let reverse = crate::prior::capture(&scratch.working_registry, &op);
+				let timestamp = self.document.clock.tick();
+				scratch.apply_op_with(RegistryTarget::Working, op.clone(), timestamp, ApplyMode::Strict)?;
+				let repair = Delta::new(parent, original.author, timestamp, op, reverse);
+				parent = Some(repair.id);
+				sources[closing_index].1 = Some(repair.id);
+				copies.push(repair);
+				sources.push((None, None));
+			}
+			before = scratch.working_registry.clone();
 		}
 
 		let mut touched = Touched::default();
 		newest_first[position..].iter().for_each(|delta| touched.record(&delta.kind));
-		for (original, copy) in newest_first[..position].iter().rev().zip(&mut copies) {
-			self.document.history.push(copy.clone());
-			self.carry_attributes(original, copy.id);
+		for (copy, _) in copies.iter().zip(&sources).filter(|(_, (original, _))| original.is_none()) {
+			touched.record(&copy.kind);
+		}
+		// A kept op minted on its own parent is the original, attributes and all
+		for copy in &copies {
+			if !self.document.history.contains(copy.id) {
+				self.document.history.push(copy.clone());
+			}
+		}
+		for (&(original, closing), copy) in sources.iter().zip(&copies) {
+			if let Some(original) = original {
+				self.carry_attributes_closing(original, copy.id, closing);
+			}
+		}
+		for copy in &mut copies {
 			if let Some(carried) = self.document.history.get(copy.id) {
 				*copy = carried.clone();
 			}
@@ -478,14 +553,15 @@ impl Session {
 		))
 	}
 
-	/// Move the shared head back to its ancestor `target`, leaving the line since as a branch. Returns the move to
-	/// broadcast and what the steps left behind named. Only the retirer does this; a guest asks it to.
+	/// Move the shared head to `target`, back to an ancestor or over to a branch, leaving the line it was on as a
+	/// branch. Returns the move to broadcast and what the steps between the two lines named. Only the retirer does
+	/// this; a guest asks it to.
 	pub fn move_head_to(&mut self, target: Rev) -> Result<(HeadMove, Touched), CrdtError> {
 		let from = self.document.head;
 		if from == Some(target) {
 			return Err(CrdtError::NothingToUndo);
 		}
-		let touched = self.touched_since(Some(target))?;
+		let touched = self.touched_between(Some(target))?;
 		let snapshot = self.fold_at(Some(target))?;
 
 		self.document.head = Some(target);
@@ -505,8 +581,8 @@ impl Session {
 	}
 
 	/// Follow a peer's [`HeadMove`], returning what the walked-over ops named. Changes nothing when the head is not
-	/// where the move started, since this peer has then diverged, or when the copies don't chain from an ancestor of
-	/// the head to the move's head.
+	/// where the move started, since this peer has then diverged, or when the copies don't chain from a known rev to the
+	/// move's head.
 	pub fn apply_head_move(&mut self, moved: &HeadMove) -> Result<Touched, CrdtError> {
 		if self.document.head != moved.from {
 			return Err(CrdtError::CursorMismatch {
@@ -515,7 +591,7 @@ impl Session {
 			});
 		}
 		let base = moved.copies.first().map_or(moved.head, |copy| copy.parent);
-		let touched = self.touched_since(base)?;
+		let touched = self.touched_between(base)?;
 		let mut tip = base;
 		for copy in &moved.copies {
 			if copy.parent != tip || matches!(copy.kind, RegistryDelta::Merge { .. }) {
@@ -547,26 +623,26 @@ impl Session {
 		Ok(touched)
 	}
 
-	/// What the deltas on the head's line but not on `base`'s named, merged branches included. Fails unless `base` is
-	/// on the head's line.
-	fn touched_since(&self, base: Option<Rev>) -> Result<Touched, CrdtError> {
+	/// What the deltas on just one of the head's and `other`'s lines named, merged branches included.
+	fn touched_between(&self, other: Option<Rev>) -> Result<Touched, CrdtError> {
 		let history = &self.document.history;
-		let line = history.ancestors(self.document.head);
-		if let Some(base) = base
-			&& !line.contains(&base)
+		if let Some(other) = other
+			&& !history.contains(other)
 		{
-			return Err(CrdtError::NotAncestor(base));
+			return Err(CrdtError::NotFoundInHistory(other));
 		}
-		let kept = history.ancestors(base);
+		let line = history.ancestors(self.document.head);
+		let other_line = history.ancestors(other);
 		let mut touched = Touched::default();
-		for delta in history.iter().filter(|delta| line.contains(&delta.id) && !kept.contains(&delta.id)) {
+		for delta in history.iter().filter(|delta| line.contains(&delta.id) != other_line.contains(&delta.id)) {
 			touched.record(&delta.kind);
 		}
 		Ok(touched)
 	}
 
 	/// Mint a dropped interaction's deltas again on top of the line as one interaction. They keep their
-	/// original stamps, so a field someone wrote since keeps the newer value. Returns the new revs.
+	/// original stamps, so a field someone wrote since keeps the newer value, and the graph is repaired where that
+	/// left it broken (see [`repair_ops`](crate::repair::repair_ops)). Returns the new revs.
 	pub fn restore_interaction(&mut self, dropped: Rev) -> Result<Vec<Rev>, CrdtError> {
 		let base = self.interaction_start_parent(dropped, false).ok_or(CrdtError::NotUndoable(dropped))?;
 		let mut originals = Vec::new();
@@ -578,10 +654,32 @@ impl Session {
 			originals.push(delta);
 		}
 		originals.reverse();
-		let revs = self.commit_ops_authored_at(originals.iter().map(|delta| (delta.kind.clone(), Some(delta.timestamp))), true)?;
+		let before = self.document.retired_snapshot.clone();
+		let mut revs = self.commit_ops_authored_at(originals.iter().map(|delta| (delta.kind.clone(), Some(delta.timestamp))), true)?;
+		let replayed: Vec<RegistryDelta> = originals.iter().map(|delta| delta.kind.clone()).collect();
+		let deleted: HashSet<NodeId> = replayed
+			.iter()
+			.filter_map(|op| match op {
+				RegistryDelta::RemoveNode { id, .. } => Some(*id),
+				_ => None,
+			})
+			.collect();
+		let repairs = crate::repair::repair_ops(
+			&before,
+			&self.document.retired_snapshot,
+			&self.fold_scratch_at(Some(dropped))?.working_registry,
+			&replayed,
+			&deleted,
+			&self.known_inputs(),
+		);
+		let author = originals.last().map_or(self.document.peer, |delta| delta.author);
+		let repaired = self.commit_repairs(repairs, author)?;
+		let closing = repaired.last().copied();
 		for (original, &rev) in originals.iter().zip(&revs) {
-			self.carry_attributes(original, rev);
+			let closes = original.id == dropped;
+			self.carry_attributes_closing(original, rev, closing.filter(|_| closes));
 		}
+		revs.extend(repaired);
 		if let Some(&last) = revs.last() {
 			self.mark_interaction_end(last);
 		}
@@ -637,6 +735,7 @@ impl Session {
 	/// Closes this peer's open interaction with a flagged [`RegistryDelta::Meta`] op. Returns the staged ops, a
 	/// re-registration possibly before the marker; empty when nothing is open.
 	pub fn end_interaction(&mut self) -> Result<Vec<HotOp>, CrdtError> {
+		let action = self.action.take();
 		let peer = self.document.peer;
 		let open = self
 			.document
@@ -650,7 +749,20 @@ impl Session {
 		}
 		let mut closing = Attributes::new();
 		closing.set(crate::attr::delta::INTERACTION_END, Value::Bool(true), TimeStamp::ORIGIN);
+		if let Some(action) = action {
+			closing.set(crate::attr::delta::ACTION, Value::Str(action), TimeStamp::ORIGIN);
+		}
 		self.stage_ops_with([(RegistryDelta::Meta, closing)], ApplyMode::Strict)
+	}
+
+	/// Names this peer's open interaction, replacing an earlier name. Closing it takes the name along.
+	pub fn name_interaction(&mut self, action: &str) {
+		self.action = Some(action.to_string());
+	}
+
+	/// The name this peer's open interaction will close with.
+	pub fn pending_action(&self) -> Option<&str> {
+		self.action.as_deref()
 	}
 
 	/// Every author's closed interactions in the hot log, the earliest closed first.
@@ -849,9 +961,14 @@ impl Session {
 	/// Retire one closed interaction, coarsened, marking its last delta as the interaction's end. Every op is retired,
 	/// the ones coarsening drops included. Returns the new revs.
 	pub fn retire_interaction(&mut self, interaction: &ClosedInteraction) -> Result<Vec<Rev>, CrdtError> {
+		let marker = interaction.ops.last().and_then(|&id| self.document.hot_log.iter().find(|hot_op| hot_op.id() == id));
+		let action = marker.and_then(|hot_op| hot_op.attributes.get(crate::attr::delta::ACTION)).cloned();
 		let revs = self.retire_hot_ops_with(&interaction.ops, true)?;
 		if let Some(&last) = revs.last() {
 			self.mark_interaction_end(last);
+			if let Some(action) = action {
+				self.document.history.annotate(last, crate::attr::delta::ACTION, action.value, action.timestamp);
+			}
 		}
 		Ok(revs)
 	}
@@ -902,14 +1019,55 @@ impl Session {
 		}
 	}
 
-	/// Give a minted copy the attributes and retirement time of the delta it stands for.
-	fn carry_attributes(&mut self, original: &Delta, copy: Rev) {
-		if let Some(wall_ms) = original.retired_at() {
-			self.document.history.set_retired_at(copy, wall_ms);
+	/// Give a minted copy the attributes and retirement time of the delta it stands for, with what closes the interaction moved to `closing` when repairs minted after the copy now end it.
+	fn carry_attributes_closing(&mut self, original: &Delta, copy: Rev, closing: Option<Rev>) {
+		use crate::attr::delta::{ACTION, INTERACTION_END};
+
+		for rev in std::iter::once(copy).chain(closing) {
+			if let Some(wall_ms) = original.retired_at() {
+				self.document.history.set_retired_at(rev, wall_ms);
+			}
 		}
 		for (key, value) in original.attributes.live() {
-			self.document.history.annotate(copy, key, value.value.clone(), value.timestamp);
+			let moved = closing.filter(|_| key == INTERACTION_END || key == ACTION);
+			self.document.history.annotate(moved.unwrap_or(copy), key, value.value.clone(), value.timestamp);
 		}
+	}
+
+	/// Each node's network and newest primary input anywhere in history, branches included.
+	fn known_inputs(&self) -> crate::repair::KnownInputs {
+		let mut networks: HashMap<NodeId, NetworkId> = HashMap::new();
+		let mut inputs: HashMap<NodeId, (TimeStamp, crate::NodeInput)> = HashMap::new();
+		for delta in self.document.history.iter() {
+			let (id, input) = match &delta.kind {
+				RegistryDelta::AddNode { id, node } | RegistryDelta::RemoveNode { id, snapshot: node } => {
+					networks.insert(*id, node.network);
+					(*id, node.inputs.first().map(|slot| slot.input.clone()))
+				}
+				RegistryDelta::ChangeNodeInput { id, index: 0, new_input } => (*id, Some(new_input.clone())),
+				RegistryDelta::SetNodeInputs { id, inputs } => (*id, inputs.first().map(|slot| slot.input.clone())),
+				_ => continue,
+			};
+			let Some(input) = input else { continue };
+			if inputs.get(&id).is_none_or(|(newest, _)| *newest < delta.timestamp) {
+				inputs.insert(id, (delta.timestamp, input));
+			}
+		}
+		inputs.into_iter().filter_map(|(id, (_, input))| Some((id, (*networks.get(&id)?, input)))).collect()
+	}
+
+	/// Commit repair ops on top of the line, authored by whoever made the interaction they finish.
+	fn commit_repairs(&mut self, ops: Vec<RegistryDelta>, author: PeerId) -> Result<Vec<Rev>, CrdtError> {
+		let mut revs = Vec::with_capacity(ops.len());
+		for op in ops {
+			let reverse = crate::prior::capture(&self.document.retired_snapshot, &op);
+			let delta = Delta::new(self.document.head, author, self.document.clock.tick(), op, reverse);
+			self.document.apply_op_with(RegistryTarget::Retired, delta.kind.clone(), delta.timestamp, ApplyMode::Strict)?;
+			self.document.head = Some(delta.id);
+			revs.push(delta.id);
+			self.document.history.push(delta);
+		}
+		Ok(revs)
 	}
 
 	/// Low-level: set a local annotation attribute (e.g. a commit message) on a retired delta in place.
@@ -1371,8 +1529,6 @@ pub enum CrdtError {
 	NotUndoable(Rev),
 	#[error("Cursor is at {found:?}, the move expected {expected:?}")]
 	CursorMismatch { expected: Option<Rev>, found: Option<Rev> },
-	#[error("Delta {0} is not on the head's line")]
-	NotAncestor(Rev),
 	#[error("Head move copies do not chain from its base to its head")]
 	MalformedHeadMove,
 	#[error("Node {0} already exists")]

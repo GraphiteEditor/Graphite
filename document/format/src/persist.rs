@@ -427,6 +427,11 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
+	/// Names this peer's open interaction. Closing it takes the name along.
+	pub fn name_interaction(&mut self, action: &str) {
+		self.session.name_interaction(action);
+	}
+
 	/// Undo this peer's latest hot interaction, here and on peers. `None` if it already retired.
 	pub fn retract_interaction(&mut self) -> Result<Option<Vec<RegistryDelta>>, Error> {
 		let Some(retraction) = self.session.retract_interaction()? else {
@@ -495,7 +500,7 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Move the head back to an ancestor, keeping the later line as a branch. A non-retiring peer asks the retirer.
+	/// Move the head to an ancestor or a branch, keeping the line it was on as a branch. A non-retiring peer asks the retirer.
 	#[cfg(feature = "network")]
 	pub fn move_head(&mut self, rev: Rev) -> Result<(), Error> {
 		if self.retires_locally() {
