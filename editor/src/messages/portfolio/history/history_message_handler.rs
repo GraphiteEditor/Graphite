@@ -511,7 +511,10 @@ impl Names<'_> {
 			let label = self.describe(kind);
 			let structural = matches!(kind, RegistryDelta::AddNode { .. } | RegistryDelta::RemoveNode { .. });
 			match counts.iter_mut().find(|(known, ..)| *known == label) {
-				Some((_, count, _)) => *count += 1,
+				Some((_, count, known_structural)) => {
+					*count += 1;
+					*known_structural |= structural;
+				}
 				None => counts.push((label, 1, structural)),
 			}
 		}

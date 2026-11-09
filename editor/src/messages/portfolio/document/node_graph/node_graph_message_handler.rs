@@ -450,7 +450,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				responses.add(DocumentMessage::AddTransaction);
-				let node_ids: Vec<NodeId> = selected_nodes.selected_nodes().cloned().collect();
+				let mut seen = HashSet::new();
+				let node_ids: Vec<NodeId> = selected_nodes.selected_nodes().copied().filter(|node_id| seen.insert(*node_id)).collect();
 				let layers = node_ids.iter().filter(|node_id| network_interface.is_layer(node_id, selection_network_path)).count();
 				if !node_ids.is_empty() {
 					responses.add(match (layers == node_ids.len(), node_ids.len()) {

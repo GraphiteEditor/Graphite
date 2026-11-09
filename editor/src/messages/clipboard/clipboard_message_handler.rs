@@ -384,7 +384,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 
 					let mut added_nodes = false;
 
-					let pasted = entries.len();
+					let pasted = entries.iter().filter(|entry| entry.nodes.iter().any(|(id, _)| *id == NodeId(0))).count();
 					for entry in entries.into_iter().rev() {
 						let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 						let Some(&root_id) = new_ids.get(&NodeId(0)) else {
