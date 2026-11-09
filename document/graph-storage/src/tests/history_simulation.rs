@@ -434,9 +434,9 @@ fn history_operations_keep_the_stack_whole_and_peers_converged() {
 /// A seed fixes the run, so one that fails can be replayed.
 #[test]
 fn a_seed_fixes_the_history_run() {
-	let stacks = |seed| stack(simulate(seed, 60, &mut Vec::new()).retired_registry());
+	let histories = |seed| simulate(seed, 60, &mut Vec::new()).history().map(|delta| delta.id).collect::<Vec<_>>();
 	for seed in 0..5 {
-		assert_eq!(stacks(seed), stacks(seed), "seed {seed}");
+		assert_eq!(histories(seed), histories(seed), "seed {seed}");
 	}
 }
 

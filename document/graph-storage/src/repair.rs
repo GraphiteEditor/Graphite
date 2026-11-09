@@ -7,7 +7,7 @@
 //! order the line had before the replay and the order the replayed step left it in when it was made, so the step's
 //! own changes land on the chains as they are now.
 
-use crate::{NetworkId, NodeId, NodeInput, Registry, RegistryDelta};
+use crate::{NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// Each node's network and newest primary input anywhere in history, for nodes this line no longer or never had.
@@ -29,8 +29,9 @@ struct Chain {
 
 /// Which of a dropped step's ops the line still needs, and the nodes they add. `registry` is the line with the step.
 /// A subgraph the step added stays, with what the step put in it, while a node it didn't add is built from it, as a
-/// later layer reuses the one the first layer brought. Resources stay too, since what refers to them isn't tracked.
-pub(crate) fn still_needed(registry: &Registry, dropped: &[RegistryDelta]) -> (Vec<usize>, HashSet<NodeId>) {
+/// later layer reuses the one the first layer brought. Resources stay too, since what refers to them isn't tracked, and
+/// so does a peer's registration while `later_authors` holds that peer, whose later steps it names a person for.
+pub(crate) fn still_needed(registry: &Registry, dropped: &[RegistryDelta], later_authors: &HashSet<PeerId>) -> (Vec<usize>, HashSet<NodeId>) {
 	let added_networks: HashSet<NetworkId> = dropped
 		.iter()
 		.filter_map(|op| match op {
@@ -84,6 +85,7 @@ pub(crate) fn still_needed(registry: &Registry, dropped: &[RegistryDelta]) -> (V
 			| RegistryDelta::ChangeNodeAttribute { id, .. }
 			| RegistryDelta::ChangeNodeInputAttribute { id, .. } => kept_nodes.contains(id),
 			RegistryDelta::AddResource { .. } | RegistryDelta::SetResourceHash { .. } | RegistryDelta::AddSource { .. } => true,
+			RegistryDelta::RegisterPeer { peer, .. } => later_authors.contains(peer),
 			_ => false,
 		})
 		.map(|(index, _)| index)
@@ -251,6 +253,13 @@ fn placed_nodes(op: &RegistryDelta) -> Vec<NodeId> {
 				_ => None,
 			};
 			(*index == 0).then_some(*id).into_iter().chain(placed).collect()
+		}
+		RegistryDelta::SetNodeInputs { id, inputs } => {
+			let placed = inputs.iter().filter_map(|slot| match &slot.input {
+				NodeInput::Node { id: placed, .. } => Some(*placed),
+				_ => None,
+			});
+			std::iter::once(*id).chain(placed).collect()
 		}
 		RegistryDelta::SetNetworkExport {
 			export: Some(NodeInput::Node { id, .. }),

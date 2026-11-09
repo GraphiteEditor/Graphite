@@ -913,6 +913,37 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	assert_eq!(guest.retired_registry(), host.retired_registry());
 }
 
+/// Dropping a peer's first step keeps the registration it carried while a later step of that peer is minted again, so
+/// that step still names the person who made it.
+#[test]
+fn dropping_a_peers_first_step_keeps_the_registration_its_later_steps_need() {
+	fn retire_guest_step(guest: &mut Session, host: &mut Session, key: &str) -> Rev {
+		let hot = guest.stage_ops([set_attribute(key, 1)]).expect("stage");
+		for hot_op in &hot {
+			host.replay_hot_op(hot_op.clone()).expect("the guest's ops reach the host");
+		}
+		let ids: Vec<HotOpId> = hot.iter().map(HotOp::id).collect();
+		let closing = *host.retire_hot_ops(&ids).expect("retire").last().expect("the guest's step");
+		host.mark_interaction_end(closing);
+		let missing: Vec<Delta> = host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect();
+		guest.merge(missing).expect("merge");
+		guest.discard_hot_ops(&ids);
+		closing
+	}
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(set_attribute("base", 0)).expect("base");
+	let base = host.head_rev().expect("rev");
+	host.mark_interaction_end(base);
+	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+
+	let first = retire_guest_step(&mut guest, &mut host, "first");
+	retire_guest_step(&mut guest, &mut host, "second");
+	assert_eq!(host.user_of(PeerId(2)), Some(UserId(2)));
+
+	host.drop_interaction(first).expect("drop");
+	assert_eq!(host.user_of(PeerId(2)), Some(UserId(2)), "the later step still names the guest's person");
+}
+
 /// Undo of a retired step names the person's latest step, not the device's. A fresh copy of the document under a new
 /// peer id still undoes what its user did from the old one, and nobody else's.
 #[test]

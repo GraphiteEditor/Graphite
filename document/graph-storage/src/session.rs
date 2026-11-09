@@ -457,9 +457,10 @@ impl Session {
 
 		// What the later steps build on stays, ahead of them
 		let dropped: Vec<&Delta> = newest_first[position..].iter().rev().collect();
+		let later_authors: HashSet<PeerId> = newest_first[..position].iter().map(|delta| delta.author).collect();
 		let (kept, kept_nodes) = match position {
 			0 => Default::default(),
-			_ => crate::repair::still_needed(&self.document.retired_snapshot, &dropped.iter().map(|delta| delta.kind.clone()).collect::<Vec<_>>()),
+			_ => crate::repair::still_needed(&self.document.retired_snapshot, &dropped.iter().map(|delta| delta.kind.clone()).collect::<Vec<_>>(), &later_authors),
 		};
 		for original in kept.into_iter().map(|index| dropped[index]) {
 			let reverse = crate::prior::capture(&scratch.working_registry, &original.kind);
@@ -1042,7 +1043,7 @@ impl Session {
 	/// Each node's network and newest primary input anywhere in history, branches included.
 	fn known_inputs(&self) -> crate::repair::KnownInputs {
 		let mut networks: HashMap<NodeId, NetworkId> = HashMap::new();
-		let mut inputs: HashMap<NodeId, (TimeStamp, crate::NodeInput)> = HashMap::new();
+		let mut inputs: HashMap<NodeId, (TimeStamp, Option<crate::NodeInput>)> = HashMap::new();
 		for delta in self.document.history.iter() {
 			let (id, input) = match &delta.kind {
 				RegistryDelta::AddNode { id, node } | RegistryDelta::RemoveNode { id, snapshot: node } => {
@@ -1053,12 +1054,11 @@ impl Session {
 				RegistryDelta::SetNodeInputs { id, inputs } => (*id, inputs.first().map(|slot| slot.input.clone())),
 				_ => continue,
 			};
-			let Some(input) = input else { continue };
 			if inputs.get(&id).is_none_or(|(newest, _)| *newest < delta.timestamp) {
 				inputs.insert(id, (delta.timestamp, input));
 			}
 		}
-		inputs.into_iter().filter_map(|(id, (_, input))| Some((id, (*networks.get(&id)?, input)))).collect()
+		inputs.into_iter().filter_map(|(id, (_, input))| Some((id, (*networks.get(&id)?, input?)))).collect()
 	}
 
 	/// Commit repair ops on top of the line, authored by whoever made the interaction they finish.
