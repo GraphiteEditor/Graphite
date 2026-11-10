@@ -135,15 +135,11 @@ fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segm
 			return;
 		}
 
-		// Split curves in half
-		let (seg11, seg12) = segment1.subdivide();
-		let (seg21, seg22) = segment2.subdivide();
-
-		// Repeat checking the intersection with the combinations of the two halves of each curve
-		segment_intersections_inner(seg11, min_t1, mid_t1, seg21, min_t2, mid_t2, accuracy, intersections);
-		segment_intersections_inner(seg11, min_t1, mid_t1, seg22, mid_t2, max_t2, accuracy, intersections);
-		segment_intersections_inner(seg12, mid_t1, max_t1, seg21, min_t2, mid_t2, accuracy, intersections);
-		segment_intersections_inner(seg12, mid_t1, max_t1, seg22, mid_t2, max_t2, accuracy, intersections);
+		// Repeat checking the intersection with the combinations of the two halves of each curve's parameter range
+		segment_intersections_inner(segment1, min_t1, mid_t1, segment2, min_t2, mid_t2, accuracy, intersections);
+		segment_intersections_inner(segment1, min_t1, mid_t1, segment2, mid_t2, max_t2, accuracy, intersections);
+		segment_intersections_inner(segment1, mid_t1, max_t1, segment2, min_t2, mid_t2, accuracy, intersections);
+		segment_intersections_inner(segment1, mid_t1, max_t1, segment2, mid_t2, max_t2, accuracy, intersections);
 	}
 }
 
@@ -495,5 +491,21 @@ mod tests {
 			)
 			.all()
 		);
+	}
+
+	// Pairs other than line or cubic-cubic take the subdivision path, which must narrow both curves' parameter ranges
+	#[test]
+	fn quadratic_crossing_cubic() {
+		let quadratic = PathSeg::Quad(QuadBez::new((195., 210.), (125., 235.), (65., 205.)));
+		let cubic = PathSeg::Cubic(CubicBez::new((87., 220.), (49., 194.), (49., 135.), (64., 96.)));
+		let expected = super::segment_intersections(PathSeg::Cubic(quadratic.to_cubic()), cubic, None);
+		assert_eq!(expected.len(), 1);
+
+		let intersections = super::segment_intersections(quadratic, cubic, None);
+		assert!(!intersections.is_empty());
+		for (quadratic_t, cubic_t) in intersections {
+			assert!(compare_points(quadratic.eval(quadratic_t), cubic.eval(cubic_t)));
+			assert!(compare_points(quadratic.eval(quadratic_t), quadratic.eval(expected[0].0)));
+		}
 	}
 }

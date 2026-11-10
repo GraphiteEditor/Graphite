@@ -514,16 +514,13 @@ impl SegmentGraph {
 	/// Returns `None` if no segments cross.
 	fn split_at_crossings(&self) -> Option<Self> {
 		const T_TOLERANCE: f64 = 1e-6;
-		const POSITION_TOLERANCE: f64 = 1e-6;
+		const POSITION_TOLERANCE: f64 = 1e-2;
 
 		let mut positions = vec![DVec2::NAN; self.point_count];
 		for (segment_index, segment) in self.segments.iter().enumerate() {
 			positions[self.start_point[segment_index]] = point_to_dvec2(segment.start());
 			positions[self.end_point[segment_index]] = point_to_dvec2(segment.end());
 		}
-
-		let is_interior = |t: f64| t > T_TOLERANCE && t < 1. - T_TOLERANCE;
-		let endpoint_at = |segment_index: usize, t: f64| if t < 0.5 { self.start_point[segment_index] } else { self.end_point[segment_index] };
 
 		let bounding_boxes: Vec<kurbo::Rect> = self.segments.iter().map(kurbo::ParamCurveExtrema::bounding_box).collect();
 		let mut splits: Vec<Vec<(f64, usize)>> = vec![Vec::new(); self.len()];
@@ -534,12 +531,18 @@ impl SegmentGraph {
 				}
 
 				for (first_t, second_t) in segment_intersections(self.segments[first], self.segments[second], None) {
-					let point = match (is_interior(first_t), is_interior(second_t)) {
-						(false, false) => continue,
-						(true, false) => endpoint_at(second, second_t),
-						(false, true) => endpoint_at(first, first_t),
-						(true, true) => {
-							let position = point_to_dvec2(self.segments[first].eval(first_t));
+					let position = point_to_dvec2(self.segments[first].eval(first_t));
+					let endpoint_near = |segment_index: usize| {
+						[self.start_point[segment_index], self.end_point[segment_index]]
+							.into_iter()
+							.find(|&point| positions[point].distance(position) < POSITION_TOLERANCE)
+					};
+					let (first_endpoint, second_endpoint) = (endpoint_near(first), endpoint_near(second));
+
+					let point = match (first_endpoint, second_endpoint) {
+						(Some(_), Some(_)) => continue,
+						(Some(point), None) | (None, Some(point)) => point,
+						(None, None) => {
 							let existing = (self.point_count..positions.len()).find(|&point| positions[point].distance(position) < POSITION_TOLERANCE);
 							existing.unwrap_or_else(|| {
 								positions.push(position);
@@ -548,10 +551,10 @@ impl SegmentGraph {
 						}
 					};
 
-					if is_interior(first_t) {
+					if first_endpoint.is_none() {
 						splits[first].push((first_t, point));
 					}
-					if is_interior(second_t) {
+					if second_endpoint.is_none() {
 						splits[second].push((second_t, point));
 					}
 				}
