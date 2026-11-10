@@ -6,7 +6,6 @@ use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{NetworkMetadataEntry, NodeMetadataEntry};
 use graph_craft::document::NodeNetwork;
-use graph_craft::util::load_network;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
@@ -59,8 +58,9 @@ pub async fn open_document(path: &Path) -> Result<LoadedDocument, Box<dyn Error>
 	let named_gdd = path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("gdd"));
 	if !named_gdd && ArchiveFormat::detect(&bytes).is_none() {
 		let document_string = String::from_utf8(bytes).map_err(|error| format!("Document {} is neither a .gdd archive nor text: {error}", path.display()))?;
+		let network = legacy_network(&document_string).map_err(|error| format!("Failed to parse legacy document {}: {error}", path.display()))?;
 		return Ok(LoadedDocument {
-			network: load_network(&document_string),
+			network,
 			origin: DocumentOrigin::Legacy(document_string),
 		});
 	}
@@ -72,6 +72,12 @@ pub async fn open_document(path: &Path) -> Result<LoadedDocument, Box<dyn Error>
 		network,
 		origin: DocumentOrigin::Gdd { gdd: Box::new(gdd), nodes, networks },
 	})
+}
+
+fn legacy_network(document_string: &str) -> Result<NodeNetwork, serde_json::Error> {
+	let document: serde_json::Value = serde_json::from_str(document_string)?;
+	let network = document["network_interface"]["network"].to_string();
+	serde_json::from_str(&network)
 }
 
 /// The documents in the repository's `demo-artwork` folder, by file stem.

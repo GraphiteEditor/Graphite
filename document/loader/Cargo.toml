@@ -12,11 +12,12 @@ publish.workspace = true
 document-container = { workspace = true, features = ["zip", "xz"] }
 document-format = { workspace = true, features = ["zip", "xz", "migrations"] }
 document-graph-storage = { workspace = true }
-graph-craft = { workspace = true, features = ["loading"] }
+graph-craft = { workspace = true }
 migration-formats = { workspace = true }
 migration-compiled = { workspace = true }
 migration-nodes = { workspace = true }
 futures = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

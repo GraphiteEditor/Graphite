@@ -1765,6 +1765,7 @@ dependencies = [
  "migration-compiled",
  "migration-formats",
  "migration-nodes",
+ "serde_json",
 ]
 
 [[package]]
