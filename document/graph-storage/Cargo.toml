@@ -34,3 +34,4 @@ postcard = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
 core-types = { workspace = true }
 document-loader = { workspace = true }
+futures = { workspace = true }

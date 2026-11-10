@@ -16,7 +16,6 @@ graph-craft = { workspace = true }
 migration-formats = { workspace = true }
 migration-compiled = { workspace = true }
 migration-nodes = { workspace = true }
-futures = { workspace = true }
 serde_json = { workspace = true }
 
 [lints]

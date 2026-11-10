@@ -7,7 +7,7 @@ use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{NetworkMetadataEntry, NodeMetadataEntry};
 use graph_craft::document::NodeNetwork;
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 // Referenced so the linker keeps their self-registering migrations
 use migration_compiled as _;
@@ -78,28 +78,4 @@ fn legacy_network(document_string: &str) -> Result<NodeNetwork, serde_json::Erro
 	let document: serde_json::Value = serde_json::from_str(document_string)?;
 	let network = document["network_interface"]["network"].to_string();
 	serde_json::from_str(&network)
-}
-
-/// The documents in the repository's `demo-artwork` folder, by file stem.
-pub const DEMO_ARTWORK: [&str; 7] = [
-	"changing-seasons",
-	"painted-dreams",
-	"red-dress",
-	"valley-of-spires",
-	"isometric-fountain",
-	"procedural-string-lights",
-	"parametric-dunescape",
-];
-
-pub fn demo_artwork_path(name: &str) -> PathBuf {
-	Path::new(env!("CARGO_MANIFEST_DIR")).join("../../demo-artwork").join(format!("{name}.graphite"))
-}
-
-/// The network of a demo artwork, opened with the migrations this crate links.
-pub fn load_demo_artwork(name: &str) -> NodeNetwork {
-	let path = demo_artwork_path(name);
-	match futures::executor::block_on(open_document(&path)) {
-		Ok(document) => document.network,
-		Err(error) => panic!("Failed to open demo artwork {}: {error}", path.display()),
-	}
 }
