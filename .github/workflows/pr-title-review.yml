@@ -1,0 +1,70 @@
+name: "PR Title Review"
+
+# The review reads this name back from earlier runs to carry over verdicts and count reviews
+run-name: "#${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
+
+on:
+  # Runs the base branch's version of this workflow with access to secrets, even for fork PRs, which is safe only while no step checks out or runs the PR's code
+  pull_request_target:
+    types: [opened, reopened, edited, synchronize]
+
+# Runs for the same PR queue up rather than cancel one another, so a review that was paid for always records its verdict
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  title:
+    name: PR title
+    if: github.repository == 'GraphiteEditor/Graphite' && github.event.pull_request.state == 'open'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Clone the review scripts and read the main branch's recent commit messages
+      contents: read
+      # Read the PR's changed files, and post or delete this workflow's comments
+      pull-requests: write
+      # Read this workflow's earlier runs
+      actions: read
+
+    steps:
+      - name: 📥 Clone the review scripts from the base branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/pr-title-review
+
+      - name: 🟢 Install Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: 🔎 Gather the title's history and changes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/pr-title-review/gather.ts
+
+      # The only step given the API key, and it gets no GitHub token
+      - name: 🤖 Review the title
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Empty when the repository variable isn't set, which leaves the default in `review.ts`
+          PR_TITLE_REVIEW_MODEL: ${{ vars.PR_TITLE_REVIEW_MODEL }}
+        run: node .github/pr-title-review/review.ts
+
+      - name: 💬 Report the verdict
+        id: report
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/pr-title-review/report.ts
+
+      # Later runs carry this failure over while the title is unchanged, finding this step by its name (see `VERDICT_STEP_NAME` in `gather.ts`)
+      - name: ❌ Fail for the title's verdict
+        if: ${{ !cancelled() && steps.report.outputs.result == 'verdict' }}
+        run: exit 1
+
+      # Later runs review the title again after this failure, as they do when a step above fails unexpectedly
+      - name: 🔁 Fail without a verdict
+        if: ${{ !cancelled() && steps.report.outputs.result != 'verdict' && steps.report.outputs.result != 'approved' }}
+        run: exit 1
