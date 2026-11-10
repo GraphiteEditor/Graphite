@@ -546,28 +546,27 @@ mod test {
 		// UNCOMMENT THIS FOR RUNNING UNDER MIRI
 		//
 		// let files = [
-		// 	include_str!("../../demo-artwork/changing-seasons.graphite"),
-		// 	include_str!("../../demo-artwork/isometric-fountain.graphite"),
-		// 	include_str!("../../demo-artwork/painted-dreams.graphite"),
-		// 	include_str!("../../demo-artwork/procedural-string-lights.graphite"),
-		// 	include_str!("../../demo-artwork/parametric-dunescape.graphite"),
-		// 	include_str!("../../demo-artwork/red-dress.graphite"),
-		// 	include_str!("../../demo-artwork/valley-of-spires.graphite"),
+		// 	include_bytes!("../../demo-artwork/changing-seasons.graphite"),
+		// 	include_bytes!("../../demo-artwork/isometric-fountain.graphite"),
+		// 	include_bytes!("../../demo-artwork/painted-dreams.graphite"),
+		// 	include_bytes!("../../demo-artwork/procedural-string-lights.graphite"),
+		// 	include_bytes!("../../demo-artwork/parametric-dunescape.graphite"),
+		// 	include_bytes!("../../demo-artwork/red-dress.graphite"),
+		// 	include_bytes!("../../demo-artwork/valley-of-spires.graphite"),
 		// ];
-		// for (id, document_serialized_content) in files.iter().enumerate() {
+		// for (id, data) in files.iter().enumerate() {
 		// let document_name = format!("document {id}");
 
 		for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
-			let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
+			let data = std::fs::read(format!("../demo-artwork/{file_name}")).unwrap();
 
-			assert_eq!(
-				document_serialized_content.lines().count(),
-				1,
-				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
+			assert!(
+				document_container::archive::ArchiveFormat::detect(&data).is_some(),
+				"Demo artwork '{document_name}' is not a .gdd archive (remember to open and re-save it in Graphite)",
 			);
 
-			let responses = editor.editor.handle_message(IngestMessage::Ingest {
-				data: document_serialized_content.into_bytes(),
+			let responses = editor.dispatch(IngestMessage::Ingest {
+				data,
 				action: IngestAction::Open,
 				mime_type: String::new(),
 				path: Some(file_name.into()),
