@@ -4,6 +4,8 @@ mod catalog;
 #[cfg(test)]
 mod catalog_tests;
 #[cfg(test)]
+pub(crate) use catalog::shipped_node_id;
+#[cfg(test)]
 mod characterization_tests;
 mod deserialization;
 pub mod editor_delta;

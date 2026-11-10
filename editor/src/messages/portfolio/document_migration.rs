@@ -4209,6 +4209,7 @@ fn vary_scales_bias_from_copy_to_points(bias: f64) -> f64 {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::messages::portfolio::document::utility_types::network_interface::shipped_node_id;
 
 	/// Runs the upgrades with the root wire cache loaded, the state a migration meets after its first rewire, and asserts the interface they leave behind is consistent.
 	fn migrate(document: &mut DocumentMessageHandler) {
@@ -4864,7 +4865,7 @@ mod tests {
 			panic!("Blend should stay a network node")
 		};
 		assert_eq!(
-			inner.nodes[&NodeId(3)].implementation,
+			inner.nodes[&shipped_node_id("Blend", NodeId(3))].implementation,
 			DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::as_number::IDENTIFIER)
 		);
 	}
@@ -4970,8 +4971,11 @@ mod tests {
 		let Some(inner) = document.network_interface.document_network().implementation_network(&node.implementation) else {
 			panic!("Regex Find should stay a network node")
 		};
-		assert_eq!(inner.nodes[&NodeId(0)].inputs.get(2), Some(&NodeInput::import(item!(i64), 2)));
-		assert_eq!(inner.nodes[&NodeId(1)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Integer(0)));
+		assert_eq!(inner.nodes[&shipped_node_id("Regex Find", NodeId(0))].inputs.get(2), Some(&NodeInput::import(item!(i64), 2)));
+		assert_eq!(
+			inner.nodes[&shipped_node_id("Regex Find", NodeId(1))].inputs.get(1).and_then(|input| input.as_value()).cloned(),
+			Some(TaggedValue::Integer(0))
+		);
 	}
 
 	#[test]
