@@ -645,7 +645,9 @@ impl ApplicationHandler for App {
 				}
 			}
 			WindowEvent::DragEntered { id, .. } => {
-				let accepts = event_loop.data_transfer(id).is_ok_and(|data_transfer| data_transfer.has_type(&TypeHint::UriList));
+				let accepts = event_loop.data_transfer(id).is_ok_and(|data_transfer| {
+					data_transfer.has_type(&TypeHint::UriList) || data_transfer.has_type(&TypeHint::Image { extension_hint: None }) || data_transfer.has_type(&TypeHint::Plaintext)
+				});
 				let actions: &[DndAction] = if accepts { &[DndAction::Copy] } else { &[] };
 				if let Err(e) = event_loop.set_valid_dnd_actions(id, actions) {
 					tracing::error!("Failed to set valid drag and drop actions: {e}");
