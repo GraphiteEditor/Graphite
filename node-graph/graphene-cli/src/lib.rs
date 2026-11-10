@@ -1,18 +1,15 @@
-//! Opens, compiles, and renders Graphite documents without the editor. A `.gdd` opens through the format steps and node migrations
-//! this crate links, so every binary built on it reads documents the way the current build writes them.
+//! Opens, compiles, and renders Graphite documents without the editor. Documents open through `document-loader`, so every binary
+//! built on it reads documents the way the current build writes them.
 
 pub mod dump;
 pub mod export;
 
-use document_container::AnyContainer;
-use document_container::archive::ArchiveFormat;
-use document_container::backends::memory::MemoryBackend;
-use document_format::{GddV1, GddV1Layout};
+use document_format::GddV1;
+use document_loader::{DocumentOrigin, LoadedDocument};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
-use graph_craft::util::load_network;
 use graphene_std::application_io::ApplicationIo;
 use graphene_std::runtime::{AsyncRuntime, RuntimeHandle, Spawn, Task};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -23,11 +20,6 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-// Referenced so the linker keeps their self-registering migrations
-use migration_compiled as _;
-use migration_formats as _;
-use migration_nodes as _;
-
 /// A document as the CLI loads it: the runtime network, plus the `.gdd` it came from, if any.
 pub struct OpenedDocument {
 	pub gdd: Option<GddV1>,
@@ -36,40 +28,22 @@ pub struct OpenedDocument {
 	pub names: Option<HashMap<Vec<NodeId>, String>>,
 }
 
-/// Open a `.gdd` from its archive bytes into memory, running the migrations this crate links.
-pub async fn open_gdd(archive: &[u8]) -> Result<GddV1, Box<dyn Error>> {
-	let container = AnyContainer::Memory(MemoryBackend::new());
-	let host = migration_compiled::CompilerHost::default();
-	let gdd = GddV1::open_from_archive_with(archive, container, GddV1Layout, None, Some(&host))
-		.await
-		.map_err(|error| format!("Failed to open document: {error}"))?;
-	Ok(gdd)
-}
-
-/// Open `path` as a `.gdd` if it is named `.gdd` or starts with archive magic bytes, otherwise as a legacy JSON document. `with_names` also collects its display names.
+/// Open `path` with [`document_loader::open_document`]. `with_names` also collects its display names.
 pub async fn open_document(path: &Path, with_names: bool) -> Result<OpenedDocument, Box<dyn Error>> {
-	let bytes = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
+	let LoadedDocument { network, origin } = document_loader::open_document(path).await?;
 
-	// A file named `.gdd` stays on the archive path, so a damaged one reports the archive error
-	let named_gdd = path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("gdd"));
-	if !named_gdd && ArchiveFormat::detect(&bytes).is_none() {
-		let document_string = String::from_utf8(bytes).map_err(|error| format!("Document {} is neither a .gdd archive nor text: {error}", path.display()))?;
-		return Ok(OpenedDocument {
-			gdd: None,
-			network: load_network(&document_string),
-			names: with_names.then(|| dump::legacy_names(&document_string)),
-		});
-	}
-
-	let gdd = open_gdd(&bytes).await?;
-	let declarations = gdd.declarations(&gdd).await;
-	let (network, nodes, networks) = gdd.registry().to_runtime_with_full_metadata(&declarations, gdd.blobs())?;
-	let names = with_names.then(|| {
-		let references: HashMap<_, _> = networks.into_iter().filter_map(|network| Some((network.network, network.reference?))).collect();
-		let display_names: HashMap<_, _> = nodes.into_iter().filter_map(|node| Some(((node.network, node.local_id), node.display_name?))).collect();
-		instance_names(&network, &references, &display_names)
-	});
-	Ok(OpenedDocument { gdd: Some(gdd), network, names })
+	let (gdd, names) = match origin {
+		DocumentOrigin::Legacy(document_string) => (None, with_names.then(|| dump::legacy_names(&document_string))),
+		DocumentOrigin::Gdd { gdd, nodes, networks } => {
+			let names = with_names.then(|| {
+				let references: HashMap<_, _> = networks.into_iter().filter_map(|network| Some((network.network, network.reference?))).collect();
+				let display_names: HashMap<_, _> = nodes.into_iter().filter_map(|node| Some(((node.network, node.local_id), node.display_name?))).collect();
+				instance_names(&network, &references, &display_names)
+			});
+			(Some(*gdd), names)
+		}
+	};
+	Ok(OpenedDocument { gdd, network, names })
 }
 
 /// The name of each node, keyed by the path the dump visits it at.

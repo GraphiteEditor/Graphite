@@ -4224,7 +4224,7 @@ mod tests {
 	// Real documents drive every migration at once, on wiring no synthetic fixture reproduces
 	#[test]
 	fn demo_artwork_migrates_to_a_consistent_interface() {
-		use crate::messages::portfolio::document::storage_tests::test_support::load_demo;
+		use crate::messages::portfolio::document::storage_tests::test_support::open_demo;
 
 		let demo_artwork = [
 			"changing-seasons.graphite",
@@ -4237,7 +4237,7 @@ mod tests {
 			"valley-of-spires.graphite",
 		];
 		for file_name in demo_artwork {
-			let mut document = load_demo(file_name);
+			let mut document = open_demo(file_name);
 			migrate_with_context(&mut document, &format!("migrating {file_name}"));
 		}
 	}

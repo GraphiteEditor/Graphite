@@ -817,10 +817,10 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let mut editor = EditorTestUtils::create();
 
 	// Open a real demo artwork through the normal open path and let it render.
-	let content = std::fs::read_to_string("../demo-artwork/changing-seasons.graphite").expect("read demo artwork");
+	let data = std::fs::read("../demo-artwork/changing-seasons.graphite").expect("read demo artwork");
 	editor
 		.handle_message(IngestMessage::Ingest {
-			data: content.into_bytes(),
+			data,
 			action: IngestAction::Open,
 			mime_type: String::new(),
 			path: Some("changing-seasons.graphite".into()),

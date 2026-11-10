@@ -20,6 +20,7 @@ members = [
 	"document/migrations/compiled",
 	"document/peer-transport",
 	"document/live",
+	"document/loader",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -119,6 +120,7 @@ migration-compiled = { path = "document/migrations/compiled" }
 migration-nodes = { path = "document/migrations/nodes" }
 peer-transport = { path = "document/peer-transport" }
 document-live = { path = "document/live" }
+document-loader = { path = "document/loader" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
