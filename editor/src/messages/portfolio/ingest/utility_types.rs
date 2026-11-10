@@ -215,7 +215,7 @@ pub struct DataTransferItem {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransferData {
 	Text(String),
-	GraphiteText(String),
+	ApplicationData(Vec<ApplicationDataItem>),
 	Svg(String),
 	Raster { format: ImageFormat, data: Vec<u8> },
 	Document(Vec<u8>),
@@ -232,15 +232,16 @@ impl TransferData {
 			Self::Document(_) => DataType::Gdd,
 			Self::LegacyDocument(_) => DataType::GraphiteLegacy,
 			Self::Lut(_) => DataType::Lut,
-			Self::Text(_) | Self::GraphiteText(_) => DataType::Text,
+			Self::Text(_) | Self::ApplicationData(_) => DataType::Text,
 			Self::Other(_) => DataType::Unknown,
 		}
 	}
 
 	pub fn into_bytes(self) -> Vec<u8> {
 		match self {
-			Self::Text(text) | Self::GraphiteText(text) | Self::Svg(text) | Self::LegacyDocument(text) => text.into_bytes(),
+			Self::Text(text) | Self::Svg(text) | Self::LegacyDocument(text) => text.into_bytes(),
 			Self::Raster { data, .. } | Self::Document(data) | Self::Lut(data) | Self::Other(data) => data,
+			Self::ApplicationData(_) => DataTransferItem::from(self).into_raw().map(|(_, data)| data.into_bytes()).unwrap_or_default(),
 		}
 	}
 }
@@ -271,8 +272,11 @@ impl DataTransferItem {
 		let data = match data_type {
 			DataType::Text => {
 				let text = data.into_string()?;
-				match text.strip_prefix(GRAPHITE_PREFIX) {
-					Some(graphite) => TransferData::GraphiteText(graphite.to_string()),
+				let items = text
+					.strip_prefix(GRAPHITE_PREFIX)
+					.and_then(|json| serde_json::from_str(json).inspect_err(|error| log::error!("Failed to deserialize application data: {error}")).ok());
+				match items {
+					Some(items) => TransferData::ApplicationData(items),
 					None => TransferData::Text(text),
 				}
 			}
@@ -299,7 +303,13 @@ impl DataTransferItem {
 	pub fn into_raw(self) -> Option<(DataType, RawData)> {
 		match self.data {
 			TransferData::Text(text) => Some((DataType::Text, RawData::Text(text))),
-			TransferData::GraphiteText(data) => Some((DataType::Text, RawData::Text(format!("{GRAPHITE_PREFIX}{data}")))),
+			TransferData::ApplicationData(items) => match serde_json::to_string(&items) {
+				Ok(json) => Some((DataType::Text, RawData::Text(format!("{GRAPHITE_PREFIX}{json}")))),
+				Err(error) => {
+					log::error!("Failed to serialize application data: {error}");
+					None
+				}
+			},
 			TransferData::Svg(svg) => Some((DataType::Svg, RawData::Text(svg))),
 			TransferData::Raster { format, data } => Some((DataType::Raster(format), RawData::Bytes(data))),
 			TransferData::Document(_) | TransferData::LegacyDocument(_) | TransferData::Lut(_) | TransferData::Other(_) => None,
@@ -440,14 +450,15 @@ mod tests {
 	}
 
 	#[test]
-	fn graphite_data_travels_as_prefixed_text() {
-		let (data_type, data) = DataTransferItem::from(TransferData::GraphiteText("[]".to_string())).into_raw().unwrap();
+	fn application_data_travels_as_prefixed_text() {
+		let (data_type, data) = DataTransferItem::from(TransferData::ApplicationData(Vec::new())).into_raw().unwrap();
 		assert_eq!(data_type, DataType::Text);
 		assert_eq!(data.into_string().as_deref(), Some("graphite: []"));
 
 		let item = |text: &[u8]| DataTransferItem::from_raw(DataType::Text, RawData::Bytes(text.to_vec())).map(|item| item.data);
-		assert_eq!(item(b"graphite: []"), Some(TransferData::GraphiteText("[]".to_string())));
+		assert_eq!(item(b"graphite: []"), Some(TransferData::ApplicationData(Vec::new())));
 		assert_eq!(item(b"graphite"), Some(TransferData::Text("graphite".to_string())));
+		assert_eq!(item(b"graphite: not a payload"), Some(TransferData::Text("graphite: not a payload".to_string())));
 	}
 
 	#[test]
@@ -482,7 +493,7 @@ mod tests {
 	#[test]
 	fn data_transfer_round_trips_through_serde() {
 		let transfer: DataTransfer = [
-			DataTransferItem::from(TransferData::GraphiteText("[]".to_string())),
+			DataTransferItem::from(TransferData::ApplicationData(Vec::new())),
 			DataTransferItem::from_file("drawing.svg".into(), None, b"<svg/>".to_vec()),
 		]
 		.into_iter()

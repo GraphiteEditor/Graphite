@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
-use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataLayer, ApplicationDataResource, DataTransfer, DataTransferItem, ResourceData, TransferData};
+use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataLayer, ApplicationDataResource, DataTransferItem, ResourceData, TransferData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::ToolType;
@@ -555,9 +555,12 @@ impl ClipboardMessageHandler {
 		responses: &mut VecDeque<Message>,
 	) {
 		if loads.is_empty() {
-			if let Some(content) = serialize_clipboard(&items, svg) {
-				responses.add(ClipboardMessage::Write { content });
-			}
+			let content = [Some(TransferData::ApplicationData(items)), svg.map(TransferData::Svg)]
+				.into_iter()
+				.flatten()
+				.map(DataTransferItem::from)
+				.collect();
+			responses.add(ClipboardMessage::Write { content });
 			return;
 		}
 
@@ -573,22 +576,13 @@ impl ClipboardMessageHandler {
 					resource.data = Some(ResourceData(data.as_ref().to_vec()));
 				}
 			}
-			match serialize_clipboard(&items, svg) {
-				Some(content) => ClipboardMessage::Loaded { id, content }.into(),
-				None => Message::NoOp,
-			}
+			let content = [Some(TransferData::ApplicationData(items)), svg.map(TransferData::Svg)]
+				.into_iter()
+				.flatten()
+				.map(DataTransferItem::from)
+				.collect();
+			Message::from(ClipboardMessage::Loaded { id, content })
 		});
-	}
-}
-
-/// Serialize the clipboard items, logging on failure.
-fn serialize_clipboard(items: &[ApplicationDataItem], svg: Option<String>) -> Option<DataTransfer> {
-	match serde_json::to_string(items) {
-		Ok(data) => Some([TransferData::GraphiteText(data)].into_iter().chain(svg.map(TransferData::Svg)).map(DataTransferItem::from).collect()),
-		Err(error) => {
-			log::error!("Failed to serialize clipboard payload: {error}");
-			None
-		}
 	}
 }
 
@@ -605,7 +599,7 @@ fn item_templates(item: &ApplicationDataItem) -> Vec<&network_interface::NodeTem
 #[cfg(test)]
 mod test {
 	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-	use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataResource, ResourceData};
+	use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataResource, DataType, RawData, ResourceData};
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
 	use graph_craft::document::NodeInput;
@@ -771,15 +765,14 @@ mod test {
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 0);
 		assert!(copied_svg(&clipboard).is_some_and(is_svg_document), "the cut image should render an SVG: {clipboard:?}");
 
-		let graphite = clipboard
+		let items = clipboard
 			.0
 			.iter()
 			.find_map(|item| match &item.data {
-				TransferData::GraphiteText(data) => Some(data),
+				TransferData::ApplicationData(items) => Some(items),
 				_ => None,
 			})
-			.expect("the cut image should be written as Graphite data");
-		let items = serde_json::from_str::<Vec<ApplicationDataItem>>(graphite).unwrap();
+			.expect("the cut image should be written as application data");
 		assert!(items.iter().any(|item| matches!(item, ApplicationDataItem::Resource(ApplicationDataResource { data: Some(_), .. }))));
 	}
 
@@ -793,7 +786,7 @@ mod test {
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rectangle] }).await;
 
 		let clipboard = editor.copy_to_clipboard(NodeGraphMessage::Copy).await.expect("copying the node should write it to the clipboard");
-		assert!(clipboard.0.iter().all(|item| matches!(item.data, TransferData::GraphiteText(_))), "{clipboard:?}");
+		assert!(clipboard.0.iter().all(|item| matches!(item.data, TransferData::ApplicationData(_))), "{clipboard:?}");
 	}
 
 	#[cfg_attr(miri, ignore)]
@@ -854,10 +847,8 @@ mod test {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 
-		let content = [TransferData::GraphiteText("unreadable".to_string()), TransferData::Svg(PASTED_SVG.to_string())]
-			.into_iter()
-			.map(DataTransferItem::from)
-			.collect();
+		let unreadable = DataTransferItem::from_raw(DataType::Text, RawData::Text("graphite: unreadable".to_string())).unwrap();
+		let content = [unreadable, TransferData::Svg(PASTED_SVG.to_string()).into()].into_iter().collect();
 		editor.paste_from_clipboard(content).await;
 		assert!(editor.active_document().metadata().all_layers().count() > 0);
 	}
@@ -869,6 +860,17 @@ mod test {
 
 		let responses = editor.paste_from_clipboard(TransferData::Text("text".to_string()).into()).await;
 		assert!(responses.contains(&FrontendMessage::TriggerSelectionWrite { content: "text".to_string() }));
+	}
+
+	#[tokio::test]
+	async fn pasting_text_that_only_looks_like_application_data_inserts_it_at_the_caret() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let text = "graphite: not a payload".to_string();
+		let content = DataTransferItem::from_raw(DataType::Text, RawData::Text(text.clone())).unwrap().into();
+		let responses = editor.paste_from_clipboard(content).await;
+		assert!(responses.contains(&FrontendMessage::TriggerSelectionWrite { content: text }));
 	}
 
 	/// A pasted `graphite:` payload re-registers the resources it carries into the active document.
@@ -889,7 +891,7 @@ mod test {
 			sources: vec![DataSource::Embedded],
 			data: Some(ResourceData(bytes)),
 		})];
-		let payload = TransferData::GraphiteText(serde_json::to_string(&items).unwrap());
+		let payload = TransferData::ApplicationData(items);
 
 		editor.paste_from_clipboard(payload.into()).await;
 

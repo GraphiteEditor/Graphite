@@ -1,4 +1,4 @@
-use super::utility_types::{ApplicationDataItem, DataTransferItem, DataType, IngestAction, TransferData, TypeFilter};
+use super::utility_types::{DataTransferItem, DataType, IngestAction, TransferData, TypeFilter};
 use crate::messages::frontend::utility_types::{FileDialogOptions, FileFilter};
 use crate::messages::prelude::*;
 use glam::IVec2;
@@ -47,20 +47,13 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 				action,
 			}),
 			IngestMessage::Ingest { content, action } => {
-				let (files, items): (Vec<_>, Vec<_>) = content.0.into_iter().partition(|item| item.path.is_some());
+				let (files, mut items): (Vec<_>, Vec<_>) = content.0.into_iter().partition(|item| item.path.is_some());
 
-				let graphite = items.iter().find_map(|item| match &item.data {
-					TransferData::GraphiteText(data) => Some(data),
-					_ => None,
-				});
-				if let Some(data) = graphite {
-					match serde_json::from_str::<Vec<ApplicationDataItem>>(data) {
-						Ok(pasted) => {
-							responses.add(ClipboardMessage::PasteItems { items: pasted });
-							return;
-						}
-						Err(error) => log::error!("Failed to deserialize clipboard payload: {error}"),
-					}
+				if let Some(index) = items.iter().position(|item| matches!(item.data, TransferData::ApplicationData(_)))
+					&& let TransferData::ApplicationData(pasted) = items.swap_remove(index).data
+				{
+					responses.add(ClipboardMessage::PasteItems { items: pasted });
+					return;
 				}
 
 				if !files.is_empty() {
@@ -75,14 +68,14 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 					TransferData::Raster { .. } => 1,
 					TransferData::Document(_) | TransferData::LegacyDocument(_) | TransferData::Lut(_) | TransferData::Other(_) => 2,
 					TransferData::Text(_) => 3,
-					TransferData::GraphiteText(_) => 4,
+					TransferData::ApplicationData(_) => 4,
 				});
 				match preferred {
 					Some(DataTransferItem {
 						data: TransferData::Text(content), ..
 					}) if action == IngestAction::Paste => responses.add(FrontendMessage::TriggerSelectionWrite { content }),
 					Some(DataTransferItem {
-						data: TransferData::GraphiteText(_) | TransferData::Text(_),
+						data: TransferData::ApplicationData(_) | TransferData::Text(_),
 						..
 					})
 					| None => {}
@@ -179,7 +172,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						};
 						(insert, None)
 					}
-					TransferData::Lut(_) | TransferData::Other(_) | TransferData::Text(_) | TransferData::GraphiteText(_) => return unsupported(responses),
+					TransferData::Lut(_) | TransferData::Other(_) | TransferData::Text(_) | TransferData::ApplicationData(_) => return unsupported(responses),
 				};
 
 				if !place_at_origin {

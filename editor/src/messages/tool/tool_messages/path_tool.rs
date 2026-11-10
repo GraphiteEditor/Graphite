@@ -4189,7 +4189,7 @@ mod test_path_tool {
 			.copy_to_clipboard(ClipboardMessage::CopyLayers)
 			.await
 			.expect("copying points should write a payload to the clipboard");
-		assert!(clipboard.0.iter().all(|item| matches!(item.data, TransferData::GraphiteText(_))), "{clipboard:?}");
+		assert!(clipboard.0.iter().all(|item| matches!(item.data, TransferData::ApplicationData(_))), "{clipboard:?}");
 		editor.paste_from_clipboard(clipboard).await;
 
 		// Each curve now appears a second time under a new ID
