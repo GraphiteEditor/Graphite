@@ -42,7 +42,7 @@
 	align-self: stretch;
 	margin-top: calc(40 * var(--variable-px));
 
-	// Hides these while the stats API request is still in flight or has failed
+	// Hides these when the Worker had no fresh tally to fill them with
 	&:has(.value:empty) {
 		visibility: hidden;
 	}
@@ -101,11 +101,23 @@
 // DONATION PICKER
 // ===============
 
+// Holds the picker with the link to manage a membership beneath it
+.donation-picker-column {
+	flex: 1 1 420px;
+	display: flex;
+	flex-direction: column;
+
+	.manage {
+		align-self: flex-end;
+		margin-top: calc(20 * var(--variable-px));
+		font-size: calc(1rem * 7 / 9);
+	}
+}
+
 .donation-picker {
 	// Shrinks the checkout button, which is the only thing in here sized off this variable
 	--font-size-link: calc(1rem * 10 / 9);
 
-	flex: 1 1 420px;
 	box-sizing: border-box;
 	position: relative;
 	display: flex;
@@ -308,16 +320,9 @@
 			flex-direction: column;
 			gap: 10px;
 
-			// Carried by the toggle rather than the wrapper, so the separation above it never changes
 			.payment-method {
 				margin-top: calc(20 * var(--variable-px));
 			}
-		}
-
-		.manage {
-			align-self: flex-end;
-			margin-top: calc(20 * var(--variable-px));
-			font-size: calc(1rem * 7 / 9);
 		}
 
 		.action {
@@ -438,25 +443,50 @@
 	.tier-panel[data-frequency="one-time"] {
 		display: contents;
 	}
+}
 
-	// There is no ongoing membership to manage from a one-time gift
-	.manage {
-		display: none;
-	}
+// There is no ongoing membership to manage from a one-time gift
+.donation-picker-column:has([value="one-time"]:checked) .manage {
+	display: none;
 }
 
 .donation-picker:has([value="direct"]:checked) .github-only {
-	color: Rgb(from var(--color-navy) r g b / 0.33);
-}
-
-.donation-picker:has([value="github"]:checked) .manage {
-	color: Rgb(from var(--color-crimson) r g b / 0.33);
-	pointer-events: none;
+	display: none;
 }
 
 .donation-picker:has([value="direct"]:checked) :is(.action, .method-note)[data-method="direct"],
 .donation-picker:has([value="github"]:checked) :is(.action, .method-note)[data-method="github"] {
 	display: block;
+}
+
+// ==============
+// MEMBER CREDITS
+// ==============
+
+.member-credits {
+	.credits-tiers {
+		align-self: stretch;
+		display: flex;
+		flex-direction: column;
+		gap: calc(80 * var(--variable-px));
+		margin-top: calc(40 * var(--variable-px));
+	}
+
+	h3 {
+		display: flex;
+		align-items: center;
+		gap: 0.75em;
+		text-transform: uppercase;
+		color: var(--color-ale);
+
+		// Rules off the rest of the row, so each tier reads as its own section
+		&::after {
+			content: "";
+			flex: 1 1 0;
+			height: var(--border-thickness);
+			background-color: currentColor;
+		}
+	}
 }
 
 // ===============
