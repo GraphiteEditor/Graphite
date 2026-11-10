@@ -642,6 +642,20 @@ fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	Ok(content)
 }
 
+/// Reads a named attribute of a collection type from every item, where **Write Attribute** stores a whole list per item.
+/// A stored list contributes all of its items with their own attributes, and a lone value contributes itself.
+fn read_collection_attribute<T: Clone + Send + Sync + 'static>(content: &ListDyn, name: &str) -> List<T> {
+	let mut result = List::with_capacity(content.len());
+	for index in 0..content.len() {
+		if let Some(list) = content.attribute::<List<T>>(name, index) {
+			result.extend(list.clone());
+		} else if let Some(value) = content.attribute::<T>(name, index) {
+			result.push(Item::new_from_element(value.clone()));
+		}
+	}
+	result
+}
+
 /// Reads a named `Vector` attribute from the input list, outputting each value as an element of a new `Vector[]`.
 #[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_vector(
@@ -651,13 +665,7 @@ fn read_attribute_vector(
 	#[constant]
 	name: Item<String>,
 ) -> List<Vector> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+	read_collection_attribute(&content, &name.into_element())
 }
 
 /// Reads a named `Number` or `Integer` attribute from the input list, outputting each value as an element of a new `Number[]`.
@@ -868,13 +876,7 @@ fn read_attribute_gradient_stops(
 	#[constant]
 	name: Item<String>,
 ) -> List<Gradient> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Gradient>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+	read_collection_attribute(&content, &name.into_element())
 }
 
 /// Reads a named `Artboard` attribute from the input list, outputting each value as an element of a new `Artboard[]`.
@@ -886,13 +888,7 @@ fn read_attribute_artboard(
 	#[constant]
 	name: Item<String>,
 ) -> List<Artboard> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Artboard>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+	read_collection_attribute(&content, &name.into_element())
 }
 
 /// Reads a named `Raster` attribute from the input list, outputting each value as an element of a new `Raster[]`.
@@ -904,13 +900,7 @@ fn read_attribute_raster(
 	#[constant]
 	name: Item<String>,
 ) -> List<Raster<CPU>> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+	read_collection_attribute(&content, &name.into_element())
 }
 
 /// Joins two lists of the same type, extending the base list with the items from the new list.
@@ -1193,6 +1183,30 @@ mod test {
 
 	fn elements<T: Clone>(list: &List<T>) -> Vec<T> {
 		list.iter_element_values().cloned().collect()
+	}
+
+	#[test]
+	fn reads_every_item_of_a_stored_vector_list_with_its_attributes() {
+		let placement = DAffine2::from_translation(DVec2::new(3., 4.));
+		let shapes: List<Vector> = [placement, DAffine2::IDENTITY]
+			.into_iter()
+			.map(|transform| Item::new_from_element(Vector::default()).with_attribute(ATTR_TRANSFORM, transform))
+			.collect();
+		let content: List<f64> = Item::new_from_element(0.).with_attribute("shapes", shapes).into();
+
+		let read = read_attribute_vector((), content.into(), Item::new_from_element("shapes".to_string()));
+
+		assert_eq!(read.len(), 2);
+		assert_eq!(read.attribute::<DAffine2>(ATTR_TRANSFORM, 0), Some(&placement));
+	}
+
+	#[test]
+	fn reads_a_lone_gradient_attribute() {
+		let content: List<f64> = Item::new_from_element(0.).with_attribute("ramp", Gradient::default()).into();
+
+		let read = read_attribute_gradient_stops((), content.into(), Item::new_from_element("ramp".to_string()));
+
+		assert_eq!(read.len(), 1);
 	}
 
 	#[test]
