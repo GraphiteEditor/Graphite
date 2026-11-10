@@ -1,4 +1,5 @@
-use super::utility_types::{DataType, IngestAction, TypeFilter};
+use super::utility_types::{DataTransferItem, DataType, IngestAction, TransferData, TypeFilter};
+use crate::messages::clipboard::utility_types::ClipboardItem;
 use crate::messages::frontend::utility_types::{FileDialogOptions, FileFilter};
 use crate::messages::prelude::*;
 use glam::IVec2;
@@ -46,10 +47,53 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 				},
 				action,
 			}),
-			IngestMessage::Ingest { data, action, mime_type, path } => {
-				let data_type = DataType::detect(&data, &mime_type, path.as_deref());
+			IngestMessage::Ingest { content, action } => {
+				let (files, items): (Vec<_>, Vec<_>) = content.0.into_iter().partition(|item| item.path.is_some());
 
-				let fresh_identity = matches!(action, IngestAction::OpenDemo);
+				let graphite = items.iter().find_map(|item| match &item.data {
+					TransferData::GraphiteText(data) => Some(data),
+					_ => None,
+				});
+				if let Some(data) = graphite {
+					match serde_json::from_str::<Vec<ClipboardItem>>(data) {
+						Ok(pasted) => {
+							responses.add(ClipboardMessage::PasteItems { items: pasted });
+							return;
+						}
+						Err(error) => log::error!("Failed to deserialize clipboard payload: {error}"),
+					}
+				}
+
+				if !files.is_empty() {
+					for item in files {
+						responses.add(IngestMessage::Item { item, action: action.clone() });
+					}
+					return;
+				}
+
+				let preferred = items.into_iter().min_by_key(|item| match item.data {
+					TransferData::Svg(_) => 0,
+					TransferData::Raster { .. } => 1,
+					TransferData::Document(_) | TransferData::LegacyDocument(_) | TransferData::Lut(_) | TransferData::Other(_) => 2,
+					TransferData::Text(_) => 3,
+					TransferData::GraphiteText(_) => 4,
+				});
+				match preferred {
+					Some(DataTransferItem {
+						data: TransferData::Text(content), ..
+					}) if action == IngestAction::Paste => responses.add(FrontendMessage::TriggerSelectionWrite { content }),
+					Some(DataTransferItem {
+						data: TransferData::GraphiteText(_) | TransferData::Text(_),
+						..
+					})
+					| None => {}
+					Some(item) => responses.add(IngestMessage::Item { item, action }),
+				}
+			}
+			IngestMessage::Item { item, action } => {
+				let DataTransferItem { data, path } = item;
+
+				let fresh_identity = matches!(action, IngestAction::OpenUnique);
 				let placement = match action {
 					IngestAction::ResourceInput {
 						document_id,
@@ -57,6 +101,8 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						input_index,
 						accepted_types,
 					} => {
+						let data_type = data.data_type();
+						let data = data.into_bytes();
 						if let Some(description) = rejection(&data, data_type, &accepted_types) {
 							responses.add(DialogMessage::DisplayDialogError {
 								title: "Unsupported file".into(),
@@ -81,7 +127,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						}
 						return;
 					}
-					IngestAction::Open | IngestAction::OpenDemo => None,
+					IngestAction::Open | IngestAction::OpenUnique => None,
 					IngestAction::Import | IngestAction::Paste => Some((None, None)),
 					IngestAction::DropOnCanvas { mouse } => Some((Some(mouse), None)),
 					IngestAction::DropOnLayers { parent, insert_index } => Some((None, Some((parent, insert_index as usize)))),
@@ -93,11 +139,8 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 
 				let (mouse, parent_and_insert_index) = placement.unwrap_or_default();
 				let place_at_origin = placement.is_none();
-				let (insert, artboard_canvas) = match data_type {
-					DataType::GraphiteLegacy => {
-						let Ok(document_serialized_content) = String::from_utf8(data) else {
-							return unsupported(responses);
-						};
+				let (insert, artboard_canvas) = match data {
+					TransferData::LegacyDocument(document_serialized_content) => {
 						responses.add(PortfolioMessage::OpenLegacyDocumentFile {
 							document_name: name,
 							document_path,
@@ -105,17 +148,16 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						});
 						return;
 					}
-					DataType::Gdd => {
+					TransferData::Document(content) => {
 						responses.add(PortfolioMessage::OpenDocumentFile {
 							document_name: name,
 							document_path,
-							content: data,
+							content,
 							fresh_identity,
 						});
 						return;
 					}
-					DataType::Svg => {
-						let Ok(svg) = String::from_utf8(data) else { return unsupported(responses) };
+					TransferData::Svg(svg) => {
 						let artboard_canvas = place_at_origin.then(|| svg_canvas(&svg)).flatten();
 						let insert = DocumentMessage::InsertSvg {
 							name: name.clone(),
@@ -126,7 +168,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						};
 						(insert, artboard_canvas)
 					}
-					DataType::Raster(_) => {
+					TransferData::Raster { data, .. } => {
 						let Some(size) = Image::encoded_size(&data) else { return unsupported(responses) };
 						let insert = DocumentMessage::InsertImage {
 							name: name.clone(),
@@ -138,8 +180,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						};
 						(insert, None)
 					}
-					// A LUT is only ever the file of a node input
-					DataType::Lut | DataType::Unknown => return unsupported(responses),
+					TransferData::Lut(_) | TransferData::Other(_) | TransferData::Text(_) | TransferData::GraphiteText(_) => return unsupported(responses),
 				};
 
 				if !place_at_origin {
@@ -215,8 +256,10 @@ fn svg_canvas(svg: &str) -> Option<(IVec2, IVec2)> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::messages::portfolio::ingest::utility_types::DataTransfer;
 	use graph_craft::document::NodeId;
 	use graphene_std::Color;
+	use std::path::PathBuf;
 
 	const REQUESTING_DOCUMENT: DocumentId = DocumentId(3);
 	const IDENTITY_CUBE: &[u8] = b"LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n";
@@ -227,11 +270,11 @@ mod tests {
 
 	fn ingest_named(data: &[u8], file_name: Option<&str>, action: IngestAction, document_open: bool) -> VecDeque<Message> {
 		let mut responses = VecDeque::new();
-		let message = IngestMessage::Ingest {
-			data: data.into(),
+		let path = file_name.map(PathBuf::from);
+		let data = DataTransferItem::from_file(path.clone().unwrap_or_default(), None, data.to_vec()).data;
+		let message = IngestMessage::Item {
+			item: DataTransferItem { data, path },
 			action,
-			mime_type: String::new(),
-			path: file_name.map(Into::into),
 		};
 		IngestMessageHandler::default().process_message(message, &mut responses, IngestMessageContext { document_open });
 		responses
@@ -254,6 +297,41 @@ mod tests {
 			}) => Some(*resource_id),
 			_ => None,
 		}
+	}
+
+	fn ingest_content(content: DataTransfer) -> Vec<DataTransferItem> {
+		let mut responses = VecDeque::new();
+		let message = IngestMessage::Ingest {
+			content,
+			action: IngestAction::Import,
+		};
+		IngestMessageHandler::default().process_message(message, &mut responses, IngestMessageContext { document_open: true });
+		responses
+			.into_iter()
+			.filter_map(|message| match message {
+				Message::Portfolio(PortfolioMessage::Ingest(IngestMessage::Item { item, .. })) => Some(item),
+				_ => None,
+			})
+			.collect()
+	}
+
+	#[test]
+	fn ingesting_files_ingests_each_one_in_place_of_other_representations() {
+		let file = |name: &str| DataTransferItem::from_file(name.into(), None, Vec::new());
+		let content = [DataTransferItem::from(TransferData::Svg("<svg/>".to_string())), file("a.png"), file("b.svg")].into_iter().collect();
+		let paths = ingest_content(content).into_iter().map(|item| item.path).collect::<Vec<_>>();
+		assert_eq!(paths, [Some("a.png".into()), Some("b.svg".into())]);
+	}
+
+	#[test]
+	fn ingesting_images_prefers_svg_over_raster() {
+		let raster = TransferData::Raster {
+			format: image::ImageFormat::Png,
+			data: Vec::new(),
+		};
+		let svg = TransferData::Svg("<svg/>".to_string());
+		let content = [raster, svg.clone()].into_iter().map(DataTransferItem::from).collect();
+		assert_eq!(ingest_content(content), [DataTransferItem::from(svg)]);
 	}
 
 	#[test]

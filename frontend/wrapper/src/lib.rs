@@ -4,9 +4,13 @@
 #[macro_use]
 extern crate log;
 
+#[cfg(feature = "editor")]
+mod data_transfer;
 pub mod editor_commands;
 pub mod editor_wrapper;
 pub mod helpers;
+#[cfg(feature = "editor")]
+mod intercept_frontend_message;
 pub mod native_communication;
 mod wasm_value;
 

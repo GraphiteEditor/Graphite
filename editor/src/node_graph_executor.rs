@@ -83,7 +83,7 @@ pub enum NodeGraphUpdate {
 	EyedropperPreview(Raster<CPU>),
 	Thumbnails { responses: VecDeque<FrontendMessage>, document_id: DocumentId },
 	InspectResult(Box<InspectResult>),
-	SvgTextCopyClipboard { svg_string: Option<String>, graphite_json: String },
+	ClipboardSvg { id: u64, svg: Option<String> },
 }
 
 #[derive(Debug)]
@@ -190,6 +190,15 @@ impl NodeGraphExecutor {
 
 	pub fn submit_inspect_context_overrides(&self, overrides: graphene_std::ContextOverrides) {
 		self.sender.send(GraphRuntimeRequest::InspectContextOverrides(overrides)).expect("Failed to send the context overrides");
+	}
+
+	pub fn submit_clipboard_svg(&self, document_id: Option<DocumentId>, id: u64, layers: Vec<NodeId>) -> Message {
+		if document_id.is_none() || self.node_graph_document != document_id {
+			return ClipboardMessage::Rendered { id, svg: None }.into();
+		}
+
+		self.sender.send(GraphRuntimeRequest::ClipboardSvg { id, layers }).expect("Failed to send runtime request");
+		Message::NoOp
 	}
 
 	pub fn submit_thumbnails_in_view(&self, document: &DocumentMessageHandler, document_id: DocumentId) {
@@ -665,9 +674,7 @@ impl NodeGraphExecutor {
 						Self::receive_thumbnails(document, thumbnails, responses);
 					}
 				}
-				NodeGraphUpdate::SvgTextCopyClipboard { svg_string, graphite_json } => {
-					responses.add(FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string, graphite_json });
-				}
+				NodeGraphUpdate::ClipboardSvg { id, svg } => responses.add(ClipboardMessage::Rendered { id, svg }),
 			}
 		}
 
@@ -686,6 +693,7 @@ impl NodeGraphExecutor {
 				} if thumbnails_document == document_id => {
 					Self::receive_thumbnails(document, thumbnails, responses);
 				}
+				NodeGraphUpdate::ClipboardSvg { id, svg } => responses.add(ClipboardMessage::Rendered { id, svg }),
 				_ => {}
 			}
 		}
@@ -1039,12 +1047,6 @@ impl NodeGraphExecutor {
 				log::error!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})");
 			}
 		}
-	}
-
-	pub fn copy_svg_clipboard(&self, graphite_json: String, selected_nodes: Vec<NodeId>) {
-		self.sender
-			.send(GraphRuntimeRequest::CopySvgTextClipboard(graphite_json, selected_nodes))
-			.expect("Failed to send runtime request");
 	}
 }
 

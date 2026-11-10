@@ -52,7 +52,12 @@ impl DesktopWrapper {
 		let host = Host::Mac;
 		#[cfg(target_os = "linux")]
 		let host = Host::Linux;
-		let env = Environment { platform: Platform::Desktop, host };
+		let url = std::env::var("GRAPHITE_URL").map_or("https://editor.graphite.art/", |url| url.leak());
+		let env = Environment {
+			platform: Platform::Desktop,
+			host,
+			url,
+		};
 		let application_io = PlatformApplicationIo::new_with_executor(wgpu_executor);
 
 		let (editor, runtime) = Builder::new()

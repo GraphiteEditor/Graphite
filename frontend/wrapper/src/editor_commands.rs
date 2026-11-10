@@ -16,12 +16,12 @@ use wasm_bindgen::prelude::*;
 #[editor_commands]
 mod editor_commands {
 	use crate::helpers::translate_key;
-	use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 	use editor::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 	use editor::messages::input_mapper::utility_types::pointer::{EditorPointerState, ScrollDelta};
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
+	use editor::messages::portfolio::ingest::utility_types::DataTransferItem;
 	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
 	use editor::messages::tool::tool_messages::tool_prelude::{DroppedFile, WidgetId};
@@ -716,40 +716,9 @@ mod editor_commands {
 
 	/// A file headed for a known action, picked in the dialog that `TriggerBrowse` opened
 	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: Ts<IngestAction>) -> Message {
-		IngestMessage::Ingest {
-			data,
-			action,
-			mime_type,
-			path: Some(PathBuf::from(name)),
-		}
-		.into()
-	}
-
-	/// A file dropped on a panel or pasted, placed by the drop position or the layer slot it landed in
-	fn ingest_file(name: Option<String>, mime_type: String, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<u32>) -> Message {
-		let action = match (insert_parent_id.zip(insert_index), mouse_x.zip(mouse_y)) {
-			(Some((parent, insert_index)), _) => IngestAction::DropOnLayers {
-				parent: LayerNodeIdentifier::new_unchecked(NodeId(parent)),
-				insert_index,
-			},
-			(None, Some(mouse)) => IngestAction::DropOnCanvas { mouse },
-			(None, None) => IngestAction::Paste,
-		};
-		IngestMessage::Ingest {
-			data,
-			action,
-			mime_type,
-			path: name.map(PathBuf::from),
-		}
-		.into()
-	}
-
-	/// Paste from a serialized JSON representation
-	fn paste_text(data: String) -> Message {
-		ClipboardMessage::ReadClipboard {
-			content: ClipboardContentRaw::Text(data),
-		}
-		.into()
+		let mime = Some(mime_type.as_str()).filter(|mime| !mime.is_empty());
+		let content = DataTransferItem::from_file(PathBuf::from(name), mime, data).into();
+		IngestMessage::Ingest { content, action }.into()
 	}
 
 	/// Toggle visibility of a layer or node in the document network, as listed in the Layers panel

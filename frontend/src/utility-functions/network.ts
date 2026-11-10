@@ -58,7 +58,7 @@ export async function loadDemoArtwork(editor: EditorWrapper) {
 
 		const filename = url.pathname.split("/").pop() || "Untitled.graphite";
 		const content = await response.bytes();
-		editor.ingestPicked(filename, "", content, "OpenDemo");
+		editor.ingestPicked(filename, "", content, "OpenUnique");
 
 		history.replaceState("", "", `${window.location.pathname}${window.location.search}`);
 	} catch {

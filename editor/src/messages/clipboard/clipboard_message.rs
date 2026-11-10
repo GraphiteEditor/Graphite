@@ -1,4 +1,5 @@
-use crate::messages::clipboard::utility_types::{ClipboardContent, ClipboardContentRaw, ClipboardItem, ClipboardLayer, ClipboardVectorEntry};
+use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardLayer, ClipboardVectorEntry};
+use crate::messages::portfolio::ingest::utility_types::DataTransfer;
 use crate::messages::prelude::*;
 
 #[impl_message(Message, Clipboard)]
@@ -7,14 +8,15 @@ pub enum ClipboardMessage {
 	Cut,
 	Copy,
 	Paste,
-	ReadClipboard { content: ClipboardContentRaw },
 	ReadSelection { content: Option<String>, cut: bool },
-	Write { content: ClipboardContent },
+	Write { content: DataTransfer },
 
 	CopyLayers,
 	CutLayers,
 	WriteItems { items: Vec<ClipboardItem> },
-	PasteItems { data: String },
+	Rendered { id: u64, svg: Option<String> },
+	Loaded { id: u64, content: DataTransfer },
+	PasteItems { items: Vec<ClipboardItem> },
 	PasteLayers { entries: Vec<ClipboardLayer> },
 	PasteVectors { paths: Vec<ClipboardVectorEntry> },
 }

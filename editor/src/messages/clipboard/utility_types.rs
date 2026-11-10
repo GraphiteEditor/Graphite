@@ -7,18 +7,6 @@ use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId
 use graph_craft::document::NodeId;
 use graphene_std::vector::VectorModification;
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum ClipboardContentRaw {
-	Text(String),
-}
-
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum ClipboardContent {
-	Graphite(String),
-	Text(String),
-	Image { data: Vec<u8>, width: u32, height: u32 },
-}
-
 pub type ClipboardVectorEntry = (LayerNodeIdentifier, VectorModification, DAffine2);
 
 /// An entry in the `graphite:` clipboard payload.

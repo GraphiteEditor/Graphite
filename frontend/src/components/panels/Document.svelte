@@ -15,7 +15,6 @@
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceColor, createSRgba8, sRgba8FromCSS } from "/src/utility-functions/colors";
-	import { pasteFile } from "/src/utility-functions/files";
 	import { cleanupInputField } from "/src/utility-functions/input";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
@@ -150,7 +149,7 @@
 
 		e.preventDefault();
 
-		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor, mouse));
+		editor.ingest(e.dataTransfer, mouse?.[0], mouse?.[1]);
 	}
 
 	function panCanvasX(newValue: number) {

@@ -4185,15 +4185,12 @@ mod test_path_tool {
 		// Copy every point and paste them back into the same layer
 		editor.select_tool(ToolType::Path).await;
 		editor.handle_message(PathToolMessage::SelectAll).await;
-		let (_, clipboard) = editor
+		let clipboard = editor
 			.copy_to_clipboard(ClipboardMessage::CopyLayers)
 			.await
 			.expect("copying points should write a payload to the clipboard");
-		editor
-			.handle_message(ClipboardMessage::ReadClipboard {
-				content: ClipboardContentRaw::Text(clipboard),
-			})
-			.await;
+		assert!(clipboard.0.iter().all(|item| matches!(item.data, TransferData::GraphiteText(_))), "{clipboard:?}");
+		editor.paste_from_clipboard(clipboard).await;
 
 		// Each curve now appears a second time under a new ID
 		let control_points = |segment: kurbo::PathSeg| match segment {

@@ -487,7 +487,7 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
-	use crate::messages::portfolio::ingest::utility_types::IngestAction;
+	use crate::messages::portfolio::ingest::utility_types::{DataTransferItem, IngestAction};
 	pub use crate::test_utils::test_prelude::*;
 
 	#[tokio::test]
@@ -566,10 +566,8 @@ mod test {
 			);
 
 			let responses = editor.dispatch(IngestMessage::Ingest {
-				data,
+				content: DataTransferItem::from_file(file_name.into(), None, data).into(),
 				action: IngestAction::Open,
-				mime_type: String::new(),
-				path: Some(file_name.into()),
 			});
 
 			// Check if the graph renders

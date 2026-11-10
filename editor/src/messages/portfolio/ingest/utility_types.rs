@@ -7,17 +7,21 @@ use graph_craft::document::NodeId;
 use graphene_std::raster_nodes::color_lookup_table::LUT_FILE_EXTENSIONS;
 use image::ImageFormat;
 use std::ffi::OsStr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// How many leading bytes are inspected to recognize a text format.
+const GDD_MIME: &str = "application/vnd.graphite.document";
+const GRAPHITE_LEGACY_MIME: &str = "application/graphite+json";
+const SVG_MIME: &str = "image/svg+xml";
+const TEXT_MIME: &str = "text/plain";
+
+const GRAPHITE_PREFIX: &str = "graphite: ";
 const SNIFFED_TEXT_LENGTH: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum IngestAction {
 	Open,
-	/// Open a distributed file such as a demo artwork as a copy with its own session room.
-	OpenDemo,
+	OpenUnique,
 	Import,
 	Paste,
 	DropOnCanvas {
@@ -56,15 +60,15 @@ pub enum DataType {
 	Svg,
 	Raster(ImageFormat),
 	Lut,
+	Text,
 	#[default]
 	Unknown,
 }
 
 impl DataType {
-	/// The content decides, and the MIME type then the file name only settle what it leaves unknown.
-	pub fn detect(data: &[u8], mime_type: &str, path: Option<&Path>) -> Self {
+	pub fn detect(data: &[u8], mime: Option<&str>, path: Option<&Path>) -> Self {
 		match Self::from_content(data) {
-			Self::Unknown => match Self::from_mime(mime_type) {
+			Self::Unknown => match mime.map_or(Self::Unknown, Self::from_mime) {
 				Self::Unknown => path.map_or(Self::Unknown, Self::from_path),
 				data_type => data_type,
 			},
@@ -74,9 +78,10 @@ impl DataType {
 
 	pub fn from_mime(mime: &str) -> Self {
 		match mime.to_ascii_lowercase().as_str() {
-			"application/graphite+json" => Self::GraphiteLegacy,
-			"application/vnd.graphite.document" => Self::Gdd,
-			"image/svg+xml" => Self::Svg,
+			GRAPHITE_LEGACY_MIME => Self::GraphiteLegacy,
+			GDD_MIME => Self::Gdd,
+			SVG_MIME => Self::Svg,
+			TEXT_MIME => Self::Text,
 			mime => ImageFormat::from_mime_type(mime).map_or(Self::Unknown, Self::Raster),
 		}
 	}
@@ -123,10 +128,11 @@ impl DataType {
 
 	pub fn mime(self) -> Option<&'static str> {
 		Some(match self {
-			Self::GraphiteLegacy => "application/graphite+json",
-			Self::Gdd => "application/vnd.graphite.document",
-			Self::Svg => "image/svg+xml",
+			Self::GraphiteLegacy => GRAPHITE_LEGACY_MIME,
+			Self::Gdd => GDD_MIME,
+			Self::Svg => SVG_MIME,
 			Self::Raster(format) => format.to_mime_type(),
+			Self::Text => TEXT_MIME,
 			// The LUT formats share no MIME type
 			Self::Lut | Self::Unknown => return None,
 		})
@@ -139,7 +145,7 @@ impl DataType {
 			Self::Svg => &["svg"],
 			Self::Raster(format) => format.extensions_str(),
 			Self::Lut => LUT_FILE_EXTENSIONS,
-			Self::Unknown => &[],
+			Self::Text | Self::Unknown => &[],
 		}
 	}
 }
@@ -189,6 +195,136 @@ impl From<TypeFilter> for FileFilter {
 	}
 }
 
+#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct DataTransfer(pub Vec<DataTransferItem>);
+
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct DataTransferItem {
+	pub data: TransferData,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub path: Option<PathBuf>,
+}
+
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum TransferData {
+	Text(String),
+	GraphiteText(String),
+	Svg(String),
+	Raster { format: ImageFormat, data: Vec<u8> },
+	Document(Vec<u8>),
+	LegacyDocument(String),
+	Lut(Vec<u8>),
+	Other(Vec<u8>),
+}
+
+impl TransferData {
+	pub fn data_type(&self) -> DataType {
+		match self {
+			Self::Svg(_) => DataType::Svg,
+			Self::Raster { format, .. } => DataType::Raster(*format),
+			Self::Document(_) => DataType::Gdd,
+			Self::LegacyDocument(_) => DataType::GraphiteLegacy,
+			Self::Lut(_) => DataType::Lut,
+			Self::Text(_) | Self::GraphiteText(_) => DataType::Text,
+			Self::Other(_) => DataType::Unknown,
+		}
+	}
+
+	pub fn into_bytes(self) -> Vec<u8> {
+		match self {
+			Self::Text(text) | Self::GraphiteText(text) | Self::Svg(text) | Self::LegacyDocument(text) => text.into_bytes(),
+			Self::Raster { data, .. } | Self::Document(data) | Self::Lut(data) | Self::Other(data) => data,
+		}
+	}
+}
+
+pub enum RawData {
+	Text(String),
+	Bytes(Vec<u8>),
+}
+
+impl RawData {
+	pub fn into_string(self) -> Option<String> {
+		match self {
+			Self::Text(text) => Some(text),
+			Self::Bytes(bytes) => String::from_utf8(bytes).ok(),
+		}
+	}
+
+	pub fn into_bytes(self) -> Vec<u8> {
+		match self {
+			Self::Text(text) => text.into_bytes(),
+			Self::Bytes(bytes) => bytes,
+		}
+	}
+}
+
+impl DataTransferItem {
+	pub fn from_raw(data_type: DataType, data: RawData) -> Option<Self> {
+		let data = match data_type {
+			DataType::Text => {
+				let text = data.into_string()?;
+				match text.strip_prefix(GRAPHITE_PREFIX) {
+					Some(graphite) => TransferData::GraphiteText(graphite.to_string()),
+					None => TransferData::Text(text),
+				}
+			}
+			DataType::Svg => TransferData::Svg(data.into_string()?),
+			DataType::Raster(format) => TransferData::Raster { format, data: data.into_bytes() },
+			_ => return None,
+		};
+		Some(data.into())
+	}
+
+	pub fn from_file(path: PathBuf, mime: Option<&str>, data: Vec<u8>) -> Self {
+		let text = |data: Vec<u8>, into: fn(String) -> TransferData| String::from_utf8(data).map_or_else(|error| TransferData::Other(error.into_bytes()), into);
+		let data = match DataType::detect(&data, mime, Some(&path)) {
+			DataType::GraphiteLegacy => text(data, TransferData::LegacyDocument),
+			DataType::Gdd => TransferData::Document(data),
+			DataType::Svg => text(data, TransferData::Svg),
+			DataType::Raster(format) => TransferData::Raster { format, data },
+			DataType::Lut => TransferData::Lut(data),
+			DataType::Text | DataType::Unknown => TransferData::Other(data),
+		};
+		Self { data, path: Some(path) }
+	}
+
+	pub fn into_raw(self) -> Option<(DataType, RawData)> {
+		match self.data {
+			TransferData::Text(text) => Some((DataType::Text, RawData::Text(text))),
+			TransferData::GraphiteText(data) => Some((DataType::Text, RawData::Text(format!("{GRAPHITE_PREFIX}{data}")))),
+			TransferData::Svg(svg) => Some((DataType::Svg, RawData::Text(svg))),
+			TransferData::Raster { format, data } => Some((DataType::Raster(format), RawData::Bytes(data))),
+			TransferData::Document(_) | TransferData::LegacyDocument(_) | TransferData::Lut(_) | TransferData::Other(_) => None,
+		}
+	}
+}
+
+impl From<TransferData> for DataTransferItem {
+	fn from(data: TransferData) -> Self {
+		Self { data, path: None }
+	}
+}
+
+impl From<DataTransferItem> for DataTransfer {
+	fn from(item: DataTransferItem) -> Self {
+		Self(vec![item])
+	}
+}
+
+impl From<TransferData> for DataTransfer {
+	fn from(data: TransferData) -> Self {
+		DataTransferItem::from(data).into()
+	}
+}
+
+impl FromIterator<DataTransferItem> for DataTransfer {
+	fn from_iter<T: IntoIterator<Item = DataTransferItem>>(iter: T) -> Self {
+		Self(iter.into_iter().collect())
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -220,18 +356,18 @@ mod tests {
 
 	#[test]
 	fn data_type_detect() {
-		let detect = |mime_type: &str, path: &str| DataType::detect(&[], mime_type, Some(Path::new(path)));
-		assert_eq!(detect("", "photo.JPEG"), DataType::Raster(ImageFormat::Jpeg));
-		assert_eq!(detect("image/svg+xml", ""), DataType::Svg);
-		assert_eq!(detect("application/graphite+json", ""), DataType::GraphiteLegacy);
-		assert_eq!(detect("image/png", "document.gdd"), DataType::Raster(ImageFormat::Png));
-		assert_eq!(detect("", "grade.CUBE"), DataType::Lut);
-		assert_eq!(detect("application/vnd.iccprofile", "profile.icm"), DataType::Lut);
-		assert_eq!(detect("text/csv", "table.csv"), DataType::Unknown);
-		assert_eq!(DataType::detect(&[], "", None), DataType::Unknown);
+		let detect = |mime: Option<&str>, path: &str| DataType::detect(&[], mime, Some(Path::new(path)));
+		assert_eq!(detect(None, "photo.JPEG"), DataType::Raster(ImageFormat::Jpeg));
+		assert_eq!(detect(Some("image/svg+xml"), ""), DataType::Svg);
+		assert_eq!(detect(Some("application/graphite+json"), ""), DataType::GraphiteLegacy);
+		assert_eq!(detect(Some("image/png"), "document.gdd"), DataType::Raster(ImageFormat::Png));
+		assert_eq!(detect(None, "grade.CUBE"), DataType::Lut);
+		assert_eq!(detect(Some("application/vnd.iccprofile"), "profile.icm"), DataType::Lut);
+		assert_eq!(detect(Some("text/csv"), "table.csv"), DataType::Unknown);
+		assert_eq!(DataType::detect(&[], None, None), DataType::Unknown);
 
 		let png = Image::new(1, 1, Color::WHITE).to_png();
-		assert_eq!(DataType::detect(&png, "image/svg+xml", Some(Path::new("drawing.svg"))), DataType::Raster(ImageFormat::Png));
+		assert_eq!(DataType::detect(&png, Some("image/svg+xml"), Some(Path::new("drawing.svg"))), DataType::Raster(ImageFormat::Png));
 	}
 
 	#[test]
@@ -247,5 +383,58 @@ mod tests {
 		// LUTs are picked by extension alone
 		let filter = FileFilter::from(TypeFilter::lut());
 		assert!(filter.extensions.iter().any(|extension| extension == "cube") && filter.mime_types.is_empty());
+	}
+
+	#[test]
+	fn graphite_data_travels_as_prefixed_text() {
+		let (data_type, data) = DataTransferItem::from(TransferData::GraphiteText("[]".to_string())).into_raw().unwrap();
+		assert_eq!(data_type, DataType::Text);
+		assert_eq!(data.into_string().as_deref(), Some("graphite: []"));
+
+		let item = |text: &[u8]| DataTransferItem::from_raw(DataType::Text, RawData::Bytes(text.to_vec())).map(|item| item.data);
+		assert_eq!(item(b"graphite: []"), Some(TransferData::GraphiteText("[]".to_string())));
+		assert_eq!(item(b"graphite"), Some(TransferData::Text("graphite".to_string())));
+	}
+
+	#[test]
+	fn raw_data_lifts_by_mime_type() {
+		let item = |mime: &str, data: &[u8]| DataTransferItem::from_raw(DataType::from_mime(mime), RawData::Bytes(data.to_vec())).map(|item| item.data);
+		assert_eq!(item(SVG_MIME, b"<svg/>"), Some(TransferData::Svg("<svg/>".to_string())));
+		assert_eq!(
+			item("image/png", &[1, 2]),
+			Some(TransferData::Raster {
+				format: ImageFormat::Png,
+				data: vec![1, 2]
+			})
+		);
+		assert_eq!(item("text/html", b"<b>bold</b>"), None);
+	}
+
+	#[test]
+	fn files_are_detected_by_content_first() {
+		let png = Image::new(1, 1, Color::WHITE).to_png();
+		let file = DataTransferItem::from_file("photo.jpg".into(), Some("image/jpeg"), png.clone());
+		assert_eq!(file.data, TransferData::Raster { format: ImageFormat::Png, data: png });
+		assert_eq!(file.path, Some(PathBuf::from("photo.jpg")));
+
+		assert_eq!(
+			DataTransferItem::from_file("document.gdd".into(), None, b"PK\x03\x04".to_vec()).data,
+			TransferData::Document(b"PK\x03\x04".to_vec())
+		);
+		assert_eq!(DataTransferItem::from_file("grade.cube".into(), None, b"LUT".to_vec()).data, TransferData::Lut(b"LUT".to_vec()));
+		assert_eq!(DataTransferItem::from_file("notes.txt".into(), None, b"notes".to_vec()).data, TransferData::Other(b"notes".to_vec()));
+	}
+
+	#[test]
+	fn data_transfer_round_trips_through_serde() {
+		let transfer: DataTransfer = [
+			DataTransferItem::from(TransferData::GraphiteText("[]".to_string())),
+			DataTransferItem::from_file("drawing.svg".into(), None, b"<svg/>".to_vec()),
+		]
+		.into_iter()
+		.collect();
+
+		let json = serde_json::to_string(&transfer).unwrap();
+		assert_eq!(serde_json::from_str::<DataTransfer>(&json).unwrap(), transfer);
 	}
 }

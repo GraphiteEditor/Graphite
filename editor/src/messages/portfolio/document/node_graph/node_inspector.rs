@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, LAYER_SECONDARY_INPUT_INDEX, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
-use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeFilter};
+use crate::messages::portfolio::ingest::utility_types::{DataTransferItem, IngestAction, TypeFilter};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
@@ -1578,10 +1578,8 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Ve
 			.selected_index(selected_index)
 			.on_file_drop(move |file| {
 				IngestMessage::Ingest {
-					data: file.data.clone(),
+					content: DataTransferItem::from_file(PathBuf::from(&file.name), Some(file.mime_type.as_str()).filter(|mime| !mime.is_empty()), file.data.clone()).into(),
 					action: file_drop_action.clone(),
-					mime_type: file.mime_type.clone(),
-					path: Some(PathBuf::from(&file.name)),
 				}
 				.into()
 			})
