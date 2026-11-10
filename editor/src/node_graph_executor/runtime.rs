@@ -1,5 +1,7 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+#[cfg(target_family = "wasm")]
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
 use crate::task::{Spawn, Spawner, Task};
 use glam::{DVec2, UVec2};
@@ -27,6 +29,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use thumbnails::Thumbnails;
+#[cfg(all(target_family = "wasm", feature = "gpu"))]
+use wgpu_executor::VelloCanvas;
 
 mod thumbnails;
 
@@ -71,6 +75,14 @@ pub struct NodeRuntime {
 	/// Currently displayed texture, the runtime keeps a reference to it to avoid the texture getting destroyed while it is still in use.
 	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 	current_viewport_texture: Option<Texture>,
+	/// The overlays awaiting their render, which happens once the viewport has artwork to draw them over.
+	#[cfg(all(target_family = "wasm", feature = "gpu"))]
+	pending_overlays: Option<OverlayContext>,
+	#[cfg(all(target_family = "wasm", feature = "gpu"))]
+	overlays_canvas: VelloCanvas,
+	/// The overlays last rendered, drawn over the artwork whenever the viewport is presented.
+	#[cfg(all(target_family = "wasm", feature = "gpu"))]
+	overlays_texture: Option<Texture>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -78,10 +90,18 @@ pub struct NodeRuntime {
 pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
-	ThumbnailsInView { layers: HashSet<NodeId>, document_id: DocumentId },
+	ThumbnailsInView {
+		layers: HashSet<NodeId>,
+		document_id: DocumentId,
+	},
 	Inspect(Vec<NodeId>),
 	InspectContextOverrides(ContextOverrides),
-	ClipboardSvg { id: u64, layers: Vec<NodeId> },
+	ClipboardSvg {
+		id: u64,
+		layers: Vec<NodeId>,
+	},
+	#[cfg(target_family = "wasm")]
+	RenderOverlays(OverlayContext),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -155,6 +175,12 @@ impl NodeRuntime {
 			wasm_canvas_cache: CanvasSurfaceHandle::new(),
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			current_viewport_texture: None,
+			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			pending_overlays: None,
+			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			overlays_canvas: VelloCanvas::default(),
+			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			overlays_texture: None,
 		}
 	}
 
@@ -196,6 +222,10 @@ impl NodeRuntime {
 					let svg = self.old_graph.as_ref().and_then(|network| thumbnails::layers_svg(&layers, network, &self.executor));
 					self.sender.send(NodeGraphUpdate::ClipboardSvg { id, svg }).expect("Failed to send response");
 				}
+				#[cfg(all(target_family = "wasm", feature = "gpu"))]
+				GraphRuntimeRequest::RenderOverlays(context) => self.pending_overlays = Some(context),
+				#[cfg(all(target_family = "wasm", not(feature = "gpu")))]
+				GraphRuntimeRequest::RenderOverlays(_) => {}
 			}
 		}
 
@@ -274,6 +304,12 @@ impl NodeRuntime {
 			if let Some(viewport) = viewport {
 				texture = self.run_viewport(viewport).await;
 			}
+
+			// Overlays that changed without new artwork are drawn over the artwork already shown
+			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			if self.pending_overlays.is_some() {
+				self.present_viewport();
+			}
 		}
 
 		(self.editor_wake)();
@@ -291,10 +327,7 @@ impl NodeRuntime {
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			{
 				self.current_viewport_texture = Some(texture.clone());
-
-				let application_io = self.editor_api.application_io.as_ref().unwrap();
-				let executor = application_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
-				self.wasm_canvas_cache.present(texture, executor);
+				self.present_viewport();
 
 				*data = RenderOutputType::CanvasFrame {
 					canvas_id: self.wasm_canvas_cache.id(),
@@ -312,6 +345,28 @@ impl NodeRuntime {
 
 		self.respond(request.execution_id, result).await;
 		texture
+	}
+
+	/// Renders the overlays awaiting their render, then presents the viewport's artwork with the overlays drawn over it.
+	#[cfg(all(target_family = "wasm", feature = "gpu"))]
+	fn present_viewport(&mut self) {
+		let Some(viewport_texture) = &self.current_viewport_texture else { return };
+		let Some(executor) = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
+			log::error!("The GPU executor should be available once the viewport has a texture");
+			return;
+		};
+
+		if let Some(overlays) = self.pending_overlays.take() {
+			match executor.render_vello_scene_on_canvas(&mut self.overlays_canvas, overlays.take_scene()) {
+				Ok(texture) => self.overlays_texture = Some(texture),
+				Err(error) => {
+					self.overlays_texture = None;
+					log::error!("Failed to render the overlays: {error:?}");
+				}
+			}
+		}
+
+		self.wasm_canvas_cache.present(viewport_texture, self.overlays_texture.as_ref(), executor);
 	}
 
 	async fn run_export(&mut self, request: ExecutionRequest) {

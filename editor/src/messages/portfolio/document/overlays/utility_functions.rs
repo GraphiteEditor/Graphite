@@ -16,25 +16,6 @@ use graphene_std::vector::misc::{BezierHandles, ManipulatorPointId, PathSegPoint
 use graphene_std::vector::{PointId, SegmentId, VectorGeometry, curve_type_at, handle_point, segment_id_of, span_endpoints, spans};
 use kurbo::{Affine, BezPath, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveDeriv, PathSeg, Rect, Shape};
 use std::collections::{HashMap, HashSet};
-#[cfg(target_family = "wasm")]
-use wasm_bindgen::JsCast;
-
-#[cfg(target_family = "wasm")]
-pub fn overlay_canvas_element() -> Option<web_sys::HtmlCanvasElement> {
-	let window = web_sys::window()?;
-	let document = window.document()?;
-	let canvas = document.query_selector("[data-overlays-canvas]").ok().flatten()?;
-	canvas.dyn_into::<web_sys::HtmlCanvasElement>().ok()
-}
-
-#[cfg(target_family = "wasm")]
-pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
-	let create_context = || {
-		let context = overlay_canvas_element()?.get_context("2d").ok().flatten()?;
-		context.dyn_into().ok()
-	};
-	create_context().expect("Failed to get canvas context")
-}
 
 pub fn selected_segments(network_interface: &NodeNetworkInterface, shape_editor: &ShapeState) -> HashMap<LayerNodeIdentifier, Vec<SegmentId>> {
 	let mut map = HashMap::new();

@@ -11,10 +11,6 @@ pub struct OverlaysMessageContext<'a> {
 pub struct OverlaysMessageHandler {
 	/// In the order they were added, which is the order they draw in.
 	pub overlay_providers: Vec<OverlayProvider>,
-	#[cfg(target_family = "wasm")]
-	canvas: Option<web_sys::HtmlCanvasElement>,
-	#[cfg(target_family = "wasm")]
-	context: Option<web_sys::CanvasRenderingContext2d>,
 }
 
 #[message_handler_data]
@@ -23,64 +19,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 		let OverlaysMessageContext { visibility_settings, viewport, .. } = context;
 
 		match message {
-			#[cfg(target_family = "wasm")]
-			OverlaysMessage::Draw => {
-				use super::utility_functions::overlay_canvas_element;
-				use super::utility_types::OverlayContext;
-				use crate::messages::viewport::{Position, ToPhysical};
-				use wasm_bindgen::JsCast;
-
-				// Discard detached canvas after a panel reorganization remounts the DOM
-				if self.canvas.as_ref().is_some_and(|canvas| !canvas.is_connected()) {
-					self.canvas = None;
-					self.context = None;
-				}
-
-				let canvas = match &self.canvas {
-					Some(canvas) => canvas,
-					None => {
-						let Some(new_canvas) = overlay_canvas_element() else { return };
-						self.canvas.get_or_insert(new_canvas)
-					}
-				};
-
-				let canvas_context = self.context.get_or_insert_with(|| {
-					let canvas_context = canvas.get_context("2d").ok().flatten().expect("Failed to get canvas context");
-					canvas_context.dyn_into().expect("Context should be a canvas 2d context")
-				});
-
-				let size_logical = viewport.size();
-				let size_physical = size_logical.to_physical();
-				let width = size_logical.x().max(size_physical.x());
-				let height = size_logical.y().max(size_physical.y());
-
-				canvas_context.clear_rect(0., 0., width, height);
-
-				if visibility_settings.all() {
-					responses.add(DocumentMessage::GridOverlays {
-						context: OverlayContext {
-							render_context: canvas_context.clone(),
-							visibility_settings: visibility_settings.clone(),
-							viewport: *viewport,
-						},
-					});
-					responses.add(DocumentMessage::LayersPanelHoverOverlays {
-						context: OverlayContext {
-							render_context: canvas_context.clone(),
-							visibility_settings: visibility_settings.clone(),
-							viewport: *viewport,
-						},
-					});
-					for provider in &self.overlay_providers {
-						responses.add(provider(OverlayContext {
-							render_context: canvas_context.clone(),
-							visibility_settings: visibility_settings.clone(),
-							viewport: *viewport,
-						}));
-					}
-				}
-			}
-			#[cfg(all(not(target_family = "wasm"), not(test)))]
+			#[cfg(not(test))]
 			OverlaysMessage::Draw => {
 				use super::utility_types::OverlayContext;
 
@@ -94,9 +33,14 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 						responses.add(provider(overlay_context.clone()));
 					}
 				}
+
+				// Queued after the providers so the scene is complete once it's rendered
+				#[cfg(target_family = "wasm")]
+				responses.add(PortfolioMessage::RenderOverlays { context: overlay_context });
+				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::RenderOverlays { context: overlay_context });
 			}
-			#[cfg(all(not(target_family = "wasm"), test))]
+			#[cfg(test)]
 			OverlaysMessage::Draw => {
 				let _ = (responses, visibility_settings, viewport);
 			}
