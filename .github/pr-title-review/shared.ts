@@ -17,7 +17,8 @@ export const ISSUES = {
 	lists_changes: "It strings together too many unrelated changes to read as a headline.",
 	describes_mechanism: "It describes how the change works, rather than what users get from it.",
 	inaccurate: "It claims something the changes in this PR don't do.",
-	formatting: 'It should be in sentence case without a trailing period, and without prefixes like "feat:", issue numbers, or emoji.',
+	capitalization: 'It should be in sentence case, with proper nouns and names capitalized, like "Vello", "WGPU", "the Pen tool", "the Layers panel", or "the Shift key".',
+	formatting: 'It should have no trailing period, and no prefix like "feat:", issue number, emoji, or tag like "[WIP]".',
 	spelling: "It has a misspelling or a non-American English spelling.",
 } as const;
 export type IssueCode = keyof typeof ISSUES;
