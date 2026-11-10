@@ -1,5 +1,4 @@
-use super::utility_types::{DataTransferItem, DataType, IngestAction, TransferData, TypeFilter};
-use crate::messages::clipboard::utility_types::ClipboardItem;
+use super::utility_types::{ApplicationDataItem, DataTransferItem, DataType, IngestAction, TransferData, TypeFilter};
 use crate::messages::frontend::utility_types::{FileDialogOptions, FileFilter};
 use crate::messages::prelude::*;
 use glam::IVec2;
@@ -55,7 +54,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 					_ => None,
 				});
 				if let Some(data) = graphite {
-					match serde_json::from_str::<Vec<ClipboardItem>>(data) {
+					match serde_json::from_str::<Vec<ApplicationDataItem>>(data) {
 						Ok(pasted) => {
 							responses.add(ClipboardMessage::PasteItems { items: pasted });
 							return;

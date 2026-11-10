@@ -1,12 +1,11 @@
 use crate::consts::DEFAULT_STROKE_WIDTH;
-use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardLayer, ClipboardResource, ResourceData};
 use crate::messages::portfolio::document::SelectionParts;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
-use crate::messages::portfolio::ingest::utility_types::{DataTransfer, DataTransferItem, TransferData};
+use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataLayer, ApplicationDataResource, DataTransfer, DataTransferItem, ResourceData, TransferData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::ToolType;
@@ -35,8 +34,14 @@ pub struct ClipboardMessageHandler {
 
 #[derive(Debug, Clone)]
 enum PendingCopy {
-	Rendering { id: u64, items: Vec<ClipboardItem>, loads: Vec<(usize, ResourceHash)> },
-	Loading { id: u64 },
+	Rendering {
+		id: u64,
+		items: Vec<ApplicationDataItem>,
+		loads: Vec<(usize, ResourceHash)>,
+	},
+	Loading {
+		id: u64,
+	},
 }
 
 impl PendingCopy {
@@ -116,7 +121,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						.collect::<Vec<_>>();
 					tree_path.reverse();
 
-					items.push(ClipboardItem::Layer(ClipboardLayer {
+					items.push(ApplicationDataItem::Layer(ApplicationDataLayer {
 						nodes: active_document.network_interface.copy_nodes(&copy_ids, &[]).collect(),
 						visible: active_document.network_interface.selected_nodes().layer_visible(layer, &active_document.network_interface),
 						locked: active_document.network_interface.selected_nodes().layer_locked(layer, &active_document.network_interface),
@@ -133,14 +138,14 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					.filter_map(|node_id| active_document.network_interface.copy_chain_node(node_id, &[]))
 					.collect::<Vec<_>>();
 				if !copies.is_empty() {
-					items.push(ClipboardItem::ChainNodes(copies));
+					items.push(ApplicationDataItem::ChainNodes(copies));
 				}
 
 				// Other nodes are kept under their own IDs, so a paste can tell when it's over the same nodes
 				if !other_nodes.is_empty() {
 					let copy_ids = active_document.with_layer_content(&other_nodes).into_iter().map(|node_id| (node_id, node_id)).collect();
 					let nodes = active_document.network_interface.copy_nodes(&copy_ids, active_document.selection_network_path()).collect();
-					items.push(ClipboardItem::Nodes(nodes));
+					items.push(ApplicationDataItem::Nodes(nodes));
 				}
 
 				responses.add(ClipboardMessage::WriteItems { items });
@@ -180,12 +185,12 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 			}
 			ClipboardMessage::WriteItems { mut items } => {
 				let has_content = items.iter().any(|item| match item {
-					ClipboardItem::Layer(entry) => !entry.nodes.is_empty(),
-					ClipboardItem::Nodes(nodes) => !nodes.is_empty(),
-					ClipboardItem::ChainNodes(copies) => !copies.is_empty(),
-					ClipboardItem::Vector(vector) => !vector.is_empty(),
-					ClipboardItem::Resource(_) => true,
-					ClipboardItem::Definition(_) => false,
+					ApplicationDataItem::Layer(entry) => !entry.nodes.is_empty(),
+					ApplicationDataItem::Nodes(nodes) => !nodes.is_empty(),
+					ApplicationDataItem::ChainNodes(copies) => !copies.is_empty(),
+					ApplicationDataItem::Vector(vector) => !vector.is_empty(),
+					ApplicationDataItem::Resource(_) => true,
+					ApplicationDataItem::Definition(_) => false,
 				});
 				if !has_content {
 					return;
@@ -206,7 +211,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						resource_ids.insert(id);
 					});
 				}
-				items.extend(definitions.into_iter().map(|definition| ClipboardItem::Definition(Box::new(definition))));
+				items.extend(definitions.into_iter().map(|definition| ApplicationDataItem::Definition(Box::new(definition))));
 
 				// Snapshot each resource's registry entry; embedded ones also need their bytes
 				let mut loads = Vec::new();
@@ -218,7 +223,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						{
 							loads.push((items.len(), *hash));
 						}
-						items.push(ClipboardItem::Resource(ClipboardResource {
+						items.push(ApplicationDataItem::Resource(ApplicationDataResource {
 							id,
 							hash: info.hash.copied(),
 							sources: info.sources.to_vec(),
@@ -227,7 +232,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					}
 				}
 
-				if items.iter().any(|item| matches!(item, ClipboardItem::Layer(_))) {
+				if items.iter().any(|item| matches!(item, ApplicationDataItem::Layer(_))) {
 					let id = self.next_copy_id();
 					self.pending_copy = Some(PendingCopy::Rendering { id, items, loads });
 					responses.add(PortfolioMessage::SubmitClipboardSvg { id });
@@ -256,27 +261,27 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				for item in items {
 					// Pasted templates skip document migration, so stored types normalize here
 					match item {
-						ClipboardItem::Layer(mut entry) => {
+						ApplicationDataItem::Layer(mut entry) => {
 							for (_, template) in &mut entry.nodes {
 								template.normalize_stored_types();
 							}
 							layers.push(entry);
 						}
-						ClipboardItem::Nodes(mut nodes) => {
+						ApplicationDataItem::Nodes(mut nodes) => {
 							for (_, template) in &mut nodes {
 								template.normalize_stored_types();
 							}
 							node_groups.push(nodes);
 						}
-						ClipboardItem::ChainNodes(mut copies) => {
+						ApplicationDataItem::ChainNodes(mut copies) => {
 							for copy in &mut copies {
 								copy.template.normalize_stored_types();
 							}
 							chain_node_groups.push(copies);
 						}
-						ClipboardItem::Vector(vector) => vectors.push(vector),
-						ClipboardItem::Resource(resource) => resources.push(resource),
-						ClipboardItem::Definition(definition) => definitions.push(*definition),
+						ApplicationDataItem::Vector(vector) => vectors.push(vector),
+						ApplicationDataItem::Resource(resource) => resources.push(resource),
+						ApplicationDataItem::Definition(definition) => definitions.push(*definition),
 					}
 				}
 
@@ -543,7 +548,7 @@ impl ClipboardMessageHandler {
 
 	fn finish_copy(
 		&mut self,
-		mut items: Vec<ClipboardItem>,
+		mut items: Vec<ApplicationDataItem>,
 		loads: Vec<(usize, ResourceHash)>,
 		svg: Option<String>,
 		resource_storage: &ResourceStorageMessageHandler,
@@ -562,7 +567,7 @@ impl ClipboardMessageHandler {
 		let load_handle = resource_storage.resources();
 		responses.add(async move {
 			for (index, hash) in loads {
-				if let ClipboardItem::Resource(resource) = &mut items[index]
+				if let ApplicationDataItem::Resource(resource) = &mut items[index]
 					&& let Some(data) = load_handle.load(hash).await
 				{
 					resource.data = Some(ResourceData(data.as_ref().to_vec()));
@@ -577,7 +582,7 @@ impl ClipboardMessageHandler {
 }
 
 /// Serialize the clipboard items, logging on failure.
-fn serialize_clipboard(items: &[ClipboardItem], svg: Option<String>) -> Option<DataTransfer> {
+fn serialize_clipboard(items: &[ApplicationDataItem], svg: Option<String>) -> Option<DataTransfer> {
 	match serde_json::to_string(items) {
 		Ok(data) => Some([TransferData::GraphiteText(data)].into_iter().chain(svg.map(TransferData::Svg)).map(DataTransferItem::from).collect()),
 		Err(error) => {
@@ -588,19 +593,19 @@ fn serialize_clipboard(items: &[ClipboardItem], svg: Option<String>) -> Option<D
 }
 
 /// The node templates a clipboard item carries.
-fn item_templates(item: &ClipboardItem) -> Vec<&network_interface::NodeTemplate> {
+fn item_templates(item: &ApplicationDataItem) -> Vec<&network_interface::NodeTemplate> {
 	match item {
-		ClipboardItem::Layer(entry) => entry.nodes.iter().map(|(_, template)| template).collect(),
-		ClipboardItem::Nodes(nodes) => nodes.iter().map(|(_, template)| template).collect(),
-		ClipboardItem::ChainNodes(copies) => copies.iter().map(|copy| &copy.template).collect(),
-		ClipboardItem::Vector(_) | ClipboardItem::Resource(_) | ClipboardItem::Definition(_) => Vec::new(),
+		ApplicationDataItem::Layer(entry) => entry.nodes.iter().map(|(_, template)| template).collect(),
+		ApplicationDataItem::Nodes(nodes) => nodes.iter().map(|(_, template)| template).collect(),
+		ApplicationDataItem::ChainNodes(copies) => copies.iter().map(|copy| &copy.template).collect(),
+		ApplicationDataItem::Vector(_) | ApplicationDataItem::Resource(_) | ApplicationDataItem::Definition(_) => Vec::new(),
 	}
 }
 
 #[cfg(test)]
 mod test {
-	use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardResource, ResourceData};
 	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+	use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataResource, ResourceData};
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
 	use graph_craft::document::NodeInput;
@@ -774,8 +779,8 @@ mod test {
 				_ => None,
 			})
 			.expect("the cut image should be written as Graphite data");
-		let items = serde_json::from_str::<Vec<ClipboardItem>>(graphite).unwrap();
-		assert!(items.iter().any(|item| matches!(item, ClipboardItem::Resource(ClipboardResource { data: Some(_), .. }))));
+		let items = serde_json::from_str::<Vec<ApplicationDataItem>>(graphite).unwrap();
+		assert!(items.iter().any(|item| matches!(item, ApplicationDataItem::Resource(ApplicationDataResource { data: Some(_), .. }))));
 	}
 
 	#[tokio::test]
@@ -878,7 +883,7 @@ mod test {
 		// Carry the resource and its bytes through the clipboard
 		let bytes = b"a pretend png".to_vec();
 		let hash = ResourceHash::from(bytes.as_slice());
-		let items = vec![ClipboardItem::Resource(ClipboardResource {
+		let items = vec![ApplicationDataItem::Resource(ApplicationDataResource {
 			id,
 			hash: Some(hash),
 			sources: vec![DataSource::Embedded],

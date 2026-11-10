@@ -1,5 +1,4 @@
-use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardLayer, ClipboardVectorEntry};
-use crate::messages::portfolio::ingest::utility_types::DataTransfer;
+use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataLayer, ApplicationDataVector, DataTransfer};
 use crate::messages::prelude::*;
 
 #[impl_message(Message, Clipboard)]
@@ -13,10 +12,10 @@ pub enum ClipboardMessage {
 
 	CopyLayers,
 	CutLayers,
-	WriteItems { items: Vec<ClipboardItem> },
+	WriteItems { items: Vec<ApplicationDataItem> },
 	Rendered { id: u64, svg: Option<String> },
 	Loaded { id: u64, content: DataTransfer },
-	PasteItems { items: Vec<ClipboardItem> },
-	PasteLayers { entries: Vec<ClipboardLayer> },
-	PasteVectors { paths: Vec<ClipboardVectorEntry> },
+	PasteItems { items: Vec<ApplicationDataItem> },
+	PasteLayers { entries: Vec<ApplicationDataLayer> },
+	PasteVectors { paths: Vec<ApplicationDataVector> },
 }

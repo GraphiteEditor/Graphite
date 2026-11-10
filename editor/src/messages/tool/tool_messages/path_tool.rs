@@ -4,7 +4,6 @@ use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_GREEN_25, COLOR_OVERLAY_RED, COLOR_OVERLAY_RED_25, DEFAULT_STROKE_WIDTH,
 	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD,
 };
-use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardVectorEntry};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
@@ -13,6 +12,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles,
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
+use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataVector};
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -146,7 +146,7 @@ pub enum PathToolMessage {
 	Cut,
 	Paste {
 		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
-		paths: Vec<ClipboardVectorEntry>,
+		paths: Vec<ApplicationDataVector>,
 	},
 	DeleteSelected,
 	Duplicate,
@@ -2838,7 +2838,7 @@ impl Fsm for PathToolFsmState {
 				}
 
 				responses.add(ClipboardMessage::WriteItems {
-					items: vec![ClipboardItem::Vector(buffer)],
+					items: vec![ApplicationDataItem::Vector(buffer)],
 				});
 
 				PathToolFsmState::Ready
