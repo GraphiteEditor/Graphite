@@ -1,4 +1,5 @@
 use crate::vector::addressing::{self, Span};
+use crate::vector::algorithms::intersection::segment_intersections;
 use crate::vector::contour::contours;
 use crate::vector::misc::{ManipulatorGroup, Tangent, point_to_dvec2, segment_to_handles};
 use crate::vector::path::{CurveType, Path, append_segment, continues_previous_path, curve_type_at, curve_types_of};
@@ -318,6 +319,16 @@ fn tangent_at_endpoint(segment: PathSeg, at_start: bool) -> DVec2 {
 	}
 }
 
+/// Moves the segment's end anchors onto the given positions, so pieces split from different segments meet exactly.
+fn snap_endpoints(segment: PathSeg, start: DVec2, end: DVec2) -> PathSeg {
+	let [start, end] = [start, end].map(|position| kurbo::Point::new(position.x, position.y));
+	match segment {
+		PathSeg::Line(_) => PathSeg::Line(kurbo::Line::new(start, end)),
+		PathSeg::Quad(quad) => PathSeg::Quad(kurbo::QuadBez::new(start, quad.p1, end)),
+		PathSeg::Cubic(cubic) => PathSeg::Cubic(kurbo::CubicBez::new(start, cubic.p1, cubic.p2, end)),
+	}
+}
+
 impl SegmentGraph {
 	/// Walks every face orbit of the segment graph and traces each one's path and signed area.
 	fn face_orbits(&self) -> FaceOrbits {
@@ -465,6 +476,127 @@ impl SegmentGraph {
 	/// reverse-wound contour still punches its hole when it shares no points with what surrounds it.
 	pub fn construct_faces(&self) -> Vec<kurbo::BezPath> {
 		let orbits = self.face_orbits();
+		if self.has_extra_silhouette(&orbits)
+			&& let Some(planar) = self.split_at_crossings()
+		{
+			return planar.faces_from_orbits(&planar.face_orbits());
+		}
+
+		self.faces_from_orbits(&orbits)
+	}
+
+	/// Whether a connected component has more than one positive-area orbit, which a planar embedding never has.
+	/// It reveals segments crossing without a shared point, since the face walk then leaves the real faces.
+	fn has_extra_silhouette(&self, orbits: &FaceOrbits) -> bool {
+		fn root(component: &mut [usize], mut point: usize) -> usize {
+			while component[point] != point {
+				component[point] = component[component[point]];
+				point = component[point];
+			}
+			point
+		}
+
+		let mut component = (0..self.point_count).collect::<Vec<_>>();
+		for (&start, &end) in self.start_point.iter().zip(&self.end_point) {
+			let (start_root, end_root) = (root(&mut component, start), root(&mut component, end));
+			component[start_root] = end_root;
+		}
+
+		let mut silhouette_components = HashSet::new();
+		(0..orbits.face_count()).filter(|&orbit_index| orbits.areas[orbit_index] > 0.).any(|orbit_index| {
+			let Some(first_side) = orbits.face_sides(orbit_index).first() else { return false };
+			let component_root = root(&mut component, self.start_point[first_side.segment_index]);
+			!silhouette_components.insert(component_root)
+		})
+	}
+
+	/// A copy of the graph with every segment split where it crosses another, joining the pieces at a shared point.
+	/// Returns `None` if no segments cross.
+	fn split_at_crossings(&self) -> Option<Self> {
+		const T_TOLERANCE: f64 = 1e-6;
+		const POSITION_TOLERANCE: f64 = 1e-6;
+
+		let mut positions = vec![DVec2::NAN; self.point_count];
+		for (segment_index, segment) in self.segments.iter().enumerate() {
+			positions[self.start_point[segment_index]] = point_to_dvec2(segment.start());
+			positions[self.end_point[segment_index]] = point_to_dvec2(segment.end());
+		}
+
+		let is_interior = |t: f64| t > T_TOLERANCE && t < 1. - T_TOLERANCE;
+		let endpoint_at = |segment_index: usize, t: f64| if t < 0.5 { self.start_point[segment_index] } else { self.end_point[segment_index] };
+
+		let bounding_boxes: Vec<kurbo::Rect> = self.segments.iter().map(kurbo::ParamCurveExtrema::bounding_box).collect();
+		let mut splits: Vec<Vec<(f64, usize)>> = vec![Vec::new(); self.len()];
+		for first in 0..self.len() {
+			for second in first + 1..self.len() {
+				if !bounding_boxes[first].overlaps(bounding_boxes[second]) {
+					continue;
+				}
+
+				for (first_t, second_t) in segment_intersections(self.segments[first], self.segments[second], None) {
+					let point = match (is_interior(first_t), is_interior(second_t)) {
+						(false, false) => continue,
+						(true, false) => endpoint_at(second, second_t),
+						(false, true) => endpoint_at(first, first_t),
+						(true, true) => {
+							let position = point_to_dvec2(self.segments[first].eval(first_t));
+							let existing = (self.point_count..positions.len()).find(|&point| positions[point].distance(position) < POSITION_TOLERANCE);
+							existing.unwrap_or_else(|| {
+								positions.push(position);
+								positions.len() - 1
+							})
+						}
+					};
+
+					if is_interior(first_t) {
+						splits[first].push((first_t, point));
+					}
+					if is_interior(second_t) {
+						splits[second].push((second_t, point));
+					}
+				}
+			}
+		}
+
+		if splits.iter().all(Vec::is_empty) {
+			return None;
+		}
+
+		let mut planar = Self {
+			spans: Vec::new(),
+			ids: Vec::new(),
+			start_point: Vec::new(),
+			end_point: Vec::new(),
+			segments: Vec::new(),
+			point_count: positions.len(),
+		};
+		for (segment_index, mut segment_splits) in splits.into_iter().enumerate() {
+			segment_splits.sort_by(|a, b| a.0.total_cmp(&b.0));
+			segment_splits.dedup_by_key(|&mut (_, point)| point);
+
+			let boundaries = std::iter::once((0., self.start_point[segment_index]))
+				.chain(segment_splits)
+				.chain(std::iter::once((1., self.end_point[segment_index])))
+				.collect::<Vec<_>>();
+			for window in boundaries.windows(2) {
+				let [(start_t, start), (end_t, end)] = [window[0], window[1]];
+				if end_t - start_t < T_TOLERANCE {
+					continue;
+				}
+
+				let piece = snap_endpoints(self.segments[segment_index].subsegment(start_t..end_t), positions[start], positions[end]);
+				planar.spans.push(self.spans[segment_index]);
+				planar.ids.push(self.ids[segment_index]);
+				planar.start_point.push(start);
+				planar.end_point.push(end);
+				planar.segments.push(piece);
+			}
+		}
+
+		Some(planar)
+	}
+
+	fn faces_from_orbits(&self, orbits: &FaceOrbits) -> Vec<kurbo::BezPath> {
 		let (core_degree, ..) = self.two_core();
 
 		// Split the bounded orbits (negative area) into fillable faces and deliberate negative space
@@ -1545,5 +1677,18 @@ mod tests {
 		let orbits = SegmentGraph::new(&vector, &paths).face_orbits();
 		assert_eq!(orbits.face_count(), 1);
 		assert_eq!(orbits.face_sides(0).len(), 6);
+	}
+
+	// An extruded square overlaps its offset copy, so its walls cross without sharing a point
+	#[test]
+	fn crossing_segments_split_into_the_regions_they_bound() {
+		let square = [DVec2::new(0., 0.), DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)];
+		let points: Vec<DVec2> = square.iter().copied().chain(square.iter().map(|point| *point + DVec2::new(30., 30.))).collect();
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4), (1, 5), (3, 7)];
+		let (vector, paths) = build_vector(&points, &segments);
+
+		let mut face_areas: Vec<f64> = vector.construct_faces(&paths).iter().map(|face| face.area().abs()).collect();
+		face_areas.sort_by(f64::total_cmp);
+		assert_eq!(face_areas, vec![450., 450., 4900., 5100., 5100.]);
 	}
 }

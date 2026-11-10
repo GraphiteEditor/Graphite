@@ -50,7 +50,7 @@ pub(crate) fn bezpath_intersections(bezpath1: &BezPath, bezpath2: &BezPath, accu
 }
 
 /// Calculates the intersection points the segment has with another given segment and returns a list of parametric `t`-values with given accuracy.
-fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>) -> Vec<(f64, f64)> {
+pub(crate) fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>) -> Vec<(f64, f64)> {
 	let accuracy = accuracy.unwrap_or(DEFAULT_ACCURACY);
 
 	match (segment1, segment2) {
