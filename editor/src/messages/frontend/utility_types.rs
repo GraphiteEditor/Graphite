@@ -58,6 +58,10 @@ pub enum MouseCursorIcon {
 pub enum RenderStatus {
 	#[default]
 	Rendering,
+	/// Rendering a frame computed from provisional data, while async work is in progress.
+	Partial,
+	/// Rendering a frame computed from substitute data, because part of the graph failed.
+	Fallback,
 	Error,
 	Panic,
 }

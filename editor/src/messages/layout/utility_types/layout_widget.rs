@@ -453,6 +453,8 @@ pub struct NodeSection {
 	/// Whether the content wire also continues up past its turn, to the section above that takes it from the bottom.
 	#[serde(rename = "contentWireContinues")]
 	pub content_wire_continues: bool,
+	/// How far the work in progress of the node has come from 0 to 1, shown in the section header with a button to cancel it (none when it has no work in progress).
+	pub progress: Option<f64>,
 	/// Whether this section is expanded to show its contents, as opposed to being collapsed down to just its header.
 	pub expanded: bool,
 	/// The ID of the node whose Inspector section this is.
@@ -525,6 +527,7 @@ impl LayoutGroup {
 			node_reference: false,
 			content_wire: None,
 			content_wire_continues: false,
+			progress: None,
 			expanded,
 			id,
 			layout,
@@ -632,6 +635,7 @@ impl Diffable for LayoutGroup {
 					node_reference: current_node_reference,
 					content_wire: current_content_wire,
 					content_wire_continues: current_content_wire_continues,
+					progress: current_progress,
 					expanded: current_expanded,
 					id: current_id,
 					layout: current_layout,
@@ -648,6 +652,7 @@ impl Diffable for LayoutGroup {
 					node_reference: new_node_reference,
 					content_wire: new_content_wire,
 					content_wire_continues: new_content_wire_continues,
+					progress: new_progress,
 					expanded: new_expanded,
 					id: new_id,
 					layout: new_layout,
@@ -667,6 +672,7 @@ impl Diffable for LayoutGroup {
 					|| *current_node_reference != new_node_reference
 					|| *current_content_wire != new_content_wire
 					|| *current_content_wire_continues != new_content_wire_continues
+					|| *current_progress != new_progress
 					|| *current_expanded != new_expanded
 					|| *current_id != new_id
 				{
@@ -682,6 +688,7 @@ impl Diffable for LayoutGroup {
 					*current_node_reference = new_node_reference;
 					*current_content_wire = new_content_wire;
 					*current_content_wire_continues = new_content_wire_continues;
+					*current_progress = new_progress;
 					*current_expanded = new_expanded;
 					*current_id = new_id;
 					current_layout.clone_from(&new_layout);
@@ -699,6 +706,7 @@ impl Diffable for LayoutGroup {
 						node_reference: new_node_reference,
 						content_wire: new_content_wire,
 						content_wire_continues: new_content_wire_continues,
+						progress: new_progress,
 						expanded: new_expanded,
 						id: new_id,
 						layout: new_layout,

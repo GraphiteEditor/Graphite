@@ -766,6 +766,11 @@ mod editor_commands {
 		DocumentMessage::ToggleNodeVisibility { node_id: NodeId(id) }.into()
 	}
 
+	/// Stop the work in progress of a node shown in the Inspector, which may be in a subgraph
+	fn cancel_node_work(id: u64) -> Message {
+		DocumentMessage::CancelNodeWork { node_id: NodeId(id) }.into()
+	}
+
 	/// Pin or unpin a node given its node ID
 	fn set_node_pinned(id: u64, pinned: bool) -> Message {
 		DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned }.into()

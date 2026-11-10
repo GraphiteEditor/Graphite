@@ -3284,6 +3284,7 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 	let mut section = LayoutGroup::section(name, icon, description, visible, pinned, expanded, node_id.0, Layout(layout));
 	if let LayoutGroup::NodeSection(node_section) = &mut section {
 		node_section.chain_wire = chain_wire;
+		node_section.progress = context.executor.node_progress(&[network_path, &[node_id]].concat());
 	}
 	section
 }

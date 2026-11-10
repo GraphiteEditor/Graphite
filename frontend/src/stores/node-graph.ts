@@ -25,6 +25,7 @@ type NodeGraphStoreState = {
 	clickTargets: FrontendClickTargets | undefined;
 	contextMenuInformation: ContextMenuInformation | undefined;
 	errors: NodeGraphErrorDiagnostic[];
+	progress: Map<bigint, number>;
 	layerWidths: Map<bigint, number>;
 	chainWidths: Map<bigint, number>;
 	hasLeftInputWire: Map<bigint, boolean>;
@@ -47,6 +48,7 @@ const initialState: NodeGraphStoreState = {
 	clickTargets: undefined,
 	contextMenuInformation: undefined,
 	errors: [],
+	progress: new Map(),
 	layerWidths: new Map(),
 	chainWidths: new Map(),
 	hasLeftInputWire: new Map(),
@@ -227,6 +229,13 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
+	subscriptions.subscribeFrontendMessage("UpdateNodeGraphProgress", (data) => {
+		update((state) => {
+			state.progress = new Map(data.progress.map(({ nodeId, progress }) => [nodeId, progress]));
+			return state;
+		});
+	});
+
 	subscriptions.subscribeFrontendMessage("UpdateVisibleNodes", (data) => {
 		const newNodes = new Set<bigint>(data.nodes);
 
@@ -350,6 +359,7 @@ export function destroyNodeGraphStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateLayerWidths");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphNodes");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphErrorDiagnostics");
+	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphProgress");
 	subscriptions.unsubscribeFrontendMessage("UpdateVisibleNodes");
 	subscriptions.unsubscribeFrontendMessage("UpdateGlideOffsets");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphWires");

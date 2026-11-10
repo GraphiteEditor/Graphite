@@ -1552,6 +1552,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::SendLayerPanelDetails { layers: layers_missing_details });
 				}
 			}
+			DocumentMessage::CancelNodeWork { node_id } => {
+				let node_path = [self.selection_network_path.as_slice(), &[node_id]].concat();
+				responses.add(PortfolioMessage::CancelNodeWork { node_path });
+			}
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetPinned { node_id, pinned });

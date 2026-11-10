@@ -10,6 +10,7 @@ use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::{CompileError, CompiledNetwork, Compiler};
 use graph_craft::proto::GraphErrors;
 use graphene_hash::CacheHash;
+use graphene_std::SourceId;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, Texture};
 use graphene_std::list::{Item, List};
 use graphene_std::memo::IORecord;
@@ -55,6 +56,8 @@ pub struct NodeRuntime {
 	node_graph_errors: GraphErrors,
 	node_graph_warnings: GraphErrors,
 	monitor_nodes: Vec<(Vec<NodeId>, NodeId)>,
+	/// Each source of the compiled network, with the path of the value node injecting it.
+	source_paths: Vec<(SourceId, Vec<NodeId>)>,
 	thumbnails: Thumbnails,
 
 	/// The node the Data panel inspects.
@@ -85,6 +88,8 @@ pub enum GraphRuntimeRequest {
 	/// The full path from the root network to the node the Data panel inspects, or empty for none.
 	Inspect(Vec<NodeId>),
 	InspectContextOverrides(ContextOverrides),
+	/// Cancels the work in progress of the sources within the node at this full path from the root network.
+	Cancel(Vec<NodeId>),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -147,6 +152,7 @@ impl NodeRuntime {
 			node_graph_errors: Vec::new(),
 			node_graph_warnings: Vec::new(),
 			monitor_nodes: Vec::new(),
+			source_paths: Vec::new(),
 			thumbnails: Thumbnails::new(),
 
 			preprocessor: preprocessor::Preprocessor::new(),
@@ -193,6 +199,15 @@ impl NodeRuntime {
 					if let Some(inspect_state) = &mut self.inspect_state {
 						inspect_state.overrides = overrides;
 						inspect_state.overrides_changed = true;
+					}
+				}
+				GraphRuntimeRequest::Cancel(node_path) => {
+					let mut canceled = false;
+					for (source, _) in self.source_paths.iter().filter(|(_, path)| path.starts_with(&node_path)) {
+						canceled |= self.async_runtime().cancel(*source);
+					}
+					if canceled {
+						self.dirty.store(true, Ordering::Release);
 					}
 				}
 			}
@@ -359,7 +374,8 @@ impl NodeRuntime {
 		let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.tree().eval_tagged_value(self.executor.output(), &context))) {
 			Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
 			Ok(Ok(Poll::Partial(_))) if render_config.for_export => ExecutionResult::Pending,
-			Ok(Ok(Poll::Final(value) | Poll::Partial(value))) => ExecutionResult::Value(value),
+			Ok(Ok(Poll::Partial(value))) => ExecutionResult::Partial(value),
+			Ok(Ok(Poll::Final(value))) => ExecutionResult::Value(value),
 			Ok(Ok(Poll::Fallback(boxed))) => {
 				let (value, error) = *boxed;
 				ExecutionResult::Fallback(value, self.resolve_errors(&error))
@@ -374,6 +390,7 @@ impl NodeRuntime {
 					dropped_thumbnails: Vec::new(),
 					vector_modify: HashMap::new(),
 					inspect_result: None,
+					progress: Vec::new(),
 				};
 				self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
 				return None;
@@ -387,6 +404,16 @@ impl NodeRuntime {
 		let dropped_thumbnails = self.process_monitor_nodes(&mut responses).await;
 		let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor, self.old_graph.as_ref()));
 
+		let progress = self
+			.async_runtime()
+			.progress()
+			.into_iter()
+			.filter_map(|(source, progress)| {
+				let (_, path) = self.source_paths.iter().find(|(candidate, _)| *candidate == source)?;
+				Some((path.clone(), progress))
+			})
+			.collect();
+
 		let response = ExecutionResponse {
 			execution_id,
 			result,
@@ -394,6 +421,7 @@ impl NodeRuntime {
 			dropped_thumbnails,
 			vector_modify: self.vector_modify.clone(),
 			inspect_result,
+			progress,
 		};
 		self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
 	}
@@ -431,6 +459,7 @@ impl NodeRuntime {
 			.filter(|(_, node)| node.identifier == graphene_std::memo::monitor::IDENTIFIER)
 			.map(|(id, node)| (node.original_location.path.clone().unwrap_or_default(), *id))
 			.collect();
+		self.source_paths = proto_network.source_paths().map(|(source, path)| (*source, path.to_vec())).collect();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
@@ -504,7 +533,9 @@ impl NodeRuntime {
 
 impl ExecutionResult {
 	fn render_output(&mut self) -> Option<&mut RenderOutputType> {
-		let (Self::Value(value) | Self::Fallback(value, _)) = self else { return None };
+		let (Self::Value(value) | Self::Partial(value) | Self::Fallback(value, _)) = self else {
+			return None;
+		};
 		let TaggedValue::RenderOutput(RenderOutput { data, .. }) = value else { return None };
 		Some(data)
 	}
@@ -698,6 +729,7 @@ impl InspectState {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::messages::frontend::utility_types::RenderStatus;
 	use crate::test_utils::EditorTestUtils;
 	use graph_craft::document::DocumentNode;
 	use graphene_std::SourceId;
@@ -717,12 +749,17 @@ mod tests {
 
 	/// Sends a network update and a request to evaluate it, as the editor does for a change to the graph.
 	fn send_update(editor: &mut EditorTestUtils) {
+		send_update_at(editor, UVec2::ONE);
+	}
+
+	/// Sends a network update and a request to evaluate it at a viewport of `resolution` pixels.
+	fn send_update_at(editor: &mut EditorTestUtils, resolution: UVec2) {
 		let portfolio = editor.portfolio_message_handler_mut();
 		let document_id = portfolio.active_document_id.unwrap();
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
 		let document = documents.get_mut(&document_id).unwrap();
 		executor
-			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), Vec::new(), true, DVec2::ZERO)
+			.submit_node_graph_evaluation(document, document_id, resolution, 1., Default::default(), Vec::new(), true, DVec2::ZERO)
 			.unwrap();
 	}
 
@@ -752,8 +789,8 @@ mod tests {
 		editor.dispatch(Message::Wake).iter().any(|message| matches!(message, FrontendMessage::TriggerSaveFile { .. }))
 	}
 
-	/// Fills the document's layer with a trace of noise, which an export has to wait on over several evaluations.
-	fn vectorize_layer(editor: &mut EditorTestUtils) {
+	/// Fills the document's layer with a trace of noise, which an export has to wait on over several evaluations. Returns the Vectorize node.
+	fn vectorize_layer(editor: &mut EditorTestUtils) -> NodeId {
 		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 
@@ -778,6 +815,7 @@ mod tests {
 			output_connector: OutputConnector::primary_output(vectorize),
 			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
 		});
+		vectorize
 	}
 
 	/// The ID of the viewport request the runtime evaluates, which only changes once it has read a newer one.
@@ -886,6 +924,39 @@ mod tests {
 
 		editor.runtime.run().await;
 		assert!(!evaluated(&mut editor), "the requests of the older network updates evaluated again");
+	}
+
+	/// A trace renders partial frames and shows its progress on its node until it is canceled, which keeps the shapes traced so far.
+	#[tokio::test]
+	async fn a_trace_shows_its_progress_until_it_is_canceled() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
+		editor.draw_rect(0., 0., 512., 512.).await;
+		let vectorize = vectorize_layer(&mut editor);
+
+		send_update_at(&mut editor, UVec2::splat(512));
+		editor.runtime.update();
+		editor.runtime.run().await;
+		let messages = editor.dispatch(Message::Wake);
+		assert!(
+			messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Partial }),
+			"the trace's frame isn't partial"
+		);
+		assert!(editor.portfolio_message_handler_mut().executor.node_progress(&[vectorize]).is_some(), "the trace shows no progress");
+
+		editor.dispatch(PortfolioMessage::CancelNodeWork { node_path: vec![vectorize] });
+		editor.runtime.update();
+		editor.runtime.run().await;
+		let messages = editor.dispatch(Message::Wake);
+		assert!(
+			messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Fallback }),
+			"the canceled trace's frame isn't a fallback"
+		);
+		assert!(
+			editor.portfolio_message_handler_mut().executor.node_progress(&[vectorize]).is_none(),
+			"the canceled trace still shows progress"
+		);
 	}
 
 	#[test]

@@ -394,9 +394,14 @@ impl ProtoNetwork {
 	}
 
 	pub fn source_ids(&self) -> impl Iterator<Item = &SourceId> {
+		self.source_paths().map(|(source, _)| source)
+	}
+
+	/// Each source with the path of the value node that injects it, which lies within the node that owns the source.
+	pub fn source_paths(&self) -> impl Iterator<Item = (&SourceId, &[NodeId])> {
 		self.nodes.iter().filter_map(|(_, node)| match &node.construction_args {
 			ConstructionArgs::Value(value) => match &**value {
-				TaggedValue::SourceId(source) => Some(source),
+				TaggedValue::SourceId(source) => Some((source, node.original_location.path.as_deref().unwrap_or_default())),
 				_ => None,
 			},
 			_ => None,

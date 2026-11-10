@@ -2,11 +2,11 @@ use crate::poll::Poll;
 use crate::uuid::NodeId;
 use dyn_any::WasmNotSend;
 use futures::future::{AbortHandle, Abortable};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::task::{Context, Waker};
 pub use web_time::Instant;
 
@@ -34,7 +34,12 @@ impl SourceId {
 pub type Generations = Arc<[(SourceId, u64)]>;
 
 pub trait Runtime {
+	/// Runs `task` outside of the graph, bumping the generation of `source` once it finishes.
 	fn spawn(&self, source: SourceId, task: Task);
+	/// Sets how far the work of `source` has come from 0 to 1, or with `None` clears it along with any cancellation request.
+	fn report_progress(&self, source: SourceId, progress: Option<f64>);
+	/// Whether cancellation of the work of `source` was requested since this was last called.
+	fn take_cancellation(&self, source: SourceId) -> bool;
 }
 
 #[derive(Clone, dyn_any::DynAny)]
@@ -43,6 +48,14 @@ pub struct RuntimeHandle(Arc<RuntimeInner>);
 impl Runtime for RuntimeHandle {
 	fn spawn(&self, source: SourceId, task: Task) {
 		self.0.spawn(source, task);
+	}
+
+	fn report_progress(&self, source: SourceId, progress: Option<f64>) {
+		self.0.report_progress(source, progress);
+	}
+
+	fn take_cancellation(&self, source: SourceId) -> bool {
+		self.0.take_cancellation(source)
 	}
 }
 
@@ -68,16 +81,42 @@ impl AsyncRuntime {
 	pub fn new(spawner: Arc<dyn Spawn + Send + Sync>) -> Self {
 		Self(Arc::new(RuntimeInner {
 			generations: Mutex::default(),
+			progress: Mutex::default(),
+			cancellations: Mutex::default(),
 			spawner,
 		}))
 	}
 
 	pub fn update_sources(&self, live: &[SourceId]) {
-		let mut generations = self.0.generations.lock().unwrap_or_else(PoisonError::into_inner);
+		let mut generations = lock(&self.0.generations);
 		generations.retain(|source, _| live.contains(source));
 		for source in live {
 			generations.entry(*source).or_insert(0);
 		}
+
+		lock(&self.0.progress).retain(|source, _| live.contains(source));
+		lock(&self.0.cancellations).retain(|source| live.contains(source));
+	}
+
+	/// The progress of every source that reported some and has not cleared it, sorted by source.
+	pub fn progress(&self) -> Vec<(SourceId, f64)> {
+		let mut progress: Vec<_> = lock(&self.0.progress).iter().map(|(source, progress)| (*source, *progress)).collect();
+		progress.sort_unstable_by_key(|(source, _)| *source);
+		progress
+	}
+
+	/// Requests cancellation of the work of `source` and bumps its generation, so the node is evaluated again to see the request.
+	/// Only work that reports progress can be canceled, so a request can't outlive the work it was meant for. Returns whether there was any.
+	pub fn cancel(&self, source: SourceId) -> bool {
+		if !lock(&self.0.progress).contains_key(&source) {
+			return false;
+		}
+		lock(&self.0.cancellations).insert(source);
+
+		if let Some(generation) = lock(&self.0.generations).get_mut(&source) {
+			*generation += 1;
+		}
+		true
 	}
 
 	pub fn snapshot(&self) -> Generations {
@@ -97,10 +136,20 @@ impl Runtime for AsyncRuntime {
 	fn spawn(&self, source: SourceId, task: Task) {
 		self.0.spawn(source, task);
 	}
+
+	fn report_progress(&self, source: SourceId, progress: Option<f64>) {
+		self.0.report_progress(source, progress);
+	}
+
+	fn take_cancellation(&self, source: SourceId) -> bool {
+		self.0.take_cancellation(source)
+	}
 }
 
 struct RuntimeInner {
 	generations: Mutex<HashMap<SourceId, u64>>,
+	progress: Mutex<HashMap<SourceId, f64>>,
+	cancellations: Mutex<HashSet<SourceId>>,
 	spawner: Arc<dyn Spawn + Send + Sync>,
 }
 
@@ -109,11 +158,31 @@ impl RuntimeInner {
 		let inner = Arc::clone(self);
 		self.spawner.spawn(Box::pin(async move {
 			task.await;
-			if let Some(generation) = inner.generations.lock().unwrap_or_else(PoisonError::into_inner).get_mut(&source) {
+			if let Some(generation) = lock(&inner.generations).get_mut(&source) {
 				*generation += 1;
 			}
 		}));
 	}
+
+	fn report_progress(&self, source: SourceId, progress: Option<f64>) {
+		match progress {
+			Some(progress) => {
+				lock(&self.progress).insert(source, progress);
+			}
+			None => {
+				lock(&self.progress).remove(&source);
+				lock(&self.cancellations).remove(&source);
+			}
+		}
+	}
+
+	fn take_cancellation(&self, source: SourceId) -> bool {
+		lock(&self.cancellations).remove(&source)
+	}
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+	mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 pub struct Slots<T>(Arc<Mutex<HashMap<u64, Slot<T>>>>);
@@ -287,6 +356,24 @@ mod tests {
 		runtime.update_sources(&[]);
 		assert_eq!(spawner.drain(), 1);
 		assert!(runtime.snapshot().is_empty());
+	}
+
+	#[test]
+	fn only_work_in_progress_can_be_canceled() {
+		let runtime = AsyncRuntime::new(Arc::new(CollectSpawner::default()));
+		runtime.update_sources(&[SOURCE]);
+		assert!(!runtime.cancel(SOURCE));
+
+		runtime.report_progress(SOURCE, Some(0.5));
+		assert!(runtime.cancel(SOURCE));
+		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 1)], "a cancellation bumps the generation");
+		assert!(runtime.take_cancellation(SOURCE));
+		assert!(!runtime.take_cancellation(SOURCE));
+
+		runtime.cancel(SOURCE);
+		runtime.report_progress(SOURCE, None);
+		assert!(!runtime.take_cancellation(SOURCE), "clearing the progress drops the request");
+		assert!(runtime.progress().is_empty());
 	}
 
 	#[test]

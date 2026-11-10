@@ -1,6 +1,6 @@
-use core_types::Poll;
 use core_types::list::List;
 use core_types::runtime::Instant;
+use core_types::{NodeError, Poll};
 use graphic_types::Graphic;
 use ollev::model::Model;
 use std::ops::ControlFlow;
@@ -22,11 +22,13 @@ struct Trace {
 	inputs: u64,
 	/// `None` once the trace is done and `shown` is its result, or once it failed.
 	tracing: Option<ollev::Tracing>,
-	/// Why the trace failed, kept so the same inputs are not traced again.
-	failed: Option<ollev::TraceError>,
+	/// Why the trace failed or was canceled, kept so the same inputs are not traced again.
+	failed: Option<NodeError>,
 	shown: List<Graphic>,
 	/// The revision of the scene in `shown`.
 	revision: Option<u64>,
+	/// How much of the trace is done from 0 to 1, as ollev last reported it.
+	progress: f64,
 }
 
 impl TraceSlot {
@@ -44,6 +46,7 @@ impl TraceSlot {
 					failed: None,
 					shown: List::new(),
 					revision: None,
+					progress: 0.,
 				},
 				Err(error) => return Poll::fallback(List::new(), error),
 			},
@@ -51,7 +54,11 @@ impl TraceSlot {
 
 		if let Some(tracing) = &mut trace.tracing {
 			let deadline = Instant::now() + slice;
-			let step = tracing.step(|_| if Instant::now() >= deadline { ControlFlow::Break(()) } else { ControlFlow::Continue(()) });
+			let progress = &mut trace.progress;
+			let step = tracing.step(|checkpoint| {
+				*progress = checkpoint.overall;
+				if Instant::now() >= deadline { ControlFlow::Break(()) } else { ControlFlow::Continue(()) }
+			});
 			match step {
 				Ok(ollev::Step::Done(model)) => {
 					trace.shown = convert(&model);
@@ -59,7 +66,7 @@ impl TraceSlot {
 				}
 				Err(error) => {
 					trace.tracing = None;
-					trace.failed = Some(error);
+					trace.failed = Some(error.into());
 				}
 				Ok(ollev::Step::Paused(progress)) => {
 					if progress.showable()
@@ -74,13 +81,28 @@ impl TraceSlot {
 		}
 
 		let shown = trace.shown.clone();
-		let state = match trace.failed {
-			Some(error) => Poll::fallback(shown, error),
+		let state = match &trace.failed {
+			Some(error) => Poll::Fallback(Box::new((shown, error.clone()))),
 			None if trace.tracing.is_some() => Poll::Partial(shown),
 			None => Poll::Final(shown),
 		};
 		*held = Some(trace);
 		state
+	}
+
+	/// How much of the slot's trace is done from 0 to 1, while it is not yet done.
+	pub fn progress(&self) -> Option<f64> {
+		let held = self.lock();
+		held.as_ref().filter(|trace| trace.tracing.is_some()).map(|trace| trace.progress)
+	}
+
+	/// Stops the slot's trace, keeping the scene traced so far as the result for its inputs.
+	pub fn cancel(&self) {
+		let mut held = self.lock();
+		let Some(trace) = held.as_mut().filter(|trace| trace.tracing.is_some()) else { return };
+
+		trace.tracing = None;
+		trace.failed = Some(NodeError::new("The trace was canceled"));
 	}
 
 	/// Drops the slot's trace.

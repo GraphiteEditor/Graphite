@@ -88,19 +88,32 @@ fn vectorize(
 		instancing: *instancing.element(),
 		path_gradients: *path_gradients.element(),
 	};
+	let runtime = runtime.element();
+	let source = *source.element();
+
 	let max_megabytes = Some(*max_memory.element()).filter(|&megabytes| megabytes > 0.);
 	if cfg!(target_family = "wasm") && !*exceed_browser_limit.element() && max_megabytes.is_none_or(|megabytes| megabytes > BROWSER_MAX_MEGABYTES) {
 		trace.clear();
+		runtime.report_progress(source, None);
 		return Poll::error(format!(
 			"A memory limit above {BROWSER_MAX_MEGABYTES} MB, or none, can crash the editor in the browser. Lower the limit or turn on \"Exceed Browser Limit\"."
 		));
 	}
 	let max_pixels = max_megabytes.map(|megabytes| (megabytes * 1e6 / BYTES_PER_PIXEL) as usize);
-	let runtime = runtime.element();
+
+	if runtime.take_cancellation(source) {
+		trace.cancel();
+	}
+
 	let state = trace_slice(&image, *detail.element(), *tolerance.element(), stages, max_pixels, trace, SLICE);
-	if let Poll::Partial(_) = state {
-		// Finishing an empty task bumps the node's generation, which re-evaluates it for the next slice
-		runtime.spawn(*source.element(), Box::pin(async {}));
+	match state {
+		Poll::Partial(_) => {
+			runtime.report_progress(source, trace.progress());
+
+			// Finishing an empty task bumps the node's generation, which re-evaluates it for the next slice
+			runtime.spawn(source, Box::pin(async {}));
+		}
+		_ => runtime.report_progress(source, None),
 	}
 	state
 }
@@ -130,14 +143,13 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 			width,
 			height,
 		};
-		let options = ollev::TraceOptions {
-			tolerance,
-			detail: ollev::Detail::Scaled(detail),
-			max_pixels,
-			host: CAPABILITIES,
-			stages,
-			..Default::default()
-		};
+		let mut options = ollev::TraceOptions::default();
+		options.tolerance = tolerance;
+		options.detail = ollev::Detail::Scaled(detail);
+		options.max_pixels = max_pixels;
+		options.host = CAPABILITIES;
+		options.stages = stages;
+
 		ollev::Tracing::new(&source, &options)
 	};
 
@@ -399,5 +411,51 @@ mod test {
 
 		assert_eq!(spawner.drain(), 2);
 		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 2)]);
+	}
+
+	/// A running trace reports progress that never goes down until it is done.
+	#[test]
+	fn a_trace_reports_progress_until_it_is_done() {
+		let (spawner, runtime) = collecting_runtime();
+		let (image, slot) = (busy(96), TraceSlot::default());
+
+		let mut previous = 0.;
+		while matches!(evaluate(&slot, &image, &runtime), Poll::Partial(_)) {
+			let progress = runtime.progress();
+			let [(source, fraction)] = progress.as_slice() else { panic!("the trace reported {progress:?}") };
+			assert_eq!(*source, SOURCE);
+			assert!((previous..=1.).contains(fraction), "progress went from {previous} to {fraction}");
+
+			previous = *fraction;
+			spawner.drain();
+		}
+		assert!(previous > 0., "the trace never reported any progress");
+		assert!(runtime.progress().is_empty(), "a finished trace still reports progress");
+	}
+
+	/// A canceled trace keeps its shapes so far, with an error, until its inputs change.
+	#[test]
+	fn a_canceled_trace_keeps_its_shapes_until_the_inputs_change() {
+		let (_spawner, runtime) = collecting_runtime();
+		let slot = TraceSlot::default();
+		let image = busy(96);
+		let shown = loop {
+			match evaluate(&slot, &image, &runtime) {
+				Poll::Partial(shown) if !shown.is_empty() => break shown,
+				Poll::Partial(_) => {}
+				state => panic!("the trace ended in {state:?} before showing shapes"),
+			}
+		};
+
+		assert!(runtime.cancel(SOURCE));
+		let Poll::Fallback(boxed) = evaluate(&slot, &image, &runtime) else {
+			panic!("the canceled trace went on")
+		};
+		assert!(boxed.0.len() >= shown.len(), "the canceled trace dropped its shapes");
+		assert!(runtime.progress().is_empty());
+		assert!(!runtime.cancel(SOURCE), "a canceled trace can be canceled again");
+
+		assert!(matches!(evaluate(&slot, &image, &runtime), Poll::Fallback(_)), "the canceled trace was started again");
+		assert!(matches!(evaluate(&slot, &busy(128), &runtime), Poll::Partial(_)), "new inputs were not traced");
 	}
 }
