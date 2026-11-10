@@ -89,7 +89,6 @@
 	let canvasWidth: number | undefined = undefined;
 	let canvasHeight: number | undefined = undefined;
 
-	let devicePixelRatio: number | undefined;
 	let removeUpdatePixelRatio: (() => void) | undefined;
 	let viewportResizeObserver: ResizeObserver | undefined;
 	let cleanupViewportResizeObserver: (() => void) | undefined;
@@ -102,13 +101,6 @@
 	// The value above in pixels, or if undefined, we fall back to 100% as a non-pixel-perfect backup that's hopefully short-lived
 	$: canvasWidthCSS = canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%";
 	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
-
-	$: canvasWidthScaled = canvasWidth && devicePixelRatio && Math.floor(canvasWidth * devicePixelRatio);
-	$: canvasHeightScaled = canvasHeight && devicePixelRatio && Math.floor(canvasHeight * devicePixelRatio);
-
-	// Used to set the canvas rendering dimensions.
-	$: canvasWidthScaledRoundedToEven = canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled);
-	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
 		if (!layoutGroup || !("Row" in layoutGroup)) return undefined;
@@ -454,7 +446,6 @@
 		canvasWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
 		canvasHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
 
-		devicePixelRatio = window.devicePixelRatio || 1;
 		viewportBounds = viewport.getBoundingClientRect();
 
 		// Resize the rulers
@@ -727,17 +718,6 @@
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll}></div>
 							{/if}
 						</div>
-						{#if !$appWindow.viewportHolePunch}
-							<canvas
-								class="overlays"
-								width={canvasWidthScaledRoundedToEven}
-								height={canvasHeightScaledRoundedToEven}
-								style:width={canvasWidthCSS}
-								style:height={canvasHeightCSS}
-								data-overlays-canvas
-							>
-							</canvas>
-						{/if}
 						{#if isWeb && $document.renderStatus === "Rendering"}
 							<TextLabel class="shader-compiling-overlay" italic={true} classes={{ show: !firstArtworkReceived }}>Initializing Renderer…</TextLabel>
 						{/if}
@@ -958,8 +938,7 @@
 						overflow: hidden;
 
 						.artwork,
-						.text-input,
-						.overlays {
+						.text-input {
 							position: absolute;
 							top: 0;
 							// Fallback values if JS hasn't set these to integers yet
