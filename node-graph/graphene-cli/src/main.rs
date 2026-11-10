@@ -5,8 +5,9 @@ mod watch;
 use clap::{Args, Parser, Subcommand};
 use document_container::archive::ArchiveFormat;
 use document_live::{DEFAULT_SIGNALING_SERVER, SessionToken};
+use document_loader::open_gdd;
 use fern::colors::{Color, ColoredLevelConfig};
-use graphene_cli::{compile_document, dump, export, open_document, open_gdd};
+use graphene_cli::{compile_document, dump, export, open_document};
 use std::error::Error;
 use std::path::PathBuf;
 

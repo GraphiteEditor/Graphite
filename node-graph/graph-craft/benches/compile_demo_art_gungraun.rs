@@ -1,9 +1,10 @@
+use document_loader::load_demo_artwork;
 use graph_craft::document::NodeNetwork;
 use graph_craft::util::*;
 use gungraun::prelude::*;
 
 #[library_benchmark]
-#[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = load_from_name)]
+#[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = load_demo_artwork)]
 pub fn compile_to_proto(_input: NodeNetwork) {
 	std::hint::black_box(compile(_input));
 }

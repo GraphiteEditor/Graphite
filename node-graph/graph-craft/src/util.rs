@@ -12,19 +12,3 @@ pub fn compile(network: NodeNetwork) -> ProtoNetwork {
 	let compiler = Compiler {};
 	compiler.compile_single(network).unwrap().network
 }
-
-pub fn load_from_name(name: &str) -> NodeNetwork {
-	let content = std::fs::read(format!("../../demo-artwork/{name}.graphite")).expect("failed to read file");
-	let content = std::str::from_utf8(&content).unwrap();
-	load_network(content)
-}
-
-pub static DEMO_ART: [&str; 7] = [
-	"changing-seasons",
-	"painted-dreams",
-	"red-dress",
-	"valley-of-spires",
-	"isometric-fountain",
-	"procedural-string-lights",
-	"parametric-dunescape",
-];

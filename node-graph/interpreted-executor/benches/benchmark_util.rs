@@ -1,14 +1,15 @@
 use criterion::BenchmarkGroup;
 use criterion::measurement::Measurement;
+use document_loader::{DEMO_ARTWORK, load_demo_artwork};
 use graph_craft::proto::ProtoNetwork;
-use graph_craft::util::{DEMO_ART, compile, load_from_name};
+use graph_craft::util::compile;
 use graphene_std::application_io::EditorApi;
 use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 
 pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
-	let network = load_from_name(name);
+	let network = load_demo_artwork(name);
 	let editor_api = std::sync::Arc::new(EditorApi::default());
 	let mut network = wrap_network_in_scope(network, editor_api, AsyncRuntime::new(std::sync::Arc::new(DummySpawner)).handle());
 	let preprocessor = preprocessor::Preprocessor::new();
@@ -23,7 +24,7 @@ pub fn bench_for_each_demo<M: Measurement, F>(group: &mut BenchmarkGroup<M>, f: 
 where
 	F: Fn(&str, &mut BenchmarkGroup<M>),
 {
-	for name in DEMO_ART {
+	for name in DEMO_ARTWORK {
 		f(name, group);
 	}
 }

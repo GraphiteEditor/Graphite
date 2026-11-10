@@ -33,3 +33,4 @@ postcard = { workspace = true }
 [dev-dependencies]
 graph-craft = { workspace = true, features = ["loading"] }
 core-types = { workspace = true }
+document-loader = { workspace = true }

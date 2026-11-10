@@ -1,0 +1,22 @@
+[package]
+name = "document-loader"
+description = "Opens .gdd archives and legacy documents through the format steps and node migrations of this build"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+document-container = { workspace = true, features = ["zip", "xz"] }
+document-format = { workspace = true, features = ["zip", "xz", "migrations"] }
+document-graph-storage = { workspace = true }
+graph-craft = { workspace = true, features = ["loading"] }
+migration-formats = { workspace = true }
+migration-compiled = { workspace = true }
+migration-nodes = { workspace = true }
+futures = { workspace = true }
+
+[lints]
+workspace = true

@@ -317,13 +317,13 @@ fn test_metadata_preservation() {
 
 #[test]
 fn test_demo_artwork_round_trip() {
-	use graph_craft::util::{DEMO_ART, load_from_name};
+	use document_loader::{DEMO_ARTWORK, load_demo_artwork};
 
 	// Test each demo artwork
-	for artwork_name in DEMO_ART {
+	for artwork_name in DEMO_ARTWORK {
 		println!("Testing artwork: {}", artwork_name);
 
-		let mut original_network = load_from_name(artwork_name);
+		let mut original_network = load_demo_artwork(artwork_name);
 		original_network.lift_nested_networks();
 
 		// Convert to Registry

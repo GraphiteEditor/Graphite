@@ -1,13 +1,14 @@
 use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main};
+use document_loader::{DEMO_ARTWORK, load_demo_artwork};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::ProtoNetwork;
-use graph_craft::util::{DEMO_ART, compile, load_from_name};
+use graph_craft::util::compile;
 use graphene_std::transform::Footprint;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
-	let network = load_from_name(name);
+	let network = load_demo_artwork(name);
 	let proto_network = compile(network);
 	let empty = ProtoNetwork::default();
 
@@ -24,13 +25,13 @@ fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 
 fn update_executor_demo(c: &mut Criterion) {
 	let mut g = c.benchmark_group("Update Executor");
-	for name in DEMO_ART {
+	for name in DEMO_ARTWORK {
 		update_executor(name, &mut g);
 	}
 }
 
 fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
-	let network = load_from_name(name);
+	let network = load_demo_artwork(name);
 	let proto_network = compile(network);
 
 	let executor = DynamicExecutor::new(proto_network).unwrap();
@@ -40,7 +41,7 @@ fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 }
 fn run_once_demo(c: &mut Criterion) {
 	let mut g = c.benchmark_group("Run Once no render");
-	for name in DEMO_ART {
+	for name in DEMO_ARTWORK {
 		run_once(name, &mut g);
 	}
 }

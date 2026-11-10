@@ -17,6 +17,7 @@ workspace = true
 [dependencies]
 # Local dependencies
 graphene-cli = { path = "../../node-graph/graphene-cli" }
+document-loader = { workspace = true }
 document-format = { workspace = true, features = ["zip", "xz", "migrations"] }
 
 # Workspace dependencies
