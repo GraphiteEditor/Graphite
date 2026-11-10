@@ -9,13 +9,13 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{Node
 use crate::messages::tool::common_functionality::transformation_cage::SelectedEdges;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use crate::messages::tool::utility_types::ToolType;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
-use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
+use graphene_std::vector::algorithms::util::pathseg_tangent;
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, VectorGeometry, VectorModificationType};
-use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, PathSeg, Point, Shape};
+use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, ParamCurveDeriv, PathSeg, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
@@ -499,104 +499,120 @@ pub fn transforming_transform_cage(
 	(false, false, false)
 }
 
-/// Calculates similarity metric between new bezier curve and two old beziers by using sampled points.
-#[allow(clippy::too_many_arguments)]
-pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, points1: &[DVec2], n: usize) -> f64 {
-	let start_handle_length = a.exp();
-	let end_handle_length = b.exp();
+/// Points sampled along each of the two segments that [`fit_handles_to_segment_pair`] fits.
+const SEGMENT_PAIR_FIT_SAMPLES: usize = 16;
+/// Passes in [`fit_handles_to_segment_pair`] that each move the samples to their closest points on the fitted cubic and refit it.
+const SEGMENT_PAIR_FIT_PASSES: usize = 12;
+/// How much a sample's error along the fitted cubic counts relative to its distance from it, which damps each pass.
+const SEGMENT_PAIR_FIT_TANGENTIAL_WEIGHT: f64 = 0.01;
 
-	// Compute the handle positions of new bezier curve
-	let c1 = p1 + d1 * start_handle_length;
-	let c2 = p3 + d2 * end_handle_length;
+/// Finds the handles (relative to their anchors) that make the cubic from `start` to `end` best match `first_segment` followed by `second_segment`.
+/// The handles keep the given directions. The fit minimizes the squared distance from the segments to the cubic, so a pair split from one cubic is rebuilt exactly.
+pub fn fit_handles_to_segment_pair(start: DVec2, end: DVec2, start_direction: DVec2, end_direction: DVec2, first_segment: PathSeg, second_segment: PathSeg) -> (DVec2, DVec2) {
+	let start_direction = start_direction.try_normalize().unwrap_or_default();
+	let end_direction = end_direction.try_normalize().unwrap_or_default();
 
-	let new_curve = PathSeg::Cubic(CubicBez::new(Point::new(p1.x, p1.y), Point::new(c1.x, c1.y), Point::new(c2.x, c2.y), Point::new(p3.x, p3.y)));
-
-	// Sample 2*n points from new curve and get the L2 metric between all of points
-	let points = pathseg_compute_lookup_table(new_curve, Some(2 * n), false);
-
-	let dist = points1.iter().zip(points).map(|(p1, p2)| (p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sum::<f64>();
-
-	dist / (2 * n) as f64
-}
-
-/// Calculates optimal handle lengths with adam optimization.
-#[allow(clippy::too_many_arguments)]
-pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, min_len1: f64, min_len2: f64, further_segment: PathSeg, other_segment: PathSeg) -> (DVec2, DVec2) {
-	let h = 1e-6;
-	let tol = 1e-6;
-	let max_iter = 200;
-
-	let mut a = (5_f64).ln();
-	let mut b = (5_f64).ln();
-
-	let mut m_a = 0.;
-	let mut v_a = 0.;
-	let mut m_b = 0.;
-	let mut v_b = 0.;
-
-	let initial_alpha = 0.05;
-	let decay_rate: f64 = 0.99;
-
-	let beta1 = 0.9;
-	let beta2 = 0.999;
-	let epsilon = 1e-8;
-
-	let n = 20;
-
-	let further_segment = if further_segment.start().distance(dvec2_to_point(p1)) >= f64::EPSILON {
-		further_segment.reverse()
+	// Orient the segments to run from `start` through the anchor they share to `end`
+	let first_segment = if first_segment.start().distance(dvec2_to_point(start)) > first_segment.end().distance(dvec2_to_point(start)) {
+		first_segment.reverse()
 	} else {
-		further_segment
+		first_segment
+	};
+	let second_segment = if second_segment.end().distance(dvec2_to_point(end)) > second_segment.start().distance(dvec2_to_point(end)) {
+		second_segment.reverse()
+	} else {
+		second_segment
 	};
 
-	let other_segment = if other_segment.end().distance(dvec2_to_point(p3)) >= f64::EPSILON {
-		other_segment.reverse()
-	} else {
-		other_segment
-	};
+	// Each segment's samples count in proportion to its share of the total length
+	let first_length = first_segment.perimeter(DEFAULT_ACCURACY);
+	let second_length = second_segment.perimeter(DEFAULT_ACCURACY);
+	let first_weight = if first_length + second_length > 0. { first_length / (first_length + second_length) } else { 1. };
 
-	// Now we sample points proportional to the lengths of the beziers
-	let l1 = further_segment.perimeter(DEFAULT_ACCURACY);
-	let l2 = other_segment.perimeter(DEFAULT_ACCURACY);
-	let ratio = l1 / (l1 + l2);
-	let n_points1 = ((2 * n) as f64 * ratio).floor() as usize;
-	let mut points1 = pathseg_compute_lookup_table(further_segment, Some(n_points1), false).collect::<Vec<_>>();
-	let mut points2 = pathseg_compute_lookup_table(other_segment, Some(n), false).collect::<Vec<_>>();
-	points1.append(&mut points2);
+	// Start each sample at its parameter on the cubic the pair would have been split from, whose split is where the segments' speeds match
+	let first_speed = pathseg_tangent(first_segment, 1.).length();
+	let second_speed = pathseg_tangent(second_segment, 0.).length();
+	let joint = if first_speed > 0. { first_speed / (first_speed + second_speed) } else { first_weight };
+	let mut samples = (1..=SEGMENT_PAIR_FIT_SAMPLES)
+		.flat_map(|i| {
+			let t = i as f64 / SEGMENT_PAIR_FIT_SAMPLES as f64;
+			[
+				(joint * t, point_to_dvec2(first_segment.eval(t)), first_weight),
+				(joint + (1. - joint) * t, point_to_dvec2(second_segment.eval(t)), 1. - first_weight),
+			]
+		})
+		.collect::<Vec<_>>();
 
-	let f = |a: f64, b: f64| -> f64 { log_optimization(a, b, p1, p3, d1, d2, &points1, n) };
+	// Weighted least squares for the handle lengths, which the cubic is linear in, so this solves the 2x2 normal equations directly.
+	// Error is measured from each sample to its parameter's point on the cubic, mostly perpendicular to `fitted` there once a fit exists.
+	let solve = |samples: &[(f64, DVec2, f64)], fitted: Option<CubicBez>| -> DVec2 {
+		let fitted_derivative = fitted.map(|fitted| fitted.deriv());
+		let mut system = DMat2::ZERO;
+		let mut right_side = DVec2::ZERO;
 
-	for t in 1..=max_iter {
-		let dfa = (f(a + h, b) - f(a - h, b)) / (2. * h);
-		let dfb = (f(a, b + h) - f(a, b - h)) / (2. * h);
+		for &(parameter, target, weight) in samples {
+			// Split the Bernstein form into the part fixed by the anchors and the parts that scale with each handle length
+			let complement = 1. - parameter;
+			let start_basis = 3. * complement * complement * parameter;
+			let end_basis = 3. * complement * parameter * parameter;
+			let fixed = (complement * complement * complement + start_basis) * start + (end_basis + parameter * parameter * parameter) * end;
+			let jacobian = DMat2::from_cols(start_basis * start_direction, end_basis * end_direction);
 
-		m_a = beta1 * m_a + (1. - beta1) * dfa;
-		m_b = beta1 * m_b + (1. - beta1) * dfb;
+			let metric = match fitted_derivative {
+				Some(fitted_derivative) => {
+					let tangent = point_to_dvec2(fitted_derivative.eval(parameter)).try_normalize().unwrap_or(DVec2::X);
+					let normal = tangent.perp();
+					DMat2::from_cols(normal * normal.x, normal * normal.y) + DMat2::from_cols(tangent * tangent.x, tangent * tangent.y) * SEGMENT_PAIR_FIT_TANGENTIAL_WEIGHT
+				}
+				None => DMat2::IDENTITY,
+			} * weight;
 
-		v_a = beta2 * v_a + (1. - beta2) * dfa * dfa;
-		v_b = beta2 * v_b + (1. - beta2) * dfb * dfb;
-
-		let m_a_hat = m_a / (1. - beta1.powi(t));
-		let v_a_hat = v_a / (1. - beta2.powi(t));
-		let m_b_hat = m_b / (1. - beta1.powi(t));
-		let v_b_hat = v_b / (1. - beta2.powi(t));
-
-		let alpha_t = initial_alpha * decay_rate.powi(t);
-
-		// Update log-lengths
-		a -= alpha_t * m_a_hat / (v_a_hat.sqrt() + epsilon);
-		b -= alpha_t * m_b_hat / (v_b_hat.sqrt() + epsilon);
-
-		// Convergence check
-		if dfa.abs() < tol && dfb.abs() < tol {
-			break;
+			system += jacobian.transpose() * metric * jacobian;
+			right_side += jacobian.transpose() * metric * (target - fixed);
 		}
+
+		// Use the unconstrained optimum, unless it gives a handle negative length
+		if system.determinant() > f64::EPSILON * system.x_axis.x * system.y_axis.y {
+			let lengths = system.inverse() * right_side;
+			if lengths.x >= 0. && lengths.y >= 0. {
+				return lengths;
+			}
+		}
+
+		// Otherwise the optimum collapses one handle and gives the other its best length from there
+		let start_only = DVec2::new(if system.x_axis.x > 0. { (right_side.x / system.x_axis.x).max(0.) } else { 0. }, 0.);
+		let end_only = DVec2::new(0., if system.y_axis.y > 0. { (right_side.y / system.y_axis.y).max(0.) } else { 0. });
+		let error = |lengths: DVec2| lengths.dot(system * lengths) - 2. * right_side.dot(lengths);
+		if error(start_only) <= error(end_only) { start_only } else { end_only }
+	};
+
+	let mut lengths = solve(&samples, None);
+
+	// Tangent distance minimization: Gauss-Newton on each sample's distance to the cubic, rather than to its parameter's point
+	for _ in 0..SEGMENT_PAIR_FIT_PASSES {
+		let fitted = CubicBez::new(
+			dvec2_to_point(start),
+			dvec2_to_point(start + start_direction * lengths.x),
+			dvec2_to_point(end + end_direction * lengths.y),
+			dvec2_to_point(end),
+		);
+		let derivative = fitted.deriv();
+
+		// Move each sample's parameter toward its closest point on the cubic
+		for (parameter, target, _) in &mut samples {
+			for _ in 0..2 {
+				let offset = point_to_dvec2(fitted.eval(*parameter)) - *target;
+				let tangent = point_to_dvec2(derivative.eval(*parameter));
+				if tangent.length_squared() > 0. {
+					*parameter = (*parameter - offset.dot(tangent) / tangent.length_squared()).clamp(0., 1.);
+				}
+			}
+		}
+
+		lengths = solve(&samples, Some(fitted));
 	}
 
-	let len1 = a.exp().max(min_len1);
-	let len2 = b.exp().max(min_len2);
-
-	(d1 * len1, d2 * len2)
+	(start_direction * lengths.x, end_direction * lengths.y)
 }
 
 pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterface) -> Option<LayerNodeIdentifier> {
@@ -722,6 +738,25 @@ mod tests {
 		let mut starts = Vec::new();
 		push_nearest_anchors(&mut starts, editor.active_document(), &layers, DVec2::new(100., 100.));
 		assert!(!starts.is_empty(), "the visible rectangles' anchors should snap");
+	}
+
+	#[test]
+	fn fitting_a_segment_pair_rebuilds_the_cubic_it_was_split_from() {
+		let original = CubicBez::new((0., 0.), (0., -400.), (600., -400.), (600., 0.));
+
+		// An anchor inserted along the cubic and slid further along it leaves two segments that one cubic covers exactly
+		for (inserted, slid) in [(0.1, 0.15), (0.3, 0.6), (0.5, 0.95)] {
+			let further_segment = PathSeg::Cubic(original.subsegment(0. ..inserted));
+			let absorbed_segment = PathSeg::Cubic(original.subsegment(inserted..slid));
+			let expected = original.subsegment(0. ..slid);
+
+			let start = point_to_dvec2(expected.p0);
+			let end = point_to_dvec2(expected.p3);
+			let (start_handle, end_handle) = fit_handles_to_segment_pair(start, end, point_to_dvec2(expected.p1) - start, point_to_dvec2(expected.p2) - end, further_segment, absorbed_segment);
+
+			assert!((start + start_handle).abs_diff_eq(point_to_dvec2(expected.p1), 1e-6), "start handle for {inserted} slid to {slid}");
+			assert!((end + end_handle).abs_diff_eq(point_to_dvec2(expected.p2), 1e-6), "end handle for {inserted} slid to {slid}");
+		}
 	}
 
 	#[test]

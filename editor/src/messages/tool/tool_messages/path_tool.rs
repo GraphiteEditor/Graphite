@@ -21,7 +21,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, nudge_translation, snapping_hints};
-use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
+use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, fit_handles_to_segment_pair, make_path_editable_is_allowed};
 use graphene_std::Color;
 use graphene_std::list::List;
 use graphene_std::renderer::Quad;
@@ -1390,7 +1390,9 @@ impl PathToolData {
 		let modification_type = closer_secondary_handle.set_relative_position(relative_position2);
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-		let end_handle_direction = if anchor == closer_segment.start { -relative_position1 } else { -relative_position2 };
+		// The new anchor's handles stay colinear along the path's tangent there
+		let closer_tangent = pathseg_tangent(closer_segment.bezier, t_value);
+		let end_direction = if anchor == closer_segment.start { -closer_tangent } else { closer_tangent };
 
 		let further_segment_points = pathseg_points(further_segment.bezier);
 
@@ -1409,26 +1411,13 @@ impl PathToolData {
 				further_segment_points.p1,
 			)
 		};
+		// The far anchor's handle keeps its direction (and stays collapsed if it has zero length) so the path stays smooth past it
 		let Some(start_handle_position) = start_handle_pos else { return };
-		let start_handle_direction = start_handle_position - further_other_point;
+		let start_direction = start_handle_position - further_other_point;
 
-		// Get normalized direction vectors, if cubic handle is zero then we consider corresponding tangent
-		let d1 = start_handle_direction.try_normalize().unwrap_or({
-			if anchor == further_segment.start {
-				-pathseg_tangent(further_segment.bezier, 1.)
-			} else {
-				pathseg_tangent(further_segment.bezier, 0.)
-			}
-		});
+		// Refit the further segment to cover the part of the closer segment it absorbs
+		let (relative_pos1, relative_pos2) = fit_handles_to_segment_pair(further_other_point, new_position, start_direction, end_direction, further_segment.bezier, other_segment);
 
-		let d2 = end_handle_direction.try_normalize().unwrap_or_default();
-
-		let min_len1 = start_handle_direction.length() * 0.4;
-		let min_len2 = end_handle_direction.length() * 0.4;
-
-		let (relative_pos1, relative_pos2) = find_two_param_best_approximate(further_other_point, new_position, d1, d2, min_len1, min_len2, further_segment.bezier, other_segment);
-
-		// Now set those handles to these handle lengths keeping the directions d1, d2
 		let modification_type = start_handle.set_relative_position(relative_pos1);
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
