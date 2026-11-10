@@ -556,6 +556,11 @@ mod editor_commands {
 		.into()
 	}
 
+	/// Tell the backend which rows of the Data panel's table to send, from `start` up to but not including `end`, being those in or near view.
+	fn set_data_panel_rows_in_view(start: u32, end: u32) -> Message {
+		DataPanelMessage::SetRowsInView { rows: start as usize..end as usize }.into()
+	}
+
 	/// Select exactly the given nodes.
 	fn select_nodes(ids: Vec<u64>) -> Message {
 		NodeGraphMessage::SelectedNodesSet {

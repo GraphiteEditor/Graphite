@@ -23,6 +23,10 @@ pub enum DataPanelMessage {
 	SetContextOverrides {
 		overrides: graphene_std::ContextOverrides,
 	},
+	/// Sets which rows of a long table to send, being those the frontend has in or near view.
+	SetRowsInView {
+		rows: std::ops::Range<usize>,
+	},
 }
 
 /// One hop in the breadcrumb path through nested data the Data panel is displaying.

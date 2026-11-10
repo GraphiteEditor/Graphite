@@ -1,8 +1,12 @@
 <script lang="ts">
+	import { getContext } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import { dataPanelContextLayout, dataPanelLayout, dataPanelPathLayout } from "/src/stores/portfolio";
+	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
+
+	const editor = getContext<EditorWrapper>("editor");
 </script>
 
 <LayoutCol class="data-panel">
@@ -15,7 +19,7 @@
 		</LayoutRow>
 	</LayoutRow>
 	<LayoutCol class="body" scrollableX={true} scrollableY={true}>
-		<WidgetLayout layout={dataPanelLayout} layoutTarget="DataPanel" />
+		<WidgetLayout layout={dataPanelLayout} layoutTarget="DataPanel" requestTableRows={(start, end) => editor.setDataPanelRowsInView(start, end)} />
 	</LayoutCol>
 </LayoutCol>
 
@@ -37,6 +41,11 @@
 			// An auto margin, unlike end alignment, keeps the start of overflowing content reachable by scrolling
 			.context > :first-child {
 				margin-left: auto;
+			}
+
+			// Without any context to show, the path has the whole width
+			.context:not(:has(.widget-span)) {
+				display: none;
 			}
 		}
 

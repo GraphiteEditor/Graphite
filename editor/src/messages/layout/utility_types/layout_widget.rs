@@ -9,6 +9,7 @@ use crate::messages::prelude::*;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::ops::Range;
 use std::sync::Arc;
 
 #[repr(transparent)]
@@ -393,6 +394,21 @@ pub struct WidgetTable {
 	#[serde(rename = "tableWidgets")]
 	pub rows: Vec<Vec<Vec<WidgetInstance>>>,
 	pub unstyled: bool,
+	/// For a table too long to send whole, the rows left out around those sent, which are only the ones in or near view.
+	#[serde(rename = "scrollWindow")]
+	pub scroll_window: Option<TableScrollWindow>,
+}
+
+/// How many rows a virtually scrolled table leaves out on either side of the rows it sends after its heading row, which is always sent.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TableScrollWindow {
+	/// The rows left out between the heading row and the first row sent.
+	#[serde(rename = "rowsBefore")]
+	pub rows_before: u32,
+	/// The rows left out after the last row sent.
+	#[serde(rename = "rowsAfter")]
+	pub rows_after: u32,
 }
 
 /// A wire drawn between Inspector sections, styled like the graph's wire carrying the same data.
@@ -468,12 +484,31 @@ impl LayoutGroup {
 	/// A table with one widget per cell.
 	pub fn table(rows: Vec<Vec<WidgetInstance>>, unstyled: bool) -> Self {
 		let rows = rows.into_iter().map(|row| row.into_iter().map(|widget| vec![widget]).collect()).collect();
-		Self::Table(WidgetTable { rows, unstyled })
+		Self::Table(WidgetTable { rows, unstyled, scroll_window: None })
 	}
 
 	/// A table whose cells may each hold multiple widgets laid out inline.
 	pub fn table_of_cells(rows: Vec<Vec<Vec<WidgetInstance>>>, unstyled: bool) -> Self {
-		Self::Table(WidgetTable { rows, unstyled })
+		Self::Table(WidgetTable { rows, unstyled, scroll_window: None })
+	}
+
+	/// A table under a heading row that sends only the rows in `rows_sent`, each made by `build_row` from its index. O(rows sent).
+	pub fn virtually_scrolled_table_of_cells(heading: Vec<Vec<WidgetInstance>>, row_count: usize, rows_sent: Range<usize>, build_row: impl FnMut(usize) -> Vec<Vec<WidgetInstance>>) -> Self {
+		// Asking past the end of the table sends as many of its last rows instead
+		let end = rows_sent.end.min(row_count);
+		let start = rows_sent.start.min(end.saturating_sub(rows_sent.len()));
+
+		let rows = std::iter::once(heading).chain((start..end).map(build_row)).collect();
+		let scroll_window = TableScrollWindow {
+			rows_before: start as u32,
+			rows_after: (row_count - end) as u32,
+		};
+
+		Self::Table(WidgetTable {
+			rows,
+			unstyled: false,
+			scroll_window: Some(scroll_window),
+		})
 	}
 
 	#[allow(clippy::too_many_arguments)]
