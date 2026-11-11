@@ -455,14 +455,9 @@ async fn cutting_a_chain_node_and_pasting_it_back_keeps_its_wires() {
 
 	// Cutting removes just the node, keeping the node that fed its second input
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![near] }).await;
-	let clipboard = editor
-		.handle_message(ClipboardMessage::CutLayers)
+	let (_, clipboard) = editor
+		.copy_to_clipboard(ClipboardMessage::CutLayers)
 		.await
-		.into_iter()
-		.find_map(|message| match message {
-			FrontendMessage::TriggerClipboardWrite { content } => Some(content),
-			_ => None,
-		})
 		.expect("Cutting a chain node should write it to the clipboard");
 	let network_interface = &editor.active_document().network_interface;
 	assert_eq!(chain_of(network_interface, layer), vec![far, source], "Cutting should close the chain around the node");
@@ -758,15 +753,8 @@ async fn duplicating_a_solo_floating_layer_makes_an_offset_copy_with_its_content
 
 async fn copy_in_graph(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> String {
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
-	editor
-		.handle_message(NodeGraphMessage::Copy)
-		.await
-		.into_iter()
-		.find_map(|message| match message {
-			FrontendMessage::TriggerClipboardWrite { content } => Some(content),
-			_ => None,
-		})
-		.expect("Copying nodes should write them to the clipboard")
+	let (_, clipboard) = editor.copy_to_clipboard(NodeGraphMessage::Copy).await.expect("Copying nodes should write them to the clipboard");
+	clipboard
 }
 
 async fn paste(editor: &mut EditorTestUtils, clipboard: String) -> Vec<NodeId> {

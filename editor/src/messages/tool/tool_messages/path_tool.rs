@@ -4185,14 +4185,9 @@ mod test_path_tool {
 		// Copy every point and paste them back into the same layer
 		editor.select_tool(ToolType::Path).await;
 		editor.handle_message(PathToolMessage::SelectAll).await;
-		let clipboard = editor
-			.handle_message(ClipboardMessage::CopyLayers)
+		let (_, clipboard) = editor
+			.copy_to_clipboard(ClipboardMessage::CopyLayers)
 			.await
-			.into_iter()
-			.find_map(|message| match message {
-				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
-				_ => None,
-			})
 			.expect("copying points should write a payload to the clipboard");
 		editor
 			.handle_message(ClipboardMessage::ReadClipboard {

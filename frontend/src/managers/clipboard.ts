@@ -35,6 +35,22 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 	subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {
 		insertAtCaret(data.content);
 	});
+
+	subscriptions.subscribeFrontendMessage("TriggerClipboardSvgAndJsonWrite", (data) => {
+		const writeText = () => navigator.clipboard?.writeText?.(data.graphiteJson);
+
+		// Adopted from https://developer.mozilla.org/en-US/docs/Web/API/ClipboardItem#browser_compatibility
+		const svgSupported = typeof ClipboardItem !== "undefined" && ClipboardItem.supports?.("image/svg+xml");
+		if (svgSupported && data.svgString !== undefined && navigator.clipboard?.write) {
+			const item = new ClipboardItem({
+				"image/svg+xml": data.svgString,
+				"text/plain": data.graphiteJson,
+			});
+			navigator.clipboard.write([item]).catch(writeText);
+		} else {
+			writeText();
+		}
+	});
 }
 
 export function destroyClipboardManager() {
@@ -42,6 +58,7 @@ export function destroyClipboardManager() {
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
+	subscriptions.unsubscribeFrontendMessage("TriggerClipboardSvgAndJsonWrite");
 	subscriptions.unsubscribeFrontendMessage("TriggerSessionLinkCopy");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");

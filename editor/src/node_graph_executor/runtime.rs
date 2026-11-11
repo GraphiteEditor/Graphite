@@ -85,6 +85,7 @@ pub enum GraphRuntimeRequest {
 	/// The full path from the root network to the node the Data panel inspects, or empty for none.
 	Inspect(Vec<NodeId>),
 	InspectContextOverrides(ContextOverrides),
+	CopySvgTextClipboard(String, Vec<NodeId>),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -194,6 +195,10 @@ impl NodeRuntime {
 						inspect_state.overrides = overrides;
 						inspect_state.overrides_changed = true;
 					}
+				}
+				GraphRuntimeRequest::CopySvgTextClipboard(graphite_json, selected_node_ids) => {
+					let svg_string = self.old_graph.as_ref().and_then(|network| thumbnails::layers_svg(&selected_node_ids, network, &self.executor));
+					self.sender.send(NodeGraphUpdate::SvgTextCopyClipboard { svg_string, graphite_json }).expect("Failed to send response");
 				}
 			}
 		}
