@@ -3,7 +3,6 @@ import type { DocumentStore } from "/src/stores/document";
 import { fullscreenModeChanged } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { triggerClipboardRead } from "/src/utility-functions/clipboard";
 import {
 	onBeforeUnload,
 	onKeyUp,
@@ -69,10 +68,6 @@ export function createInputManager(subscriptions: SubscriptionsRouter, editor: E
 	portfolioStore = portfolio;
 	documentStore = doc;
 
-	subscriptions.subscribeFrontendMessage("TriggerClipboardRead", () => {
-		triggerClipboardRead(editor);
-	});
-
 	subscriptions.subscribeFrontendMessage("WindowPointerLockMove", (data) => {
 		// Desktop app only: dispatch custom pointer lock movement events
 		const event = new CustomEvent("pointerlockmove", { detail: { x: data.position[0], y: data.position[1] } });
@@ -94,7 +89,6 @@ export function destroyInputManager() {
 	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
-	subscriptions.unsubscribeFrontendMessage("TriggerClipboardRead");
 	subscriptions.unsubscribeFrontendMessage("WindowPointerLockMove");
 
 	// Remove event bindings after the lifetime of the application (or on hot-module replacement during development)

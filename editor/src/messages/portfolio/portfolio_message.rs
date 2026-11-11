@@ -169,18 +169,18 @@ pub enum PortfolioMessage {
 		ignore_hash: bool,
 	},
 	SubmitEyedropperPreviewRender,
-	PollNodeGraphEvaluation,
 	SubmitThumbnailsInView,
+	SubmitClipboardSvg {
+		id: u64,
+	},
 	SubmitInspectContextOverrides {
 		overrides: graphene_std::ContextOverrides,
 	},
+	PollNodeGraphEvaluation,
 	ToggleResetNodesToDefinitionsOnOpen,
 	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
-	RequestSvgTextCopy {
-		graphite_json: String,
-	},
 }
 
 /// Clone helper for non-serializable payloads: a cloned completion message carries none.

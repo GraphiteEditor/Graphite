@@ -8,13 +8,14 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
-use winit::data_transfer::{DataTransferSendBuilder, TypeHint};
+use winit::data_transfer::TypeHint;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
-use winit::event_loop::{ActiveEventLoop, AsyncRequestSerial, ControlFlow, DndAction, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, DndAction, EventLoop};
 use winit::window::WindowId;
 
+use crate::data_transfer::{self, TransferReads};
 use crate::dirs;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::input::InputState;
@@ -24,7 +25,7 @@ use crate::render::{RenderError, RenderState};
 use crate::spawner::TokioSpawner;
 use crate::ui::{Acceleration, InputEvent, UiCommand, UiConfig, UiInstance};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction};
+use crate::wrapper::messages::{DataTransfer, DesktopFrontendMessage, DesktopWrapperMessage, IngestAction};
 use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, WgpuContext, WgpuExecutor, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -36,8 +37,7 @@ pub(crate) struct App {
 	window_maximized: bool,
 	window_fullscreen: bool,
 	window_pending_drag: bool,
-	pending_dnd_fetch: Option<AsyncRequestSerial>,
-	pending_clipboard_fetch: Option<AsyncRequestSerial>,
+	transfer_reads: TransferReads,
 	input_state: InputState,
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
@@ -133,8 +133,7 @@ impl App {
 			window_maximized: false,
 			window_fullscreen: false,
 			window_pending_drag: false,
-			pending_dnd_fetch: None,
-			pending_clipboard_fetch: None,
+			transfer_reads: TransferReads::default(),
 			input_state: InputState::new(),
 			app_event_receiver,
 			app_event_scheduler,
@@ -256,16 +255,10 @@ impl App {
 						futures::executor::block_on(dialog.pick_file()).into_iter().collect()
 					};
 
-					for handle in handles {
-						let path = handle.path().to_path_buf();
-						match fs::read(&path) {
-							Ok(content) => {
-								let action = action.clone();
-								let message = DesktopWrapperMessage::IngestFile { path, content, action };
-								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-							}
-							Err(e) => tracing::error!("Failed to read file {}: {}", path.display(), e),
-						}
+					let files = data_transfer::read_files(handles.iter().map(|handle| handle.path().to_path_buf()));
+					if !files.is_empty() {
+						let message = DesktopWrapperMessage::Ingest { content: DataTransfer(files), action };
+						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 					}
 				});
 			}
@@ -380,8 +373,8 @@ impl App {
 			DesktopFrontendMessage::ClipboardRead => {
 				self.app_event_scheduler.schedule(AppEvent::ClipboardRead);
 			}
-			DesktopFrontendMessage::ClipboardWrite { content, svg } => {
-				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite { content, svg });
+			DesktopFrontendMessage::ClipboardWrite(content) => {
+				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite(content));
 			}
 			DesktopFrontendMessage::PointerLock => {
 				self.input_state.lock_pointer();
@@ -502,31 +495,15 @@ impl App {
 				}
 			}
 			AppEvent::ClipboardRead => {
-				let result = event_loop.clipboard().and_then(|id| {
-					let Some(id) = id else { return Ok(None) };
-					let data_transfer = event_loop.data_transfer(id)?;
-					if !data_transfer.has_type(&TypeHint::Plaintext) {
-						return Ok(None);
-					}
-					event_loop.fetch_data_transfer(id, &TypeHint::Plaintext).map(Some)
-				});
-				match result {
-					Ok(Some(serial)) => self.pending_clipboard_fetch = Some(serial),
-					Ok(None) => self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::ClipboardReadResult { content: None }),
-					Err(e) => {
-						tracing::error!("Failed to read from clipboard: {e}");
-						self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::ClipboardReadResult { content: None });
-					}
+				let read = event_loop
+					.clipboard()
+					.and_then(|id| id.map_or(Ok(()), |id| self.transfer_reads.start(event_loop, id, IngestAction::Paste)));
+				if let Err(e) = read {
+					tracing::error!("Failed to read from clipboard: {e}");
 				}
 			}
-			AppEvent::ClipboardWrite { content, svg } => {
-				let has_svg = svg.is_some();
-				let mut builder = DataTransferSendBuilder::new((content, svg)).with_type(TypeHint::Plaintext, |(content, _), _| Some(content.clone()));
-				if has_svg {
-					builder = builder.with_type(TypeHint::Image { extension_hint: Some("svg") }, |(_, svg), _| svg.as_ref().map(|svg| svg.as_bytes().to_vec()));
-				}
-				let send_data = builder.build();
-				if let Err(e) = event_loop.set_clipboard(send_data) {
+			AppEvent::ClipboardWrite(content) => {
+				if let Err(e) = event_loop.set_clipboard(data_transfer::send(content)) {
 					tracing::error!("Failed to write to clipboard: {e}");
 				}
 			}
@@ -559,18 +536,16 @@ impl App {
 				}
 				let app_event_scheduler = self.app_event_scheduler.clone();
 				let _ = thread::spawn(move || {
-					for path in paths {
+					for path in &paths {
 						tracing::info!("Opening file: {}", path.display());
-						if let Ok(content) = fs::read(&path) {
-							let message = DesktopWrapperMessage::IngestFile {
-								path,
-								content,
-								action: IngestAction::Open,
-							};
-							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-						} else {
-							tracing::error!("Failed to read file: {}", path.display());
-						}
+					}
+					let files = data_transfer::read_files(paths);
+					if !files.is_empty() {
+						let message = DesktopWrapperMessage::Ingest {
+							content: DataTransfer(files),
+							action: IngestAction::Open,
+						};
+						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 					}
 				});
 			}
@@ -670,57 +645,25 @@ impl ApplicationHandler for App {
 				}
 			}
 			WindowEvent::DragEntered { id, .. } => {
-				let accepts = event_loop.data_transfer(id).is_ok_and(|data_transfer| data_transfer.has_type(&TypeHint::UriList));
+				let accepts = event_loop.data_transfer(id).is_ok_and(|data_transfer| {
+					data_transfer.has_type(&TypeHint::UriList) || data_transfer.has_type(&TypeHint::Image { extension_hint: None }) || data_transfer.has_type(&TypeHint::Plaintext)
+				});
 				let actions: &[DndAction] = if accepts { &[DndAction::Copy] } else { &[] };
 				if let Err(e) = event_loop.set_valid_dnd_actions(id, actions) {
 					tracing::error!("Failed to set valid drag and drop actions: {e}");
 				}
 			}
-			WindowEvent::DragDropped { id, .. } => match event_loop.fetch_data_transfer(id, &TypeHint::UriList) {
-				Ok(serial) => self.pending_dnd_fetch = Some(serial),
-				Err(e) => tracing::error!("Failed to fetch dropped data: {e}"),
-			},
-			WindowEvent::DataTransferReceived { serial, ref value, .. } if self.pending_clipboard_fetch == Some(serial) => match value.try_as_string() {
-				Ok(content) => {
-					self.pending_clipboard_fetch = None;
-					let message = DesktopWrapperMessage::ClipboardReadResult { content: Some(content) };
+			WindowEvent::DragDropped { id, .. } => {
+				if let Err(e) = self.transfer_reads.start(event_loop, id, IngestAction::Import) {
+					tracing::error!("Failed to fetch dropped data: {e}");
+				}
+			}
+			WindowEvent::DataTransferReceived { serial, ref value, .. } => {
+				if let Some((content, action)) = self.transfer_reads.receive(serial, value.as_ref()) {
+					let message = DesktopWrapperMessage::Ingest { content, action };
 					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 				}
-				Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-				Err(e) => {
-					self.pending_clipboard_fetch = None;
-					tracing::error!("Failed to read from clipboard: {e}");
-					let message = DesktopWrapperMessage::ClipboardReadResult { content: None };
-					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-				}
-			},
-			WindowEvent::DataTransferReceived { serial, ref value, .. } if self.pending_dnd_fetch == Some(serial) => match value.try_as_uris() {
-				Ok(uris) => {
-					self.pending_dnd_fetch = None;
-					let paths = uris.iter().filter_map(|uri| url::Url::parse(uri).ok()?.to_file_path().ok());
-					for path in paths {
-						match fs::read(&path) {
-							Ok(content) => {
-								let message = DesktopWrapperMessage::IngestFile {
-									path,
-									content,
-									action: IngestAction::Import,
-								};
-								self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-							}
-							Err(e) => {
-								tracing::error!("Failed to read dropped file {}: {}", path.display(), e);
-								return;
-							}
-						};
-					}
-				}
-				Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-				Err(e) => {
-					self.pending_dnd_fetch = None;
-					tracing::error!("Failed to read dropped data: {e}");
-				}
-			},
+			}
 
 			WindowEvent::PointerMoved { .. } | WindowEvent::PointerLeft { position: Some(_), .. } | WindowEvent::PointerEntered { .. }
 				if !self.input_state.pointer_locked() && self.window_pending_drag =>

@@ -1,6 +1,6 @@
 use crate::ui::Cursor;
 use crate::wrapper::Texture;
-use crate::wrapper::messages::DesktopWrapperMessage;
+use crate::wrapper::messages::{DataTransfer, DesktopWrapperMessage};
 
 pub(crate) enum AppEvent {
 	UiUpdate(wgpu::Texture),
@@ -9,10 +9,7 @@ pub(crate) enum AppEvent {
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	ViewportTexture(Option<Texture>),
 	ClipboardRead,
-	ClipboardWrite {
-		content: String,
-		svg: Option<String>,
-	},
+	ClipboardWrite(DataTransfer),
 	Exit,
 	UiCrashed,
 	OpenFiles(Vec<std::path::PathBuf>),

@@ -16,7 +16,7 @@ use crate::messages::portfolio::document::document_message_handler::DocumentMess
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage};
-use crate::messages::portfolio::ingest::utility_types::IngestAction;
+use crate::messages::portfolio::ingest::utility_types::{DataTransferItem, IngestAction};
 use crate::test_utils::test_prelude::*;
 use graphene_std::NodeParameter;
 use graphene_std::vector::style::RenderMode;
@@ -486,10 +486,8 @@ async fn live_undo_new_document_draw_rect() {
 
 fn paste_named_image() -> IngestMessage {
 	IngestMessage::Ingest {
-		data: Image::new(2, 2, Color::WHITE).to_png(),
+		content: DataTransferItem::from_file("pasted.png".into(), None, Image::new(2, 2, Color::WHITE).to_png()).into(),
 		action: IngestAction::Paste,
-		mime_type: String::new(),
-		path: Some("pasted.png".into()),
 	}
 }
 
@@ -820,10 +818,8 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let data = std::fs::read("../demo-artwork/changing-seasons.graphite").expect("read demo artwork");
 	editor
 		.handle_message(IngestMessage::Ingest {
-			data,
+			content: DataTransferItem::from_file("changing-seasons.graphite".into(), None, data).into(),
 			action: IngestAction::Open,
-			mime_type: String::new(),
-			path: Some("changing-seasons.graphite".into()),
 		})
 		.await;
 
@@ -869,10 +865,8 @@ async fn demo_artwork_vector_modifications_still_apply() {
 		let data = std::fs::read(format!("../demo-artwork/{name}.graphite")).expect("read demo artwork");
 		editor
 			.handle_message(IngestMessage::Ingest {
-				data,
+				content: DataTransferItem::from_file(format!("{name}.graphite").into(), None, data).into(),
 				action: IngestAction::Open,
-				mime_type: String::new(),
-				path: Some(format!("{name}.graphite").into()),
 			})
 			.await;
 

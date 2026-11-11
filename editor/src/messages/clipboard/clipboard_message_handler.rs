@@ -1,11 +1,11 @@
 use crate::consts::DEFAULT_STROKE_WIDTH;
-use crate::messages::clipboard::utility_types::{ClipboardContent, ClipboardContentRaw, ClipboardItem, ClipboardLayer, ClipboardResource, ResourceData};
 use crate::messages::portfolio::document::SelectionParts;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
+use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataLayer, ApplicationDataResource, DataTransferItem, ResourceData, TransferData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::ToolType;
@@ -19,8 +19,6 @@ use graphite_proc_macros::{ExtractField, message_handler_data};
 use kurbo::ParamCurve;
 use std::sync::Arc;
 
-const CLIPBOARD_PREFIX: &str = "graphite: ";
-
 #[derive(ExtractField)]
 pub struct ClipboardMessageContext<'a> {
 	pub portfolio: &'a mut PortfolioMessageHandler,
@@ -29,7 +27,30 @@ pub struct ClipboardMessageContext<'a> {
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
-pub struct ClipboardMessageHandler {}
+pub struct ClipboardMessageHandler {
+	pending_copy: Option<PendingCopy>,
+	copy_id: u64,
+}
+
+#[derive(Debug, Clone)]
+enum PendingCopy {
+	Rendering {
+		id: u64,
+		items: Vec<ApplicationDataItem>,
+		loads: Vec<(usize, ResourceHash)>,
+	},
+	Loading {
+		id: u64,
+	},
+}
+
+impl PendingCopy {
+	fn id(&self) -> u64 {
+		match self {
+			Self::Rendering { id, .. } | Self::Loading { id } => *id,
+		}
+	}
+}
 
 #[message_handler_data]
 impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for ClipboardMessageHandler {
@@ -44,19 +65,10 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 			ClipboardMessage::Cut => responses.add(FrontendMessage::TriggerSelectionRead { cut: true }),
 			ClipboardMessage::Copy => responses.add(FrontendMessage::TriggerSelectionRead { cut: false }),
 			ClipboardMessage::Paste => responses.add(FrontendMessage::TriggerClipboardRead),
-			ClipboardMessage::ReadClipboard { content } => match content {
-				ClipboardContentRaw::Text(text) => {
-					if let Some(graphite) = text.strip_prefix(CLIPBOARD_PREFIX) {
-						responses.add(ClipboardMessage::PasteItems { data: graphite.to_string() });
-					} else {
-						responses.add(FrontendMessage::TriggerSelectionWrite { content: text });
-					}
-				}
-			},
 			ClipboardMessage::ReadSelection { content, cut } => {
 				if let Some(text) = content {
 					responses.add(ClipboardMessage::Write {
-						content: ClipboardContent::Text(text),
+						content: TransferData::Text(text).into(),
 					});
 				} else if cut {
 					responses.add(ClipboardMessage::CutLayers);
@@ -64,18 +76,10 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					responses.add(ClipboardMessage::CopyLayers);
 				}
 			}
-			ClipboardMessage::Write { content } => match content {
-				ClipboardContent::Image { .. } => {
-					log::error!("Image copying is not yet supported");
-				}
-				ClipboardContent::Graphite(graphite) => {
-					let graphite_json = format!("{CLIPBOARD_PREFIX}{graphite}");
-					responses.add(PortfolioMessage::RequestSvgTextCopy { graphite_json });
-				}
-				ClipboardContent::Text(content) => {
-					responses.add(FrontendMessage::TriggerClipboardWrite { content });
-				}
-			},
+			ClipboardMessage::Write { content } => {
+				self.pending_copy = None;
+				responses.add(FrontendMessage::TriggerClipboardWrite { content });
+			}
 
 			ClipboardMessage::CopyLayers => {
 				let Some(active_document) = portfolio.active_document() else { return };
@@ -117,7 +121,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						.collect::<Vec<_>>();
 					tree_path.reverse();
 
-					items.push(ClipboardItem::Layer(ClipboardLayer {
+					items.push(ApplicationDataItem::Layer(ApplicationDataLayer {
 						nodes: active_document.network_interface.copy_nodes(&copy_ids, &[]).collect(),
 						visible: active_document.network_interface.selected_nodes().layer_visible(layer, &active_document.network_interface),
 						locked: active_document.network_interface.selected_nodes().layer_locked(layer, &active_document.network_interface),
@@ -134,14 +138,14 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					.filter_map(|node_id| active_document.network_interface.copy_chain_node(node_id, &[]))
 					.collect::<Vec<_>>();
 				if !copies.is_empty() {
-					items.push(ClipboardItem::ChainNodes(copies));
+					items.push(ApplicationDataItem::ChainNodes(copies));
 				}
 
 				// Other nodes are kept under their own IDs, so a paste can tell when it's over the same nodes
 				if !other_nodes.is_empty() {
 					let copy_ids = active_document.with_layer_content(&other_nodes).into_iter().map(|node_id| (node_id, node_id)).collect();
 					let nodes = active_document.network_interface.copy_nodes(&copy_ids, active_document.selection_network_path()).collect();
-					items.push(ClipboardItem::Nodes(nodes));
+					items.push(ApplicationDataItem::Nodes(nodes));
 				}
 
 				responses.add(ClipboardMessage::WriteItems { items });
@@ -181,12 +185,12 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 			}
 			ClipboardMessage::WriteItems { mut items } => {
 				let has_content = items.iter().any(|item| match item {
-					ClipboardItem::Layer(entry) => !entry.nodes.is_empty(),
-					ClipboardItem::Nodes(nodes) => !nodes.is_empty(),
-					ClipboardItem::ChainNodes(copies) => !copies.is_empty(),
-					ClipboardItem::Vector(vector) => !vector.is_empty(),
-					ClipboardItem::Resource(_) => true,
-					ClipboardItem::Definition(_) => false,
+					ApplicationDataItem::Layer(entry) => !entry.nodes.is_empty(),
+					ApplicationDataItem::Nodes(nodes) => !nodes.is_empty(),
+					ApplicationDataItem::ChainNodes(copies) => !copies.is_empty(),
+					ApplicationDataItem::Vector(vector) => !vector.is_empty(),
+					ApplicationDataItem::Resource(_) => true,
+					ApplicationDataItem::Definition(_) => false,
 				});
 				if !has_content {
 					return;
@@ -207,60 +211,47 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						resource_ids.insert(id);
 					});
 				}
-				items.extend(definitions.into_iter().map(|definition| ClipboardItem::Definition(Box::new(definition))));
+				items.extend(definitions.into_iter().map(|definition| ApplicationDataItem::Definition(Box::new(definition))));
 
 				// Snapshot each resource's registry entry; embedded ones also need their bytes
-				let mut resources = Vec::new();
-				let mut bytes_to_load = Vec::new();
+				let mut loads = Vec::new();
 				if let Some(document) = portfolio.active_document() {
 					for id in resource_ids {
 						let Some(info) = document.resources.registry.info(&id) else { continue };
 						if let Some(hash) = info.hash
 							&& info.sources.contains(&DataSource::Embedded)
 						{
-							bytes_to_load.push((resources.len(), *hash));
+							loads.push((items.len(), *hash));
 						}
-						resources.push(ClipboardResource {
+						items.push(ApplicationDataItem::Resource(ApplicationDataResource {
 							id,
 							hash: info.hash.copied(),
 							sources: info.sources.to_vec(),
 							data: None,
-						});
+						}));
 					}
 				}
 
-				if bytes_to_load.is_empty() {
-					items.extend(resources.into_iter().map(ClipboardItem::Resource));
-					if let Some(content) = serialize_clipboard(&items) {
-						responses.add(ClipboardMessage::Write { content });
-					}
+				if items.iter().any(|item| matches!(item, ApplicationDataItem::Layer(_))) {
+					let id = self.next_copy_id();
+					self.pending_copy = Some(PendingCopy::Rendering { id, items, loads });
+					responses.add(PortfolioMessage::SubmitClipboardSvg { id });
 				} else {
-					// Load the embedded bytes from the resource storage, then write
-					let load_handle = resource_storage.resources();
-					responses.add(async move {
-						let mut resources = resources;
-						for (index, hash) in bytes_to_load {
-							if let Some(resource) = load_handle.load(hash).await {
-								resources[index].data = Some(ResourceData(resource.as_ref().to_vec()));
-							}
-						}
-						items.extend(resources.into_iter().map(ClipboardItem::Resource));
-						match serialize_clipboard(&items) {
-							Some(content) => ClipboardMessage::Write { content }.into(),
-							None => Message::NoOp,
-						}
-					});
+					self.finish_copy(items, loads, None, resource_storage, responses);
 				}
 			}
-			ClipboardMessage::PasteItems { data } => {
-				let items = match serde_json::from_str::<Vec<ClipboardItem>>(&data) {
-					Ok(items) => items,
-					Err(error) => {
-						log::error!("Failed to deserialize clipboard payload: {error}");
-						return;
-					}
+			ClipboardMessage::Rendered { id, svg } => {
+				let Some(PendingCopy::Rendering { items, loads, .. }) = self.pending_copy.take_if(|pending| pending.id() == id) else {
+					return;
 				};
-
+				self.finish_copy(items, loads, svg, resource_storage, responses);
+			}
+			ClipboardMessage::Loaded { id, content } => {
+				if self.pending_copy.as_ref().is_some_and(|pending| pending.id() == id) {
+					responses.add(ClipboardMessage::Write { content });
+				}
+			}
+			ClipboardMessage::PasteItems { items } => {
 				let mut layers = Vec::new();
 				let mut node_groups = Vec::new();
 				let mut chain_node_groups = Vec::new();
@@ -270,27 +261,27 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				for item in items {
 					// Pasted templates skip document migration, so stored types normalize here
 					match item {
-						ClipboardItem::Layer(mut entry) => {
+						ApplicationDataItem::Layer(mut entry) => {
 							for (_, template) in &mut entry.nodes {
 								template.normalize_stored_types();
 							}
 							layers.push(entry);
 						}
-						ClipboardItem::Nodes(mut nodes) => {
+						ApplicationDataItem::Nodes(mut nodes) => {
 							for (_, template) in &mut nodes {
 								template.normalize_stored_types();
 							}
 							node_groups.push(nodes);
 						}
-						ClipboardItem::ChainNodes(mut copies) => {
+						ApplicationDataItem::ChainNodes(mut copies) => {
 							for copy in &mut copies {
 								copy.template.normalize_stored_types();
 							}
 							chain_node_groups.push(copies);
 						}
-						ClipboardItem::Vector(vector) => vectors.push(vector),
-						ClipboardItem::Resource(resource) => resources.push(resource),
-						ClipboardItem::Definition(definition) => definitions.push(*definition),
+						ApplicationDataItem::Vector(vector) => vectors.push(vector),
+						ApplicationDataItem::Resource(resource) => resources.push(resource),
+						ApplicationDataItem::Definition(definition) => definitions.push(*definition),
 					}
 				}
 
@@ -549,31 +540,66 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 	);
 }
 
-/// Serialize the clipboard items, logging on failure.
-fn serialize_clipboard(items: &[ClipboardItem]) -> Option<ClipboardContent> {
-	match serde_json::to_string(items) {
-		Ok(data) => Some(ClipboardContent::Graphite(data)),
-		Err(error) => {
-			log::error!("Failed to serialize clipboard payload: {error}");
-			None
+impl ClipboardMessageHandler {
+	fn next_copy_id(&mut self) -> u64 {
+		self.copy_id += 1;
+		self.copy_id
+	}
+
+	fn finish_copy(
+		&mut self,
+		mut items: Vec<ApplicationDataItem>,
+		loads: Vec<(usize, ResourceHash)>,
+		svg: Option<String>,
+		resource_storage: &ResourceStorageMessageHandler,
+		responses: &mut VecDeque<Message>,
+	) {
+		if loads.is_empty() {
+			let content = [Some(TransferData::ApplicationData(items)), svg.map(TransferData::Svg)]
+				.into_iter()
+				.flatten()
+				.map(DataTransferItem::from)
+				.collect();
+			responses.add(ClipboardMessage::Write { content });
+			return;
 		}
+
+		let id = self.next_copy_id();
+		self.pending_copy = Some(PendingCopy::Loading { id });
+
+		let load_handle = resource_storage.resources();
+		responses.add(async move {
+			for (index, hash) in loads {
+				if let ApplicationDataItem::Resource(resource) = &mut items[index]
+					&& let Some(data) = load_handle.load(hash).await
+				{
+					resource.data = Some(ResourceData(data.as_ref().to_vec()));
+				}
+			}
+			let content = [Some(TransferData::ApplicationData(items)), svg.map(TransferData::Svg)]
+				.into_iter()
+				.flatten()
+				.map(DataTransferItem::from)
+				.collect();
+			Message::from(ClipboardMessage::Loaded { id, content })
+		});
 	}
 }
 
 /// The node templates a clipboard item carries.
-fn item_templates(item: &ClipboardItem) -> Vec<&network_interface::NodeTemplate> {
+fn item_templates(item: &ApplicationDataItem) -> Vec<&network_interface::NodeTemplate> {
 	match item {
-		ClipboardItem::Layer(entry) => entry.nodes.iter().map(|(_, template)| template).collect(),
-		ClipboardItem::Nodes(nodes) => nodes.iter().map(|(_, template)| template).collect(),
-		ClipboardItem::ChainNodes(copies) => copies.iter().map(|copy| &copy.template).collect(),
-		ClipboardItem::Vector(_) | ClipboardItem::Resource(_) | ClipboardItem::Definition(_) => Vec::new(),
+		ApplicationDataItem::Layer(entry) => entry.nodes.iter().map(|(_, template)| template).collect(),
+		ApplicationDataItem::Nodes(nodes) => nodes.iter().map(|(_, template)| template).collect(),
+		ApplicationDataItem::ChainNodes(copies) => copies.iter().map(|copy| &copy.template).collect(),
+		ApplicationDataItem::Vector(_) | ApplicationDataItem::Resource(_) | ApplicationDataItem::Definition(_) => Vec::new(),
 	}
 }
 
 #[cfg(test)]
 mod test {
-	use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardResource, ResourceData};
 	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+	use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataResource, DataType, RawData, ResourceData};
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
 	use graph_craft::document::NodeInput;
@@ -600,25 +626,22 @@ mod test {
 	}
 
 	/// Copies the layer selection and returns the written clipboard payload.
-	async fn copy_layers_to_clipboard(editor: &mut EditorTestUtils) -> String {
-		copy_layers_and_svg_to_clipboard(editor).await.1
-	}
-
-	/// Copies the layer selection and returns the SVG and the payload written to the clipboard.
-	async fn copy_layers_and_svg_to_clipboard(editor: &mut EditorTestUtils) -> (Option<String>, String) {
+	async fn copy_layers_to_clipboard(editor: &mut EditorTestUtils) -> DataTransfer {
 		editor
 			.copy_to_clipboard(ClipboardMessage::CopyLayers)
 			.await
 			.expect("copying layers should write a payload to the clipboard")
 	}
 
-	/// Pastes a clipboard string as if read from the system clipboard.
-	async fn paste_from_clipboard(editor: &mut EditorTestUtils, clipboard: &str) {
-		editor
-			.handle_message(ClipboardMessage::ReadClipboard {
-				content: ClipboardContentRaw::Text(clipboard.to_string()),
-			})
-			.await;
+	fn copied_svg(clipboard: &DataTransfer) -> Option<&str> {
+		clipboard.0.iter().find_map(|item| match &item.data {
+			TransferData::Svg(svg) => Some(svg.as_str()),
+			_ => None,
+		})
+	}
+
+	fn is_svg_document(svg: &str) -> bool {
+		svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:graphite=\"https://graphite.art\"") && svg.ends_with("</svg>")
 	}
 
 	/// - create rect, shape and ellipse
@@ -630,8 +653,8 @@ mod test {
 		let layers = editor.active_document().metadata().all_layers().map(|layer| layer.to_node()).collect();
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: layers }).await;
 
-		let (svg, _) = copy_layers_and_svg_to_clipboard(&mut editor).await;
-		let svg = svg.expect("the copied layers should render an SVG");
+		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+		let svg = copied_svg(&clipboard).expect("the copied layers should render an SVG");
 		// The rectangle, polygon, and ellipse are told apart by where their outlines start
 		let position = |path_start: &str| svg.find(path_start).unwrap_or_else(|| panic!("{path_start} should be in the SVG: {svg}"));
 		let (rectangle, polygon, ellipse) = (position(r#"d="M-100,-100 "#), position(r#"d="M-645,-400 "#), position(r#"d="M0,-400 C"#));
@@ -645,8 +668,8 @@ mod test {
 		let mut editor = create_editor_with_three_layers().await;
 
 		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-		let (svg_string, clipboard) = copy_layers_and_svg_to_clipboard(&mut editor).await;
-		paste_from_clipboard(&mut editor, &clipboard).await;
+		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+		editor.paste_from_clipboard(clipboard.clone()).await;
 
 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
@@ -658,11 +681,7 @@ mod test {
 			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
 		}
 
-		assert!(
-			svg_string
-				.as_deref()
-				.is_some_and(|svg| svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:graphite=\"https://graphite.art\"") && svg.ends_with("</svg>"))
-		);
+		assert!(copied_svg(&clipboard).is_some_and(is_svg_document));
 	}
 
 	#[cfg_attr(miri, ignore)]
@@ -679,8 +698,8 @@ mod test {
 		let shape_id = editor.active_document().metadata().all_layers().nth(1).unwrap();
 
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] }).await;
-		let (svg_string, clipboard) = copy_layers_and_svg_to_clipboard(&mut editor).await;
-		paste_from_clipboard(&mut editor, &clipboard).await;
+		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+		editor.paste_from_clipboard(clipboard.clone()).await;
 
 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
@@ -692,11 +711,7 @@ mod test {
 			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
 		}
 
-		assert!(
-			svg_string
-				.as_deref()
-				.is_some_and(|svg| svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:graphite=\"https://graphite.art\"") && svg.ends_with("</svg>"))
-		);
+		assert!(copied_svg(&clipboard).is_some_and(is_svg_document));
 	}
 
 	#[cfg_attr(miri, ignore)]
@@ -722,11 +737,11 @@ mod test {
 				nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
 			})
 			.await;
-		let (svg_string, clipboard) = copy_layers_and_svg_to_clipboard(&mut editor).await;
+		let clipboard = copy_layers_to_clipboard(&mut editor).await;
 		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
 		editor.draw_rect(0., 800., 12., 200.).await;
-		paste_from_clipboard(&mut editor, &clipboard).await;
-		paste_from_clipboard(&mut editor, &clipboard).await;
+		editor.paste_from_clipboard(clipboard.clone()).await;
+		editor.paste_from_clipboard(clipboard.clone()).await;
 
 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
@@ -734,11 +749,128 @@ mod test {
 		assert_eq!(layers_after_copy.len(), 6);
 
 		assert_eq!(layers_after_copy[5], shape_id);
-		assert!(
-			svg_string
-				.as_deref()
-				.is_some_and(|svg| svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:graphite=\"https://graphite.art\"") && svg.ends_with("</svg>"))
-		);
+		assert!(copied_svg(&clipboard).is_some_and(is_svg_document));
+	}
+
+	#[cfg_attr(miri, ignore)]
+	#[tokio::test]
+	async fn cutting_an_embedded_image_carries_its_svg_and_bytes() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.create_raster_image(Image::new(2, 2, Color::RED), None).await;
+		let layers = editor.active_document().metadata().all_layers().map(|layer| layer.to_node()).collect();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: layers }).await;
+
+		let clipboard = editor.copy_to_clipboard(ClipboardMessage::CutLayers).await.expect("cutting the image should write it to the clipboard");
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0);
+		assert!(copied_svg(&clipboard).is_some_and(is_svg_document), "the cut image should render an SVG: {clipboard:?}");
+
+		let items = clipboard
+			.0
+			.iter()
+			.find_map(|item| match &item.data {
+				TransferData::ApplicationData(items) => Some(items),
+				_ => None,
+			})
+			.expect("the cut image should be written as application data");
+		assert!(items.iter().any(|item| matches!(item, ApplicationDataItem::Resource(ApplicationDataResource { data: Some(_), .. }))));
+	}
+
+	#[tokio::test]
+	async fn copying_nodes_writes_only_graphite_data() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rectangle = editor
+			.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER))
+			.await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rectangle] }).await;
+
+		let clipboard = editor.copy_to_clipboard(NodeGraphMessage::Copy).await.expect("copying the node should write it to the clipboard");
+		assert!(clipboard.0.iter().all(|item| matches!(item.data, TransferData::ApplicationData(_))), "{clipboard:?}");
+	}
+
+	#[cfg_attr(miri, ignore)]
+	#[tokio::test]
+	async fn copying_text_while_layers_render_keeps_the_text() {
+		let mut editor = create_editor_with_three_layers().await;
+		let layers = editor.active_document().metadata().all_layers().map(|layer| layer.to_node()).collect();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: layers }).await;
+
+		let mut written = editor.dispatch(ClipboardMessage::CopyLayers);
+		written.extend(editor.dispatch(ClipboardMessage::ReadSelection {
+			content: Some("text".to_string()),
+			cut: false,
+		}));
+		editor.runtime.update();
+		editor.runtime.run().await;
+		written.extend(editor.dispatch(Message::Wake));
+
+		let last = written
+			.into_iter()
+			.filter_map(|message| match message {
+				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+				_ => None,
+			})
+			.last();
+		assert_eq!(last, Some(TransferData::Text("text".to_string()).into()));
+	}
+
+	const PASTED_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>"#;
+
+	#[cfg_attr(miri, ignore)]
+	#[tokio::test]
+	async fn pasting_images_ingests_them() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer_count = |editor: &EditorTestUtils| editor.active_document().metadata().all_layers().count();
+
+		editor.paste_from_clipboard(TransferData::Svg(PASTED_SVG.to_string()).into()).await;
+		let after_svg = layer_count(&editor);
+		assert!(after_svg > 0, "pasting an SVG should add it as a layer");
+
+		let data = Image::new(2, 2, Color::RED).to_png();
+		editor
+			.paste_from_clipboard(
+				TransferData::Raster {
+					format: image::ImageFormat::Png,
+					data,
+				}
+				.into(),
+			)
+			.await;
+		assert!(layer_count(&editor) > after_svg, "pasting a PNG should add it as a layer");
+	}
+
+	#[cfg_attr(miri, ignore)]
+	#[tokio::test]
+	async fn pasting_unreadable_graphite_data_falls_back_to_its_svg() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let unreadable = DataTransferItem::from_raw(DataType::Text, RawData::Text("graphite: unreadable".to_string())).unwrap();
+		let content = [unreadable, TransferData::Svg(PASTED_SVG.to_string()).into()].into_iter().collect();
+		editor.paste_from_clipboard(content).await;
+		assert!(editor.active_document().metadata().all_layers().count() > 0);
+	}
+
+	#[tokio::test]
+	async fn pasting_text_inserts_it_at_the_caret() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let responses = editor.paste_from_clipboard(TransferData::Text("text".to_string()).into()).await;
+		assert!(responses.contains(&FrontendMessage::TriggerSelectionWrite { content: "text".to_string() }));
+	}
+
+	#[tokio::test]
+	async fn pasting_text_that_only_looks_like_application_data_inserts_it_at_the_caret() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let text = "graphite: not a payload".to_string();
+		let content = DataTransferItem::from_raw(DataType::Text, RawData::Text(text.clone())).unwrap().into();
+		let responses = editor.paste_from_clipboard(content).await;
+		assert!(responses.contains(&FrontendMessage::TriggerSelectionWrite { content: text }));
 	}
 
 	/// A pasted `graphite:` payload re-registers the resources it carries into the active document.
@@ -753,19 +885,15 @@ mod test {
 		// Carry the resource and its bytes through the clipboard
 		let bytes = b"a pretend png".to_vec();
 		let hash = ResourceHash::from(bytes.as_slice());
-		let items = vec![ClipboardItem::Resource(ClipboardResource {
+		let items = vec![ApplicationDataItem::Resource(ApplicationDataResource {
 			id,
 			hash: Some(hash),
 			sources: vec![DataSource::Embedded],
 			data: Some(ResourceData(bytes)),
 		})];
-		let payload = format!("graphite: {}", serde_json::to_string(&items).unwrap());
+		let payload = TransferData::ApplicationData(items);
 
-		editor
-			.handle_message(ClipboardMessage::ReadClipboard {
-				content: ClipboardContentRaw::Text(payload),
-			})
-			.await;
+		editor.paste_from_clipboard(payload.into()).await;
 
 		let registry = &editor.active_document().resources.registry;
 		assert!(registry.contains(&id), "the carried resource should be registered after paste");
@@ -802,7 +930,7 @@ mod test {
 		editor.draw_rect(0., 0., 100., 100.).await;
 
 		let clipboard = copy_layers_to_clipboard(&mut editor).await;
-		paste_from_clipboard(&mut editor, &clipboard).await;
+		editor.paste_from_clipboard(clipboard.clone()).await;
 
 		let entries = layer_entries(&editor);
 		assert_eq!(entries.len(), 2);
@@ -821,11 +949,11 @@ mod test {
 		let clipboard = copy_layers_to_clipboard(&mut editor).await;
 
 		editor.new_document().await;
-		paste_from_clipboard(&mut editor, &clipboard).await;
+		editor.paste_from_clipboard(clipboard.clone()).await;
 		assert_eq!(layer_entries(&editor), copied);
 		assert_consistent(&editor);
 
-		paste_from_clipboard(&mut editor, &clipboard).await;
+		editor.paste_from_clipboard(clipboard.clone()).await;
 		assert_eq!(layer_entries(&editor), [copied.clone(), copied].concat(), "identical content should be reused");
 		assert_eq!(editor.active_document().network_interface.document_network().definitions.len(), 1);
 		assert_consistent(&editor);
@@ -848,7 +976,7 @@ mod test {
 		let clipboard = copy_layers_to_clipboard(&mut editor).await;
 
 		editor.new_document().await;
-		paste_from_clipboard(&mut editor, &clipboard).await;
+		editor.paste_from_clipboard(clipboard.clone()).await;
 		let [entry] = layer_entries(&editor)[..] else { panic!("the paste should add one layer") };
 
 		// Diverge the pasted entry from the copied one
@@ -872,7 +1000,7 @@ mod test {
 		interface.set_input(&InputConnector::node_at_index(inner, input_index), flipped, &[layer]);
 		assert_ne!(interface.document_network().definitions[&entry], before, "the edit should change the pasted entry");
 
-		paste_from_clipboard(&mut editor, &clipboard).await;
+		editor.paste_from_clipboard(clipboard.clone()).await;
 		let entries = layer_entries(&editor);
 		assert_eq!(entries.len(), 2);
 		assert!(entries.contains(&entry));

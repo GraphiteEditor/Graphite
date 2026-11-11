@@ -7,18 +7,24 @@ use crate::EDITOR;
 use crate::MESSAGE_BUFFER;
 #[cfg(all(feature = "native", target_family = "wasm"))]
 use crate::editor_commands::EditorCommand;
-#[cfg(feature = "editor")]
-use crate::helpers::render_image_data_to_canvases;
 #[cfg(not(feature = "native"))]
 use crate::helpers::run_node_runtime;
 #[cfg(any(not(feature = "native"), target_family = "wasm"))]
 use crate::helpers::wrapper;
 use crate::helpers::{request_animation_frame, set_timeout};
+#[cfg(not(feature = "native"))]
+use crate::intercept_frontend_message::intercept_frontend_message;
 use crate::{EDITOR_HAS_CRASHED, FRONTEND_READY};
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::application::{Environment, Host, Platform};
+#[cfg(not(feature = "native"))]
+use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+#[cfg(not(feature = "native"))]
+use editor::messages::portfolio::ingest::utility_types::IngestAction;
 #[cfg(feature = "editor")]
 use editor::messages::prelude::*;
+#[cfg(not(feature = "native"))]
+use graph_craft::document::NodeId;
 #[cfg(feature = "editor")]
 use serde::Serialize;
 use std::cell::RefCell;
@@ -63,6 +69,9 @@ impl EditorWrapper {
 			_ => unreachable!(),
 		};
 
+		let location = web_sys::window().expect("No global `window` exists").location();
+		let url = format!("{}{}", location.origin().unwrap_or_default(), location.pathname().unwrap_or_default());
+
 		let storage: std::sync::Arc<dyn ResourceStorage> = match OpfsResourceStorage::load("resources").await {
 			Ok(storage) => std::sync::Arc::new(storage),
 			Err(error) => {
@@ -77,7 +86,11 @@ impl EditorWrapper {
 			.with_editor(
 				EditorBuilder::new()
 					.with_wake(crate::helpers::wake_editor)
-					.with_environment(Environment { platform: Platform::Web, host })
+					.with_environment(Environment {
+						platform: Platform::Web,
+						host,
+						url: url.leak(),
+					})
 					.with_resource_storage(storage)
 					.with_document_store(document_store),
 			)
@@ -119,23 +132,13 @@ impl EditorWrapper {
 		});
 
 		// Send each `FrontendMessage` to the JavaScript frontend
-		for message in frontend_messages.into_iter() {
+		for message in frontend_messages.into_iter().filter_map(intercept_frontend_message) {
 			self.send_frontend_message_to_js(message);
 		}
 	}
 
 	#[cfg(feature = "editor")]
 	pub(crate) fn send_frontend_message_to_js(&self, message: FrontendMessage) {
-		if let FrontendMessage::UpdateImageData {
-			ref image_data,
-			ref canvas_ids_in_use,
-		} = message
-		{
-			let images = image_data.iter().map(|image| (image.id, image.width, image.height, image.pixels.as_slice()));
-			render_image_data_to_canvases(images, canvas_ids_in_use);
-			return;
-		}
-
 		let message_type = message.to_discriminant().local_name();
 
 		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
@@ -264,5 +267,22 @@ impl EditorWrapper {
 	#[wasm_bindgen(js_name = loadPersistedState)]
 	pub fn load_persisted_state(&self, _state: JsValue) {
 		log::error!("loadPersistedState is unavailable on desktop; persistence is handled natively");
+	}
+
+	#[cfg(not(feature = "native"))]
+	pub fn ingest(&self, data: &web_sys::DataTransfer, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<u32>) {
+		let action = match (insert_parent_id.zip(insert_index), mouse_x.zip(mouse_y)) {
+			(Some((parent, insert_index)), _) => IngestAction::DropOnLayers {
+				parent: LayerNodeIdentifier::new_unchecked(NodeId(parent)),
+				insert_index,
+			},
+			(None, Some(mouse)) => IngestAction::DropOnCanvas { mouse },
+			(None, None) => IngestAction::Paste,
+		};
+		crate::data_transfer::ingest(data, action);
+	}
+	#[cfg(feature = "native")]
+	pub fn ingest(&self, _data: JsValue, _mouse_x: Option<f64>, _mouse_y: Option<f64>, _insert_parent_id: Option<u64>, _insert_index: Option<u32>) {
+		log::error!("ingest is unavailable on desktop; drops and pastes are handled natively");
 	}
 }

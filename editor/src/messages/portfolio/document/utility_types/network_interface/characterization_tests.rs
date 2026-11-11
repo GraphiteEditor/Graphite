@@ -455,7 +455,7 @@ async fn cutting_a_chain_node_and_pasting_it_back_keeps_its_wires() {
 
 	// Cutting removes just the node, keeping the node that fed its second input
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![near] }).await;
-	let (_, clipboard) = editor
+	let clipboard = editor
 		.copy_to_clipboard(ClipboardMessage::CutLayers)
 		.await
 		.expect("Cutting a chain node should write it to the clipboard");
@@ -465,11 +465,7 @@ async fn cutting_a_chain_node_and_pasting_it_back_keeps_its_wires() {
 
 	// Pasting with the layer selected puts the node back beside the layer, wired as before
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }).await;
-	editor
-		.handle_message(ClipboardMessage::ReadClipboard {
-			content: ClipboardContentRaw::Text(clipboard),
-		})
-		.await;
+	editor.paste_from_clipboard(clipboard).await;
 	let network_interface = &editor.active_document().network_interface;
 	let chain = chain_of(network_interface, layer);
 	assert_eq!(chain.len(), 3, "The pasted node should join the chain");
@@ -751,18 +747,13 @@ async fn duplicating_a_solo_floating_layer_makes_an_offset_copy_with_its_content
 	assert_invariants(&editor, "after duplicating a solo floating layer");
 }
 
-async fn copy_in_graph(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> String {
+async fn copy_in_graph(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> DataTransfer {
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
-	let (_, clipboard) = editor.copy_to_clipboard(NodeGraphMessage::Copy).await.expect("Copying nodes should write them to the clipboard");
-	clipboard
+	editor.copy_to_clipboard(NodeGraphMessage::Copy).await.expect("Copying nodes should write them to the clipboard")
 }
 
-async fn paste(editor: &mut EditorTestUtils, clipboard: String) -> Vec<NodeId> {
-	editor
-		.handle_message(ClipboardMessage::ReadClipboard {
-			content: ClipboardContentRaw::Text(clipboard),
-		})
-		.await;
+async fn paste(editor: &mut EditorTestUtils, clipboard: DataTransfer) -> Vec<NodeId> {
+	editor.paste_from_clipboard(clipboard).await;
 	editor.active_document().network_interface.selected_nodes().selected_nodes().copied().collect()
 }
 

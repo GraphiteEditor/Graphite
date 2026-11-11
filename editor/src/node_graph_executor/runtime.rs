@@ -78,14 +78,10 @@ pub struct NodeRuntime {
 pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
-	ThumbnailsInView {
-		layers: HashSet<NodeId>,
-		document_id: DocumentId,
-	},
-	/// The full path from the root network to the node the Data panel inspects, or empty for none.
+	ThumbnailsInView { layers: HashSet<NodeId>, document_id: DocumentId },
 	Inspect(Vec<NodeId>),
 	InspectContextOverrides(ContextOverrides),
-	CopySvgTextClipboard(String, Vec<NodeId>),
+	ClipboardSvg { id: u64, layers: Vec<NodeId> },
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -196,9 +192,9 @@ impl NodeRuntime {
 						inspect_state.overrides_changed = true;
 					}
 				}
-				GraphRuntimeRequest::CopySvgTextClipboard(graphite_json, selected_node_ids) => {
-					let svg_string = self.old_graph.as_ref().and_then(|network| thumbnails::layers_svg(&selected_node_ids, network, &self.executor));
-					self.sender.send(NodeGraphUpdate::SvgTextCopyClipboard { svg_string, graphite_json }).expect("Failed to send response");
+				GraphRuntimeRequest::ClipboardSvg { id, layers } => {
+					let svg = self.old_graph.as_ref().and_then(|network| thumbnails::layers_svg(&layers, network, &self.executor));
+					self.sender.send(NodeGraphUpdate::ClipboardSvg { id, svg }).expect("Failed to send response");
 				}
 			}
 		}

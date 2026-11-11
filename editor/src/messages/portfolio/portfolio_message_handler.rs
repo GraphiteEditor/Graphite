@@ -149,6 +149,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::Sync(message) => {
 				let context = SyncMessageContext {
+					environment,
 					documents: &mut self.documents,
 					active_document_id: self.active_document_id,
 					resource_storage,
@@ -1127,6 +1128,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					self.executor.submit_thumbnails_in_view(document, document_id);
 				}
 			}
+			PortfolioMessage::SubmitClipboardSvg { id } => {
+				let layers = self.active_document().map(|document| {
+					let selected = document.partition_selection().layers;
+					let mut layers = document
+						.metadata()
+						.all_layers()
+						.filter(|layer| selected.contains(layer))
+						.map(|layer| layer.to_node())
+						.collect::<Vec<_>>();
+					layers.reverse();
+					layers
+				});
+				responses.add(self.executor.submit_clipboard_svg(self.active_document_id, id, layers.unwrap_or_default()));
+			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
 				responses.add(MenuBarMessage::SendLayout);
@@ -1155,21 +1170,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if no_open_documents {
 					responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
-				}
-			}
-			PortfolioMessage::RequestSvgTextCopy { graphite_json } => {
-				if let Some(active_document) = self.active_document() {
-					// Bottom layer first, since SVG paints later elements on top
-					let selected_nodes: Vec<NodeId> = active_document
-						.network_interface
-						.shallowest_unique_layers_sorted(&[])
-						.iter()
-						.rev()
-						.map(|layer| layer.to_node())
-						.collect();
-					self.executor.copy_svg_clipboard(graphite_json, selected_nodes);
-				} else {
-					self.executor.copy_svg_clipboard(graphite_json, Vec::new());
 				}
 			}
 		}
