@@ -3,14 +3,23 @@
 use crate::{Tagged, inputs, wire};
 use document_graph_storage::attributes::attr::node::ui::REFERENCE;
 use document_graph_storage::{AttributeDelta, Implementation, NetworkId, NetworkReference, NodeId, NodeInput, RegistryDelta};
-use migration_core::{decl, literal, rename};
+use migration_core::{NewNode, Upstream, decl, literal, migration, rename};
 use migration_runner::testing::{Fixture, SourceContract, check_commutation, check_undo, registered};
-use migration_runner::{DeclarationTable, references};
+use migration_runner::{DeclarationTable, RunnerError, references};
 
 // The Merge subgraph became the `merge` proto node, which takes the instance's inputs as they are. Inner edits are dropped with the subgraph
 rename!(network "Merge"@1 => "graphic_nodes::merge"@2);
 
 rename!(network "Artboard"@1 => @2);
+
+/// Adds a node of a network definition, which the runner rejects since only proto nodes can be added.
+#[migration(network "Frame"@1 => @2)]
+pub fn add_network_definition(upstream: &mut Upstream) {
+	upstream.add_node(NewNode {
+		declaration: decl!(network "Merge"@1),
+		inputs: Vec::new(),
+	});
+}
 
 const MERGE: migration_core::Declaration = decl!(network "Merge"@1);
 
@@ -49,6 +58,17 @@ fn edited_subgraph_collapses_too() {
 	assert_eq!(fixture.declaration_of(&migrated, merge), Some(decl!("graphic_nodes::merge"@2)));
 	assert!(!migrated.networks.contains_key(&network));
 	assert!(migrated.node_instances.values().all(|node| node.network() != network));
+}
+
+#[test]
+fn adding_a_network_definition_fails() {
+	let migration = registered(decl!(network "Frame"@1));
+	let mut fixture = Fixture::new(migration);
+	let (frame, _) = fixture.add_network(decl!(network "Frame"@1), Vec::new());
+
+	let result = fixture.migrate(migration);
+
+	assert!(matches!(result, Err(RunnerError::AddedNetworkDefinition { anchor, .. }) if anchor == frame));
 }
 
 #[test]

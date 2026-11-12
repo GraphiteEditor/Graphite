@@ -347,7 +347,7 @@ A proto declaration's encoding leaves the kind out, so IDs derived from declarat
 
 **Switching.** The runner switches a network anchor to a network declaration by rewriting the reference. It switches one to a proto declaration by setting the implementation and removing the network the anchor implemented, with every node in it and every network nested in it. A proto anchor can't become a network declaration, and migrations only add proto nodes.
 
-Removing the network drops whatever it holds, including nodes the user added. The alternatives are worse. Reporting an edited subgraph as `unrepresentable` opens the document read-only, and keeping the edited copy usually doesn't compile anyway, since the nodes inside it typically folded into the new proto node. Built-in subgraphs are rarely edited, so the loss is rare.
+Removing the network drops whatever it holds, including nodes the user added. This is a deliberate exception to totality, since the alternatives are worse. Reporting an edited subgraph as `unrepresentable` opens the document read-only, and keeping the edited copy usually doesn't compile anyway, since the nodes inside it typically folded into the new proto node. Built-in subgraphs are rarely edited, so the loss is rare.
 
 **Whole states.** An instance consists of two entities that history adds in separate deltas, and the editor's diff adds the network first. In between, the network names the definition without an anchor to migrate it, so `M` would leave the old reference in rewritten history, and every later open would find the migration pending again. Migrations from a network declaration therefore run on whole states only, like those reading `&Graph`.
 

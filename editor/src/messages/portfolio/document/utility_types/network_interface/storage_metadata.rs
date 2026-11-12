@@ -171,13 +171,13 @@ impl DocumentSettings<'_> {
 	}
 }
 
-/// The stored position of a node, which pairs with `is_layer` to reconstruct the runtime node type.
 /// The stored form of a network's reference. Opening a document migrates every instance to its definition's current version, so that is the version it holds.
 pub(super) fn versioned_reference(identifier: String) -> NetworkReference {
 	let version = network_definition_version(&identifier);
 	NetworkReference { identifier, version }
 }
 
+/// The stored position of a node, which pairs with `is_layer` to reconstruct the runtime node type.
 pub fn position_from_runtime(node_type: &NodeTypePersistentMetadata) -> Position {
 	match node_type {
 		NodeTypePersistentMetadata::Layer(layer) => match layer.position {
