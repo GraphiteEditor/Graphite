@@ -1,17 +1,14 @@
 use super::evaluated_output;
 use crate::messages::frontend::FrontendMessage;
-#[cfg(feature = "gpu")]
 use atlas::ThumbnailAtlasLayout;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
-#[cfg(feature = "gpu")]
 use graphene_std::application_io::{ApplicationIo, Texture};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::gradient::Gradient;
 use graphene_std::graphic::extend;
 use graphene_std::list::{Item, List};
-#[cfg(feature = "gpu")]
 use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasHandle};
@@ -24,17 +21,12 @@ use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
-#[cfg(feature = "gpu")]
 mod atlas;
 
 /// The time thumbnails are evaluated at, so they don't depend on the playhead.
 const THUMBNAIL_TIME: f64 = 0.;
 
 /// The size in pixels of a thumbnail rendered at this device pixel ratio.
-#[cfg_attr(
-	not(any(feature = "gpu", all(target_family = "wasm", feature = "wasm"))),
-	expect(dead_code, reason = "Only thumbnails rendered with Vello or drawn into canvases have a fixed size")
-)]
 fn cell_size(scale: f64) -> UVec2 {
 	/// The size thumbnails are shown at in the node graph, in CSS pixels.
 	const CELL_SIZE: DVec2 = DVec2::new(72., 48.);
@@ -149,7 +141,6 @@ impl Thumbnails {
 	}
 
 	/// Renders the thumbnails into atlases with Vello and shows them, giving false if Vello is unavailable.
-	#[cfg(feature = "gpu")]
 	async fn render_with_vello(&mut self, contents: &HashMap<NodeId, ThumbnailContent>, editor_api: &PlatformEditorApi, responses: &mut VecDeque<FrontendMessage>) -> bool {
 		let Some(executor) = editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
 			return false;
@@ -179,13 +170,8 @@ impl Thumbnails {
 		true
 	}
 
-	#[cfg(not(feature = "gpu"))]
-	async fn render_with_vello(&mut self, _contents: &HashMap<NodeId, ThumbnailContent>, _editor_api: &PlatformEditorApi, _responses: &mut VecDeque<FrontendMessage>) -> bool {
-		false
-	}
-
 	/// Reads the atlas back and draws each cell into the canvases the layer's rows show.
-	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
+	#[cfg(all(target_family = "wasm", feature = "wasm"))]
 	async fn show_atlas(&mut self, layout: &ThumbnailAtlasLayout, atlas: Texture, executor: &wgpu_executor::WgpuExecutor, responses: &mut VecDeque<FrontendMessage>) {
 		let raster = Raster::new_gpu(atlas).convert(Footprint::BOUNDLESS, executor.clone()).await;
 		let (pixels, _, _) = raster.to_flat_u8();
@@ -207,7 +193,7 @@ impl Thumbnails {
 	}
 
 	/// Reads the atlas back for a page that can't show the runtime's canvases, like the desktop app's, and sends each layer its cell's pixels.
-	#[cfg(all(feature = "gpu", not(all(target_family = "wasm", feature = "wasm"))))]
+	#[cfg(not(all(target_family = "wasm", feature = "wasm")))]
 	async fn show_atlas(&mut self, layout: &ThumbnailAtlasLayout, atlas: Texture, executor: &wgpu_executor::WgpuExecutor, responses: &mut VecDeque<FrontendMessage>) {
 		let raster = Raster::new_gpu(atlas).convert(Footprint::BOUNDLESS, executor.clone()).await;
 		let (pixels, _, _) = raster.to_flat_u8();

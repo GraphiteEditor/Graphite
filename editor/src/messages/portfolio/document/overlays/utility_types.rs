@@ -28,15 +28,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use vello_gpu::peniko;
 
-// TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
-// TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
-// TODO Remove duplicated definition of this in `utility_types_web.rs`
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GizmoEmphasis {
 	Regular,
@@ -44,7 +41,6 @@ pub enum GizmoEmphasis {
 	Active,
 }
 
-// TODO Remove duplicated definition of this in `utility_types_web.rs`
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -69,7 +65,6 @@ pub enum OverlaysType {
 	CurvatureComb,
 }
 
-// TODO Remove duplicated definition of this in `utility_types_web.rs`
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -97,7 +92,6 @@ pub struct OverlaysVisibilitySettings {
 	pub curvature_comb_scale: f64,
 }
 
-// TODO Remove duplicated definition of this in `utility_types_web.rs`
 impl Default for OverlaysVisibilitySettings {
 	fn default() -> Self {
 		Self {
@@ -125,7 +119,6 @@ impl Default for OverlaysVisibilitySettings {
 	}
 }
 
-// TODO Remove duplicated definition of this in `utility_types_web.rs`
 impl OverlaysVisibilitySettings {
 	pub fn all(&self) -> bool {
 		self.all
@@ -261,7 +254,7 @@ impl core::hash::Hash for OverlayContext {
 }
 
 impl OverlayContext {
-	#[allow(dead_code)]
+	#[cfg_attr(test, expect(dead_code, reason = "Tests skip drawing overlays"))]
 	pub(super) fn new(viewport: ViewportMessageHandler, visibility_settings: OverlaysVisibilitySettings) -> Self {
 		Self {
 			internal: Arc::new(Mutex::new(OverlayContextInternal::new(viewport, visibility_settings))),
@@ -470,14 +463,12 @@ impl OverlayContext {
 	}
 }
 
-// TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub enum Pivot {
 	Start,
 	Middle,
 	End,
 }
 
-// TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub enum DrawHandles {
 	All,
 	SelectedAnchors(HashMap<LayerNodeIdentifier, Vec<SegmentId>>),

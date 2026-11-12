@@ -188,6 +188,11 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
+	/// Hands the overlays to the runtime, which draws them over the viewport's artwork.
+	pub fn submit_overlays(&self, context: crate::messages::portfolio::document::overlays::utility_types::OverlayContext) {
+		self.sender.send(GraphRuntimeRequest::RenderOverlays(context)).expect("Failed to send the overlays");
+	}
+
 	pub fn submit_inspect_context_overrides(&self, overrides: graphene_std::ContextOverrides) {
 		self.sender.send(GraphRuntimeRequest::InspectContextOverrides(overrides)).expect("Failed to send the context overrides");
 	}
@@ -1029,7 +1034,6 @@ impl NodeGraphExecutor {
 					responses.add(FrontendMessage::TriggerExportImage { svg, name, file_type, size });
 				}
 			}
-			#[cfg(feature = "gpu")]
 			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Buffer { data, width, height },
 				..

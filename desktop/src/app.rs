@@ -319,13 +319,8 @@ impl App {
 			DesktopFrontendMessage::WindowUpdateDirectInput { enabled } => {
 				self.input_state.set_direct_input(enabled);
 			}
-			DesktopFrontendMessage::UpdateOverlays(scene) => {
-				if let Some(render_state) = &mut self.render_state {
-					render_state.set_overlays_scene(*scene);
-				}
-				if let Some(window) = &self.window {
-					window.request_redraw();
-				}
+			DesktopFrontendMessage::WakeNodeRuntime => {
+				let _ = self.runtime_command_sender.send(RuntimeCommand::Update);
 			}
 			DesktopFrontendMessage::PersistenceWriteState { state } => {
 				persist::write_state(state);

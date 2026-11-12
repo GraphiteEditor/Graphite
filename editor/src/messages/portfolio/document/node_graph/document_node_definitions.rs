@@ -635,7 +635,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("Loads an image from a given URL."),
 			inspector: None,
 		},
-		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
 			category: "Raster",

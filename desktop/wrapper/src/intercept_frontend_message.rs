@@ -7,8 +7,8 @@ use super::messages::{DesktopFrontendMessage, IngestAction, SaveFileDialogContex
 
 pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
-		FrontendMessage::RenderOverlays { context } => {
-			dispatcher.respond(DesktopFrontendMessage::UpdateOverlays(context.take_scene().into()));
+		FrontendMessage::WakeNodeRuntime => {
+			dispatcher.respond(DesktopFrontendMessage::WakeNodeRuntime);
 		}
 		FrontendMessage::TriggerBrowse { options, action } => {
 			let title = match action {
