@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use document_graph_storage::attr::session;
-use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position, Value, from_value, to_value};
+use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NetworkReference, NodeMetadataEntry, NodeMetadataSource, Position, Value, from_value, to_value};
 use glam::IVec2;
 use graph_craft::document::{DocumentNodeImplementation, NetworkLocation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
@@ -17,6 +17,7 @@ use super::{
 	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface, NodeNetworkMetadata,
 	NodeNetworkPersistentMetadata, NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
 };
+use crate::messages::portfolio::document::node_graph::document_node_definitions::network_definition_version;
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysVisibilitySettings;
 use crate::messages::portfolio::document::utility_types::misc::SnappingState;
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
@@ -134,8 +135,9 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 	fn storage_node_id(&self, network: NetworkLocation, local_id: NodeId) -> Option<document_graph_storage::NodeId> {
 		self.persistent(network, local_id)?.storage_id.map(document_graph_storage::NodeId)
 	}
-	fn reference(&self, network: NetworkLocation) -> Option<&str> {
-		self.network_persistent(network)?.reference.as_deref()
+	fn reference(&self, network: NetworkLocation) -> Option<NetworkReference> {
+		let identifier = self.network_persistent(network)?.reference.clone()?;
+		Some(versioned_reference(identifier))
 	}
 
 	fn pinned_order(&self, network: NetworkLocation) -> Vec<NodeId> {
@@ -170,6 +172,12 @@ impl DocumentSettings<'_> {
 }
 
 /// The stored position of a node, which pairs with `is_layer` to reconstruct the runtime node type.
+/// The stored form of a network's reference. Opening a document migrates every instance to its definition's current version, so that is the version it holds.
+pub(super) fn versioned_reference(identifier: String) -> NetworkReference {
+	let version = network_definition_version(&identifier);
+	NetworkReference { identifier, version }
+}
+
 pub fn position_from_runtime(node_type: &NodeTypePersistentMetadata) -> Position {
 	match node_type {
 		NodeTypePersistentMetadata::Layer(layer) => match layer.position {

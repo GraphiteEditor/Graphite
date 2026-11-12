@@ -2870,6 +2870,7 @@ dependencies = [
  "log",
  "math-parser",
  "migration-compiled",
+ "migration-core",
  "migration-formats",
  "migration-nodes",
  "node-macro",
