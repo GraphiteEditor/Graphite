@@ -3,8 +3,9 @@
 	// updated based on the requirements of palette itself.
 	import { getContext, onMount, onDestroy } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
-	import { paletteLayout } from "/src/stores/portfolio";
+	import { paletteLayout, palettePanelBottomLeftBarLayout } from "/src/stores/portfolio";
 	import { createAutoScroller } from "/src/utility-functions/auto-scroll";
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -53,6 +54,39 @@
 		justFinishedDrag = false;
 		e.stopPropagation();
 		e.preventDefault();
+	}
+
+	function editPaletteName(e: MouseEvent) {
+		const target = e.target instanceof Element ? e.target : undefined;
+		const label = target?.closest(".widget-span.row:has(> .text-label + .text-input + .text-button) > .text-label");
+		const row = label?.parentElement;
+		if (!label || !row) return;
+		const field = row.querySelector<HTMLElement>(":scope > .text-input");
+		if (!field || !row) return;
+		const input = field.querySelector<HTMLInputElement>("input");
+		if (!input) return;
+
+		row.classList.add("palette-name-editing");
+		field.classList.remove("disabled");
+		input.disabled = false;
+		input.focus();
+		input.select();
+	}
+
+	function finishPaletteNameEdit(target: EventTarget | null) {
+		const element = target instanceof Element ? target : undefined;
+		const row = element?.closest(".widget-span.row.palette-name-editing");
+		const field = row?.querySelector<HTMLElement>(":scope > .text-input");
+		const input = field?.querySelector<HTMLInputElement>("input");
+		if (!row || !field || !input) return;
+
+		row.classList.remove("palette-name-editing");
+		field.classList.add("disabled");
+		input.disabled = true;
+	}
+
+	function paletteNameKeyDown(e: KeyboardEvent) {
+		if (e.key === "Enter") finishPaletteNameEdit(e.target);
 	}
 
 	function reorderableSections(): Element[] {
@@ -183,7 +217,16 @@
 </script>
 
 <LayoutCol class="palette">
-	<LayoutCol class="sections" classes={{ dragging }} scrollableY={true} bind:this={sectionsCol} on:pointerdown={sectionPointerDown}>
+	<LayoutCol
+		class="sections"
+		classes={{ dragging }}
+		scrollableY={true}
+		bind:this={sectionsCol}
+		on:pointerdown={sectionPointerDown}
+		on:dblclick={editPaletteName}
+		on:focusout={(e) => finishPaletteNameEdit(e.target)}
+		on:keydown={paletteNameKeyDown}
+	>
 		<!-- <button class="" data-tooltop-label="hello">Click Me</button> -->
 		<WidgetLayout layout={paletteLayout} layoutTarget="Palette" />
 		{#if dragging && insertMarker}
@@ -199,11 +242,13 @@
 	.palette {
 		height: 100%;
 		flex: 1 1 100%;
-		margin: 0.5rem;
 
 		.sections {
 			flex: 1 1 100%;
 			position: relative;
+			padding-top: 4px;
+			padding-left: 8px;
+			padding-right: 8px;
 
 			// While dragging a section, disable pointer events (which inherit down to the sections) so the drop doesn't toggle a section's expansion, and prevent text selection
 			&.dragging {
@@ -229,6 +274,112 @@
 				z-index: 1;
 				pointer-events: none;
 			}
+
+			table {
+				border-collapse: collapse;
+				border-spacing: 0;
+				margin: 0;
+
+				td {
+					padding: 0;
+					border: none;
+					line-height: 0;
+
+					.widget-span.row.narrow {
+						min-height: auto;
+						--row-height: auto;
+
+						> .color-input.narrow {
+							min-width: 24px;
+							width: 24px;
+							height: 24px;
+							--widget-height: 24px;
+							margin: 0;
+
+							> button {
+								border-radius: 0;
+							}
+						}
+					}
+				}
+			}
+
+			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-label),
+			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-input) {
+				flex: 1 1 0;
+				min-width: 0;
+				overflow: visible;
+			}
+
+			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-input) {
+				display: none;
+			}
+
+			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-input.disabled) {
+				background: none;
+			}
+
+			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-input.disabled input) {
+				color: var(--color-e-nearwhite);
+				-webkit-text-fill-color: var(--color-e-nearwhite);
+			}
+
+			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-input input) {
+				width: 100%;
+				min-width: 0;
+				margin: 0;
+				padding: 0;
+				font: inherit;
+				text-overflow: ellipsis;
+			}
+
+			:global(.widget-span.row.palette-name-editing:has(> .text-label + .text-input + .text-button) > .text-label) {
+				display: none;
+			}
+
+			:global(.widget-span.row.palette-name-editing:has(> .text-label + .text-input + .text-button) > .text-input) {
+				display: flex;
+			}
+
+			:global(.widget-span.row.palette-name-editing > .text-input:not(.disabled) input:focus) {
+				background: var(--color-1-nearblack);
+				padding: 0 4px;
+				margin-left: -4px;
+				max-width: calc(100% + 4px);
+			}
+
+			.text-button {
+				position: relative;
+				flex: 0 0 24px;
+				padding: 0;
+				background: none;
+
+				&::after {
+					content: "";
+					position: absolute;
+					right: 8px;
+					width: 8px;
+					height: 8px;
+					background: var(--icon-expand-collapse-arrow);
+				}
+
+				&.disabled::after {
+					background: var(--icon-expand-collapse-arrow-disabled);
+					transform: rotate(90deg);
+				}
+
+				&:hover:not(.disabled) {
+					background: var(--color-5-dullgray);
+
+					&::after {
+						background: var(--icon-expand-collapse-arrow-hover);
+					}
+				}
+			}
+		}
+
+		.bottom-bar {
+			flex: 0 0 auto;
 		}
 
 		.text-button {

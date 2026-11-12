@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 // TODO: Ig this should be imported from some preloaded assets file after the
 // implementation of import from file feature.
-pub const DEFAULT_PALETTES: [(&str, u32, &[SRGBA8]); 2] = [
+pub const DEFAULT_PALETTES: [(&str, u32, &[SRGBA8]); 3] = [
 	(
 		"Warm Landscape",
 		5,
@@ -40,6 +40,22 @@ pub const DEFAULT_PALETTES: [(&str, u32, &[SRGBA8]); 2] = [
 			SRGBA8::new_opaque(0x88, 0xC0, 0xD0),
 			SRGBA8::new_opaque(0x81, 0xA1, 0xC1),
 			SRGBA8::new_opaque(0x5E, 0x81, 0xAC),
+		],
+	),
+	(
+		"Sometyhing",
+		2,
+		&[
+			SRGBA8::new_opaque(0x26, 0x46, 0x53),
+			SRGBA8::new_opaque(0x2A, 0x9D, 0x8F),
+			SRGBA8::new_opaque(0xE9, 0xC4, 0x6A),
+			SRGBA8::new_opaque(0xF4, 0xA2, 0x61),
+			SRGBA8::new_opaque(0xE7, 0x6F, 0x51),
+			SRGBA8::new_opaque(0xD6, 0x28, 0x28),
+			SRGBA8::new_opaque(0x00, 0x30, 0x49),
+			SRGBA8::new_opaque(0xF7, 0x7F, 0x00),
+			SRGBA8::new_opaque(0xFC, 0xBF, 0x49),
+			SRGBA8::new_opaque(0xEA, 0xE2, 0xB7),
 		],
 	),
 ];
@@ -137,9 +153,16 @@ impl MessageHandler<PaletteMessage, PaletteMessageContext> for PaletteMessageHan
 
 				self.refresh_palette(responses);
 			}
+			PaletteMessage::ActivePaletteChanged { id } => {
+				self.active_palette = PaletteId(id);
+				responses.add(PaletteMessage::Refresh);
+			}
 			PaletteMessage::UploadFromFile => todo!(),
-			PaletteMessage::ActivePaletteChanged { id } => todo!(),
-			PaletteMessage::PaletteNameChange { id, name } => todo!(),
+			PaletteMessage::PaletteNameChange { id, name } => {
+				let palette = self.palettes.get_mut(&PaletteId { 0: id }).unwrap();
+				palette.name = name;
+				responses.add(PaletteMessage::Refresh);
+			}
 			PaletteMessage::AddColor { color } => todo!(),
 			PaletteMessage::DeleteColor { swatch_id } => todo!(),
 		}
@@ -159,38 +182,61 @@ impl PaletteMessageHandler {
 
 			for palette_id in self.order.iter() {
 				let Palette { id: _, name, columns, grid, swatches } = self.palettes.get(palette_id).unwrap();
-				widgets.push(LayoutGroup::row(vec![TextLabel::new(name).bold(true).widget_instance()]));
+				let is_active = *palette_id == self.active_palette;
+				let target_id = palette_id.0;
 
-				let mut table_rows = Vec::new();
-				if let Some(columns) = columns {
-					for chunk in grid.chunks(*columns as usize) {
-						let row = chunk
-							.iter()
-							.map(|&id| {
-								if let Some(swatch_id) = id {
-									let swatch = swatches.get(&swatch_id).unwrap();
-									ColorInput::new(FillChoice::Solid(swatch.color.into()))
-										.narrow(true)
-										.tooltip_label(swatch.name.clone())
-										.widget_instance()
-									// .on_update(|input: &ColorInput| {
-									// 	let ramp = input.value.as_gradient().cloned().unwrap_or_default();
-									// 	GradientToolMessage::UpdateRamp { ramp }.into()
-									// })
-									// .on_commit(|_| DocumentMessage::AddTransaction.into())
-								} else {
-									ColorInput::new(FillChoice::None).widget_instance()
-								}
-							})
-							.collect();
-						table_rows.push(row);
+				let header_row = vec![
+					TextLabel::new(name)
+						.bold(true)
+						.sizing(WidgetSizing::default().grow(true))
+						.widget_instance(),
+					TextInput::new(name.clone())
+						.sizing(WidgetSizing::default().grow(true))
+						.disabled(true)
+						.on_update(move |input: &TextInput| {
+							PaletteMessage::PaletteNameChange {
+								id: target_id,
+								name: input.value.clone(),
+							}
+							.into()
+						})
+						.widget_instance(),
+					TextButton::new("")
+						.flush(true)
+						.sizing(WidgetSizing::fixed(24))
+						.disabled(is_active)
+						.on_commit(move |_| PaletteMessage::ActivePaletteChanged { id: target_id }.into())
+						.widget_instance(),
+				];
+				widgets.push(LayoutGroup::row(header_row));
+
+				if is_active {
+					let mut table_rows = Vec::new();
+					if let Some(columns) = columns {
+						for chunk in grid.chunks(*columns as usize) {
+							let mut row: Vec<_> = chunk
+								.iter()
+								.map(|&id| {
+									if let Some(swatch_id) = id {
+										let swatch = swatches.get(&swatch_id).unwrap();
+										ColorInput::new(FillChoice::Solid(swatch.color.into()))
+											.narrow(true)
+											.tooltip_label(swatch.name.clone())
+											.widget_instance()
+									} else {
+										ColorInput::new(FillChoice::None).narrow(true).widget_instance()
+									}
+								})
+								.collect();
+							row.extend((row.len()..*columns as usize).map(|_| ColorInput::new(FillChoice::None).narrow(true).widget_instance()));
+							table_rows.push(row);
+						}
+					} else {
+						//TODO: Manage the case when the column size is not determined
 					}
-				} else {
-					//TODO: Manage the case when the column size is not determined
-				}
 
-				widgets.push(LayoutGroup::table(table_rows, false));
-				widgets.push(LayoutGroup::row(vec![Separator::new(SeparatorStyle::Section).widget_instance()]));
+					widgets.push(LayoutGroup::table(table_rows, true));
+				}
 			}
 			let left_bottom_bar = LayoutGroup::row(vec![TextLabel::new("Hello").widget_instance()]);
 
