@@ -86,7 +86,6 @@ impl EditorTestUtils {
 		if evaluation_errors.is_none() && frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
 			return Err(TestGraphError::Render);
 		}
-		#[cfg(feature = "gpu")]
 		let evaluation_errors = evaluation_errors.filter(|errors| !errors.iter().all(|(error, _)| error.is::<wgpu_executor::NoGpuError>()));
 		if let Some(errors) = evaluation_errors {
 			return Err(TestGraphError::Evaluation(errors));
