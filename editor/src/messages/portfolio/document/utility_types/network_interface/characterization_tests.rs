@@ -6,6 +6,7 @@ use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
+use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::value::TaggedValue;
@@ -41,9 +42,6 @@ fn new_artboard_message(id: NodeId) -> GraphOperationMessage {
 #[tokio::test]
 async fn invariants_hold_through_basic_editing_flow() {
 	let mut editor = EditorTestUtils::create();
-
-	// This test covers the interface's structural invariants. The storage dual-write is out of its scope and asserted by the storage round-trip tests.
-	editor.editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: false });
 
 	editor.new_document().await;
 	assert_invariants(&editor, "after opening a new document");
@@ -458,13 +456,8 @@ async fn cutting_a_chain_node_and_pasting_it_back_keeps_its_wires() {
 	// Cutting removes just the node, keeping the node that fed its second input
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![near] }).await;
 	let clipboard = editor
-		.handle_message(ClipboardMessage::CutLayers)
+		.copy_to_clipboard(ClipboardMessage::CutLayers)
 		.await
-		.into_iter()
-		.find_map(|message| match message {
-			FrontendMessage::TriggerClipboardWrite { content } => Some(content),
-			_ => None,
-		})
 		.expect("Cutting a chain node should write it to the clipboard");
 	let network_interface = &editor.active_document().network_interface;
 	assert_eq!(chain_of(network_interface, layer), vec![far, source], "Cutting should close the chain around the node");
@@ -472,11 +465,7 @@ async fn cutting_a_chain_node_and_pasting_it_back_keeps_its_wires() {
 
 	// Pasting with the layer selected puts the node back beside the layer, wired as before
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }).await;
-	editor
-		.handle_message(ClipboardMessage::ReadClipboard {
-			content: ClipboardContentRaw::Text(clipboard),
-		})
-		.await;
+	editor.paste_from_clipboard(clipboard).await;
 	let network_interface = &editor.active_document().network_interface;
 	let chain = chain_of(network_interface, layer);
 	assert_eq!(chain.len(), 3, "The pasted node should join the chain");
@@ -758,25 +747,13 @@ async fn duplicating_a_solo_floating_layer_makes_an_offset_copy_with_its_content
 	assert_invariants(&editor, "after duplicating a solo floating layer");
 }
 
-async fn copy_in_graph(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> String {
+async fn copy_in_graph(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> DataTransfer {
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
-	editor
-		.handle_message(NodeGraphMessage::Copy)
-		.await
-		.into_iter()
-		.find_map(|message| match message {
-			FrontendMessage::TriggerClipboardWrite { content } => Some(content),
-			_ => None,
-		})
-		.expect("Copying nodes should write them to the clipboard")
+	editor.copy_to_clipboard(NodeGraphMessage::Copy).await.expect("Copying nodes should write them to the clipboard")
 }
 
-async fn paste(editor: &mut EditorTestUtils, clipboard: String) -> Vec<NodeId> {
-	editor
-		.handle_message(ClipboardMessage::ReadClipboard {
-			content: ClipboardContentRaw::Text(clipboard),
-		})
-		.await;
+async fn paste(editor: &mut EditorTestUtils, clipboard: DataTransfer) -> Vec<NodeId> {
+	editor.paste_from_clipboard(clipboard).await;
 	editor.active_document().network_interface.selected_nodes().selected_nodes().copied().collect()
 }
 
@@ -1178,8 +1155,6 @@ fn fed_inputs(editor: &EditorTestUtils, output_connector: &OutputConnector, netw
 async fn dragging_a_dot_out_of_an_import_takes_over_the_wires_the_import_fed() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
-	// TODO: Remove once staging the recorded edits stores a node wired to an import inside a subgraph as it is, instead of drifting from it
-	editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: false }).await;
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
@@ -2996,9 +2971,6 @@ async fn a_press_right_after_dragging_a_wire_out_of_an_output_drags_another_wire
 
 /// Opens a new subgraph with one node inside, which is all that lies between its import and its export.
 async fn subgraph_holding_one_node(editor: &mut EditorTestUtils) -> (NodeId, NodeId) {
-	// TODO: Remove once staging the recorded edits stores a node wired to an import inside a subgraph as it is, instead of drifting from it
-	editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: false }).await;
-
 	let subgraph = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
 	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: subgraph }).await;
 	editor.handle_message(NodeGraphMessage::AddImport).await;
@@ -3650,4 +3622,62 @@ async fn dropping_a_map_node_onto_a_wire_keeps_its_wired_mapped_input() {
 		Some(&NodeInput::node(mapped_source, 0))
 	);
 	assert_eq!(network_interface.document_network().nodes.len(), node_count);
+}
+
+/// Pairs of layers in the root network whose boxes in the graph, which span their chains, intersect.
+fn overlapping_layers(editor: &EditorTestUtils) -> Vec<(LayerNodeIdentifier, LayerNodeIdentifier)> {
+	let document = editor.active_document();
+	let layers: Vec<_> = document.metadata().all_layers().collect();
+	let bounds = |layer: LayerNodeIdentifier| document.network_interface.node_bounding_box(&layer.to_node(), &[]).expect("a layer should have a box in the graph");
+
+	let mut overlapping = Vec::new();
+	for (index, &first) in layers.iter().enumerate() {
+		for &second in &layers[index + 1..] {
+			let ([first_min, first_max], [second_min, second_max]) = (bounds(first), bounds(second));
+			if first_min.cmplt(second_max).all() && second_min.cmplt(first_max).all() {
+				overlapping.push((first, second));
+			}
+		}
+	}
+	overlapping
+}
+
+async fn group_selected_layers(editor: &mut EditorTestUtils) {
+	editor
+		.handle_message(DocumentMessage::GroupSelectedLayers {
+			group_folder_type: GroupFolderType::Layer,
+		})
+		.await;
+}
+
+#[tokio::test]
+async fn grouping_the_top_layer_leaves_no_layers_overlapping_in_the_graph() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+	editor.draw_rect(50., 50., 150., 150.).await;
+
+	group_selected_layers(&mut editor).await;
+
+	assert_eq!(overlapping_layers(&editor), Vec::new());
+	assert_invariants(&editor, "after grouping the top layer");
+}
+
+#[tokio::test]
+async fn grouping_a_group_moves_the_layer_below_it_past_all_of_its_contents() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+	editor.draw_rect(50., 50., 150., 150.).await;
+	let bottom = editor.active_document().metadata().all_layers().last().expect("the bottom rectangle should be a layer");
+	editor.draw_rect(100., 100., 200., 200.).await;
+	editor.handle_message(DocumentMessage::SelectAllLayers).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesRemove { nodes: vec![bottom.to_node()] }).await;
+	group_selected_layers(&mut editor).await;
+	assert_eq!(overlapping_layers(&editor), Vec::new(), "grouping the top two layers should leave none overlapping");
+
+	group_selected_layers(&mut editor).await;
+
+	assert_eq!(overlapping_layers(&editor), Vec::new());
+	assert_invariants(&editor, "after grouping a group");
 }

@@ -2,7 +2,6 @@ import { get } from "svelte/store";
 import type { DialogStore } from "/src/stores/dialog";
 import { toggleFullscreen } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
-import { pasteFile } from "/src/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -291,10 +290,7 @@ export function onPaste(e: ClipboardEvent, editor: EditorWrapper) {
 	if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 	e.preventDefault();
 
-	Array.from(dataTransfer.items).forEach(async (item) => {
-		if (item.type === "text/plain") item.getAsString((text) => editor.pasteText(text));
-		await pasteFile(item, editor);
-	});
+	editor.ingest(dataTransfer);
 }
 
 // A spot that takes dropped files has canceled the event by the time it bubbles up to the window

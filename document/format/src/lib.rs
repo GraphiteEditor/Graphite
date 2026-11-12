@@ -24,6 +24,7 @@ use document_graph_storage::{HistoryMetadata, MetadataFact, PeerId, Registry, Se
 use graphene_resource::LoadResource;
 use graphene_resource::{ResourceHash, ResourceStorage};
 
+mod blob_store;
 pub mod codec;
 pub mod error;
 pub mod export;
@@ -46,6 +47,8 @@ pub use io::ReadError;
 pub use layout::{GddV1Layout, Layout};
 pub use manifest::{Manifest, PayloadCodecs};
 pub use resource::ResourceProxy;
+
+use blob_store::BlobStore;
 
 /// The default [`Layout`], so callers write `GddV1` for the common `Gdd<GddV1Layout>` handle.
 pub type GddV1 = Gdd<GddV1Layout>;
@@ -104,21 +107,42 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) migrated: bool,
 	/// Where resource bytes live. `None` means the working copy's own content-addressed store.
 	pub(crate) byte_store: Option<Arc<dyn ResourceStorage>>,
+	/// Every blob the document names.
+	pub(crate) blobs: BlobStore,
 	#[cfg(feature = "network")]
 	pub(crate) network: Option<peer_transport::Replica>,
 	#[cfg(feature = "network")]
 	pub(crate) pending_persist: PendingPersist,
-	/// What peers changed since [`take_remote_changes`](Self::take_remote_changes) last took it.
-	#[cfg(feature = "network")]
-	pub(crate) remote_changes: network::RemoteChanges,
+	/// What changed since [`take_remote_changes`](Self::take_remote_changes) last took it.
+	pub(crate) remote_changes: RemoteChanges,
 	/// The step a guest asked the host to undo, with the head it asked under. A repeat waits until the head moves.
-	#[cfg(feature = "network")]
 	pub(crate) undo_requested: Option<(document_graph_storage::Rev, Option<document_graph_storage::Rev>)>,
 	pub(crate) interactions_seen: std::collections::HashMap<document_graph_storage::HotOpId, f64>,
 	pub(crate) own_last_staged_ms: Option<f64>,
 	pub(crate) own_staged_since_tick: bool,
 	/// Whether the document belongs in its room, persisted so a reopen reconnects.
 	pub(crate) shared: bool,
+}
+
+/// Changes to the working registry that the runtime mirror has not seen yet, such as peer edits and undos of retired
+/// steps. The mirror reconciles just the touched entities.
+#[derive(Clone, Debug, Default)]
+pub struct RemoteChanges {
+	pub touched: document_graph_storage::Touched,
+	/// A full sync replaced the working registry, so the touched set no longer bounds what changed and the mirror
+	/// must be rebuilt.
+	pub rebuilt: bool,
+}
+
+impl RemoteChanges {
+	pub fn is_empty(&self) -> bool {
+		self.touched.is_empty() && !self.rebuilt
+	}
+
+	pub fn extend(&mut self, other: RemoteChanges) {
+		self.touched.extend(other.touched);
+		self.rebuilt |= other.rebuilt;
+	}
 }
 
 /// Whole-file rewrites deferred to the end of a poll, so a batch of remote packets costs one rewrite per file.
@@ -148,6 +172,7 @@ impl<L: Layout + Clone> Clone for Gdd<L> {
 			network_view_settings: self.network_view_settings.clone(),
 			wall_clock_ms: self.wall_clock_ms,
 			byte_store: self.byte_store.clone(),
+			blobs: self.blobs.clone(),
 			migrated: self.migrated,
 			shared: self.shared,
 			interactions_seen: self.interactions_seen.clone(),
@@ -171,14 +196,13 @@ impl<L: Layout> Gdd<L> {
 			view_settings: Default::default(),
 			network_view_settings: Default::default(),
 			byte_store: None,
+			blobs: BlobStore::default(),
 			migrated: false,
 			#[cfg(feature = "network")]
 			network: None,
 			#[cfg(feature = "network")]
 			pending_persist: PendingPersist::default(),
-			#[cfg(feature = "network")]
-			remote_changes: network::RemoteChanges::default(),
-			#[cfg(feature = "network")]
+			remote_changes: RemoteChanges::default(),
 			undo_requested: None,
 			interactions_seen: Default::default(),
 			own_last_staged_ms: None,
@@ -273,7 +297,7 @@ impl<L: Layout> Gdd<L> {
 		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the stored records"))]
 		let mut records = load::StoredRecords::read(&working, &layout, codecs).await?;
 		#[cfg(feature = "migrations")]
-		let format_outcome = migrate::migrate_format(&mut records, codecs, manifest.format_version)?;
+		let (format_outcome, migrated_blobs) = migrate::migrate_format(&mut records, codecs, manifest.format_version)?.unzip();
 		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the decoded payloads"))]
 		let mut payloads = records.decode(codecs)?;
 		#[cfg(feature = "migrations")]
@@ -347,6 +371,13 @@ impl<L: Layout> Gdd<L> {
 			shared: session_state.shared,
 			..Self::assemble(session, working, layout, manifest, metadata)
 		};
+
+		#[cfg(feature = "migrations")]
+		if let Some(blobs) = migrated_blobs {
+			gdd.keep_blobs_durably(blobs).await?;
+		}
+		// Node migrations read values stored in blobs, so load them first
+		gdd.load_blobs().await;
 
 		#[cfg(feature = "migrations")]
 		{

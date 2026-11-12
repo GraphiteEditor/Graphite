@@ -1,0 +1,808 @@
+// =========================
+// INTRODUCTION BESIDE PANEL
+// =========================
+
+.diptych.membership-hero {
+	align-items: flex-start;
+
+	> .block {
+		flex: 1 1 420px;
+
+		h1 {
+			text-wrap: balance;
+		}
+
+		// Spaced like the paragraphs beside it, since it's a wrapper the Worker can remove whole
+		.billing-note {
+			margin-top: 20px;
+		}
+	}
+}
+
+// ============
+// MEMBER PANEL
+// ============
+
+// Shares the donation picker's look, down to the size of its buttons
+.membership-panel {
+	--font-size-link: calc(1rem * 10 / 9);
+
+	flex: 1 1 420px;
+	box-sizing: border-box;
+	padding: calc(var(--feature-box-padding) / 2 * var(--variable-px));
+	background-color: var(--color-cloud);
+	background-image: url("https://static.graphite.art/textures/noise.png");
+	background-blend-mode: overlay;
+	background-position: center;
+
+	p {
+		text-align: left;
+		text-justify: auto;
+	}
+
+	h2 {
+		font-size: calc(1rem * 8 / 9);
+		font-weight: 800;
+		text-transform: uppercase;
+	}
+
+	// Hyphenated like paragraphs, since these are divs the Worker can remove whole
+	.aside,
+	.notice {
+		hyphens: auto;
+	}
+
+	.aside {
+		font-size: calc(1rem * 7 / 9);
+	}
+
+	.button {
+		display: block;
+		background-color: var(--color-fog);
+		text-align: center;
+	}
+
+	button.button {
+		width: 100%;
+		font-family: inherit;
+		cursor: pointer;
+	}
+
+	// Collapsed unless the Worker revealed one of its notices
+	.notices:not(:has(.notice:not([hidden]))) {
+		display: none;
+	}
+
+	.notice {
+		padding: 12px 20px;
+		background-color: var(--color-peach);
+
+		&.confirmation {
+			background-color: var(--color-seaside);
+		}
+	}
+
+	// A passing confirmation folds away once it's had time to be read, closing the gap above it too
+	.notices:has(.notice.passing:not([hidden])) {
+		display: grid;
+		grid-template-rows: 1fr;
+		animation: passing-notices-leave 0.4s ease-in 5s forwards;
+
+		.notice {
+			min-height: 0;
+			overflow: hidden;
+			animation: passing-notice-leave 0.4s ease-in 5s forwards;
+		}
+
+		@keyframes passing-notices-leave {
+			to {
+				grid-template-rows: 0fr;
+				margin-top: calc(-1 * var(--section-gap));
+				display: none;
+			}
+		}
+
+		@keyframes passing-notice-leave {
+			to {
+				padding-block: 0;
+				opacity: 0;
+			}
+		}
+	}
+
+	.signed-out {
+		.notices {
+			margin-bottom: 20px;
+		}
+
+		.button {
+			margin-top: 10px;
+		}
+
+		.sign-in {
+			margin-top: 20px;
+
+			.aside {
+				margin-top: 20px;
+			}
+		}
+
+		// Only the sign-in for how the member pays shows, once they've chosen it
+		&:not(:has(input[value="direct"]:checked)) .sign-in.direct,
+		&:not(:has(input[value="github"]:checked)) .sign-in.github {
+			display: none;
+		}
+	}
+
+	// Drawn like the donation picker's own choice between the two
+	.payment-method {
+		display: flex;
+		gap: 10px;
+		margin-top: 10px;
+
+		label {
+			flex: 1 1 0;
+			padding: 0.4em 0;
+			text-align: center;
+			font-weight: 800;
+			background-color: var(--color-fog);
+			cursor: pointer;
+
+			&:hover {
+				background-color: var(--color-lemon);
+			}
+
+			&:has(input:checked) {
+				background-color: var(--color-navy);
+				color: var(--color-parchment);
+			}
+
+			&:has(input:focus-visible) {
+				outline: var(--border-thickness) solid var(--color-crimson);
+				outline-offset: var(--border-thickness);
+			}
+		}
+
+		// Out of the layout but still reachable by keyboard
+		input {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			opacity: 0;
+			margin: 0;
+		}
+	}
+
+	.signed-in {
+		--section-gap: 20px;
+
+		display: flex;
+		flex-direction: column;
+		gap: var(--section-gap);
+
+		&[hidden] {
+			display: none;
+		}
+	}
+
+	.account {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+
+		.account-name {
+			flex: 1 1 auto;
+			overflow-wrap: anywhere;
+
+			// The username always gets a line of its own
+			strong {
+				display: block;
+			}
+		}
+	}
+
+	// A minor action beside what it acts on, like signing out or unlinking an account
+	.text-button {
+		flex: 0 0 auto;
+		padding: 0;
+		border: none;
+		background: none;
+		font: inherit;
+		font-size: calc(1rem * 7 / 9);
+		font-weight: 800;
+		text-transform: uppercase;
+		color: var(--color-crimson);
+		cursor: pointer;
+	}
+
+	.membership {
+		display: flex;
+		flex-direction: column;
+		gap: calc(40 * var(--variable-px));
+		margin-top: calc(20 * var(--variable-px));
+	}
+
+	.tier {
+		display: flex;
+		flex-direction: column;
+
+		.tier-name {
+			font-family: "Bona Nova", Palatino, serif;
+			font-feature-settings: "lnum";
+			font-weight: 700;
+			line-height: 1.25;
+			font-size: calc(1rem * 8 / 3);
+		}
+
+		.tier-terms {
+			font-size: calc(1rem * 7 / 9);
+			font-weight: 800;
+			text-transform: uppercase;
+			color: var(--color-walnut);
+		}
+	}
+
+	.billing,
+	.discord,
+	.credits {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+
+		h2 {
+			margin-bottom: 10px;
+		}
+	}
+
+	.billing .notice {
+		margin: 0;
+	}
+
+	// Each direct membership's renewal date, over the buttons that send its member to Stripe
+	.stripe-memberships {
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+	}
+
+	.stripe-membership {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	// Changing and ending the membership pair up in halves, with the overview on its own row
+	.stripe-membership-tasks {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+
+		.button[value="overview"] {
+			grid-column: 1 / -1;
+		}
+	}
+
+	// The diptych layout makes decorative pictures blocks, which would otherwise outrank their hidden attribute
+	.credits img[hidden] {
+		display: none;
+	}
+
+	// Speaking the name reveals only the spoken name, and showing it reveals everything else
+	.credits:not(:has([name="speak_in_video_credits"]:checked)) .spoken-name-field,
+	.credits:not(:has(:is([name="show_in_site_credits"], [name="show_in_video_credits"]):checked)) > .name-opt-in ~ :not(button, .spoken-name-field) {
+		display: none;
+	}
+
+	// Grayed out while there's nothing to save or no sign-in email to resend yet
+	button.button:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+
+	// The linked account's name, beside the button that unlinks it
+	.linked-account {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+
+		&[hidden] {
+			display: none;
+		}
+
+		.linked-account-name {
+			flex: 1 1 auto;
+			min-width: 0;
+			font-weight: 700;
+			// The gold nametag the member has in our Discord server
+			color: #ff8400;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+	}
+
+	.field-label {
+		font-size: calc(1rem * 7 / 9);
+		font-weight: 800;
+		text-transform: uppercase;
+		color: var(--color-walnut);
+	}
+
+	.field-hint {
+		font-size: calc(1rem * 7 / 9);
+		color: var(--color-walnut);
+	}
+
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+
+		:is(input, select) {
+			box-sizing: border-box;
+			height: calc(var(--font-size-link) * 2);
+			padding: 0 0.5em;
+			font: inherit;
+			color: var(--color-navy);
+			background-color: white;
+			border: var(--border-thickness) solid var(--color-navy);
+			border-radius: 0;
+
+			&:focus-visible {
+				outline: var(--border-thickness) solid var(--color-crimson);
+				outline-offset: var(--border-thickness);
+			}
+		}
+
+		// Drawn with its own arrow, since the native one ignores the page's look
+		select {
+			appearance: none;
+			padding-right: 2em;
+			background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline points="4,6 8,10 12,6" fill="none" stroke="%2316323f" stroke-width="2" /></svg>');
+			background-position: right 0.5em center;
+			background-repeat: no-repeat;
+			background-size: 1em;
+			cursor: pointer;
+
+			&:hover {
+				background-color: var(--color-lemon);
+			}
+		}
+	}
+
+	.field[hidden] {
+		display: none;
+	}
+
+	// A row of chosen items followed by buttons to add and remove them, where squares narrow together when the row is too short
+	.tile-row {
+		--tile-size: calc(var(--font-size-link) * 2);
+
+		position: relative;
+		display: flex;
+		gap: 8px;
+		margin-top: 4px;
+		user-select: none;
+
+		&[hidden] {
+			display: none;
+		}
+
+		&.shape-row {
+			flex-wrap: wrap;
+		}
+
+		.tiles {
+			display: contents;
+		}
+
+		.swatch,
+		.tile-button {
+			flex: 0 1 var(--tile-size);
+			min-width: 0;
+			height: var(--tile-size);
+
+			&[hidden] {
+				display: none;
+			}
+		}
+
+		.shape-choice {
+			position: relative;
+			display: flex;
+
+			select {
+				width: auto;
+			}
+		}
+
+		// Horizontal touch moves drag the color, leaving vertical ones to scroll the page
+		.swatch {
+			position: relative;
+			display: flex;
+			touch-action: pan-y;
+
+			&.dragged {
+				translate: 0 -4px;
+			}
+		}
+
+		&.dragging input[type="color"] {
+			cursor: grabbing;
+		}
+
+		.tile-button {
+			box-sizing: border-box;
+			padding: 0;
+			font: inherit;
+			font-size: var(--font-size-link);
+			font-weight: 800;
+			line-height: 1;
+			color: var(--color-navy);
+			background-color: white;
+			border: var(--border-thickness) solid var(--color-navy);
+			cursor: pointer;
+
+			&:hover:not(:disabled) {
+				background-color: var(--color-lemon);
+			}
+
+			&[aria-pressed="true"] {
+				color: var(--color-parchment);
+				background-color: var(--color-navy);
+			}
+
+			&:disabled {
+				opacity: 0.4;
+				cursor: default;
+			}
+
+			&:focus-visible {
+				outline: var(--border-thickness) solid var(--color-crimson);
+				outline-offset: var(--border-thickness);
+			}
+		}
+
+		// While removing, the item under the pointer or keyboard focus is crossed out
+		&.removing :is(.swatch, .shape-choice):is(:hover, :focus-within)::after {
+			content: "";
+			position: absolute;
+			inset: 0;
+			pointer-events: none;
+			background: rgb(255 255 255 / 0.65)
+				url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4,4 12,12 M12,4 4,12" fill="none" stroke="%23803847" stroke-width="2.5" /></svg>')
+				center / auto 70% no-repeat;
+		}
+
+		input[type="color"] {
+			width: 100%;
+			height: 100%;
+			padding: 3px;
+			cursor: pointer;
+
+			&::-webkit-color-swatch-wrapper {
+				padding: 0;
+			}
+
+			// Kept apart, since a browser drops a whole rule over a pseudo-element it doesn't know
+			&::-webkit-color-swatch {
+				border: none;
+			}
+
+			&::-moz-color-swatch {
+				border: none;
+			}
+
+			&.editing {
+				border-color: var(--color-crimson);
+			}
+		}
+	}
+
+	// A lone color to the right of the menu, sized like the squares it otherwise sits among
+	.field.color-beside-menu {
+		display: grid;
+		grid-template-columns: 1fr calc(var(--font-size-link) * 2);
+		column-gap: 8px;
+
+		.field-label {
+			grid-column: 1 / -1;
+		}
+
+		.tile-row {
+			margin-top: 0;
+		}
+	}
+
+	// Opens below the color it edits, with the brightness falling toward the bottom of the square and the saturation rising toward its right
+	.color-popover {
+		position: absolute;
+		top: calc(100% + 8px);
+		left: 0;
+		z-index: 2;
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 8px;
+		box-sizing: border-box;
+		width: 240px;
+		padding: 8px;
+		background-color: white;
+		border: var(--border-thickness) solid var(--color-navy);
+		user-select: auto;
+
+		&[hidden] {
+			display: none;
+		}
+
+		.saturation-value,
+		.hue-slider {
+			position: relative;
+			touch-action: none;
+
+			&:focus-visible {
+				outline: var(--border-thickness) solid var(--color-crimson);
+				outline-offset: var(--border-thickness);
+			}
+		}
+
+		.saturation-value {
+			aspect-ratio: 1;
+			background: linear-gradient(to top, black, transparent), linear-gradient(to right, white, hsl(var(--hue) 100% 50%));
+			cursor: crosshair;
+		}
+
+		.hue-slider {
+			width: 20px;
+			background: linear-gradient(to bottom, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+			cursor: ns-resize;
+		}
+
+		// Ringed in white and then black, so they show against any color
+		.saturation-value-handle,
+		.hue-handle {
+			position: absolute;
+			box-sizing: border-box;
+			border: 2px solid white;
+			box-shadow:
+				0 0 0 1px rgb(0 0 0 / 0.6),
+				inset 0 0 0 1px rgb(0 0 0 / 0.6);
+			pointer-events: none;
+		}
+
+		.saturation-value-handle {
+			left: calc(var(--saturation) * 100%);
+			top: calc((1 - var(--value)) * 100%);
+			width: 14px;
+			height: 14px;
+			translate: -50% -50%;
+			border-radius: 50%;
+		}
+
+		.hue-handle {
+			left: -3px;
+			right: -3px;
+			top: calc(var(--hue) / 360 * 100%);
+			height: 8px;
+			translate: 0 -50%;
+		}
+
+		.hex-field {
+			grid-column: 1 / -1;
+			width: 100%;
+			font-variant-numeric: tabular-nums;
+		}
+	}
+
+	.credits-preview {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+
+		&[hidden] {
+			display: none;
+		}
+
+		// Leaves room for the particles, which are cut off at the edge
+		.credits-names {
+			margin: 0;
+			padding: 1em;
+			overflow: hidden;
+			background-color: white;
+		}
+
+		// Clicking it selects the name field
+		.credits-name {
+			cursor: text;
+		}
+	}
+
+	.avatar-field {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.avatar-picker {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+
+		.avatar {
+			flex: 0 0 auto;
+			width: 72px;
+			height: 72px;
+			object-fit: cover;
+			background-color: var(--color-fog);
+
+			&[hidden] {
+				display: none;
+			}
+		}
+
+		.avatar-controls {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			min-width: 0;
+		}
+
+		.checkbox[hidden] {
+			display: none;
+		}
+
+		// The native picker words its own status, so it's hidden but still focusable behind a button and status of the page's own
+		.file-picker {
+			position: relative;
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			min-width: 0;
+			font-size: calc(1rem * 7 / 9);
+			color: var(--color-walnut);
+
+			input[type="file"] {
+				position: absolute;
+				width: 1px;
+				height: 1px;
+				opacity: 0;
+				pointer-events: none;
+			}
+		}
+
+		// Drawn like the panel's other buttons
+		.file-picker-button {
+			flex: 0 0 auto;
+			box-sizing: border-box;
+			height: calc(var(--font-size-link) * 2);
+			padding: 0 1em;
+			line-height: calc(var(--font-size-link) * 2 - 2 * var(--border-thickness));
+			font-weight: 800;
+			text-transform: uppercase;
+			color: var(--color-crimson);
+			background-color: var(--color-fog);
+			border: var(--border-thickness) solid currentColor;
+			cursor: pointer;
+
+			&:hover {
+				background-color: var(--color-lemon);
+			}
+		}
+
+		input[type="file"]:focus-visible + .file-picker-button {
+			outline: var(--border-thickness) solid var(--color-crimson);
+			outline-offset: var(--border-thickness);
+		}
+
+		.file-picker-status {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+	}
+
+	.avatar-cropper {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		max-width: 280px;
+		margin-top: 8px;
+
+		&[hidden] {
+			display: none;
+		}
+
+		// The square that gets uploaded, with the picture moved and scaled behind it
+		.crop-frame {
+			position: relative;
+			box-sizing: border-box;
+			aspect-ratio: 1;
+			overflow: hidden;
+			background-color: var(--color-fog);
+			border: var(--border-thickness) solid var(--color-navy);
+			cursor: grab;
+			touch-action: none;
+
+			&:active {
+				cursor: grabbing;
+			}
+
+			&:focus-visible {
+				outline: var(--border-thickness) solid var(--color-crimson);
+				outline-offset: var(--border-thickness);
+			}
+
+			img {
+				position: absolute;
+				top: 0;
+				left: 0;
+				max-width: none;
+				height: auto;
+				pointer-events: none;
+				user-select: none;
+			}
+		}
+
+		.crop-zoom {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+
+			input {
+				flex: 1 1 auto;
+				margin: 0;
+				accent-color: var(--color-navy);
+			}
+		}
+	}
+
+	.checkboxes {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	// A native checkbox drawn like the name field, which fills navy with a check like a chosen donation option
+	.checkbox {
+		display: flex;
+		align-items: center;
+		gap: 0.5em;
+		width: fit-content;
+		cursor: pointer;
+
+		input {
+			appearance: none;
+			flex: 0 0 auto;
+			box-sizing: border-box;
+			width: 1.25em;
+			height: 1.25em;
+			margin: 0;
+			background-color: white;
+			background-position: center;
+			background-repeat: no-repeat;
+			background-size: 100%;
+			border: var(--border-thickness) solid var(--color-navy);
+			border-radius: 0;
+			cursor: inherit;
+
+			&:checked {
+				background-color: var(--color-navy);
+				background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline points="3.5,8.5 6.5,11.5 12.5,4.5" fill="none" stroke="%23faefe2" stroke-width="2.5" stroke-linecap="square" /></svg>');
+			}
+
+			&:focus-visible {
+				outline: var(--border-thickness) solid var(--color-crimson);
+				outline-offset: var(--border-thickness);
+			}
+
+			// High contrast mode drops the fill behind the check, so the native control takes over
+			@media (forced-colors: active) {
+				appearance: auto;
+			}
+		}
+
+		&:hover input:not(:checked) {
+			background-color: var(--color-lemon);
+		}
+	}
+}

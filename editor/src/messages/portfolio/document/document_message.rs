@@ -56,6 +56,10 @@ pub enum DocumentMessage {
 	DeselectAllLayers,
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
+	ChangeHistoryLine {
+		rev: document_graph_storage::Rev,
+		change: crate::messages::portfolio::history::utility_types::LineChange,
+	},
 	DocumentStructureChanged,
 	DrawArtboardOverlays {
 		context: OverlayContext,

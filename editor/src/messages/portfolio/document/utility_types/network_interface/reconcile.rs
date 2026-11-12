@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use document_graph_storage::blob::BlobBytes;
 use document_graph_storage::to_runtime::ConversionError;
 use document_graph_storage::{Declarations, NetworkId as StorageNetworkId, NodeId as StorageNodeId, Registry, RuntimeProjection, Touched};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId, NetworkLocation, NodeId, NodeInput, NodeNetwork};
@@ -45,8 +46,15 @@ type StorageIndex = HashMap<StorageNodeId, (NetworkLocation, NodeId)>;
 
 impl NodeNetworkInterface {
 	/// Applies what the registry holds differently for the touched entities. Can fail part-way, and a retry is safe.
-	pub(crate) fn reconcile_remote(&mut self, registry: &Registry, declarations: &Declarations, touched: &Touched, peer: document_graph_storage::PeerId) -> Result<Reconciled, ReconcileError> {
-		let projection = registry.runtime_projection(declarations);
+	pub(crate) fn reconcile_remote(
+		&mut self,
+		registry: &Registry,
+		declarations: &Declarations,
+		blobs: &BlobBytes,
+		touched: &Touched,
+		peer: document_graph_storage::PeerId,
+	) -> Result<Reconciled, ReconcileError> {
+		let projection = registry.runtime_projection(declarations, blobs);
 		let index = self.pin_storage_identities(peer);
 		let mut reconciled = Reconciled::default();
 

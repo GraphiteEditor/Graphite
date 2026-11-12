@@ -1,6 +1,7 @@
 //! Applies document migrations: format-version chaining over serialized payloads, then node migrations that rewrite history into the
 //! current shape. See `node-graph/rfcs/document-format-migrations.md` for the pipeline design.
 
+mod blobs;
 mod format;
 mod node;
 mod order;
@@ -10,8 +11,10 @@ pub mod testing;
 use document_graph_storage::{CrdtError, NodeId, Rev};
 use migration_core::{Declaration, InputConnector, MigrationError};
 
+pub use blobs::MigrationBlobs;
 pub use document_graph_storage::rehash_deltas;
-pub use format::{DocumentPayloads, HistoryOutcome, run_format_migrations};
+pub use format::{HistoryOutcome, run_format_migrations};
+pub use migration_core::DocumentPayloads;
 pub use node::{DeclarationTable, RewrittenHistory, holds, registry_at};
 pub use order::{migrate_history, migrate_registry, order_migrations, references};
 
@@ -49,6 +52,8 @@ pub enum RunnerError {
 	InvalidStep { from: Declaration, to: Declaration },
 	#[error("migrations from {0:?} depend on each other in a cycle")]
 	OrderCycle(Vec<Declaration>),
+	#[error("blob {0} is missing or fails to decode, so a migration can't read its value")]
+	MissingBlob(document_graph_storage::BlobHash),
 	#[error("failed to apply a delta: {0}")]
 	Crdt(#[from] CrdtError),
 }

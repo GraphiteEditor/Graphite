@@ -236,20 +236,9 @@ mod network_interface_tests {
 			.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER))
 			.await;
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rectangle] }).await;
-		let frontend_messages = editor.handle_message(NodeGraphMessage::Copy).await;
-		let clipboard = frontend_messages
-			.into_iter()
-			.find_map(|msg| match msg {
-				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
-				_ => None,
-			})
-			.expect("copy message should be dispatched");
-		println!("Clipboard: {clipboard}");
-		editor
-			.handle_message(ClipboardMessage::ReadClipboard {
-				content: ClipboardContentRaw::Text(clipboard),
-			})
-			.await;
+		let clipboard = editor.copy_to_clipboard(NodeGraphMessage::Copy).await.expect("copy message should be dispatched");
+		println!("Clipboard: {clipboard:?}");
+		editor.paste_from_clipboard(clipboard).await;
 		let nodes = &editor.active_document().network_interface.document_network().nodes;
 		let original = nodes.get(&rectangle).expect("original node should exist");
 		assert!(

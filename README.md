@@ -86,7 +86,7 @@ Graphite's source code is dual-licensed under your choice of either the [MIT lic
 
 We're grateful to these programs and organizations for the grants and services that help make Graphite possible.
 
-[<img width="600" alt="European Commission, NGI Zero, and NLnet Foundation" src="https://github.com/user-attachments/assets/d5b3c623-710a-4809-916b-263e80c28184" />](https://nlnet.nl/commonsfund/)
+[<img width="600" alt="European Commission, NGI Zero Commons Fund, and NLnet Foundation" src="https://github.com/user-attachments/assets/8412f7c9-58a6-4aa0-baa7-8add398606fe" />](https://nlnet.nl/commonsfund/)
 
 [<img width="600" alt="Google Summer of Code" src="https://github.com/user-attachments/assets/37284dfe-fccd-4abd-904c-1165ff36da53" />](https://summerofcode.withgoogle.com/)
 

@@ -254,7 +254,7 @@ pub(super) async fn open_document_file(
 }
 
 /// Builds the document from its legacy file, or from its storage when that file is missing or unreadable.
-async fn load_from_container(container: AnyContainer, document_id: DocumentId, resources: &ResourcesHandle, reset_nodes: bool) -> (Option<DocumentMessageHandler>, Option<GddV1>) {
+pub(super) async fn load_from_container(container: AnyContainer, document_id: DocumentId, resources: &ResourcesHandle, reset_nodes: bool) -> (Option<DocumentMessageHandler>, Option<GddV1>) {
 	let legacy = match container.read(legacy_path()).await {
 		Ok(bytes) => String::from_utf8(bytes.as_slice().to_vec())
 			.map_err(|error| error.to_string())
@@ -357,7 +357,7 @@ async fn build_document_from_storage(gdd: GddV1, byte_store: &ResourcesHandle, d
 	hydrate_resources(&gdd, byte_store, document_id).await;
 
 	let declarations = gdd.declarations(byte_store).await;
-	let (network, node_entries, network_entries) = match gdd.registry().to_runtime_with_full_metadata(&declarations) {
+	let (network, node_entries, network_entries) = match gdd.registry().to_runtime_with_full_metadata(&declarations, gdd.blobs()) {
 		Ok(result) => result,
 		Err(error) => {
 			log::error!("Opening document {document_id:?}: failed to convert registry to runtime: {error}");

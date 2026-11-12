@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{
 };
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
-use crate::messages::portfolio::ingest::utility_types::IngestAction;
+use crate::messages::portfolio::ingest::utility_types::{DataTransfer, IngestAction};
 use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
@@ -140,11 +140,9 @@ pub enum FrontendMessage {
 		url: String,
 	},
 	TriggerClipboardRead,
-	TriggerSessionLinkCopy {
-		token: String,
-	},
 	TriggerClipboardWrite {
-		content: String,
+		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
+		content: DataTransfer,
 	},
 	TriggerSelectionRead {
 		cut: bool,
@@ -195,6 +193,9 @@ pub enum FrontendMessage {
 	},
 	UpdateDocumentCursors {
 		cursors: Vec<FrontendRemoteCursor>,
+	},
+	UpdateHistoryPanel {
+		state: crate::messages::portfolio::history::utility_types::HistoryPanelState,
 	},
 	UpdateNodeGraphCursors {
 		cursors: Vec<FrontendRemoteCursor>,

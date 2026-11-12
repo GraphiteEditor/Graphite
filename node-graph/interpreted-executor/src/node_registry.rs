@@ -549,6 +549,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		attribute_value_node!(List<Raster<GPU>>),
 		attribute_value_node!(List<Graphic>),
+		attribute_value_node!(List<Artboard>),
 	];
 	node_types.extend(attribute_value_rows);
 	// Whole-List Transform companion rows: a rank-1 content wire composes the matrix onto every item

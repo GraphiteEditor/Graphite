@@ -4224,7 +4224,7 @@ mod tests {
 	// Real documents drive every migration at once, on wiring no synthetic fixture reproduces
 	#[test]
 	fn demo_artwork_migrates_to_a_consistent_interface() {
-		use crate::messages::portfolio::document::storage_tests::test_support::load_demo;
+		use crate::messages::portfolio::document::storage_tests::test_support::open_demo;
 
 		let demo_artwork = [
 			"changing-seasons.graphite",
@@ -4237,7 +4237,7 @@ mod tests {
 			"valley-of-spires.graphite",
 		];
 		for file_name in demo_artwork {
-			let mut document = load_demo(file_name);
+			let mut document = open_demo(file_name);
 			migrate_with_context(&mut document, &format!("migrating {file_name}"));
 		}
 	}
@@ -5586,7 +5586,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn copy_to_points_opens_as_a_chain_that_compiles() {
-		use crate::messages::portfolio::ingest::utility_types::IngestAction;
+		use crate::messages::portfolio::ingest::utility_types::{DataTransferItem, IngestAction};
 		use crate::test_utils::test_prelude::*;
 		use graphene_std::NodeParameter;
 		use graphene_std::graphic::{flatten_graphic, flatten_vector, into_group};
@@ -5658,10 +5658,8 @@ mod tests {
 		// Opening migrates the document, then evaluates its graph and checks the interface, failing on any error
 		editor
 			.handle_message(IngestMessage::Ingest {
-				data: serialized.into_bytes(),
+				content: DataTransferItem::from_file("copy-to-points.graphite".into(), None, serialized.into_bytes()).into(),
 				action: IngestAction::Open,
-				mime_type: String::new(),
-				path: Some("copy-to-points.graphite".into()),
 			})
 			.await;
 
@@ -5867,7 +5865,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn assign_colors_splits_by_its_fill_and_stroke_toggles() {
-		use crate::messages::portfolio::ingest::utility_types::IngestAction;
+		use crate::messages::portfolio::ingest::utility_types::{DataTransferItem, IngestAction};
 		use crate::test_utils::test_prelude::*;
 		use graphene_std::NodeParameter;
 		use graphene_std::vector::generator_nodes::rectangle;
@@ -5919,10 +5917,8 @@ mod tests {
 		// Opening migrates the document, then evaluates its graph and checks the interface, failing on any error
 		editor
 			.handle_message(IngestMessage::Ingest {
-				data: serialized.into_bytes(),
+				content: DataTransferItem::from_file("assign-colors.graphite".into(), None, serialized.into_bytes()).into(),
 				action: IngestAction::Open,
-				mime_type: String::new(),
-				path: Some("assign-colors.graphite".into()),
 			})
 			.await;
 

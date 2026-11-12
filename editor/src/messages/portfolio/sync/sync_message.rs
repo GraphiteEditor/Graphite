@@ -13,7 +13,7 @@ pub enum SyncMessage {
 	Leave,
 	/// Host the active document as a new session with its own link. The others stay in the old room.
 	Fork,
-	/// Send the Session panel's layout.
+	/// Send the Collaboration panel's layout.
 	RefreshPanel,
 	/// Apply what peers sent, once per frame.
 	Poll,

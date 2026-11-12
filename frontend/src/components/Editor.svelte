@@ -12,6 +12,7 @@
 	import { createDialogStore, destroyDialogStore } from "/src/stores/dialog";
 	import { createDocumentStore, destroyDocumentStore } from "/src/stores/document";
 	import { createFullscreenStore, destroyFullscreenStore } from "/src/stores/fullscreen";
+	import { createHistoryStore, destroyHistoryStore } from "/src/stores/history";
 	import { createMathExpressionStore, destroyMathExpressionStore } from "/src/stores/math-expression";
 	import { createNodeGraphStore, destroyNodeGraphStore } from "/src/stores/node-graph";
 	import { createPortfolioStore, destroyPortfolioStore } from "/src/stores/portfolio";
@@ -31,6 +32,7 @@
 		document: createDocumentStore(subscriptions),
 		fullscreen: createFullscreenStore(subscriptions),
 		nodeGraph: createNodeGraphStore(subscriptions),
+		history: createHistoryStore(subscriptions),
 		portfolio: createPortfolioStore(subscriptions, editor),
 		appWindow: createAppWindowStore(subscriptions),
 		colorPicker: createColorPickerStore(subscriptions),
@@ -61,6 +63,7 @@
 		destroyDocumentStore();
 		destroyFullscreenStore();
 		destroyNodeGraphStore();
+		destroyHistoryStore();
 		destroyPortfolioStore();
 		destroyAppWindowStore();
 		destroyColorPickerStore();

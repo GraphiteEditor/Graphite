@@ -1,6 +1,6 @@
 //! The node tier: `M` as a function on registry states, and the history rewrite derived from it.
 
-use crate::RunnerError;
+use crate::{MigrationBlobs, RunnerError};
 use document_graph_storage::delta::compute_deltas;
 use document_graph_storage::{Delta, Implementation, NetworkId, Node, NodeId, NodeInput, ProtoNode, Registry, RegistryDelta, ResourceHash, ResourceId, Rev, apply_retired_op};
 use migration_core::{AnchorContext, Compiler, Declaration, DeclarationResolver, Edits, InputConnector, InputsEdit, MigrationHost, NodeMigration, OutputConnector};
@@ -61,12 +61,29 @@ impl DeclarationResolver for DeclarationTable {
 }
 
 /// `M`: run `migration` on every anchor in `source` and apply the edits. Every run reads `source`, so no run observes another's edits.
-/// A migration asking the compiler runs upstream anchors first instead, in rounds, since the compiler can't describe what's still in the old shape.
-pub(crate) fn apply_migration(migration: &dyn NodeMigration, source: &Registry, resolver: &dyn DeclarationResolver, host: Option<&dyn MigrationHost>) -> Result<Registry, RunnerError> {
+pub(crate) fn apply_migration(
+	migration: &dyn NodeMigration,
+	source: &Registry,
+	resolver: &dyn DeclarationResolver,
+	host: Option<&dyn MigrationHost>,
+	blobs: &mut MigrationBlobs,
+) -> Result<Registry, RunnerError> {
 	let anchors = anchors(migration.source(), source, resolver);
 	if anchors.is_empty() {
 		return Ok(source.clone());
 	}
+
+	// A migration that reads beyond its anchors needs every value decoded
+	let reads_beyond_anchors = migration.footprint().reads_network() || migration.asks_compiler();
+	let resolved = blobs.resolve(source, (!reads_beyond_anchors).then_some(anchors.as_slice()))?;
+
+	let mut migrated = apply_to_values(migration, &resolved, anchors, resolver, host)?;
+	blobs.store(&mut migrated, source);
+	Ok(migrated)
+}
+
+/// A migration asking the compiler runs upstream anchors first, in rounds, since the compiler can't describe what's still in the old shape.
+fn apply_to_values(migration: &dyn NodeMigration, source: &Registry, anchors: Vec<NodeId>, resolver: &dyn DeclarationResolver, host: Option<&dyn MigrationHost>) -> Result<Registry, RunnerError> {
 	let Some(host) = host.filter(|_| migration.asks_compiler()) else {
 		return apply_runs(migration, source, &anchors, resolver, None);
 	};
@@ -299,6 +316,7 @@ pub(crate) fn rewrite_history(
 	resolver: &dyn DeclarationResolver,
 	host: Option<&dyn MigrationHost>,
 	kept: &HashSet<Rev>,
+	blobs: &mut MigrationBlobs,
 ) -> Result<RewrittenHistory, RunnerError> {
 	let mut children: HashMap<Option<Rev>, usize> = HashMap::new();
 	let mut child_authors: HashMap<Rev, HashSet<_>> = HashMap::new();
@@ -348,7 +366,7 @@ pub(crate) fn rewrite_history(
 		let passes = passes_through(&delta.kind);
 		let mut chain = if passes { vec![delta.kind.clone()] } else { Vec::new() };
 		if if whole_states_only { is_boundary(delta) } else { !passes } {
-			let migrated = apply_migration(migration, &branch.original, resolver, host)?;
+			let migrated = apply_migration(migration, &branch.original, resolver, host, blobs)?;
 			chain.extend(compute_deltas(&branch.rewritten, &migrated));
 		}
 		check_single_writes(&chain)?;

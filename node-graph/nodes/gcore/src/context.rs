@@ -10,8 +10,6 @@ use raster_types::{CPU, Raster};
 pub enum ReadContextError {
 	#[error("No {0} to read: this node only works inside a loop over {0} items, like in a Map node")]
 	NoLoopItem(&'static str),
-	#[error("No loop index to read: this node only works inside a loop, like in a Repeat or Map node")]
-	NoLoopIndex,
 	#[error("No position to read: this node only works inside a loop over points, like in a Repeat on Points node")]
 	NoLoopPosition,
 	#[error("Loop Level {level} is too high: the outermost loop around this node is level {outermost}")]
@@ -80,6 +78,8 @@ fn read_position(
 /// Produces the index of the current iteration of a loop by reading from the evaluation context, which is supplied by downstream nodes such as *Repeat*.
 ///
 /// Nested loops can enable 2D or higher-dimensional iteration by using the *Loop Level* parameter to read the index from outer levels of loops.
+///
+/// Outside of any loop, the index is 0.
 #[node_macro::node(category("Data: Context"), icon("NodeReadIndex"), path(core_types::vector))]
 fn read_index(
 	ctx: impl Ctx + ExtractIndex,
@@ -90,7 +90,9 @@ fn read_index(
 	#[hard(0..)]
 	loop_level: Item<i64>,
 ) -> Result<Item<f64>, ReadContextError> {
-	let indices = ctx.try_index().ok_or(ReadContextError::NoLoopIndex)?;
+	// The graph outside any loop runs once, as index 0
+	let Some(indices) = ctx.try_index() else { return Ok(Item::new_from_element(0.)) };
+
 	Ok(Item::new_from_element(at_loop_level(indices, *loop_level.element())? as f64))
 }
 
@@ -119,9 +121,14 @@ mod tests {
 		assert_eq!(level(1).unwrap(), 4.);
 		assert_eq!(level(2).unwrap_err().to_string(), "Loop Level 2 is too high: the outermost loop around this node is level 1");
 		assert!(matches!(level(i64::MAX), Err(ReadContextError::LoopLevelTooHigh { .. })));
+	}
 
-		let outside = read_index(OwnedContextImpl::default().into_context(), (), Item::new_from_element(0));
-		assert!(matches!(outside, Err(ReadContextError::NoLoopIndex)));
+	#[test]
+	fn read_index_outside_a_loop_is_zero() {
+		let outside = |level: i64| read_index(OwnedContextImpl::default().into_context(), (), Item::new_from_element(level)).map(|index| *index.element());
+
+		assert_eq!(outside(0).unwrap(), 0.);
+		assert_eq!(outside(3).unwrap(), 0.);
 	}
 
 	#[test]

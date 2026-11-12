@@ -35,6 +35,7 @@ use graphene_std::vector::{CurveType, Path, PointId, QRCodeErrorCorrectionLevel,
 use graphene_std::{Appearance, Artboard, Color, ContextFeatures, ContextOverrides, Cover, Coverage, Graphic};
 use kurbo::BezPath;
 use std::any::Any;
+use std::ops::Range;
 use std::sync::Arc;
 
 #[derive(ExtractField)]
@@ -53,7 +54,12 @@ pub struct DataPanelMessageHandler {
 	introspected_data: Option<Arc<dyn Any + Send + Sync>>,
 	context: InspectedContext,
 	element_path: Vec<PathStep>,
+	/// The rows of a long table that the frontend has in or near view, or `None` until it first says.
+	rows_in_view: Option<Range<usize>>,
 }
+
+/// The rows of a long table to send before the frontend says which it has in view, enough to fill a tall panel.
+const DEFAULT_ROWS_IN_VIEW: Range<usize> = 0..100;
 
 #[message_handler_data]
 impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanelMessageHandler {
@@ -90,6 +96,14 @@ impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanel
 			DataPanelMessage::SetContextOverrides { overrides } => {
 				responses.add(PortfolioMessage::SubmitInspectContextOverrides { overrides });
 			}
+			DataPanelMessage::SetRowsInView { rows } => {
+				if self.rows_in_view.as_ref() == Some(&rows) {
+					return;
+				}
+
+				self.rows_in_view = Some(rows);
+				self.update_layout(responses, context);
+			}
 		}
 	}
 
@@ -114,6 +128,7 @@ impl DataPanelMessageHandler {
 			node_lookup_network_path: Vec::new(),
 			gradient_settings: GradientSettings::default(),
 			breadcrumbs: Vec::new(),
+			rows_in_view: self.rows_in_view.clone().unwrap_or(DEFAULT_ROWS_IN_VIEW),
 		};
 
 		// Main data visualization
@@ -364,6 +379,8 @@ struct LayoutData<'a> {
 	/// rather than in the stop list itself. The enclosing `Item`/`List` sets it to the owning row's attributes.
 	gradient_settings: GradientSettings,
 	breadcrumbs: Vec<String>,
+	/// The rows to send of a long table, since building and sending all of them is too slow.
+	rows_in_view: Range<usize>,
 }
 
 /// Calls the macro with its arguments followed by the list of every value type the Data panel can show.
@@ -662,33 +679,32 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 
 		let attribute_keys: Vec<String> = self.attribute_keys().filter(|key| !key.starts_with(INTERNAL_ATTRIBUTE_PREFIX)).map(str::to_string).collect();
 
-		let mut rows = (0..self.len())
-			.map(|index| {
-				let element = self.element(index).unwrap();
-				let saved_gradient_settings = data.gradient_settings;
-				data.gradient_settings = GradientSettings::from_list_row_attributes(self, index);
-				let mut values = vec![
-					vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance()],
-					element.value_widgets(PathStep::Element(index), data),
-				];
-				data.gradient_settings = saved_gradient_settings;
-				for key in &attribute_keys {
-					let target = PathStep::Attribute { row: index, key: key.clone() };
-					let cell = self.attribute_any(key, index).and_then(|any| dispatch_value_widgets(any, target, data)).unwrap_or_else(|| {
-						let text = self.attribute_display_value(key, index, display_value_override).unwrap_or_else(|| "-".to_string());
-						vec![text_preview_label(text)]
-					});
-					values.push(cell);
-				}
-				values
-			})
-			.collect::<Vec<_>>();
-
 		let mut column_names = vec!["", "element"];
 		column_names.extend(attribute_keys.iter().map(|s| s.as_str()));
-		rows.insert(0, single_widget_cells(column_headings(&column_names)));
+		let heading = single_widget_cells(column_headings(&column_names));
 
-		vec![LayoutGroup::table_of_cells(rows, false)]
+		let rows_in_view = data.rows_in_view.clone();
+		let table = LayoutGroup::virtually_scrolled_table_of_cells(heading, self.len(), rows_in_view, |index| {
+			let element = self.element(index).unwrap();
+			let saved_gradient_settings = data.gradient_settings;
+			data.gradient_settings = GradientSettings::from_list_row_attributes(self, index);
+			let mut values = vec![
+				vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance()],
+				element.value_widgets(PathStep::Element(index), data),
+			];
+			data.gradient_settings = saved_gradient_settings;
+			for key in &attribute_keys {
+				let target = PathStep::Attribute { row: index, key: key.clone() };
+				let cell = self.attribute_any(key, index).and_then(|any| dispatch_value_widgets(any, target, data)).unwrap_or_else(|| {
+					let text = self.attribute_display_value(key, index, display_value_override).unwrap_or_else(|| "-".to_string());
+					vec![text_preview_label(text)]
+				});
+				values.push(cell);
+			}
+			values
+		});
+
+		vec![table]
 	}
 }
 
@@ -1480,19 +1496,18 @@ fn table_node_id_path_layout_with_breadcrumb(path: &List<NodeId>, data: &mut Lay
 		data.desired_path.truncate(data.current_depth);
 	}
 
-	let mut rows = (0..path.len())
-		.map(|index| {
-			let node_id = path.element(index).unwrap();
-			let prefix: Vec<NodeId> = path.iter_element_values().take(index).copied().collect();
-			let saved = std::mem::replace(&mut data.node_lookup_network_path, prefix);
-			let widgets = node_id.value_widgets(PathStep::Element(index), data);
-			data.node_lookup_network_path = saved;
-			vec![vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance()], widgets]
-		})
-		.collect::<Vec<_>>();
-	rows.insert(0, single_widget_cells(column_headings(&["", "element"])));
+	let heading = single_widget_cells(column_headings(&["", "element"]));
+	let rows_in_view = data.rows_in_view.clone();
+	let table = LayoutGroup::virtually_scrolled_table_of_cells(heading, path.len(), rows_in_view, |index| {
+		let node_id = path.element(index).unwrap();
+		let prefix: Vec<NodeId> = path.iter_element_values().take(index).copied().collect();
+		let saved = std::mem::replace(&mut data.node_lookup_network_path, prefix);
+		let widgets = node_id.value_widgets(PathStep::Element(index), data);
+		data.node_lookup_network_path = saved;
+		vec![vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance()], widgets]
+	});
 
-	vec![LayoutGroup::table_of_cells(rows, false)]
+	vec![table]
 }
 
 /// Type-dispatched recursion into an attribute value for the Data panel breadcrumb navigation.

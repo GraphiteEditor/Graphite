@@ -2,11 +2,12 @@
 	import { getContext, onDestroy, tick } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import Collaboration from "/src/components/panels/Collaboration.svelte";
 	import Data from "/src/components/panels/Data.svelte";
 	import Document from "/src/components/panels/Document.svelte";
+	import History from "/src/components/panels/History.svelte";
 	import Inspector from "/src/components/panels/Inspector.svelte";
 	import Layers from "/src/components/panels/Layers.svelte";
-	import Session from "/src/components/panels/Session.svelte";
 	import Welcome from "/src/components/panels/Welcome.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
@@ -18,9 +19,10 @@
 		Welcome,
 		Document,
 		Layers,
+		History,
 		Inspector,
 		Data,
-		Session,
+		Collaboration,
 	};
 	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
@@ -459,7 +461,7 @@
 							class="session"
 							class:disconnected={tabLabel.session === "Disconnected"}
 							data-tooltip-label={tabLabel.session === "Connected" ? "Live session" : "Disconnected from the session"}
-							data-tooltip-description={tabLabel.session === "Connected" ? "Click to open the Session panel." : "Reconnecting. Click to open the Session panel."}
+							data-tooltip-description={tabLabel.session === "Connected" ? "Click to open the Collaboration panel." : "Reconnecting. Click to open the Collaboration panel."}
 							data-session-button
 							on:pointerdown|stopPropagation
 							on:click|stopPropagation={() => sessionAction?.(tabIndex)}

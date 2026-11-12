@@ -60,6 +60,7 @@ pub struct PortfolioMessageHandler {
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
 	ingest: IngestMessageHandler,
+	history: HistoryMessageHandler,
 	sync: SyncMessageHandler,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
@@ -138,8 +139,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 				self.ingest.process_message(message, responses, context);
 			}
+			PortfolioMessage::History(message) => {
+				let context = HistoryMessageContext {
+					documents: &mut self.documents,
+					active_document_id: self.active_document_id,
+					panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::History) && !self.workspace.panel_layout.focus_document,
+				};
+				self.history.process_message(message, responses, context);
+			}
 			PortfolioMessage::Sync(message) => {
 				let context = SyncMessageContext {
+					environment,
 					documents: &mut self.documents,
 					active_document_id: self.active_document_id,
 					resource_storage,
@@ -260,7 +270,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				match container.write_non_blocking(legacy_path(), document.serialize_document().as_bytes()) {
 					Ok(()) => {
-						document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+						document.commit_storage_snapshot(&resource_storage.resources_mut());
 						document.set_auto_save_state(true);
 					}
 					Err(error) => {
@@ -1118,6 +1128,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					self.executor.submit_thumbnails_in_view(document, document_id);
 				}
 			}
+			PortfolioMessage::SubmitClipboardSvg { id } => {
+				let layers = self.active_document().map(|document| {
+					let selected = document.partition_selection().layers;
+					let mut layers = document
+						.metadata()
+						.all_layers()
+						.filter(|layer| selected.contains(layer))
+						.map(|layer| layer.to_node())
+						.collect::<Vec<_>>();
+					layers.reverse();
+					layers
+				});
+				responses.add(self.executor.submit_clipboard_svg(self.active_document_id, id, layers.unwrap_or_default()));
+			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
 				responses.add(MenuBarMessage::SendLayout);
@@ -1184,6 +1208,7 @@ impl PortfolioMessageHandler {
 			persistent_state: Default::default(),
 			fonts: Default::default(),
 			ingest: Default::default(),
+			history: Default::default(),
 			sync: Default::default(),
 			executor,
 			selection_mode: Default::default(),
@@ -1334,7 +1359,7 @@ impl PortfolioMessageHandler {
 				let resources = resource_storage.resources_mut();
 				document.set_storage(*gdd, declarations, resources.storage());
 				document.require_whole_document_stage();
-				document.commit_storage_snapshot(&resources, preferences.validate_storage_round_trip);
+				document.commit_storage_snapshot(&resources);
 				document.retire_storage_interaction();
 			}
 			None => {

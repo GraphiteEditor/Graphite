@@ -21,10 +21,10 @@ pub struct MenuBarMessageHandler {
 	pub has_selection_history: (bool, bool),
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
-	pub show_storage_preferences: bool,
 	pub make_path_editable_is_allowed: bool,
 	pub data_panel_open: bool,
-	pub session_panel_open: bool,
+	pub collaboration_panel_open: bool,
+	pub history_panel_open: bool,
 	pub layers_panel_open: bool,
 	pub inspector_open: bool,
 	pub focus_document: bool,
@@ -60,7 +60,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let message_logging_verbosity_names = self.message_logging_verbosity == MessageLoggingVerbosity::Names;
 		let message_logging_verbosity_contents = self.message_logging_verbosity == MessageLoggingVerbosity::Contents;
 		let reset_node_definitions_on_open = self.reset_node_definitions_on_open;
-		let show_storage_preferences = self.show_storage_preferences;
 		let make_path_editable_is_allowed = self.make_path_editable_is_allowed;
 
 		let about = MenuListEntry::new("About Graphite…")
@@ -688,10 +687,15 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::ToggleDataPanelOpen))
 							.on_commit(|_| WorkspaceMessage::ToggleDataPanelOpen.into())
 							.disabled(self.focus_document),
-						MenuListEntry::new("Session")
-							.label("Session")
-							.icon(if self.session_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.on_commit(|_| WorkspaceMessage::ToggleSessionPanelOpen.into())
+						MenuListEntry::new("Collaboration")
+							.label("Collaboration")
+							.icon(if self.collaboration_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.on_commit(|_| WorkspaceMessage::ToggleCollaborationPanelOpen.into())
+							.disabled(self.focus_document),
+						MenuListEntry::new("History")
+							.label("History")
+							.icon(if self.history_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.on_commit(|_| WorkspaceMessage::ToggleHistoryPanelOpen.into())
 							.disabled(self.focus_document),
 					],
 				])
@@ -734,10 +738,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 								.label("Reset Nodes to Definitions on Open")
 								.icon(if reset_node_definitions_on_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 								.on_commit(|_| PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen.into()),
-							MenuListEntry::new("Show Storage Preferences")
-								.label("Show Storage Preferences")
-								.icon(if show_storage_preferences { "CheckboxChecked" } else { "CheckboxUnchecked" })
-								.on_commit(|_| PreferencesMessage::ToggleShowStoragePreferences.into()),
 						],
 						vec![
 							MenuListEntry::new("Print Trace Logs")

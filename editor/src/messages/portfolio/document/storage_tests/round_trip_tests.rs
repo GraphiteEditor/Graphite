@@ -1,15 +1,14 @@
 //! End-to-end storage round-trip tests: drive real edits through the editor, push the document
 //! through a fresh in-memory `Gdd` (stage → retire → persist), reopen from the same container, and
 //! assert the reopened document matches. Exercises the full persistence pipeline (conversion,
-//! postcard codecs, hot-op retirement, file layout, replay-on-open) that the debug-only
-//! `verify_storage_round_trip` only checks in-process without an actual save/reopen.
+//! postcard codecs, hot-op retirement, file layout, replay-on-open).
 
 use crate::messages::resource_storage::ResourcesHandle;
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{NodeMetadataSource, PeerId, UserId, to_value};
-use graph_craft::application_io::resource::HashMapResourceStorage;
+use graph_craft::application_io::resource::{DataSource, HashMapResourceStorage, ResourceHash, ResourceId};
 use std::sync::Arc;
 
 use super::test_support::{RoundTrip, node_locations, node_paths, round_trip_through_gdd};
@@ -17,7 +16,7 @@ use crate::messages::portfolio::document::document_message_handler::DocumentMess
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage};
-use crate::messages::portfolio::ingest::utility_types::IngestAction;
+use crate::messages::portfolio::ingest::utility_types::{DataTransferItem, IngestAction};
 use crate::test_utils::test_prelude::*;
 use graphene_std::NodeParameter;
 use graphene_std::vector::style::RenderMode;
@@ -171,7 +170,7 @@ async fn edit_after_open_commits_cleanly() {
 	let (working, layout) = gdd.into_storage();
 	let reopened = GddV1::open_in(working, layout).await.expect("open_in");
 	let declarations = reopened.declarations(&byte_store).await;
-	let (rebuilt_network, node_entries, network_entries) = reopened.registry().to_runtime_with_full_metadata(&declarations).expect("to_runtime");
+	let (rebuilt_network, node_entries, network_entries) = reopened.registry().to_runtime_with_full_metadata(&declarations, reopened.blobs()).expect("to_runtime");
 	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage");
 
 	// Install the rebuilt interface + reopened storage and finalize like the editor's open path does.
@@ -185,7 +184,7 @@ async fn edit_after_open_commits_cleanly() {
 	// Mirror the live sequence via the real `commit_storage_snapshot`: initial commit after open, then a
 	// deletion, then commit again. Deletion (not addition) is the trigger, since it emits a `RemoveNode`
 	// whose retire/reverse is where "Target node does not exist" surfaced live.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	let layer = editor.active_document().metadata().all_layers().next().expect("at least one layer");
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
@@ -334,7 +333,7 @@ async fn live_undo_shadows_storage_cursor() {
 
 	let byte_store = mount_in_memory_storage(&mut editor);
 	// Capture the loaded state as the base interaction, then make a real edit (fires CommitTransaction).
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	let before_edit = editor.active_document().network_interface.document_network().clone();
 	editor.draw_ellipse(50., 50., 150., 150.).await;
 	let after_edit = editor.active_document().network_interface.document_network().clone();
@@ -452,7 +451,7 @@ async fn per_network_navigation_round_trips_via_session_not_registry() {
 	let (working, layout) = gdd.into_storage();
 	let reopened = GddV1::open_in(working, layout).await.expect("open_in");
 	let declarations = reopened.declarations(&byte_store).await;
-	let (rebuilt_network, node_entries, network_entries) = reopened.registry().to_runtime_with_full_metadata(&declarations).expect("to_runtime");
+	let (rebuilt_network, node_entries, network_entries) = reopened.registry().to_runtime_with_full_metadata(&declarations, reopened.blobs()).expect("to_runtime");
 	let mut rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries.clone()).expect("build_interface_from_storage");
 
 	let reopened_ids = network_ids_from_entries(&network_entries);
@@ -475,7 +474,7 @@ async fn live_undo_new_document_draw_rect() {
 
 	let byte_store = mount_in_memory_storage(&mut editor);
 	// Mount-time snapshot: capture the new-document graph as the base interaction.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	let before_rect = editor.active_document().network_interface.document_network().clone();
 	editor.draw_rect(0., 0., 100., 100.).await;
@@ -487,10 +486,8 @@ async fn live_undo_new_document_draw_rect() {
 
 fn paste_named_image() -> IngestMessage {
 	IngestMessage::Ingest {
-		data: Image::new(2, 2, Color::WHITE).to_png(),
+		content: DataTransferItem::from_file("pasted.png".into(), None, Image::new(2, 2, Color::WHITE).to_png()).into(),
 		action: IngestAction::Paste,
-		mime_type: String::new(),
-		path: Some("pasted.png".into()),
 	}
 }
 
@@ -562,7 +559,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	editor.new_document().await;
 
 	let byte_store = mount_in_memory_storage(&mut editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	editor.handle_message(paste_named_image()).await;
 
@@ -573,7 +570,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	let stored: std::collections::BTreeSet<_> = storage.registry().resources.keys().copied().collect();
 
 	// Every resource the restored network still references must be in the cursor.
-	let current: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	let current: std::collections::BTreeSet<_> = document.used_resources().iter().copied().collect();
 	assert!(
 		current.is_subset(&stored),
 		"cursor is missing a resource the restored network references: current={current:?} stored={stored:?}"
@@ -594,7 +591,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	editor.new_document().await;
 
 	let byte_store = mount_in_memory_storage(&mut editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	let base = editor.active_document().network_interface.document_network().clone();
 
 	editor.draw_rect(0., 0., 100., 100.).await;
@@ -615,7 +612,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	// cached for redo though its node is gone, so a naive snapshot would re-detect it as a new `AddResource`
 	// and retire a phantom interaction, knocking the cursor out of lockstep. Scoping the snapshot to
 	// network-referenced resources must keep this a no-op.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	// Second undo: removes the rectangle, back to the loaded base. The cursor must step a second interaction
 	// and land on the base, not one short.
@@ -634,7 +631,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 }
 
 /// Assert the `Gdd` cursor's stored registry matches a fresh `from_runtime` of the current interface (node
-/// set, network set, per-network export wiring), mirroring the live `verify_cursor_matches_runtime` check.
+/// set, network set, per-network export wiring).
 /// The runtime's resource set may be a superset (it keeps undone resources alive for redo), but every
 /// resource the current network references must be present.
 fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
@@ -670,15 +667,15 @@ async fn pasted_image_resource_survives_inserting_a_node() {
 	editor.new_document().await;
 
 	let byte_store = mount_in_memory_storage(&mut editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	editor.handle_message(paste_named_image()).await;
 	editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vectorize_nodes::vectorize::IDENTIFIER)).await;
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	let document = editor.active_document();
 	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
-	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	let used: std::collections::BTreeSet<_> = document.used_resources().iter().copied().collect();
 	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
 }
 
@@ -689,12 +686,115 @@ async fn pasted_image_resource_survives_storage_mounting_after_the_paste() {
 
 	editor.handle_message(paste_named_image()).await;
 	let byte_store = mount_in_memory_storage(&mut editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 
 	let document = editor.active_document();
 	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
-	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	let used: std::collections::BTreeSet<_> = document.used_resources().iter().copied().collect();
 	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
+}
+
+/// Pastes an image and points it at a resource from `source` that is staged before it resolves, then resolves it, giving the resource and its hash.
+async fn image_resource_resolved_after_staging(editor: &mut EditorTestUtils, source: DataSource) -> (ResourceId, ResourceHash) {
+	use graph_craft::document::DocumentNodeImplementation;
+	use graph_craft::document::value::TaggedValue;
+	use graphene_std::raster_nodes::std_nodes::image;
+
+	editor.new_document().await;
+	let byte_store = mount_in_memory_storage(editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+	editor.handle_message(paste_named_image()).await;
+
+	// Point the image at a resource that is still being fetched, so its entry is staged without a hash
+	let image_node_id = editor
+		.active_document()
+		.network_interface
+		.document_network()
+		.nodes
+		.iter()
+		.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == image::IDENTIFIER))
+		.map(|(id, _)| *id)
+		.expect("the pasted image should be an Image node");
+	let resource_id = ResourceId::new();
+	editor.active_document_mut().resources.registry.push_source_back(&resource_id, source.clone());
+	editor.dispatch(DocumentMessage::StartTransaction);
+	editor.dispatch(NodeGraphMessage::SetInputValue {
+		node_id: image_node_id,
+		input_index: image::ResourceInput::INDEX,
+		value: TaggedValue::Resource(resource_id).into(),
+	});
+	editor.dispatch(DocumentMessage::CommitTransaction);
+	let stored = editor
+		.active_document()
+		.storage()
+		.expect("storage mounted")
+		.registry()
+		.resources
+		.get(&resource_id)
+		.map(|entry| entry.hash);
+	assert_eq!(stored, Some(None), "storage should hold the resource without its hash");
+
+	// The fetch finishes, which caches a font's hash for a later resolve
+	let data: Arc<[u8]> = Image::new(2, 2, Color::BLACK).to_png().into();
+	let hash = ResourceHash::from(data.as_ref());
+	let document_id = editor.portfolio_message_handler().active_document_id.expect("a document is open");
+	editor.dispatch(ResourceStorageMessage::Store { data });
+	editor.dispatch(PortfolioMessage::DocumentPassMessage {
+		document_id,
+		message: ResourceMessage::Resolved { resource_id, source, hash }.into(),
+	});
+
+	(resource_id, hash)
+}
+
+/// Undo and redo keep the hash of a resource resolved after its entry was staged.
+#[tokio::test]
+async fn resource_resolved_after_staging_stays_resolved_through_undo_and_redo() {
+	let mut editor = EditorTestUtils::create();
+	// An embedded source can't be fetched again, so only the runtime's resolution keeps it resolved
+	let (resource_id, hash) = image_resource_resolved_after_staging(&mut editor, DataSource::Embedded).await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	// Undo and redo the rectangle, then the step that set the resource
+	for (message, step) in [
+		(DocumentMessage::Undo, "undoing the rectangle"),
+		(DocumentMessage::Redo, "redoing the rectangle"),
+		(DocumentMessage::Undo, "undoing the rectangle again"),
+		(DocumentMessage::Undo, "undoing the resource change"),
+		(DocumentMessage::Redo, "redoing the resource change"),
+	] {
+		editor.dispatch(message);
+		let document = editor.active_document();
+		let registry = &document.resources.registry;
+		assert!(registry.unresolved().next().is_none(), "{step} left a resource unresolved, which stops rendering");
+		assert!(document.used_resources().iter().all(|id| registry.hash(id).is_some()), "{step} left a used resource without its hash");
+	}
+	assert_eq!(editor.active_document().resources.registry.hash(&resource_id), Some(hash));
+}
+
+/// A resource that history leaves without its hash is resolved again.
+#[tokio::test]
+async fn resource_left_unresolved_by_history_is_resolved_again() {
+	let mut editor = EditorTestUtils::create();
+	// A font resolves again from its cached hash, without a download
+	let font = DataSource::Font {
+		family: "Test Family".into(),
+		style: Some("Regular (400)".into()),
+	};
+	let (resource_id, hash) = image_resource_resolved_after_staging(&mut editor, font).await;
+
+	// No snapshot uses the resource once its step is undone, so collection drops the runtime's resolution
+	editor.dispatch(DocumentMessage::Undo);
+	editor.active_document_mut().garbage_collect_resources();
+	assert!(
+		editor.active_document().resources.registry.info(&resource_id).is_none(),
+		"garbage collection should drop the undone step's resource"
+	);
+
+	editor.dispatch(DocumentMessage::Redo);
+	let registry = &editor.active_document().resources.registry;
+	assert_eq!(registry.hash(&resource_id), Some(hash), "redoing the step should resolve its resource again");
+	assert!(registry.unresolved().next().is_none(), "redoing the step left a resource unresolved, which stops rendering");
 }
 
 /// Mount a fresh in-memory `Gdd` onto the active document so `commit_storage_snapshot` (the real
@@ -715,20 +815,18 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let mut editor = EditorTestUtils::create();
 
 	// Open a real demo artwork through the normal open path and let it render.
-	let content = std::fs::read_to_string("../demo-artwork/changing-seasons.graphite").expect("read demo artwork");
+	let data = std::fs::read("../demo-artwork/changing-seasons.graphite").expect("read demo artwork");
 	editor
 		.handle_message(IngestMessage::Ingest {
-			data: content.into_bytes(),
+			content: DataTransferItem::from_file("changing-seasons.graphite".into(), None, data).into(),
 			action: IngestAction::Open,
-			mime_type: String::new(),
-			path: Some("changing-seasons.graphite".into()),
 		})
 		.await;
 
 	let byte_store = mount_in_memory_storage(&mut editor);
 
 	// First autosave: captures the loaded document. `verify_storage_round_trip` panics on drift.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	let history_after_open = editor.active_document().storage().unwrap().session().history().count();
 
 	// Snapshot the network, then make a real modification.
@@ -737,7 +835,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let after_edit = editor.active_document().network_interface.document_network().clone();
 	assert_ne!(before_edit, after_edit, "drawing a rectangle should change the document network");
 
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	editor.active_document_mut().retire_storage_interaction();
 	let history_after_edit = editor.active_document().storage().unwrap().session().history().count();
 	assert!(
@@ -751,7 +849,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	assert_eq!(after_undo, before_edit, "undo should restore the pre-edit network");
 
 	// Autosaving the undone state still round-trips cleanly (no drift panic).
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 }
 
 /// Manual edits ride a saved document as a folded `VectorModification`, so opening the artworks carrying the most
@@ -767,10 +865,8 @@ async fn demo_artwork_vector_modifications_still_apply() {
 		let data = std::fs::read(format!("../demo-artwork/{name}.graphite")).expect("read demo artwork");
 		editor
 			.handle_message(IngestMessage::Ingest {
-				data,
+				content: DataTransferItem::from_file(format!("{name}.graphite").into(), None, data).into(),
 				action: IngestAction::Open,
-				mime_type: String::new(),
-				path: Some(format!("{name}.graphite").into()),
 			})
 			.await;
 
@@ -978,13 +1074,13 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let byte_store = mount_in_memory_storage(&mut editor);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	editor.active_document_mut().retire_storage_interaction();
 	let history_base = editor.active_document().storage().unwrap().session().history().count();
 	let before_edit = editor.active_document().network_interface.document_network().clone();
 
 	editor.draw_rect(64., 64., 192., 192.).await;
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	let after_edit = editor.active_document().network_interface.document_network().clone();
 	assert_ne!(after_edit, before_edit);
 	assert!(!editor.active_document().storage().unwrap().session().hot_log().is_empty(), "the step is hot");
@@ -994,7 +1090,7 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	let storage = editor.active_document().storage().unwrap();
 	assert!(storage.session().hot_log().is_empty(), "the step was taken back, not retired: {:?}", storage.session().hot_log());
 	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 	// The step held for redo keeps its declaration bytes from collection
 	let storage = editor.active_document().storage().unwrap();
 	assert!(
@@ -1007,5 +1103,46 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	let storage = editor.active_document().storage().unwrap();
 	assert!(!storage.session().hot_log().is_empty(), "the redone step is staged afresh");
 	assert_eq!(storage.session().history().count(), history_base);
-	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+}
+
+/// Draws three ellipses, undoes all of them, redoes them and one more, then undoes once. `retire` retires each
+/// drawing first, so the steps undo through the cursor rather than by retraction.
+async fn redone_steps_undo_one_at_a_time(retire: bool) {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let byte_store = mount_in_memory_storage(&mut editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+
+	for offset in [0., 200., 400.] {
+		editor.draw_ellipse(offset, 0., offset + 100., 100.).await;
+		if retire {
+			editor.active_document_mut().retire_storage_interaction();
+		}
+	}
+	let layer_count = |editor: &EditorTestUtils| editor.active_document().metadata().all_layers().count();
+	assert_eq!(layer_count(&editor), 3);
+
+	for expected in [2, 1, 0] {
+		editor.handle_message(DocumentMessage::Undo).await;
+		assert_eq!(layer_count(&editor), expected, "undoing down to {expected} ellipses");
+	}
+	for expected in [1, 2, 3, 3] {
+		editor.handle_message(DocumentMessage::Redo).await;
+		assert_eq!(layer_count(&editor), expected, "redoing up to {expected} ellipses");
+	}
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(layer_count(&editor), 2, "undo takes back only the last redone ellipse");
+	assert_cursor_matches_runtime(editor.active_document(), "after undoing a redone step");
+}
+
+#[tokio::test]
+async fn redone_hot_steps_undo_one_at_a_time() {
+	redone_steps_undo_one_at_a_time(false).await;
+}
+
+#[tokio::test]
+async fn redone_retired_steps_undo_one_at_a_time() {
+	redone_steps_undo_one_at_a_time(true).await;
 }

@@ -1,17 +1,17 @@
 <script lang="ts">
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
-	import { sessionPanelLayout } from "/src/stores/portfolio";
+	import { collaborationPanelLayout } from "/src/stores/portfolio";
 </script>
 
-<LayoutCol class="session-panel">
+<LayoutCol class="collaboration-panel">
 	<LayoutCol class="body" scrollableY={true}>
-		<WidgetLayout layout={sessionPanelLayout} layoutTarget="SessionPanel" />
+		<WidgetLayout layout={collaborationPanelLayout} layoutTarget="CollaborationPanel" />
 	</LayoutCol>
 </LayoutCol>
 
 <style lang="scss">
-	.session-panel {
+	.collaboration-panel {
 		flex-grow: 1;
 		padding: 4px 8px;
 

@@ -769,7 +769,10 @@ fn declarations_round_trip_through_byte_store() {
 		let declarations = gdd.declarations(&byte_store).await;
 		assert_eq!(declarations.len(), 1, "expected one proto-node declaration resolved from the byte store");
 
-		let (converted, _entries) = gdd.registry().to_runtime_with_metadata(&declarations).unwrap_or_else(|error| panic!("to_runtime failed: {error:?}"));
+		let (converted, _entries) = gdd
+			.registry()
+			.to_runtime_with_metadata(&declarations, gdd.blobs())
+			.unwrap_or_else(|error| panic!("to_runtime failed: {error:?}"));
 
 		let node = converted.nodes.values().next().expect("converted network has the node");
 		match &node.implementation {

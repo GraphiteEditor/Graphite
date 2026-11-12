@@ -288,12 +288,20 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				let panel_type = PanelType::Data;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
-			WorkspaceMessage::ToggleSessionPanelOpen => {
+			WorkspaceMessage::ToggleCollaborationPanelOpen => {
 				if self.panel_layout.focus_document {
 					return;
 				}
 
-				let panel_type = PanelType::Session;
+				let panel_type = PanelType::Collaboration;
+				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
+			}
+			WorkspaceMessage::ToggleHistoryPanelOpen => {
+				if self.panel_layout.focus_document {
+					return;
+				}
+
+				let panel_type = PanelType::History;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
 			WorkspaceMessage::UpdatePanelsLayout => {
@@ -411,8 +419,8 @@ impl WorkspaceMessageHandler {
 			PanelType::Inspector => &[LayoutTarget::Inspector],
 			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelBottomLeftBar, LayoutTarget::LayersPanelBottomRightBar],
 			PanelType::Data => &[LayoutTarget::DataPanel, LayoutTarget::DataPanelContext, LayoutTarget::DataPanelPath],
-			PanelType::Session => &[LayoutTarget::SessionPanel],
-			PanelType::Document | PanelType::Welcome => return,
+			PanelType::Collaboration => &[LayoutTarget::CollaborationPanel],
+			PanelType::Document | PanelType::Welcome | PanelType::History => return,
 		};
 
 		for &layout_target in targets {
@@ -438,8 +446,11 @@ impl WorkspaceMessageHandler {
 			PanelType::Data => {
 				// The Data panel's content is populated automatically as a side effect of the graph run completing, so there's nothing to do here
 			}
-			PanelType::Session => {
+			PanelType::Collaboration => {
 				responses.add(SyncMessage::RefreshPanel);
+			}
+			PanelType::History => {
+				responses.add(HistoryMessage::Refresh);
 			}
 			PanelType::Document | PanelType::Welcome => {
 				// Re-send the welcome screen buttons layout to repopulate after a remount

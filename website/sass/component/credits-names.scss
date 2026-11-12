@@ -1,0 +1,258 @@
+// ====================
+// MEMBER CREDITS NAMES
+// ====================
+
+// Names flow along each row at their own widths, so one only breaks across lines when it's wider than the whole row
+.credits-names {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.25em 1.5em;
+	padding: 0;
+	list-style: none;
+	line-height: 1.25;
+
+	li {
+		display: flex;
+		align-items: center;
+		gap: 0.4em;
+		margin-top: 0;
+		overflow-wrap: anywhere;
+		// Keeps the particles drawn behind the name in front of the page
+		position: relative;
+		isolation: isolate;
+	}
+
+	img {
+		flex: 0 0 auto;
+		width: 1.5em;
+		height: 1.5em;
+		object-fit: cover;
+	}
+}
+
+// The membership page's preview takes its member's tier too, sizing its name like the site credits
+:is(.credits-tier, .credits-preview) {
+	// Names spread apart in the tiers with particle effects, which need the room
+	&:is(.diamond, .carbide) .credits-names {
+		gap: 2em 2.5em;
+	}
+
+	&.diamond .credits-names {
+		font-size: 2rem;
+	}
+
+	&.carbide .credits-names {
+		font-size: 1.75rem;
+	}
+
+	&.graphene .credits-names {
+		font-size: 1.5rem;
+	}
+
+	&.graphite .credits-names {
+		font-size: 1.375rem;
+	}
+
+	&.charcoal .credits-names {
+		font-size: 1.25rem;
+	}
+
+	&.carbon .credits-names {
+		font-size: 1.125rem;
+	}
+
+	&.proton .credits-names {
+		font-size: 0.875rem;
+	}
+}
+
+// Links take the same color as the other names, set apart only by their underline
+.credits-name {
+	color: var(--name-color, inherit);
+}
+
+// Underlined explicitly, so the membership page's preview matches without a real address
+a.credits-name {
+	text-decoration: underline;
+}
+
+// ================
+// NAME COLOR FADES
+// ================
+
+// The colors paint a background that shows only through the see-through letters
+.name-fade > .credits-name {
+	color: transparent;
+	background-image: linear-gradient(90deg, var(--name-color), var(--name-fade-colors));
+	background-clip: text;
+	text-decoration-color: var(--name-color);
+}
+
+// Stretched so wide that the name covers an almost even sliver, which slides through each color in turn
+.name-fade.fade > .credits-name {
+	background-size: calc(5000% * (var(--name-color-count, 2) - 1)) 100%;
+	animation: credits-name-fade calc(1.5s * (var(--name-color-count, 2) - 1)) ease-in-out infinite alternate;
+}
+
+// Returns to the first color at its end, so each tile of the repeating gradient meets the next seamlessly
+.name-fade.flow > .credits-name {
+	background-image: linear-gradient(90deg, var(--name-color), var(--name-fade-colors), var(--name-color));
+	background-size: calc(100% * var(--name-color-count, 2)) 100%;
+	animation: credits-name-flow calc(2s * var(--name-color-count, 2)) linear infinite;
+}
+
+// A band of the other colors sweeps across, then waits off to the side before the next pass
+.name-fade.shimmer > .credits-name {
+	background-image: linear-gradient(100deg, var(--name-color) 40%, var(--name-fade-colors), var(--name-color) 60%);
+	background-size: 300% 100%;
+	background-repeat: no-repeat;
+	animation: credits-name-shimmer 3s ease-in-out infinite;
+}
+
+// Flow turned upright, so the colors climb through the letters like rising heat
+.name-fade.rise > .credits-name {
+	background-image: linear-gradient(0deg, var(--name-color), var(--name-fade-colors), var(--name-color));
+	background-size: 100% calc(100% * var(--name-color-count, 2));
+	animation: credits-name-rise calc(2s * var(--name-color-count, 2)) linear infinite;
+}
+
+// Crisp-edged bands half again as wide as the name slide past, so each new color sweeps across and then holds before the next
+.name-fade.wipe > .credits-name {
+	background-image: linear-gradient(270deg, var(--name-color-bands));
+	background-size: calc(320% * var(--name-color-count, 2)) 100%;
+	animation: credits-name-wipe calc(2.8s * var(--name-color-count, 2)) linear infinite;
+}
+
+// Thin diagonal bands on a square tile, which tiles seamlessly because the colors repeat twice across it
+.name-fade.stripes > .credits-name {
+	background-image: linear-gradient(45deg, var(--name-color-bands));
+	background-size: calc(0.5em * var(--name-color-count, 2)) calc(0.5em * var(--name-color-count, 2));
+	animation: credits-name-stripes calc(1.5s * var(--name-color-count, 2)) linear infinite;
+}
+
+// Rings of the colors spread outward from the middle, by pushing out where the repeating rings begin
+@property --credits-name-ripple {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
+
+.name-fade.ripple > .credits-name {
+	background-image: repeating-radial-gradient(
+		circle,
+		var(--name-color) var(--credits-name-ripple),
+		var(--name-fade-colors),
+		var(--name-color) calc(var(--credits-name-ripple) + 1.8em * var(--name-color-count, 2))
+	);
+	animation: credits-name-ripple calc(1.5s * var(--name-color-count, 2)) linear infinite;
+}
+
+// The name keeps its first color, backlit by a soft glow of the others that brightens and dims
+.name-fade.glow > .credits-name {
+	position: relative;
+	color: var(--name-color);
+	background-image: none;
+
+	&::before {
+		content: "";
+		position: absolute;
+		inset: -0.1em -0.3em;
+		z-index: -1;
+		border-radius: 0.6em;
+		background-image: linear-gradient(90deg, var(--name-fade-colors), var(--name-fade-colors));
+		filter: blur(0.35em);
+		animation: credits-name-glow 2.4s ease-in-out infinite alternate;
+	}
+}
+
+@keyframes credits-name-fade {
+	to {
+		background-position-x: 100%;
+	}
+}
+
+// Moves by exactly one tile, which as a percentage depends on how many times wider than the name the tile is
+@keyframes credits-name-flow {
+	to {
+		background-position-x: calc(-100% * var(--name-color-count, 2) / (var(--name-color-count, 2) - 1));
+	}
+}
+
+@keyframes credits-name-shimmer {
+	from {
+		background-position-x: 100%;
+	}
+
+	60%,
+	to {
+		background-position-x: 0%;
+	}
+}
+
+// Each moves by exactly one tile, like the flow
+@keyframes credits-name-rise {
+	to {
+		background-position-y: calc(100% * var(--name-color-count, 2) / (var(--name-color-count, 2) - 1));
+	}
+}
+
+@keyframes credits-name-wipe {
+	to {
+		background-position-x: calc(-100% * 3.2 * var(--name-color-count, 2) / (3.2 * var(--name-color-count, 2) - 1));
+	}
+}
+
+@keyframes credits-name-stripes {
+	to {
+		background-position-x: calc(0.5em * var(--name-color-count, 2));
+	}
+}
+
+@keyframes credits-name-ripple {
+	to {
+		--credits-name-ripple: calc(1.8em * var(--name-color-count, 2));
+	}
+}
+
+@keyframes credits-name-glow {
+	from {
+		opacity: 0.2;
+		scale: 0.95;
+	}
+
+	to {
+		opacity: 0.65;
+		scale: 1.05;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.name-fade > .credits-name,
+	.name-fade > .credits-name::before {
+		animation: none;
+	}
+
+	.name-fade.glow > .credits-name::before {
+		opacity: 0.45;
+	}
+}
+
+// =========
+// PARTICLES
+// =========
+
+// Drawn by the credits particles script, reaching past the name on every side
+.credits-particles {
+	position: absolute;
+	top: -1em;
+	left: -1em;
+	width: calc(100% + 2em);
+	height: calc(100% + 2em);
+	z-index: -1;
+	pointer-events: none;
+
+	&.front {
+		z-index: 1;
+	}
+}

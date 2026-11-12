@@ -31,6 +31,7 @@ fn format_tier_chains_and_bumps_version() {
 		history: vec![Payload::new(vec![1, 2, 3], PayloadCodec::Postcard)],
 		hot_log: Vec::new(),
 		session: None,
+		..Default::default()
 	};
 
 	let outcome = run_format_migrations(&[&RenameKey], &mut payloads, 2).unwrap();
@@ -50,6 +51,7 @@ fn format_tier_errors_on_missing_step() {
 		history: Vec::new(),
 		hot_log: Vec::new(),
 		session: None,
+		..Default::default()
 	};
 
 	let error = run_format_migrations(&[&RenameKey], &mut payloads, 2).unwrap_err();
@@ -64,6 +66,7 @@ fn truncating_a_document_without_a_registry_fails() {
 		history: vec![Payload::new(vec![1, 2, 3], PayloadCodec::Postcard)],
 		hot_log: Vec::new(),
 		session: None,
+		..Default::default()
 	};
 
 	let error = run_format_migrations(&[&RenameKey], &mut payloads, 2).unwrap_err();

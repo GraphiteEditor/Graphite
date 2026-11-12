@@ -4,7 +4,7 @@ use crate::messages::frontend::utility_types::RenderStatus;
 use crate::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::ingest::utility_types::IngestAction;
+use crate::messages::portfolio::ingest::utility_types::{DataTransfer, IngestAction, TransferData};
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
@@ -49,10 +49,6 @@ impl EditorTestUtils {
 		let mut editor = Self { editor, runtime, woken };
 
 		editor.dispatch(PortfolioMessage::Init);
-
-		// Tests run with `.gdd` storage on and the dual-write soak validation enabled, so storage round-trip drift fails loud.
-		editor.dispatch(PreferencesMessage::SaveAsGdd { enabled: true });
-		editor.dispatch(PreferencesMessage::ValidateStorageRoundTrip { enabled: true });
 
 		editor
 	}
@@ -115,6 +111,30 @@ impl EditorTestUtils {
 			}
 		}
 		Err(TestGraphError::Other(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping")))
+	}
+
+	/// Handles a message that copies to the clipboard, returning what was last written once the runtime has rendered the copied layers.
+	pub async fn copy_to_clipboard(&mut self, message: impl Into<Message>) -> Option<DataTransfer> {
+		if let Err(e) = self.eval_graph_until_finished().await {
+			panic!("Failed to evaluate graph: {e}");
+		}
+
+		let mut frontend_messages = self.dispatch(message);
+		self.runtime.update();
+		self.runtime.run().await;
+		frontend_messages.extend(self.dispatch(Message::Wake));
+
+		frontend_messages
+			.into_iter()
+			.filter_map(|message| match message {
+				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+				_ => None,
+			})
+			.last()
+	}
+
+	pub async fn paste_from_clipboard(&mut self, content: DataTransfer) -> Vec<FrontendMessage> {
+		self.handle_message(IngestMessage::Ingest { content, action: IngestAction::Paste }).await
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
@@ -320,10 +340,12 @@ impl EditorTestUtils {
 
 	pub async fn create_raster_image(&mut self, image: graphene_std::raster::Image<Color>, mouse: Option<(f64, f64)>) {
 		self.handle_message(IngestMessage::Ingest {
-			data: image.to_png(),
+			content: TransferData::Raster {
+				format: image::ImageFormat::Png,
+				data: image.to_png(),
+			}
+			.into(),
 			action: mouse.map_or(IngestAction::Paste, |mouse| IngestAction::DropOnCanvas { mouse }),
-			mime_type: String::new(),
-			path: None,
 		})
 		.await;
 	}
@@ -516,11 +538,11 @@ pub mod test_prelude {
 	pub use super::FrontendMessageTestUtils;
 	pub use crate::application::Editor;
 	pub use crate::float_eq;
-	pub use crate::messages::clipboard::utility_types::ClipboardContentRaw;
 	pub use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
 	pub use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
 	pub use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+	pub use crate::messages::portfolio::ingest::utility_types::{DataTransfer, DataTransferItem, TransferData};
 	pub use crate::messages::prelude::*;
 	pub use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, is_layer_fed_by_node_of_name};
 	pub use crate::messages::tool::utility_types::ToolType;

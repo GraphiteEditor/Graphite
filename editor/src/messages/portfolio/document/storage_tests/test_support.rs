@@ -10,28 +10,29 @@ use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkLocation, NodeId, NodeNetwork};
 
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
+use crate::messages::portfolio::document::utility_types::misc::DocumentId;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeLocator, NodeNetworkInterface};
+use crate::messages::portfolio::document_storage_io::load_from_container;
+use crate::messages::resource_storage::ResourcesHandle;
+use std::sync::Arc;
 
-/// Load a demo `.graphite` straight into a `DocumentMessageHandler` for inspection, with its nested networks lifted into the definitions table.
-pub fn load_demo(file_name: &str) -> DocumentMessageHandler {
-	let path = format!("../demo-artwork/{file_name}");
-	let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
-	let mut document = DocumentMessageHandler::deserialize_document(&content).unwrap_or_else(|e| panic!("Failed to deserialize {path}: {e:?}"));
-	document.network_interface.lift_nested_networks();
-	document
-}
-
-/// Open a demo `.graphite` the way the editor does, with its migrations and load-time fix-ups.
+/// Open a demo artwork the way the editor opens a document file.
 pub fn open_demo(file_name: &str) -> DocumentMessageHandler {
 	let path = format!("../demo-artwork/{file_name}");
-	let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
-	crate::messages::portfolio::document_storage_io::load_legacy_document(content, &HashMapResourceStorage::new(), false).unwrap_or_else(|e| panic!("Failed to open {path}: {e:?}"))
+	let archive = std::fs::read(&path).unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
+
+	let mut container = AnyContainer::Memory(MemoryBackend::new());
+	document_container::archive::open_auto(&archive, &mut container).unwrap_or_else(|e| panic!("Failed to unpack {path}: {e}"));
+
+	let resources = ResourcesHandle::new(Arc::new(HashMapResourceStorage::new()));
+	let (document, _) = futures::executor::block_on(load_from_container(container, DocumentId(0), &resources, false));
+	document.unwrap_or_else(|| panic!("Failed to open {path}"))
 }
 
-/// Load a demo `.graphite` and describe every subgraph node's outputs, which the demos predate, so a round trip has output descriptions to carry.
-pub fn load_demo_with_output_descriptions(file_name: &str) -> DocumentMessageHandler {
-	let mut document = load_demo(file_name);
+/// Open a demo artwork and describe every subgraph node's outputs, which the demos predate, so a round trip has output descriptions to carry.
+pub fn open_demo_with_output_descriptions(file_name: &str) -> DocumentMessageHandler {
+	let mut document = open_demo(file_name);
 	let interface = &mut document.network_interface;
 
 	for (network_path, node_id) in node_paths(interface) {
@@ -132,7 +133,7 @@ pub async fn round_trip_through_gdd(document: &DocumentMessageHandler) -> RoundT
 	let reopened = GddV1::open_in(working, layout).await.expect("open_in");
 	let declarations = reopened.declarations(&byte_store).await;
 	let registry = reopened.registry().clone();
-	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata");
+	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, reopened.blobs()).expect("to_runtime_with_full_metadata");
 	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage");
 	let view_settings = reopened.view_settings().clone();
 

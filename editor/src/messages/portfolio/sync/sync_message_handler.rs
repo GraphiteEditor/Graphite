@@ -1,9 +1,10 @@
 use super::identity::{anonymous_name, user_color};
-use crate::application::generate_uuid;
+use crate::application::{Environment, generate_uuid};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendRemoteCursor;
 use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
+use crate::messages::portfolio::ingest::utility_types::TransferData;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
@@ -24,6 +25,7 @@ const APPLY_RETRY_MS: f64 = 1_000.;
 
 #[derive(ExtractField)]
 pub struct SyncMessageContext<'a> {
+	pub environment: Environment,
 	pub documents: &'a mut HashMap<DocumentId, DocumentMessageHandler>,
 	pub active_document_id: Option<DocumentId>,
 	pub resource_storage: &'a ResourceStorageMessageHandler,
@@ -60,6 +62,7 @@ pub struct SyncMessageHandler {
 impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler {
 	fn process_message(&mut self, message: SyncMessage, responses: &mut VecDeque<Message>, context: SyncMessageContext) {
 		let SyncMessageContext {
+			environment,
 			documents,
 			active_document_id,
 			resource_storage,
@@ -88,7 +91,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				}
 				document.stage_name_attribute();
 				let Some(gdd) = document.storage_mut() else { return };
-				self.host(document_id, gdd, preferences, responses);
+				self.host(document_id, gdd, preferences, environment.url, responses);
 			}
 			SyncMessage::Join { token } => {
 				let token = token.trim();
@@ -156,7 +159,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					refresh_session_views(responses);
 					return;
 				}
-				self.host(document_id, gdd, preferences, responses);
+				self.host(document_id, gdd, preferences, environment.url, responses);
 			}
 			SyncMessage::Disconnected { document_id, generation } => {
 				if !self.is_current(document_id, generation) {
@@ -171,10 +174,10 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				refresh_session_views(responses);
 			}
 			SyncMessage::RefreshPanel => {
-				let layout = session_panel_layout(documents, active_document_id, preferences);
+				let layout = collaboration_panel_layout(documents, active_document_id, preferences, environment.url);
 				responses.add(LayoutMessage::SendLayout {
 					layout,
-					layout_target: LayoutTarget::SessionPanel,
+					layout_target: LayoutTarget::CollaborationPanel,
 				});
 			}
 			SyncMessage::Poll => {
@@ -223,10 +226,12 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 }
 
 impl SyncMessageHandler {
-	fn host(&mut self, document_id: DocumentId, gdd: &mut GddV1, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) {
+	fn host(&mut self, document_id: DocumentId, gdd: &mut GddV1, preferences: &PreferencesMessageHandler, url: &str, responses: &mut VecDeque<Message>) {
 		let Some(token) = self.connect_document(document_id, gdd, preferences, responses) else { return };
-		responses.add(FrontendMessage::TriggerSessionLinkCopy { token: token.to_string() });
-		responses.add(WorkspaceMessage::FocusPanel { panel_type: PanelType::Session });
+		responses.add(ClipboardMessage::Write {
+			content: TransferData::Text(session_link(url, token)).into(),
+		});
+		responses.add(WorkspaceMessage::FocusPanel { panel_type: PanelType::Collaboration });
 	}
 
 	fn connect_document(&mut self, document_id: DocumentId, gdd: &mut GddV1, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> Option<SessionToken> {
@@ -515,7 +520,7 @@ fn load_resource_future(document_id: DocumentId, to: TransportPeerId, hash: Reso
 	future.into()
 }
 
-fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
 	#[cfg(target_arch = "wasm32")]
 	{
 		js_sys::Date::now()
@@ -534,7 +539,11 @@ fn refresh_session_views(responses: &mut VecDeque<Message>) {
 	responses.add(SyncMessage::RefreshPanel);
 }
 
-fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>, preferences: &PreferencesMessageHandler) -> Layout {
+fn session_link(url: &str, token: SessionToken) -> String {
+	format!("{url}?session={token}")
+}
+
+fn collaboration_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>, preferences: &PreferencesMessageHandler, url: &str) -> Layout {
 	let heading = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).bold(true).widget_instance()]);
 	let note = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).multiline(true).widget_instance()]);
 	let user_name = preferences.user_name.as_str();
@@ -611,8 +620,9 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 			note("The link appears once the document has arrived."),
 		),
 		Some(_) => {
-			let token = SessionToken::for_document(gdd.manifest().document_id).to_string();
-			let copy_link_token = token.clone();
+			let token = SessionToken::for_document(gdd.manifest().document_id);
+			let link = session_link(url, token);
+			let token = token.to_string();
 			let copy_token = token.clone();
 			(
 				"Live session",
@@ -620,7 +630,12 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 					TextButton::new("Copy Link")
 						.icon("Copy")
 						.emphasized(true)
-						.on_commit(move |_| FrontendMessage::TriggerSessionLinkCopy { token: copy_link_token.clone() }.into())
+						.on_commit(move |_| {
+							ClipboardMessage::Write {
+								content: TransferData::Text(link.clone()).into(),
+							}
+							.into()
+						})
 						.widget_instance(),
 					TextButton::new("Disconnect").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
 					fork(),
@@ -634,7 +649,12 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 						.widget_instance(),
 					IconButton::new("Copy", 24)
 						.tooltip_label("Copy Session Token")
-						.on_update(move |_| FrontendMessage::TriggerClipboardWrite { content: copy_token.clone() }.into())
+						.on_update(move |_| {
+							ClipboardMessage::Write {
+								content: TransferData::Text(copy_token.clone()).into(),
+							}
+							.into()
+						})
 						.widget_instance(),
 				]),
 			)
@@ -798,6 +818,7 @@ fn is_anonymous(remote: &RemotePeer, metadata: &HistoryMetadata) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::application::DEFAULT_ENVIRONMENT;
 
 	#[test]
 	fn a_second_join_does_not_drop_the_first() {
@@ -806,6 +827,7 @@ mod tests {
 		let mut documents = HashMap::new();
 		for byte in [1, 2] {
 			let context = SyncMessageContext {
+				environment: DEFAULT_ENVIRONMENT,
 				documents: &mut documents,
 				active_document_id: None,
 				resource_storage: &resource_storage,

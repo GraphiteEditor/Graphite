@@ -200,7 +200,8 @@ impl Transport for Room {
 	fn poll(&mut self) -> Vec<TransportEvent> {
 		let mut events = Vec::new();
 
-		for (peer, state) in self.socket.update_peers() {
+		// Errs only once the socket loop ended, which its future reports, after handing over the changes before that.
+		for (peer, state) in self.socket.try_update_peers().unwrap_or_default() {
 			match state {
 				PeerState::Connected => events.push(TransportEvent::PeerConnected(peer)),
 				PeerState::Disconnected => {

@@ -1730,6 +1730,8 @@ version = "0.0.0"
 dependencies = [
  "blake3",
  "core-types",
+ "document-loader",
+ "futures",
  "graph-craft",
  "graphene-resource",
  "postcard",
@@ -1750,6 +1752,20 @@ dependencies = [
  "log",
  "peer-transport",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "document-loader"
+version = "0.0.0"
+dependencies = [
+ "document-container",
+ "document-format",
+ "document-graph-storage",
+ "graph-craft",
+ "migration-compiled",
+ "migration-formats",
+ "migration-nodes",
+ "serde_json",
 ]
 
 [[package]]
@@ -2476,7 +2492,9 @@ dependencies = [
  "brush-nodes",
  "core-types",
  "criterion",
+ "document-loader",
  "dyn-any",
+ "futures",
  "glam",
  "graph-craft",
  "graphene-animation",
@@ -2563,6 +2581,7 @@ dependencies = [
  "document-format",
  "document-graph-storage",
  "document-live",
+ "document-loader",
  "fern",
  "getrandom 0.4.3",
  "graph-craft",
@@ -2570,9 +2589,6 @@ dependencies = [
  "image",
  "interpreted-executor",
  "log",
- "migration-compiled",
- "migration-formats",
- "migration-nodes",
  "preprocessor",
  "serde_json",
  "tokio",
@@ -3490,6 +3506,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "criterion",
+ "document-loader",
  "dyn-any",
  "futures",
  "glam",
@@ -4225,6 +4242,7 @@ dependencies = [
  "blake3",
  "ctor",
  "document-graph-storage",
+ "graphene-resource",
  "migration-macros",
  "postcard",
  "serde",
@@ -5399,6 +5417,7 @@ name = "preprocessor"
 version = "0.0.0"
 dependencies = [
  "core-types",
+ "document-loader",
  "dyn-any",
  "futures",
  "glam",
@@ -5933,8 +5952,11 @@ version = "0.0.0"
 dependencies = [
  "clap",
  "document-format",
+ "document-loader",
  "fern",
+ "graph-craft",
  "graphene-cli",
+ "graphene-std",
  "image",
  "log",
  "serde",
@@ -7262,6 +7284,7 @@ dependencies = [
  "graphene-hash",
  "graphene-resource",
  "ipsum",
+ "math-parser",
  "node-macro",
  "parley",
  "rand",

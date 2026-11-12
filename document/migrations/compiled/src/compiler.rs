@@ -1,3 +1,4 @@
+use document_graph_storage::blob::BlobBytes;
 use document_graph_storage::{Declarations, Implementation, NodeId, Registry, ResourceId};
 use graph_craft::Type;
 use graph_craft::document::{NodeId as RuntimeNodeId, NodeNetwork};
@@ -58,8 +59,9 @@ impl MigrationHost for CompilerHost {
 			}
 		}
 
-		// A state that doesn't convert answers nothing, so each migration asking takes its fallback
-		let (mut inlined, nodes, _) = state.to_runtime_with_full_metadata(&declarations).ok()?;
+		// A state that doesn't convert answers nothing, so each migration asking takes its fallback.
+		// Node migrations only see states with resolved blobs, so no blobs are needed.
+		let (mut inlined, nodes, _) = state.to_runtime_with_full_metadata(&declarations, &BlobBytes::new()).ok()?;
 		inlined.inline_definitions().ok()?;
 
 		Some(Box::new(StateCompiler {

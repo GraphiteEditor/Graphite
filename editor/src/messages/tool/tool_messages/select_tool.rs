@@ -3077,6 +3077,20 @@ mod test_select_tool {
 		assert_bounds(&editor, layer, turned_bounds([from + pan, to + pan], middle + pan, FRAC_PI_2));
 	}
 
+	#[tokio::test]
+	async fn a_layer_scaled_to_zero_width_keeps_its_bounds_where_it_was_drawn() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(420., 380.)).await;
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(360., 300.), DVec2::new(360., 380.)]);
+	}
+
 	fn snap_session(editor: &EditorTestUtils) -> &SnapSession {
 		&editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session
 	}

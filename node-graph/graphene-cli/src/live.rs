@@ -11,7 +11,7 @@ pub async fn host(signaling: &str, document: Option<&Path>) -> Result<(), Box<dy
 	let live = match document {
 		Some(path) => {
 			let archive = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
-			let mut gdd = graphene_cli::open_gdd(&archive).await?;
+			let mut gdd = document_loader::open_gdd(&archive).await?;
 			// The source document may be open elsewhere under the peer the archive holds
 			gdd.set_user(user, peer)?;
 			let token = SessionToken::for_document(gdd.manifest().document_id);

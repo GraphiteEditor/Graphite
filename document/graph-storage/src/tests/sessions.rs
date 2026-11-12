@@ -1171,7 +1171,7 @@ fn restaging_an_unchanged_runtime_does_not_revive_a_nested_network_removed_under
 	assert!(a.registry().node_instances.contains_key(&owner));
 	assert!(!a.registry().networks.contains_key(&nested));
 
-	let (runtime, _) = a.registry().to_runtime_with_metadata(&conversion.declarations).expect("to runtime");
+	let (runtime, _) = a.registry().to_runtime_with_metadata(&conversion.declarations, &conversion.blob_bytes).expect("to runtime");
 	a.mark_runtime_current();
 	a.stage_from_runtime(&runtime, &NoMetadata, &resources).expect("restage");
 	assert!(!a.registry().networks.contains_key(&nested), "the removed network stays removed");
@@ -1248,4 +1248,33 @@ fn a_removed_network_counts_as_rendered_only_when_the_root_reaches_it() {
 	let rendered = registry.as_rendered();
 	assert!(rendered.networks.contains_key(&run_by_root) && rendered.networks.contains_key(&nested));
 	assert!(!rendered.networks.contains_key(&run_by_stray) && rendered.removed_networks.contains_key(&run_by_stray));
+}
+
+#[test]
+fn the_span_an_undo_walks_names_only_the_undone_step() {
+	let mut session = Session::with_peer(PeerId(1));
+	let base = step(&mut session, add_network(1));
+	let tip = step(&mut session, add_network(2));
+
+	let undone = session.undo().expect("undo");
+	assert_eq!(undone, tip);
+	let touched = session.touched_between(session.head_rev(), undone);
+	assert_eq!(touched.networks, [NetworkId(2)].into_iter().collect());
+	assert_eq!(session.head_rev(), Some(base));
+
+	let from = session.head_rev();
+	let redone = session.redo().expect("redo");
+	assert_eq!(session.touched_between(from, redone).networks, [NetworkId(2)].into_iter().collect());
+}
+
+#[test]
+fn a_forgotten_undo_cannot_be_redone() {
+	let mut session = Session::with_peer(PeerId(1));
+	step(&mut session, add_network(1));
+	let tip = step(&mut session, add_network(2));
+
+	session.undo().expect("undo");
+	assert_eq!(session.forget_latest_undo(), Some(tip));
+	assert!(!session.can_redo());
+	assert!(session.redo_stack().is_empty());
 }

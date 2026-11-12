@@ -4,10 +4,12 @@
 use std::collections::{BTreeSet, HashMap};
 
 use document_container::AsyncContainer;
+use document_graph_storage::BlobHash;
+use document_graph_storage::blob::NewBlobs;
 use document_graph_storage::{Declarations, Delta, EncodedDeclaration, HistoryMetadata, PeerId, Registry, ResourceEntry, ResourceId, Rev, Session, Subject, TimeStamp};
 use graphene_resource::LoadResource;
 use migration_core::{Declaration, DeclarationResolver, MigrationHost, NodeMigration, Payload, PayloadCodec};
-use migration_runner::{DocumentPayloads, HistoryOutcome, RunnerError, holds, migrate_history, migrate_registry, references, registry_at, run_format_migrations};
+use migration_runner::{DocumentPayloads, HistoryOutcome, MigrationBlobs, RunnerError, holds, migrate_history, migrate_registry, references, registry_at, run_format_migrations};
 
 use crate::error::Error;
 use crate::layout::Layout;
@@ -16,7 +18,7 @@ use crate::manifest::{PayloadCodecs, SUPPORTED_FORMAT_VERSION};
 use crate::{Codec, Gdd};
 
 /// Bring `records` from `format_version` to [`SUPPORTED_FORMAT_VERSION`]. `None` when they already are.
-pub(crate) fn migrate_format(records: &mut StoredRecords, codecs: PayloadCodecs, format_version: u32) -> Result<Option<HistoryOutcome>, Error> {
+pub(crate) fn migrate_format(records: &mut StoredRecords, codecs: PayloadCodecs, format_version: u32) -> Result<Option<(HistoryOutcome, NewBlobs)>, Error> {
 	if format_version >= SUPPORTED_FORMAT_VERSION {
 		return Ok(None);
 	}
@@ -28,6 +30,7 @@ pub(crate) fn migrate_format(records: &mut StoredRecords, codecs: PayloadCodecs,
 		history: records.history.iter().flatten().map(|record| payload(record, codecs.history)).collect(),
 		hot_log: records.hot_log.iter().map(|record| payload(record, codecs.hot_log)).collect(),
 		session: records.session.as_ref().map(|record| payload(record, codecs.session)),
+		..Default::default()
 	};
 	let outcome = run_format_migrations(&migration_core::registered_format_migrations(), &mut payloads, SUPPORTED_FORMAT_VERSION)?;
 	log::info!("Migrated the document format from version {format_version} to {SUPPORTED_FORMAT_VERSION}");
@@ -40,7 +43,11 @@ pub(crate) fn migrate_format(records: &mut StoredRecords, codecs: PayloadCodecs,
 	records.hot_log = payloads.hot_log.into_iter().map(|payload| payload.bytes).collect();
 	records.session = payloads.session.map(|payload| payload.bytes);
 
-	Ok(Some(outcome))
+	let blobs = NewBlobs {
+		bytes: payloads.blobs.into_iter().map(|(hash, bytes)| (BlobHash(hash), bytes)).collect(),
+		bases: payloads.blob_bases.into_iter().map(|(hash, base)| (BlobHash(hash), BlobHash(base))).collect(),
+	};
+	Ok(Some((outcome, blobs)))
 }
 
 /// The facts in `metadata` with their revs mapped by `remap`, which drops the facts of a rev it has no answer for.
@@ -91,14 +98,16 @@ impl<L: Layout> Gdd<L> {
 		// Hot ops join history first, so they migrate with it
 		self.session.retire_all()?;
 
-		let migrated = migrate_registry(&migrations, self.session.retired_registry(), &resolver, host)?;
-		(self.session, self.metadata) = match self.session_with_rewritten_history(&migrations, &migrated, &resolver, host) {
+		let mut blobs = MigrationBlobs::new(&self.blobs.bytes);
+		let migrated = migrate_registry(&migrations, self.session.retired_registry(), &resolver, host, &mut blobs)?;
+		(self.session, self.metadata) = match self.session_with_rewritten_history(&migrations, &migrated, &resolver, host, &mut blobs) {
 			Ok(rewritten) => rewritten,
 			Err(error) => {
 				log::warn!("Migrating this document's history failed, so undo can't reach before this point: {error}");
 				(self.session_with_truncated_history(migrated)?, remap_metadata(&self.metadata, |_| None))
 			}
 		};
+		self.keep_blobs_durably(blobs.into_added()).await?;
 
 		// Declarations the migrations introduced need their bytes next to the other resources
 		let referenced = self.session.all_declaration_resources();
@@ -156,10 +165,11 @@ impl<L: Layout> Gdd<L> {
 		migrated: &Registry,
 		resolver: &DocumentDeclarations,
 		host: Option<&dyn MigrationHost>,
+		blobs: &mut MigrationBlobs,
 	) -> Result<(Session, HistoryMetadata), RunnerError> {
 		let history: Vec<Delta> = self.session.history().cloned().collect();
 		let cursors = self.session.head_rev().into_iter().chain(self.session.redo_stack().iter().copied());
-		let rewritten = migrate_history(migrations, history, resolver, host, cursors)?;
+		let rewritten = migrate_history(migrations, history, resolver, host, cursors, blobs)?;
 		let remap = |rev: Rev| rewritten.revs.get(&rev).copied().flatten();
 
 		let head = self.session.head_rev().and_then(remap);

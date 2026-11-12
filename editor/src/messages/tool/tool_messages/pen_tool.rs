@@ -1478,7 +1478,9 @@ impl PenToolData {
 	/// Perform extension of an existing path
 	fn extend_existing_path(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, point: PointId, position: DVec2) {
 		let vector: Option<VectorGeometry> = document.network_interface.compute_modified_vector(layer);
-		let (handle_start, in_segment) = if let Some(vector) = &vector {
+		let (handle_start, in_segment) = if let Some(vector) = &vector
+			&& vector.connected_count(point) <= 1
+		{
 			vector
 				.segment_iter()
 				.find_map(|(segment_id, bezier, start, end)| {
@@ -2496,13 +2498,30 @@ impl Fsm for PenToolFsmState {
 
 #[cfg(test)]
 mod test_pen_tool {
+	use super::is_almost_colinear;
 	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::tool::common_functionality::snap_session::WAKE_DWELL_ON_APPROACH;
+	use crate::test_utils::EditorTestUtils;
 	use crate::test_utils::test_prelude::*;
-	use glam::DAffine2;
-	use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
-	use graphene_std::vector::{SegmentId, VectorGeometry};
+	use glam::{DAffine2, DVec2};
+	use graphene_std::vector::misc::{BooleanOperation, HandleId, ManipulatorPointId};
+	use graphene_std::vector::{PointId, SegmentId, VectorGeometry};
+
+	fn assert_expected_anchors(editor: &EditorTestUtils, expected_anchors: &[DVec2]) {
+		let (layer, vector) = drawn_path(editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+		let mut viewport_points: Vec<DVec2> = vector.anchor_positions().into_iter().map(|pos| layer_to_viewport.transform_point2(pos)).collect();
+
+		for (expected_index, &expected_position) in expected_anchors.iter().enumerate() {
+			let Some(viewport_index) = viewport_points.iter().position(|viewport| viewport.distance_squared(expected_position) < 1e-10) else {
+				panic!("The expected anchor index {expected_index} and position {expected_position} was not found in the actual anchors {viewport_points:?}");
+			};
+			viewport_points.remove(viewport_index);
+		}
+		assert!(viewport_points.is_empty(), "Viewport point(s) were not matched: {viewport_points:?}");
+	}
 
 	/// The single Pen-drawn path layer and its vector, or `None` once the layer has been undone away.
 	fn drawn_path(editor: &EditorTestUtils) -> Option<(LayerNodeIdentifier, VectorGeometry)> {
@@ -2564,6 +2583,267 @@ mod test_pen_tool {
 	const B: DVec2 = DVec2::new(200., 100.);
 	const C: DVec2 = DVec2::new(200., 200.);
 	const D: DVec2 = DVec2::new(100., 200.);
+
+	async fn create_a_rectangle() -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
+
+		editor.new_document().await;
+
+		editor.select_primary_color(Color::RED).await;
+		// Draw a rectangle not at the origin (so will end up with a non-identity transform)
+		editor.draw_rect(A.x, A.y, C.x, C.y).await;
+
+		editor
+	}
+
+	/// Using the path tool to merge layers (by setting the endpoint to an anchor of another layer) should produce only expected anchor positions.
+	#[tokio::test]
+	async fn merging_layers_simple() {
+		let mut editor = create_a_rectangle().await;
+
+		// Start the pen somewhere random
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		// Connect to the top right of the rectangle
+		click_pen(&mut editor, B).await;
+
+		// Validate that these anchors are the only ones that exist
+		let expected_anchors = [A, B, C, D, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_two_pen_paths() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create First Pen path
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, C).await;
+
+		// Abort the first pen process
+		editor.handle_message(ToolMessage::Pen(PenToolMessage::Abort)).await;
+
+		// Create a second pen stroke
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+
+		// Validate that these anchors are the only ones that exist
+		let expected_anchors = [A, B, C];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_in_group_with_offset() {
+		let mut editor = create_a_rectangle().await;
+
+		// Group rectangle
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let group = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset = DVec2::new(50., 60.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: group,
+				transform: DAffine2::from_translation(offset),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Start the pen somewhere random
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		// Connect to the top right of the rectangle (offset by the group transform)
+		click_pen(&mut editor, B + offset).await;
+
+		let expected_anchors = [A + offset, B + offset, C + offset, D + offset, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_in_different_groups_with_offsets() {
+		let mut editor = create_a_rectangle().await;
+
+		// Group rectangle into Group 1
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let group1 = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset1 = DVec2::new(50., 60.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: group1,
+				transform: DAffine2::from_translation(offset1),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Nest Group 1 inside Group 2 with a different offset
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let group2 = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset2 = DVec2::new(30., -20.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: group2,
+				transform: DAffine2::from_translation(offset2),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		let total_offset = offset1 + offset2;
+
+		// Start the pen somewhere random
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		// Connect to the top right of the rectangle (offset by the nested group transforms)
+		click_pen(&mut editor, B + total_offset).await;
+
+		let expected_anchors = [A + total_offset, B + total_offset, C + total_offset, D + total_offset, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_in_artboard_with_offset() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let offset = DVec2::new(60., 70.);
+		editor.drag_tool(ToolType::Artboard, 0., 0., 500., 500., ModifierKeys::empty()).await;
+		let artboard = editor.active_document().metadata().all_layers().next().unwrap();
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard,
+				transform: DAffine2::from_translation(offset),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(A.x + offset.x, A.y + offset.y, C.x + offset.x, C.y + offset.y).await;
+
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		click_pen(&mut editor, B + offset).await;
+
+		let expected_anchors = [A + offset, B + offset, C + offset, D + offset, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_in_artboards_with_different_offsets() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create first artboard with offset
+		editor.drag_tool(ToolType::Artboard, 0., 0., 400., 400., ModifierKeys::empty()).await;
+		let artboard1 = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset1 = DVec2::new(50., 60.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard1,
+				transform: DAffine2::from_translation(offset1),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Draw rectangle in first artboard
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(A.x + offset1.x, A.y + offset1.y, C.x + offset1.x, C.y + offset1.y).await;
+
+		// Create second artboard with different offset
+		let offset2 = DVec2::new(-30., 40.);
+		let artboard2_origin = DVec2::new(600., 600.);
+		editor
+			.drag_tool(
+				ToolType::Artboard,
+				artboard2_origin.x,
+				artboard2_origin.y,
+				artboard2_origin.x + 400.,
+				artboard2_origin.y + 400.,
+				ModifierKeys::empty(),
+			)
+			.await;
+		let artboard2 = editor.active_document().metadata().all_layers().next().unwrap();
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard2,
+				transform: DAffine2::from_translation(offset2),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Start pen in second artboard
+		let pen_start = artboard2_origin + offset2 + DVec2::new(50., 50.);
+		click_pen(&mut editor, pen_start).await;
+
+		// Connect to anchor B of the rectangle in the first artboard
+		click_pen(&mut editor, B + offset1).await;
+
+		let expected_anchors = [A + offset1, B + offset1, C + offset1, D + offset1, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	async fn test_boolean_operation(operation: BooleanOperation) {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(A.x, A.y, C.x, C.y).await;
+		editor.draw_rect(150., 150., 250., 250.).await;
+
+		// Select both rectangles and create boolean operation layer
+		let layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: layers.iter().map(|l| l.to_node()).collect(),
+			})
+			.await;
+
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::BooleanOperation(operation),
+			})
+			.await;
+
+		let bool_layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let bool_vector = editor.active_document().network_interface.compute_modified_vector(bool_layer).expect("Boolean layer vector");
+		let bool_to_viewport = editor.active_document().metadata().transform_to_viewport(bool_layer);
+		let mut expected_anchors: Vec<DVec2> = bool_vector.anchor_positions().into_iter().map(|pos| bool_to_viewport.transform_point2(pos)).collect();
+
+		// Connect pen to one of the anchors of the boolean operation
+		let connect_anchor = expected_anchors[0];
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		click_pen(&mut editor, connect_anchor).await;
+
+		expected_anchors.push(pen_start);
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_with_different_boolean_outputs() {
+		for operation in [BooleanOperation::Union, BooleanOperation::SubtractFront, BooleanOperation::Intersect, BooleanOperation::Difference] {
+			test_boolean_operation(operation).await;
+		}
+	}
 
 	#[tokio::test]
 	async fn enter_or_esc_after_a_single_click_leaves_no_layer() {
@@ -3145,6 +3425,37 @@ mod test_pen_tool {
 		assert!(leaving.distance(handle) < 1e-6, "the joining segment's handle is at {leaving}");
 	}
 
+	/// Finds the point ID whose viewport position is within tolerance of `target`.
+	fn get_anchor_near(vector: &VectorGeometry, layer_to_viewport: DAffine2, target: DVec2) -> PointId {
+		vector
+			.anchors()
+			.find(|&(_id, pos)| layer_to_viewport.transform_point2(pos).distance(target) < 1e-6)
+			.map(|(id, _pos)| id)
+			.unwrap_or_else(|| panic!("No anchor found near {target}"))
+	}
+
+	/// Finds the segment that connects two given point IDs (in either direction).
+	fn get_segment_between(vector: &VectorGeometry, point_a: PointId, point_b: PointId) -> SegmentId {
+		vector
+			.segment_ids()
+			.into_iter()
+			.find(|&segment| {
+				let start = vector.segment_start_from_id(segment);
+				let end = vector.segment_end_from_id(segment);
+				(start == Some(point_a) && end == Some(point_b)) || (start == Some(point_b) && end == Some(point_a))
+			})
+			.unwrap_or_else(|| panic!("No segment found between the given anchors"))
+	}
+
+	/// Finds the handle position on `segment` that corresponds to `point`.
+	fn get_handle_at(vector: &VectorGeometry, segment: SegmentId, point: PointId) -> Option<DVec2> {
+		if vector.segment_start_from_id(segment) == Some(point) {
+			vector.position_of(ManipulatorPointId::PrimaryHandle(segment))
+		} else {
+			vector.position_of(ManipulatorPointId::EndHandle(segment))
+		}
+	}
+
 	#[tokio::test]
 	async fn an_anchor_moved_with_space_lands_on_a_corner_and_carries_its_handles_along() {
 		let mut editor = EditorTestUtils::create();
@@ -3431,5 +3742,84 @@ mod test_pen_tool {
 		let fill = position(graphene_std::vector_nodes::fill::IDENTIFIER).expect("The path should have a Fill node");
 		let stroke = position(graphene_std::vector_nodes::stroke::IDENTIFIER).expect("The path should have a Stroke node");
 		assert!(transform > fill && transform > stroke, "the Transform should be upstream of the Fill and Stroke in {chain:?}");
+	}
+
+	#[tokio::test]
+	async fn extending_from_anchor_with_multiple_segments_does_not_create_colinear_handle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// 1. Draw a path through A, B, and C with curved handles dragged out at B
+		click_pen(&mut editor, A).await;
+		let handle = B + DVec2::new(50., 0.);
+		editor.drag_path(&[B, handle], ModifierKeys::empty()).await;
+		click_pen(&mut editor, C).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		assert_path_shape(&editor, 3, 2);
+
+		// 2. Extend from anchor B to D by clicking on B and then D (without dragging)
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, D).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		assert_path_shape(&editor, 4, 3);
+
+		// 3. Verify the new branch leaving B does not create a mirrored/colinear handle
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+
+		let b_id = get_anchor_near(&vector, layer_to_viewport, B);
+		let d_id = get_anchor_near(&vector, layer_to_viewport, D);
+		let bd_segment = get_segment_between(&vector, b_id, d_id);
+
+		if let Some(handle_pos) = get_handle_at(&vector, bd_segment, b_id) {
+			let handle_pos = layer_to_viewport.transform_point2(handle_pos);
+			assert!(handle_pos.distance(B) < 1e-4, "Handle at B for the new segment should remain at the anchor");
+		}
+	}
+
+	#[tokio::test]
+	async fn extending_from_anchor_with_single_segment_uses_colinear_handle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// 1. Draw a single segment A→B with a curved handle dragged out at B
+		click_pen(&mut editor, A).await;
+		let handle = B + DVec2::new(50., 0.);
+		editor.drag_path(&[B, handle], ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		assert_path_shape(&editor, 2, 1);
+
+		// 2. Extend from B to C by clicking B then C (only one segment is attached to B)
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		assert_path_shape(&editor, 3, 2);
+
+		// 3. Verify the new segment leaving B carries a mirrored/colinear handle
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+
+		let b_id = get_anchor_near(&vector, layer_to_viewport, B);
+		let c_id = get_anchor_near(&vector, layer_to_viewport, C);
+		let bc_segment = get_segment_between(&vector, b_id, c_id);
+
+		let a_id = get_anchor_near(&vector, layer_to_viewport, A);
+		let ab_segment = get_segment_between(&vector, a_id, b_id);
+		let existing_handle_at_b = get_handle_at(&vector, ab_segment, b_id).expect("Segment AB should have a handle at B");
+		let existing_handle_pos = layer_to_viewport.transform_point2(existing_handle_at_b);
+
+		let new_handle_at_b = get_handle_at(&vector, bc_segment, b_id).expect("The new segment should have a handle at B");
+		let new_handle_pos = layer_to_viewport.transform_point2(new_handle_at_b);
+
+		// When only one segment is connected, the handle should not collapse to the
+		// anchor, and must be colinear with the existing handle at B.
+		assert!(
+			new_handle_pos.distance(B) > 1e-4,
+			"Handle at B should not collapse to the anchor when only one segment is connected (got {new_handle_pos})"
+		);
+		assert!(
+			is_almost_colinear(B, existing_handle_pos, new_handle_pos),
+			"New handle should be colinear with the existing handle at B (existing: {existing_handle_pos}, new: {new_handle_pos})"
+		);
 	}
 }

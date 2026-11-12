@@ -1,3 +1,4 @@
+mod blobs;
 mod compiler;
 mod examples;
 mod registration;

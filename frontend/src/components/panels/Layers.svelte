@@ -13,7 +13,6 @@
 	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { createAutoScroller, speedWhileAimingAt } from "/src/utility-functions/auto-scroll";
-	import { pasteFile } from "/src/utility-functions/files";
 	import { targetIsTextField } from "/src/utility-functions/input";
 	import { operatingSystem } from "/src/utility-functions/platform";
 	import type { EditorWrapper, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry, LayerStructureEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -1091,7 +1090,7 @@
 
 		e.preventDefault();
 
-		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor, undefined, insertParentId, insertIndex));
+		editor.ingest(e.dataTransfer, undefined, undefined, insertParentId, insertIndex);
 
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;

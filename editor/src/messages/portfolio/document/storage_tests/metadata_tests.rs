@@ -8,7 +8,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use document_graph_storage::{NodeMetadataSource, PeerId, Registry, to_value};
 
-use super::test_support::{load_demo, load_demo_with_output_descriptions, located_node, network_locations, node_locations, node_paths, open_demo};
+use super::test_support::{located_node, network_locations, node_locations, node_paths, open_demo, open_demo_with_output_descriptions};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeLocator;
@@ -30,7 +30,7 @@ fn normalize_output_descriptions(output_descriptions: Vec<String>) -> Vec<String
 /// Uses one demo (rather than the full set) because this is an exhaustive per-node check.
 #[test]
 fn editor_metadata_round_trip_against_demo() {
-	let document = load_demo_with_output_descriptions("changing-seasons.graphite");
+	let document = open_demo_with_output_descriptions("changing-seasons.graphite");
 	let interface = &document.network_interface;
 	let source = StorageMetadataView::new(interface);
 
@@ -38,9 +38,10 @@ fn editor_metadata_round_trip_against_demo() {
 
 	let conversion = Registry::convert_from_runtime(&network, &source, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
 	let declarations = conversion.declarations;
+	let blobs = conversion.blob_bytes;
 	let registry = conversion.registry;
 
-	let (_converted_network, entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
+	let (_converted_network, entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, &blobs).expect("to_runtime_with_full_metadata failed");
 
 	// Index emitted entries by their (network, local_id) address.
 	let entries_by_address: HashMap<(NetworkLocation, NodeId), &document_graph_storage::NodeMetadataEntry> = entries.iter().map(|e| ((e.network, e.local_id), e)).collect();
@@ -160,15 +161,16 @@ fn editor_metadata_round_trip_against_demo() {
 /// the original when read through `StorageMetadataView`.
 #[test]
 fn editor_interface_rebuild_round_trip() {
-	let document = load_demo_with_output_descriptions("changing-seasons.graphite");
+	let document = open_demo_with_output_descriptions("changing-seasons.graphite");
 	let original = &document.network_interface;
 	let original_view = StorageMetadataView::new(original);
 
 	let network = original.document_network().clone();
 	let conversion = Registry::convert_from_runtime(&network, &original_view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
 	let declarations = conversion.declarations;
+	let blobs = conversion.blob_bytes;
 	let registry = conversion.registry;
-	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
+	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, &blobs).expect("to_runtime_with_full_metadata failed");
 
 	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
 	let rebuilt_view = StorageMetadataView::new(&rebuilt);
@@ -277,14 +279,15 @@ fn editor_interface_rebuild_round_trip() {
 /// in, so it would produce an entirely different set of IDs.
 #[test]
 fn rebuilt_interface_keeps_storage_identities() {
-	let document = load_demo("changing-seasons.graphite");
+	let document = open_demo("changing-seasons.graphite");
 	let view = StorageMetadataView::new(&document.network_interface);
 
 	let network = document.network_interface.document_network().clone();
 	let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
 	let declarations = conversion.declarations;
+	let blobs = conversion.blob_bytes;
 	let registry = conversion.registry;
-	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
+	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, &blobs).expect("to_runtime_with_full_metadata failed");
 
 	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
 
@@ -301,7 +304,7 @@ fn rebuilt_interface_keeps_storage_identities() {
 /// Migrating an opened document must leave the recorded-delta buffer empty.
 #[test]
 fn migrating_a_document_records_no_changes() {
-	let mut document = load_demo("painted-dreams.graphite");
+	let mut document = open_demo("painted-dreams.graphite");
 	document.network_interface.discard_deltas();
 
 	crate::messages::portfolio::document_migration::document_migration_upgrades(&mut document, false);
@@ -366,7 +369,7 @@ fn an_emptied_output_description_stays_empty_after_reopening() {
 /// runtime nodes.
 #[test]
 fn pinned_order_round_trips_through_the_registry() {
-	let mut document = load_demo("changing-seasons.graphite");
+	let mut document = open_demo("changing-seasons.graphite");
 
 	let pinned: Vec<_> = document.network_interface.document_network().nodes.keys().copied().take(3).collect();
 	assert_eq!(pinned.len(), 3, "demo artwork should have at least three nodes: fixture is wrong");
@@ -383,7 +386,7 @@ fn pinned_order_round_trips_through_the_registry() {
 	let view = StorageMetadataView::new(&document.network_interface);
 	let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
 	let declarations = conversion.declarations;
-	let (rebuilt_network, node_entries, network_entries) = conversion.registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime failed");
+	let (rebuilt_network, node_entries, network_entries) = conversion.registry.to_runtime_with_full_metadata(&declarations, &conversion.blob_bytes).expect("to_runtime failed");
 	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
 
 	let rebuilt_metadata = rebuilt.network_metadata(&[]).expect("the rebuilt document network should resolve");
@@ -397,7 +400,7 @@ fn pinned_order_round_trips_through_the_registry() {
 /// the view map, then apply it onto a fresh handler and confirm each field matches.
 #[test]
 fn document_settings_round_trip() {
-	let mut document = load_demo("changing-seasons.graphite");
+	let mut document = open_demo("changing-seasons.graphite");
 
 	// Set distinctive, non-default values so the round-trip proves real data moved, not defaults.
 	document.render_mode = RenderMode::Outline;
@@ -429,21 +432,4 @@ fn document_settings_round_trip() {
 	);
 	assert_eq!(to_value(&restored.snapping_state).unwrap(), to_value(&document.snapping_state).unwrap(), "snapping_state");
 	assert_eq!(to_value(&restored.collapsed).unwrap(), to_value(&document.collapsed).unwrap(), "collapsed");
-}
-
-/// Opening a legacy document moves every nested network into the definitions table, metadata included.
-#[test]
-fn opening_a_legacy_document_lifts_every_nested_network() {
-	let document = open_demo("changing-seasons.graphite");
-	let network = document.network_interface.document_network();
-
-	assert!(!network.definitions.is_empty(), "the demo artwork should have nested networks: fixture is wrong");
-	let inline_remains = std::iter::once(network)
-		.chain(network.definitions.values())
-		.flat_map(|network| network.nodes.values())
-		.any(|node| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)));
-	assert!(!inline_remains, "an inline network survived the load");
-
-	let violations = document.network_interface.validate_invariants();
-	assert!(violations.is_empty(), "the lifted document is inconsistent:\n{}", violations.join("\n"));
 }

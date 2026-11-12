@@ -21,10 +21,7 @@ pub struct PreferencesMessageHandler {
 	pub viewport_zoom_wheel_rate: f64,
 	pub ui_scale: f64,
 	pub disable_ui_acceleration: bool,
-	pub validate_storage_round_trip: bool,
-	pub save_as_gdd: bool,
 	pub save_with_history: bool,
-	pub show_storage_preferences: bool,
 	/// This person's id across documents. A decimal string, since the browser's JSON loses 64-bit precision.
 	#[serde(with = "u64_as_string")]
 	#[cfg_attr(feature = "wasm", tsify(type = "string"))]
@@ -58,10 +55,7 @@ impl Default for PreferencesMessageHandler {
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
 			disable_ui_acceleration: true, // TODO: Set this back to false once we have ui acceleration working more reliably
-			validate_storage_round_trip: false,
-			save_as_gdd: false,
 			save_with_history: false,
-			show_storage_preferences: false,
 			user_id: crate::application::generate_uuid(),
 			user_name: String::new(),
 			show_remote_cursors: true,
@@ -145,18 +139,8 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			PreferencesMessage::DisableUIAcceleration { disable_ui_acceleration } => {
 				self.disable_ui_acceleration = disable_ui_acceleration;
 			}
-			PreferencesMessage::ValidateStorageRoundTrip { enabled } => {
-				self.validate_storage_round_trip = enabled;
-			}
-			PreferencesMessage::SaveAsGdd { enabled } => {
-				self.save_as_gdd = enabled;
-			}
 			PreferencesMessage::SaveWithHistory { enabled } => {
 				self.save_with_history = enabled;
-			}
-			PreferencesMessage::ToggleShowStoragePreferences => {
-				self.show_storage_preferences = !self.show_storage_preferences;
-				responses.add(MenuBarMessage::SendLayout);
 			}
 			PreferencesMessage::UserName { name } => {
 				self.user_name = name.trim().to_string();
