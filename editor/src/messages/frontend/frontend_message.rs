@@ -187,6 +187,11 @@ pub enum FrontendMessage {
 		#[serde(rename = "inSelectedNetwork")]
 		in_selected_network: bool,
 	},
+	/// Whether the network shown in the graph lies inside a built-in node, whose contents are read-only until made editable.
+	UpdateNetworkReadOnly {
+		#[serde(rename = "readOnly")]
+		read_only: bool,
+	},
 	UpdateBox {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,

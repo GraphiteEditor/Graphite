@@ -344,6 +344,14 @@
 		style:--grid-offset-y={`${$nodeGraphTransform.y}px`}
 		style:--grid-dot-radius={`${gridDotRadius}px`}
 	></div>
+	<!-- Kept out of the graph's pointer input so its button doesn't also start a box selection -->
+	{#if $nodeGraph.readOnly}
+		<div class="read-only-banner" on:pointerdown|stopPropagation on:pointerup|stopPropagation on:wheel|passive|stopPropagation>
+			<IconLabel icon="PadlockLocked" />
+			<TextLabel>The contents of this built-in node are shared by all its instances and read-only</TextLabel>
+			<TextButton label="Edit Contents" action={() => editor.makeNetworkEditable()} />
+		</div>
+	{/if}
 	<!-- Right click menu for adding nodes -->
 	{#if $nodeGraph.contextMenuInformation}
 		<FloatingMenu
@@ -1184,6 +1192,21 @@
 		.breadcrumb-trail-buttons {
 			margin-top: 8px;
 			margin-left: 8px;
+		}
+
+		.read-only-banner {
+			position: absolute;
+			top: 8px;
+			left: 50%;
+			transform: translateX(-50%);
+			z-index: 1;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			padding: 4px 4px 4px 8px;
+			border-radius: 4px;
+			background: var(--color-3-darkgray);
+			white-space: nowrap;
 		}
 
 		// The field for renaming a layer, import or export in place, with padding that grows outward so the text stays where it was

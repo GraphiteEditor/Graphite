@@ -39,6 +39,7 @@ type NodeGraphStoreState = {
 	thumbnailCanvases: Map<bigint, ThumbnailCanvases>;
 	selected: bigint[];
 	inSelectedNetwork: boolean;
+	readOnly: boolean;
 	reorderImportIndex: number | undefined;
 	reorderExportIndex: number | undefined;
 };
@@ -61,6 +62,7 @@ const initialState: NodeGraphStoreState = {
 	thumbnailCanvases: new Map(),
 	selected: [],
 	inSelectedNetwork: true,
+	readOnly: false,
 	reorderImportIndex: undefined,
 	reorderExportIndex: undefined,
 };
@@ -197,6 +199,13 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	subscriptions.subscribeFrontendMessage("UpdateInSelectedNetwork", (data) => {
 		update((state) => {
 			state.inSelectedNetwork = data.inSelectedNetwork;
+			return state;
+		});
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateNetworkReadOnly", (data) => {
+		update((state) => {
+			state.readOnly = data.readOnly;
 			return state;
 		});
 	});
@@ -347,6 +356,7 @@ export function destroyNodeGraphStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateHoveredConnector");
 	subscriptions.unsubscribeFrontendMessage("UpdateImportsExports");
 	subscriptions.unsubscribeFrontendMessage("UpdateInSelectedNetwork");
+	subscriptions.unsubscribeFrontendMessage("UpdateNetworkReadOnly");
 	subscriptions.unsubscribeFrontendMessage("UpdateLayerWidths");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphNodes");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphErrorDiagnostics");

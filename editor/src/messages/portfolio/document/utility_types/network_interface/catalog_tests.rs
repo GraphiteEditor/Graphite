@@ -49,7 +49,8 @@ async fn every_catalog_template_inserts_as_its_shipped_entry() {
 		.filter(|identifier| {
 			let node_id = NodeId::new();
 			let template = resolve_network_node_type(identifier).expect("listed identifiers resolve").default_node_template();
-			if !matches!(template.implementation, NodeTemplateImplementation::Network(_)) {
+			// An empty network has nothing to share, so it inserts as a definition of its own
+			if !matches!(&template.implementation, NodeTemplateImplementation::Network(network) if !network.nodes.is_empty()) {
 				return false;
 			}
 			let interface = &mut editor.active_document_mut().network_interface;
@@ -159,4 +160,37 @@ async fn a_reopened_document_keeps_its_catalog_entries() {
 	reopened.give_diverged_catalog_entries_new_ids();
 
 	assert!(reopened.document_network().definitions.contains_key(&shipped));
+}
+
+#[tokio::test]
+async fn an_entered_catalog_node_stays_read_only_until_made_editable() {
+	let (mut editor, blends) = editor_with_blends(2).await;
+	let shared = entry_of(&editor, blends[0]);
+	let path = vec![blends[0]];
+	let import_count = editor.active_document().network_interface.number_of_imports(&path);
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: blends[0] }).await;
+	assert!(editor.active_document().network_interface.is_read_only(&path));
+	editor.handle_message(NodeGraphMessage::AddImport).await;
+	assert_eq!(
+		editor.active_document().network_interface.number_of_imports(&path),
+		import_count,
+		"a read-only network should ignore edits"
+	);
+	assert_eq!(entry_of(&editor, blends[0]), shared, "an ignored edit shouldn't fork the entry");
+
+	editor.handle_message(DocumentMessage::MakeNetworkEditable).await;
+	assert!(!editor.active_document().network_interface.is_read_only(&path));
+	assert_ne!(entry_of(&editor, blends[0]), shared, "the entered node should get its own copy");
+	assert_eq!(entry_of(&editor, blends[1]), shared, "its sibling should keep the shared entry");
+	let definitions = &editor.active_document().network_interface.document_network().definitions;
+	let copied_ids = definitions[&entry_of(&editor, blends[0])].nodes.keys();
+	assert!(
+		copied_ids.into_iter().all(|node_id| !definitions[&shared].nodes.contains_key(node_id)),
+		"the copy's nodes should get IDs of their own"
+	);
+
+	editor.handle_message(NodeGraphMessage::AddImport).await;
+	assert_eq!(editor.active_document().network_interface.number_of_imports(&path), import_count + 1);
+	assert!(editor.active_document().network_interface.validate_invariants().is_empty());
 }

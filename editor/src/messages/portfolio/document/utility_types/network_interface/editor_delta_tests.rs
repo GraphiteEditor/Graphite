@@ -1183,7 +1183,8 @@ async fn a_write_keeps_its_network_when_the_instance_changes_implementation() {
 	interface.replace_implementation(&layer, &[], &mut inline_copy);
 
 	let deltas = interface.take_deltas();
-	assert_eq!(recorded_input_write(&deltas, inner), Some(written));
+	// The fork gave the written node an ID derived from the copy
+	assert_eq!(recorded_input_write(&deltas, super::derived_ids::derived_node_id(written, inner)), Some(written));
 }
 
 /// A copy of `layer` that names the same table entry, so the two share one network.

@@ -61,7 +61,10 @@ impl MessageHandler<InspectorMessage, InspectorMessageContext<'_>> for Inspector
 					inspector_collapsed_sections,
 					inspector_expanded_input_chains,
 				};
-				let layout = Layout(NodeGraphMessageHandler::collate_inspector_sections(&mut node_inspector_context));
+				let mut layout = Layout(NodeGraphMessageHandler::collate_inspector_sections(&mut node_inspector_context));
+				if node_inspector_context.network_interface.is_read_only(selection_network_path) {
+					layout.disable();
+				}
 
 				node_inspector_context.responses.add(LayoutMessage::SendLayout {
 					layout,

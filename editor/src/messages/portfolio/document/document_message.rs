@@ -249,6 +249,9 @@ pub enum DocumentMessage {
 	MakeNodeUnique {
 		node_id: NodeId,
 	},
+	/// Gives the network open in the graph its own copy of each built-in node it lies in, so it can be edited.
+	MakeNetworkEditable,
+	MakeNetworkEditableImpl,
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,

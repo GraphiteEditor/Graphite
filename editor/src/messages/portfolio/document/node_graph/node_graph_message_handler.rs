@@ -162,6 +162,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			viewport,
 		} = context;
 
+		if message
+			.edited_network(selection_network_path)
+			.is_some_and(|edited_network| network_interface.is_read_only(edited_network))
+		{
+			return;
+		}
+
 		match message {
 			// TODO: automatically remove broadcast messages.
 			NodeGraphMessage::AddNodes { nodes, new_ids } => {
@@ -1638,15 +1645,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 
 					// Try expand the upstream chain for all layers if there is an eligible node
-					let Some(network) = network_interface.nested_network(selection_network_path) else { return };
-					for layer in network
-						.nodes
-						.keys()
-						.filter(|node_id| network_interface.is_layer(node_id, selection_network_path))
-						.cloned()
-						.collect::<Vec<_>>()
+					if !network_interface.is_read_only(selection_network_path)
+						&& let Some(network) = network_interface.nested_network(selection_network_path)
 					{
-						network_interface.try_set_upstream_to_chain(&InputConnector::layer_secondary_input(layer), selection_network_path);
+						for layer in network
+							.nodes
+							.keys()
+							.filter(|node_id| network_interface.is_layer(node_id, selection_network_path))
+							.cloned()
+							.collect::<Vec<_>>()
+						{
+							network_interface.try_set_upstream_to_chain(&InputConnector::layer_secondary_input(layer), selection_network_path);
+						}
 					}
 					responses.add(NodeGraphMessage::SendGraph);
 
@@ -2058,6 +2068,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					let errors = self.node_graph_errors(network_interface, breadcrumb_network_path);
 					responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors });
+					responses.add(FrontendMessage::UpdateNetworkReadOnly {
+						read_only: network_interface.is_read_only(breadcrumb_network_path),
+					});
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
 
 					responses.add(NodeGraphMessage::UpdateImportsExports);
@@ -3508,6 +3521,19 @@ impl NodeGraphMessageHandler {
 			.selected_nodes_in_nested_network(breadcrumb_network_path)
 			.is_some_and(|selected| selected.has_selected_nodes());
 		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, true, has_selection));
+		if network_interface.is_read_only(breadcrumb_network_path) {
+			widgets.extend([
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				IconLabel::new("PadlockLocked").tooltip_label("Read-only").widget_instance(),
+				TextLabel::new("Read-only").widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
+				TextButton::new("Edit Contents")
+					.tooltip_label("Edit Contents")
+					.tooltip_description("The contents of this built-in node are shared by all its instances and shown read-only. This gives this instance its own editable copy.")
+					.on_update(|_| DocumentMessage::MakeNetworkEditable.into())
+					.widget_instance(),
+			]);
+		}
 		widgets.extend([
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextButton::new("Node Graph")

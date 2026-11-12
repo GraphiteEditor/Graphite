@@ -216,6 +216,14 @@ impl Layout {
 			..Default::default()
 		}
 	}
+
+	/// Disables every widget, and stops every node section from being dragged to reorder it.
+	pub fn disable(&mut self) {
+		for widget in self.iter_mut() {
+			widget.widget.disable();
+		}
+		self.0.iter_mut().for_each(LayoutGroup::stop_dragging);
+	}
 }
 
 impl Diffable for Layout {
@@ -575,6 +583,13 @@ impl LayoutGroup {
 			}
 		}
 		if is_col { Self::Column(WidgetColumn { widgets }) } else { Self::Row(WidgetRow { widgets }) }
+	}
+
+	fn stop_dragging(&mut self) {
+		if let LayoutGroup::NodeSection(section) = self {
+			section.draggable = false;
+			section.layout.0.iter_mut().for_each(LayoutGroup::stop_dragging);
+		}
 	}
 
 	pub fn iter_mut(&mut self) -> WidgetIterMut<'_> {
@@ -958,6 +973,39 @@ pub enum Widget {
 	TextLabel(TextLabel),
 	VisualColorPickersInput(VisualColorPickersInput),
 	WorkingColorsInput(WorkingColorsInput),
+}
+
+impl Widget {
+	/// Dims the widget and stops it from taking input, if it has a disabled state.
+	pub fn disable(&mut self) {
+		let disabled = match self {
+			Self::BreadcrumbTrailButtons(widget) => &mut widget.disabled,
+			Self::CheckboxInput(widget) => &mut widget.disabled,
+			Self::ColorComparisonInput(widget) => &mut widget.disabled,
+			Self::ColorInput(widget) => &mut widget.disabled,
+			Self::ColorPresetsInput(widget) => &mut widget.disabled,
+			Self::TransferCurveInput(widget) => &mut widget.disabled,
+			Self::DropdownInput(widget) => &mut widget.disabled,
+			Self::IconButton(widget) => &mut widget.disabled,
+			Self::IconLabel(widget) => &mut widget.disabled,
+			Self::MathExpressionInput(widget) => &mut widget.disabled,
+			Self::NodeCatalog(widget) => &mut widget.disabled,
+			Self::NumberInput(widget) => &mut widget.disabled,
+			Self::ReferencePointInput(widget) => &mut widget.disabled,
+			Self::PopoverButton(widget) => &mut widget.disabled,
+			Self::RadioInput(widget) => &mut widget.disabled,
+			Self::SliderInput(widget) => &mut widget.disabled,
+			Self::TextAreaInput(widget) => &mut widget.disabled,
+			Self::TextButton(widget) => &mut widget.disabled,
+			Self::TextInput(widget) => &mut widget.disabled,
+			Self::TextLabel(widget) => &mut widget.disabled,
+			Self::VisualColorPickersInput(widget) => &mut widget.disabled,
+			Self::ImageButton(_) | Self::ImageLabel(_) | Self::ShortcutLabel(_) | Self::ParameterChainToggle(_) | Self::ParameterExposeButton(_) | Self::Separator(_) | Self::WorkingColorsInput(_) => {
+				return;
+			}
+		};
+		*disabled = true;
+	}
 }
 
 /// How a widget claims width within its row, borrowing the model of flexbox. Parts left unset follow the defaults of the layout it appears in.

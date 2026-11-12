@@ -1,5 +1,6 @@
 //! The catalog's networks, shared under fixed IDs and forked before any write.
 
+use super::derived_ids::{rekey_nodes, truncated_hash};
 use super::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{network_node_identifiers, resolve_network_node_type};
 
@@ -20,7 +21,9 @@ impl Catalog {
 		for identifier in network_node_identifiers() {
 			let Some(definition) = resolve_network_node_type(identifier) else { continue };
 			let (node, metadata) = definition.default_node_template().into_parts();
-			if let (DocumentNodeImplementation::Network(network), Some(network_metadata)) = (node.implementation, metadata.network_metadata) {
+			if let (DocumentNodeImplementation::Network(network), Some(network_metadata)) = (node.implementation, metadata.network_metadata)
+				&& !network.nodes.is_empty()
+			{
 				inline.insert(identifier, (network, network_metadata.persistent_metadata));
 			}
 		}
@@ -40,14 +43,7 @@ impl Catalog {
 
 	/// Nodes get IDs derived from `id` and their template ID, and nested inline networks get IDs derived from `id` and the node holding them.
 	fn lift(&mut self, id: NetworkId, mut network: NodeNetwork, mut metadata: NodeNetworkMetadata) {
-		let derived = |template_id| derived_node_id(id, template_id);
-		network.map_ids(derived);
-		let persistent_metadata = &mut metadata.persistent_metadata;
-		persistent_metadata.node_metadata = std::mem::take(&mut persistent_metadata.node_metadata)
-			.into_iter()
-			.map(|(template_id, node_metadata)| (derived(template_id), node_metadata))
-			.collect();
-		persistent_metadata.pinned_node_order.iter_mut().for_each(|node_id| *node_id = derived(*node_id));
+		rekey_nodes(id, &mut network, &mut metadata.persistent_metadata);
 
 		for (node_id, node) in &mut network.nodes {
 			if !matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
@@ -97,24 +93,9 @@ pub(crate) fn is_protected(id: NetworkId) -> bool {
 /// The ID the node with `template_id` has in the shipped network of `identifier`.
 #[cfg(test)]
 pub(crate) fn shipped_node_id(identifier: &str, template_id: NodeId) -> NodeId {
-	derived_node_id(network_id(identifier.as_bytes()), template_id)
+	super::derived_ids::derived_node_id(network_id(identifier.as_bytes()), template_id)
 }
 
 fn network_id(key: &[u8]) -> NetworkId {
 	NetworkId(truncated_hash(b"catalog network", key))
-}
-
-/// The ID of the node with `template_id` in the catalog network `network`, unique across the catalog.
-fn derived_node_id(network: NetworkId, template_id: NodeId) -> NodeId {
-	NodeId(truncated_hash(b"catalog node", &[network.0.to_le_bytes(), template_id.0.to_le_bytes()].concat()))
-}
-
-/// Truncated blake3 under a domain tag, like graph-storage's derived IDs.
-fn truncated_hash(domain: &[u8], key: &[u8]) -> u64 {
-	let mut hasher = blake3::Hasher::new();
-	hasher.update(domain);
-	hasher.update(key);
-	let mut truncated = [0_u8; 8];
-	truncated.copy_from_slice(&hasher.finalize().as_bytes()[..8]);
-	u64::from_le_bytes(truncated)
 }

@@ -652,6 +652,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
+				responses.add(NodeGraphMessage::UpdateGraphBarRight);
 			}
 			DocumentMessage::Escape => {
 				// The same Esc cancels the pan, tilt, or zoom drag through its own binding
@@ -714,6 +715,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
+				responses.add(NodeGraphMessage::UpdateGraphBarRight);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				let scale = match flip_axis {
@@ -1635,6 +1637,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.snapping_state.angle_step = degrees.clamp(ANGLE_STEP_MIN, ANGLE_STEP_MAX);
 				}
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::MakeNetworkEditable => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::MakeNetworkEditableImpl);
+				responses.add(DocumentMessage::EndTransaction);
+			}
+			DocumentMessage::MakeNetworkEditableImpl => {
+				self.breadcrumb_network_path = self.network_interface.make_editable(&self.breadcrumb_network_path);
+				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::UpdateGraphBarRight);
+				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::MakeNodeUnique { node_id } => {
 				responses.add(DocumentMessage::StartTransaction);

@@ -682,6 +682,11 @@ mod editor_commands {
 		NavigationMessage::CanvasPanByViewportFraction { delta: (delta_x, delta_y).into() }.into()
 	}
 
+	/// Gives the network open in the graph its own editable copy of the built-in node contents it lies in
+	fn make_network_editable() -> Message {
+		DocumentMessage::MakeNetworkEditable.into()
+	}
+
 	/// Merge the selected nodes into a subnetwork
 	fn merge_selected_nodes() -> Message {
 		NodeGraphMessage::MergeSelectedNodes.into()
