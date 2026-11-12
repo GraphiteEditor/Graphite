@@ -645,25 +645,25 @@ fn node_input_f64_round_trips_bit_exact() {
 	assert_eq!(actual.to_bits(), precise.to_bits(), "f64 node input drifted: {actual} != {precise}");
 }
 
-/// Two storage nodes in one network carrying the same `ORIGINAL_NODE_ID` both map to one runtime ID.
-/// Conversion must reject this rather than silently collapse them and drop a node.
+/// Storage keys nodes by their runtime IDs, so a document reusing one in another network is rejected rather than losing a node.
 #[test]
-fn duplicate_runtime_node_id_is_rejected() {
-	use crate::TimeStamp;
-	use crate::to_runtime::ConversionError;
+fn a_node_id_used_in_two_networks_is_rejected() {
+	use graph_craft::document::NetworkId as RuntimeNetworkId;
 
-	let (mut registry, declarations, blobs) = to_registry(&create_simple_network());
-
-	// Force both root-network nodes onto the same runtime ID.
-	for node in registry.node_instances.values_mut() {
-		node.attributes.set(crate::attr::node::ORIGINAL_NODE_ID, crate::Value::Int(7), TimeStamp::ORIGIN);
-	}
-
-	let error = registry.to_runtime_with_metadata(&declarations, &blobs).expect_err("duplicate runtime ID must error");
-	assert!(
-		matches!(error, ConversionError::DuplicateRuntimeNodeId { runtime_id: 7, .. }),
-		"expected DuplicateRuntimeNodeId, got {error:?}"
+	let mut network = create_simple_network();
+	let nested = RuntimeNetworkId(5);
+	network.definitions.insert(nested, create_simple_network());
+	let instance = NodeId(100);
+	network.nodes.insert(
+		instance,
+		DocumentNode {
+			implementation: DocumentNodeImplementation::Definition(nested),
+			..Default::default()
+		},
 	);
+
+	let result = Registry::convert_from_runtime(&network, &crate::NoMetadata, &Default::default(), PeerId(0));
+	assert!(matches!(result, Err(crate::from_runtime::ConversionError::DuplicateNodeId(_))), "a reused node ID must not be stored");
 }
 
 /// A node input referencing a node in a different network can't be remapped to a valid local runtime
@@ -829,10 +829,10 @@ fn a_definition_cycle_is_rejected() {
 	use graph_craft::document::NetworkId as RuntimeNetworkId;
 
 	let (first, second) = (RuntimeNetworkId(10), RuntimeNetworkId(11));
-	let naming = |id| NodeNetwork {
-		exports: vec![NodeInput::node(NodeId(0), 0)],
+	let naming = |id, node_id| NodeNetwork {
+		exports: vec![NodeInput::node(node_id, 0)],
 		nodes: [(
-			NodeId(0),
+			node_id,
 			DocumentNode {
 				implementation: DocumentNodeImplementation::Definition(id),
 				..Default::default()
@@ -843,9 +843,9 @@ fn a_definition_cycle_is_rejected() {
 		..Default::default()
 	};
 
-	let mut network = naming(first);
-	network.definitions.insert(first, naming(second));
-	network.definitions.insert(second, naming(first));
+	let mut network = naming(first, NodeId(0));
+	network.definitions.insert(first, naming(second, NodeId(1)));
+	network.definitions.insert(second, naming(first, NodeId(2)));
 
 	let result = Registry::convert_from_runtime(&network, &crate::NoMetadata, &Default::default(), PeerId(0));
 	assert!(matches!(result, Err(crate::from_runtime::ConversionError::InvalidNetwork(_))), "a cycle must not be stored");

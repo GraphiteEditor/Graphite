@@ -2599,11 +2599,7 @@ impl DocumentMessageHandler {
 		if !changes.rebuilt
 			&& let Some(gdd) = self.history.storage()
 		{
-			let peer = gdd.session().peer();
-			match self
-				.network_interface
-				.reconcile_remote(gdd.registry(), self.history.declarations(), gdd.blobs(), &changes.touched, peer)
-			{
+			match self.network_interface.reconcile_remote(gdd.registry(), self.history.declarations(), gdd.blobs(), &changes.touched) {
 				Ok(reconciled) => {
 					self.finish_remote_reconcile(reconciled, changes.touched.resources, responses);
 					return true;

@@ -1,5 +1,5 @@
 use document_graph_storage::blob::BlobBytes;
-use document_graph_storage::{Declarations, Implementation, NodeId, Registry, ResourceId};
+use document_graph_storage::{Declarations, Implementation, Registry, ResourceId};
 use graph_craft::Type;
 use graph_craft::document::{NodeId as RuntimeNodeId, NodeNetwork};
 use graphene_std::platform_application_io::ResourceHash;
@@ -27,14 +27,13 @@ impl ValueType for LiveType {
 /// One state of a document, as the compiler sees it.
 struct StateCompiler<'a> {
 	inlined: NodeNetwork,
-	local_ids: HashMap<NodeId, RuntimeNodeId>,
 	resource_hashes: HashMap<ResourceId, ResourceHash>,
 	preprocessor: &'a Preprocessor,
 }
 
 impl Compiler for StateCompiler<'_> {
 	fn input_type(&self, node: &Node, slot: usize) -> Option<Box<dyn ValueType>> {
-		let local_id = *self.local_ids.get(&node.id())?;
+		let local_id = RuntimeNodeId(node.id().0);
 		let resource_hash = |resource| self.resource_hashes.get(&resource).copied();
 
 		let value_type = self.preprocessor.input_type(&self.inlined, local_id, slot, &resource_hash)?;
@@ -61,12 +60,11 @@ impl MigrationHost for CompilerHost {
 
 		// A state that doesn't convert answers nothing, so each migration asking takes its fallback.
 		// Node migrations only see states with resolved blobs, so no blobs are needed.
-		let (mut inlined, nodes, _) = state.to_runtime_with_full_metadata(&declarations, &BlobBytes::new()).ok()?;
+		let (mut inlined, _, _) = state.to_runtime_with_full_metadata(&declarations, &BlobBytes::new()).ok()?;
 		inlined.inline_definitions().ok()?;
 
 		Some(Box::new(StateCompiler {
 			inlined,
-			local_ids: nodes.into_iter().map(|node| (node.storage_id, node.local_id)).collect(),
 			resource_hashes: state.resources.iter().filter_map(|(id, entry)| Some((*id, entry.hash?))).collect(),
 			preprocessor: self.preprocessor.get_or_init(Preprocessor::new),
 		}))

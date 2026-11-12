@@ -20,70 +20,20 @@ fn map_serialization_error(key: &str) -> impl FnOnce(ValueError) -> ConversionEr
 	move |e| ConversionError::SerializationError(format!("{key}: {e:?}"))
 }
 
-/// Path to a node, used to mint stable global IDs by hashing.
-///
-/// Hashing uses blake3 truncated to 64 bits with the document's `PeerId` mixed in, so two peers
-/// converting runtime states that happen to share local IDs (e.g. both editors seeded the same
-/// UUID RNG) still produce distinct global IDs. Determinism: same `(peer, definition, local_id)` always
-/// yields the same global ID, so a peer re-converting its own runtime state preserves IDs.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-struct NodePath {
-	#[serde(skip_serializing_if = "Option::is_none")]
-	definition: Option<NetworkId>,
-	local_id: RuntimeNodeId,
-}
-
-impl NodePath {
-	fn to_global_id(&self, peer: PeerId) -> NodeId {
-		let bytes = postcard::to_stdvec(&(peer, self)).expect("NodePath must serialize");
-		let digest = blake3::hash(&bytes);
-		let mut truncated = [0u8; 8];
-		truncated.copy_from_slice(&digest.as_bytes()[..8]);
-		NodeId(u64::from_le_bytes(truncated))
-	}
-}
-
 fn storage_network_id(id: RuntimeNetworkId) -> NetworkId {
 	NetworkId(id.0)
 }
 
-/// The storage `NetworkId` of the network at `location`.
-fn storage_location_id(location: NetworkLocation) -> NetworkId {
+/// The storage `NetworkId` of the network at `location` (`ROOT_NETWORK` for the document network).
+pub fn storage_location_id(location: NetworkLocation) -> NetworkId {
 	location.map_or(ROOT_NETWORK, storage_network_id)
 }
 
-/// Resolves a node's storage identity: the identity the metadata source holds for it where there is
-/// one, and a hash of its location otherwise. Every place a node is named goes through here, so a
-/// node's own registry key and every reference to it agree.
-///
-/// A held identity travels with the node, so moving it between networks keeps it. A hashed one is
-/// derived from the node's place in the tree, so it changes when the node moves; it stands in for a
-/// node no source names, such as one in a network that has never been stored.
-pub(crate) struct NodeIds<'a, M: NodeMetadataSource + ?Sized> {
-	pub(crate) metadata: Option<&'a M>,
-	pub(crate) location: NetworkLocation,
-	pub(crate) peer: PeerId,
+/// The storage `NodeId` of a runtime node, which carries the same number since runtime node IDs are unique across the document.
+pub fn storage_node_id(id: RuntimeNodeId) -> NodeId {
+	NodeId(id.0)
 }
 
-impl<M: NodeMetadataSource + ?Sized> Clone for NodeIds<'_, M> {
-	fn clone(&self) -> Self {
-		*self
-	}
-}
-
-impl<M: NodeMetadataSource + ?Sized> Copy for NodeIds<'_, M> {}
-
-impl<M: NodeMetadataSource + ?Sized> NodeIds<'_, M> {
-	fn resolve(&self, local_id: RuntimeNodeId) -> NodeId {
-		let path = NodePath {
-			definition: self.location.map(storage_network_id),
-			local_id,
-		};
-		self.metadata
-			.and_then(|metadata| metadata.storage_node_id(self.location, local_id))
-			.unwrap_or_else(|| path.to_global_id(self.peer))
-	}
-}
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
 	#[error("Failed to serialize value: {0}")]
@@ -94,6 +44,8 @@ pub enum ConversionError {
 	InvalidNetwork(String),
 	#[error("Index {0} exceeds the storage format's u32 range")]
 	IndexOverflow(usize),
+	#[error("Node ID {0} is used by more than one node in the document")]
+	DuplicateNodeId(u64),
 }
 
 /// Graph-only conversion (no editor metadata). Use [`Registry::from_runtime_with_metadata`] for
@@ -340,27 +292,12 @@ struct ConversionContext<'m, M: NodeMetadataSource + ?Sized> {
 	peer: PeerId,
 }
 
-impl<'m, M: NodeMetadataSource + ?Sized> ConversionContext<'m, M> {
-	/// The identity resolver for nodes addressed inside the network at `location`.
-	fn ids<'a>(&self, location: NetworkLocation) -> NodeIds<'a, M>
-	where
-		'm: 'a,
-	{
-		NodeIds {
-			metadata: Some(self.metadata),
-			location,
-			peer: self.peer,
-		}
-	}
-}
-
 fn convert_network<M: NodeMetadataSource + ?Sized>(node_network: &NodeNetwork, location: NetworkLocation, registry: &mut Registry, ctx: &mut ConversionContext<'_, M>) -> Result<(), ConversionError> {
 	for (runtime_node_id, doc_node) in &node_network.nodes {
-		let global_id = ctx.ids(location).resolve(*runtime_node_id);
-
-		let mut node = convert_node(doc_node, location, *runtime_node_id, registry, ctx)?;
-		node.attributes.set(node::ORIGINAL_NODE_ID, Value::Int(runtime_node_id.0.into()), TimeStamp::ORIGIN);
-		registry.node_instances.insert(global_id, node);
+		let node = convert_node(doc_node, location, *runtime_node_id, registry, ctx)?;
+		if registry.node_instances.insert(storage_node_id(*runtime_node_id), node).is_some() {
+			return Err(ConversionError::DuplicateNodeId(runtime_node_id.0));
+		}
 	}
 
 	let network_id = storage_location_id(location);
@@ -373,22 +310,20 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(node_network: &NodeNetwork, l
 
 /// A network's export slots and network-level attributes, without its nodes.
 fn convert_network_entry<M: NodeMetadataSource + ?Sized>(node_network: &NodeNetwork, location: NetworkLocation, ctx: &ConversionContext<'_, M>) -> Result<Network, ConversionError> {
-	let ids = ctx.ids(location);
-
 	let exports = node_network
 		.exports
 		.iter()
 		.map(|export| {
 			Ok(ExportSlot {
-				target: Some(convert_input(export, ids)?),
+				target: Some(convert_input(export)?),
 				timestamp: TimeStamp::ORIGIN,
 			})
 		})
 		.collect::<Result<Vec<_>, ConversionError>>()?;
 
 	let mut attributes = crate::Attributes::new();
-	write_ui_network_attributes(&mut attributes, node_network, ids, TimeStamp::ORIGIN)?;
-	write_scope_injections(&mut attributes, node_network, ids, TimeStamp::ORIGIN)?;
+	write_ui_network_attributes(&mut attributes, node_network, ctx.metadata, location, TimeStamp::ORIGIN)?;
+	write_scope_injections(&mut attributes, node_network, TimeStamp::ORIGIN)?;
 
 	Ok(Network {
 		presence: TimeStamp::ORIGIN,
@@ -398,10 +333,8 @@ fn convert_network_entry<M: NodeMetadataSource + ?Sized>(node_network: &NodeNetw
 	})
 }
 
-/// Serialize a network's `scope_injections` onto its attributes as one whole-map LWW blob, remapping
-/// each runtime-local node reference to its stable storage global ID so the reference survives a
-/// round trip even if runtime IDs are later reshuffled.
-fn write_scope_injections<M: NodeMetadataSource + ?Sized>(attributes: &mut crate::Attributes, node_network: &NodeNetwork, ids: NodeIds<'_, M>, timestamp: TimeStamp) -> Result<(), ConversionError> {
+/// Serialize a network's `scope_injections` onto its attributes as one whole-map LWW blob.
+fn write_scope_injections(attributes: &mut crate::Attributes, node_network: &NodeNetwork, timestamp: TimeStamp) -> Result<(), ConversionError> {
 	if node_network.scope_injections.is_empty() {
 		return Ok(());
 	}
@@ -409,10 +342,7 @@ fn write_scope_injections<M: NodeMetadataSource + ?Sized>(attributes: &mut crate
 	let stored: HashMap<String, (NodeId, core_types::Type)> = node_network
 		.scope_injections
 		.iter()
-		.map(|(key, (runtime_id, ty))| {
-			let storage_id = ids.resolve(*runtime_id);
-			(key.clone(), (storage_id, ty.clone()))
-		})
+		.map(|(key, (runtime_id, ty))| (key.clone(), (storage_node_id(*runtime_id), ty.clone())))
 		.collect();
 
 	attributes
@@ -436,7 +366,7 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 		write_ui_input_attributes(&mut input_attrs, ctx.metadata, network, runtime_node_id, input_index, timestamp)?;
 
 		inputs.push(InputSlot {
-			input: convert_input(input, ctx.ids(network))?,
+			input: convert_input(input)?,
 			timestamp,
 			attributes: input_attrs,
 		});
@@ -553,31 +483,24 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	Ok(())
 }
 
-/// Node references here are remapped to stable storage IDs for the same reason `write_scope_injections`
-/// does it: a runtime ID is not stable across a round trip.
 fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,
 	node_network: &NodeNetwork,
-	ids: NodeIds<'_, M>,
+	metadata: &M,
+	location: NetworkLocation,
 	timestamp: TimeStamp,
 ) -> Result<(), ConversionError> {
-	// The same source the IDs resolve through, so a network's attributes and the nodes they name agree.
-	let Some(metadata) = ids.metadata else { return Ok(()) };
-	let location = ids.location;
-
 	if let Some(reference) = metadata.reference(location) {
 		attributes.set(node::ui::REFERENCE, Value::Str(reference.to_string()), timestamp);
 	}
 	write_network_interface_attributes(attributes, metadata, location, timestamp)?;
-
-	let to_storage_id = |runtime_id: RuntimeNodeId| ids.resolve(runtime_id);
 
 	// Only nodes the converted network still holds: the read side drops a stored ID it cannot find, so
 	// persisting one for a node deleted or reparented elsewhere would leave stored state disagreeing with
 	// what a peer converting the same input produces.
 	let pinned_order: Vec<_> = metadata.pinned_order(location).into_iter().filter(|pinned| node_network.nodes.contains_key(pinned)).collect();
 	if !pinned_order.is_empty() {
-		let stored: Vec<NodeId> = pinned_order.into_iter().map(to_storage_id).collect();
+		let stored: Vec<NodeId> = pinned_order.into_iter().map(storage_node_id).collect();
 		attributes
 			.set_serialized(network::PINNED_ORDER, &stored, timestamp)
 			.map_err(map_serialization_error(network::PINNED_ORDER))?;
@@ -638,10 +561,11 @@ fn write_ui_input_attributes<M: NodeMetadataSource + ?Sized>(
 	Ok(())
 }
 
-fn convert_input<M: NodeMetadataSource + ?Sized>(input: &GraphCraftNodeInput, ids: NodeIds<'_, M>) -> Result<NodeInput, ConversionError> {
+/// Converts one runtime input to storage form.
+pub fn convert_input(input: &GraphCraftNodeInput) -> Result<NodeInput, ConversionError> {
 	Ok(match input {
 		GraphCraftNodeInput::Node { node_id, output_index } => NodeInput::Node {
-			id: ids.resolve(*node_id),
+			id: storage_node_id(*node_id),
 			index: (*output_index).try_into().map_err(|_| ConversionError::IndexOverflow(*output_index))?,
 		},
 		GraphCraftNodeInput::Value { tagged_value, exposed } => {
@@ -713,53 +637,10 @@ fn convert_implementation<M: NodeMetadataSource + ?Sized>(
 	})
 }
 
-/// Derives storage IDs from runtime network locations.
-/// It uses the same [`NodeIds`] as a whole-document conversion, so both give the same IDs.
-pub struct PathResolver<'m> {
-	metadata: Option<&'m dyn NodeMetadataSource>,
-	peer: PeerId,
-}
-
-impl<'m> PathResolver<'m> {
-	/// Without a metadata source every node falls back to a hash of its location, which only matches a
-	/// whole-document conversion while no node has a stored identity.
-	pub fn new(metadata: Option<&'m dyn NodeMetadataSource>, peer: PeerId) -> Self {
-		Self { metadata, peer }
-	}
-
-	/// The storage `NetworkId` of the network at `location` (`ROOT_NETWORK` for the document network).
-	pub fn network_id(&self, location: NetworkLocation) -> NetworkId {
-		storage_location_id(location)
-	}
-
-	/// The storage `NodeId` of the node with `local_id` inside the network at `location`.
-	pub fn node_id(&self, location: NetworkLocation, local_id: RuntimeNodeId) -> NodeId {
-		self.ids(location).resolve(local_id)
-	}
-
-	/// Converts one runtime input in the network at `location` to storage form, with node references mapped to storage IDs.
-	pub fn convert_input_at(&self, input: &GraphCraftNodeInput, location: NetworkLocation) -> Result<NodeInput, ConversionError> {
-		convert_input(input, self.ids(location))
-	}
-
-	/// The identity resolver for nodes addressed inside the network at `location`.
-	fn ids<'a>(&self, location: NetworkLocation) -> NodeIds<'a, dyn NodeMetadataSource + 'm>
-	where
-		'm: 'a,
-	{
-		NodeIds {
-			metadata: self.metadata,
-			location,
-			peer: self.peer,
-		}
-	}
-}
-
 /// Converts a chosen subset of runtime entities into a scratch [`Registry`] through the same
 /// encoders as a whole-document conversion, so staging can derive deltas for just those entities.
 pub struct ScopedConversion<'m> {
 	ctx: ConversionContext<'m, dyn NodeMetadataSource + 'm>,
-	resolver: PathResolver<'m>,
 }
 
 impl<'m> ScopedConversion<'m> {
@@ -773,15 +654,13 @@ impl<'m> ScopedConversion<'m> {
 				metadata,
 				peer,
 			},
-			resolver: PathResolver::new(Some(metadata), peer),
 		}
 	}
 
 	/// Converts the node `local_id` in the network at `location` into `registry`.
 	pub fn convert_node_at(&mut self, registry: &mut Registry, location: NetworkLocation, local_id: RuntimeNodeId, doc_node: &DocumentNode) -> Result<(), ConversionError> {
-		let mut node = convert_node(doc_node, location, local_id, registry, &mut self.ctx)?;
-		node.attributes.set(node::ORIGINAL_NODE_ID, Value::Int(local_id.0.into()), TimeStamp::ORIGIN);
-		registry.node_instances.insert(self.resolver.node_id(location, local_id), node);
+		let node = convert_node(doc_node, location, local_id, registry, &mut self.ctx)?;
+		registry.node_instances.insert(storage_node_id(local_id), node);
 		Ok(())
 	}
 

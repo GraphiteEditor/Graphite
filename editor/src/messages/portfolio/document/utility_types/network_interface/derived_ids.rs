@@ -9,9 +9,13 @@ pub(crate) fn derived_node_id(network: NetworkId, node_id: NodeId) -> NodeId {
 
 /// Gives each node of a network copied under the ID `network_id` its derived ID, in the graph and in the metadata naming it.
 pub(super) fn rekey_nodes(network_id: NetworkId, network: &mut NodeNetwork, metadata: &mut NodeNetworkPersistentMetadata) {
-	let derived = |node_id| derived_node_id(network_id, node_id);
-	network.map_ids(derived);
+	network.map_ids(|node_id| derived_node_id(network_id, node_id));
+	rekey_node_metadata(network_id, metadata);
+}
 
+/// The metadata half of [`rekey_nodes`].
+pub(super) fn rekey_node_metadata(network_id: NetworkId, metadata: &mut NodeNetworkPersistentMetadata) {
+	let derived = |node_id| derived_node_id(network_id, node_id);
 	metadata.node_metadata = std::mem::take(&mut metadata.node_metadata)
 		.into_iter()
 		.map(|(node_id, node_metadata)| (derived(node_id), node_metadata))

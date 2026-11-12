@@ -46,16 +46,9 @@ type StorageIndex = HashMap<StorageNodeId, (NetworkLocation, NodeId)>;
 
 impl NodeNetworkInterface {
 	/// Applies what the registry holds differently for the touched entities. Can fail part-way, and a retry is safe.
-	pub(crate) fn reconcile_remote(
-		&mut self,
-		registry: &Registry,
-		declarations: &Declarations,
-		blobs: &BlobBytes,
-		touched: &Touched,
-		peer: document_graph_storage::PeerId,
-	) -> Result<Reconciled, ReconcileError> {
+	pub(crate) fn reconcile_remote(&mut self, registry: &Registry, declarations: &Declarations, blobs: &BlobBytes, touched: &Touched) -> Result<Reconciled, ReconcileError> {
 		let projection = registry.runtime_projection(declarations, blobs);
-		let index = self.pin_storage_identities(peer);
+		let index = self.node_locations();
 		let mut reconciled = Reconciled::default();
 
 		let mut nodes = touched.nodes.clone();

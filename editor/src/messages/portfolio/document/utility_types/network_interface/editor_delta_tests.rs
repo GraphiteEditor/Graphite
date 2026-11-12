@@ -37,9 +37,7 @@ fn committed_deltas(editor: &mut EditorTestUtils) -> Vec<EditorDelta> {
 
 fn construct(editor: &EditorTestUtils, deltas: &[EditorDelta], working: &Registry) -> Vec<RegistryDelta> {
 	let document = editor.active_document();
-	construct_batch(deltas, working, &document.resources.registry, &StorageMetadataView::new(&document.network_interface), PEER)
-		.expect("construction should succeed")
-		.ops
+	construct_batch(deltas, working, &document.resources.registry, PEER).expect("construction should succeed").ops
 }
 
 fn node_metadata(editor: &EditorTestUtils, node_id: NodeId) -> DocumentNodePersistentMetadata {
@@ -687,7 +685,6 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 		})
 		.await;
 	editor.active_document_mut().network_interface.discard_deltas();
-	editor.active_document_mut().network_interface.pin_storage_identities(PEER);
 
 	let mut mirror = editor.active_document().network_interface.clone();
 	let baseline = conversion(&editor);
@@ -697,20 +694,12 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 
 	edit(&mut editor);
 	editor.active_document_mut().network_interface.settle_definitions();
-	editor.active_document_mut().network_interface.pin_storage_identities(PEER);
 
 	let recorded = editor.active_document_mut().network_interface.take_deltas();
 	assert!(!recorded.is_empty(), "the edit should have recorded something to send");
 	let constructed = {
 		let document = editor.active_document();
-		construct_batch(
-			&recorded,
-			&baseline.registry,
-			&document.resources.registry,
-			&StorageMetadataView::new(&document.network_interface),
-			PEER,
-		)
-		.expect("construction")
+		construct_batch(&recorded, &baseline.registry, &document.resources.registry, PEER).expect("construction")
 	};
 	declarations.extend(constructed.declarations.decoded);
 
@@ -720,7 +709,7 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 	}
 	peer.stage_computed_ops(constructed.ops).expect("the peer applies the batch");
 
-	mirror.reconcile_remote(peer.registry(), &declarations, &baseline.blob_bytes, &touched, PEER).expect("reconcile");
+	mirror.reconcile_remote(peer.registry(), &declarations, &baseline.blob_bytes, &touched).expect("reconcile");
 
 	let edited = &editor.active_document().network_interface;
 	assert!(
@@ -894,7 +883,6 @@ async fn reconciling_an_untouched_node_changes_nothing() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	editor.draw_rect(0., 0., 100., 100.).await;
-	editor.active_document_mut().network_interface.pin_storage_identities(PEER);
 
 	let baseline = conversion(&editor);
 	let mut touched = Touched::default();
@@ -905,7 +893,7 @@ async fn reconciling_an_untouched_node_changes_nothing() {
 	let reconciled = editor
 		.active_document_mut()
 		.network_interface
-		.reconcile_remote(&baseline.registry, &baseline.declarations, &baseline.blob_bytes, &touched, PEER)
+		.reconcile_remote(&baseline.registry, &baseline.declarations, &baseline.blob_bytes, &touched)
 		.expect("reconcile");
 
 	assert!(reconciled.networks.is_empty(), "nothing differed, so nothing should have been applied: {:?}", reconciled.networks);

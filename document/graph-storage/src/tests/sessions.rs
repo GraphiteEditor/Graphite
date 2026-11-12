@@ -1120,9 +1120,9 @@ fn discarded_hot_ops_leave_the_working_registry_at_the_snapshot() {
 fn restaging_an_unchanged_runtime_does_not_revive_a_nested_network_removed_under_a_live_owner() {
 	let resources = graphene_resource::ResourceRegistry::new();
 	let outer = NodeNetwork {
-		exports: vec![RuntimeInput::node(RuntimeNodeId(0), 0)],
+		exports: vec![RuntimeInput::node(RuntimeNodeId(100), 0)],
 		nodes: [(
-			RuntimeNodeId(0),
+			RuntimeNodeId(100),
 			DocumentNode {
 				implementation: DocumentNodeImplementation::Definition(graph_craft::document::NetworkId(9)),
 				..Default::default()
