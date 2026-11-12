@@ -15,7 +15,7 @@ use graphene_std::application_io::{ApplicationIo, ExportFormat, Texture};
 use graphene_std::list::{Item, List};
 use graphene_std::memo::IORecord;
 use graphene_std::ops::ConvertAsync;
-#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
+#[cfg(all(target_family = "wasm", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::runtime::AsyncRuntime;
@@ -28,9 +28,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use thumbnails::Thumbnails;
-#[cfg(feature = "gpu")]
 use vello_gpu::peniko::ImageSampler;
-#[cfg(feature = "gpu")]
 use wgpu_executor::{VelloCanvas, VelloSceneBuilder};
 
 mod thumbnails;
@@ -71,18 +69,14 @@ pub struct NodeRuntime {
 	vector_evaluations: HashMap<NodeId, (NodeId, u64)>,
 
 	/// Cached surface for Wasm viewport rendering (reused across frames)
-	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
+	#[cfg(all(target_family = "wasm", feature = "wasm"))]
 	wasm_canvas_cache: CanvasSurfaceHandle,
 	/// The viewport's latest artwork.
-	#[cfg(feature = "gpu")]
 	viewport_artwork: Option<Texture>,
 	/// The overlays to render once the viewport has artwork.
-	#[cfg(feature = "gpu")]
 	pending_overlays: Option<OverlayContext>,
-	#[cfg(feature = "gpu")]
 	overlays_canvas: VelloCanvas,
 	/// The latest rendered overlays.
-	#[cfg(feature = "gpu")]
 	overlays_texture: Option<Texture>,
 }
 
@@ -165,15 +159,11 @@ impl NodeRuntime {
 			vector_modify: Default::default(),
 			vector_evaluations: Default::default(),
 			inspect_state: None,
-			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			#[cfg(all(target_family = "wasm", feature = "wasm"))]
 			wasm_canvas_cache: CanvasSurfaceHandle::new(),
-			#[cfg(feature = "gpu")]
 			viewport_artwork: None,
-			#[cfg(feature = "gpu")]
 			pending_overlays: None,
-			#[cfg(feature = "gpu")]
 			overlays_canvas: VelloCanvas::default(),
-			#[cfg(feature = "gpu")]
 			overlays_texture: None,
 		}
 	}
@@ -216,10 +206,7 @@ impl NodeRuntime {
 					let svg = self.old_graph.as_ref().and_then(|network| thumbnails::layers_svg(&layers, network, &self.executor));
 					self.sender.send(NodeGraphUpdate::ClipboardSvg { id, svg }).expect("Failed to send response");
 				}
-				#[cfg(feature = "gpu")]
 				GraphRuntimeRequest::RenderOverlays(context) => self.pending_overlays = Some(context),
-				#[cfg(not(feature = "gpu"))]
-				GraphRuntimeRequest::RenderOverlays(_) => {}
 			}
 		}
 
@@ -300,7 +287,6 @@ impl NodeRuntime {
 			}
 
 			// Overlays that changed without new artwork are drawn over the artwork already shown
-			#[cfg(feature = "gpu")]
 			if self.pending_overlays.is_some() {
 				texture = self.composite_viewport_frame();
 			}
@@ -318,25 +304,18 @@ impl NodeRuntime {
 		let texture = if let Some(data) = result.render_output()
 			&& let RenderOutputType::Texture(texture) = data
 		{
-			#[cfg(feature = "gpu")]
-			{
-				self.viewport_artwork = Some(texture.clone());
-				let frame = self.composite_viewport_frame();
+			self.viewport_artwork = Some(texture.clone());
+			let frame = self.composite_viewport_frame();
 
-				#[cfg(target_family = "wasm")]
-				{
-					*data = RenderOutputType::CanvasFrame {
-						canvas_id: self.wasm_canvas_cache.id(),
-						resolution: request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale,
-					};
-				}
-
-				frame
-			}
-			#[cfg(not(feature = "gpu"))]
+			#[cfg(all(target_family = "wasm", feature = "wasm"))]
 			{
-				Some(texture.clone())
+				*data = RenderOutputType::CanvasFrame {
+					canvas_id: self.wasm_canvas_cache.id(),
+					resolution: request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale,
+				};
 			}
+
+			frame
 		} else {
 			None
 		};
@@ -346,7 +325,6 @@ impl NodeRuntime {
 	}
 
 	/// Draws the latest overlays over the viewport's artwork, presenting the frame on web.
-	#[cfg(feature = "gpu")]
 	fn composite_viewport_frame(&mut self) -> Option<Texture> {
 		let artwork = self.viewport_artwork.clone()?;
 		let Some(executor) = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
@@ -379,7 +357,7 @@ impl NodeRuntime {
 			None => artwork,
 		};
 
-		#[cfg(target_family = "wasm")]
+		#[cfg(all(target_family = "wasm", feature = "wasm"))]
 		self.wasm_canvas_cache.present(&frame, executor);
 
 		Some(frame)

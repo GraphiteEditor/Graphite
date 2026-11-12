@@ -3804,7 +3804,6 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	}
 
 	// Collapse the legacy "Rasterize" wrapper network, which drew into a browser canvas, into the standalone Vello `rasterize` proto node
-	#[cfg(feature = "gpu")]
 	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
 		&& name == "Rasterize"
 		&& node.inputs.len() == 2
@@ -4302,7 +4301,6 @@ mod tests {
 		assert_eq!(chain_layout(&opened, layer), expected, "the migration should leave the layer's chain intact");
 	}
 
-	#[cfg(feature = "gpu")]
 	#[tokio::test]
 	async fn opening_a_canvas_rasterize_network_upgrades_it_to_the_vello_node() {
 		use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkTemplate;
@@ -4357,7 +4355,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(feature = "gpu")]
 	#[tokio::test]
 	async fn a_rasterize_node_on_the_export_compiles() {
 		use crate::test_utils::test_prelude::*;

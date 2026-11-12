@@ -1034,7 +1034,6 @@ impl NodeGraphExecutor {
 					responses.add(FrontendMessage::TriggerExportImage { svg, name, file_type, size });
 				}
 			}
-			#[cfg(feature = "gpu")]
 			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Buffer { data, width, height },
 				..
