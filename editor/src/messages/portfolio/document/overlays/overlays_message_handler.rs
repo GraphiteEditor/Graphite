@@ -35,10 +35,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				}
 
 				// Queued after the providers so the scene is complete once it's rendered
-				#[cfg(target_family = "wasm")]
 				responses.add(PortfolioMessage::RenderOverlays { context: overlay_context });
-				#[cfg(not(target_family = "wasm"))]
-				responses.add(FrontendMessage::RenderOverlays { context: overlay_context });
 			}
 			#[cfg(test)]
 			OverlaysMessage::Draw => {

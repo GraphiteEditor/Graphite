@@ -1004,9 +1004,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					});
 				}
 			}
-			#[cfg(target_family = "wasm")]
 			PortfolioMessage::RenderOverlays { context } => {
 				self.executor.submit_overlays(context);
+
+				#[cfg(not(target_family = "wasm"))]
+				responses.add(FrontendMessage::WakeNodeRuntime);
 			}
 			PortfolioMessage::SaveRasterizedExport { name, file_type, width, height, data } => match file_type.encode(width, height, data) {
 				Ok(content) => responses.add(FrontendMessage::TriggerSaveFile {
