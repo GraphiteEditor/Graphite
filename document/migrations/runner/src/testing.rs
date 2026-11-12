@@ -211,8 +211,8 @@ impl Generator<'_> {
 			let node = self.random.pick(&candidates);
 			return NodeInput::Node { id: node, index: 0 };
 		}
-		if network != ROOT_NETWORK && self.random.below(2) == 0 {
-			let index = self.random.below(self.contract.input_count.max(1)) as u32;
+		if network != ROOT_NETWORK && self.contract.input_count > 0 && self.random.below(2) == 0 {
+			let index = self.random.below(self.contract.input_count) as u32;
 			return NodeInput::Import { index };
 		}
 

@@ -299,6 +299,12 @@ fn add_nodes(target: &mut Registry, runs: &[(NodeId, Edits)], resolver: &dyn Dec
 		let Some(network) = target.node_instances.get(anchor).map(Node::network) else { continue };
 
 		for added in &edits.added_nodes {
+			if added.node.declaration.is_network() {
+				return Err(RunnerError::AddedNetworkDefinition {
+					anchor: *anchor,
+					declaration: added.node.declaration,
+				});
+			}
 			if !added_ids.insert(added.id) {
 				return Err(RunnerError::DuplicateAddedNode {
 					anchor: *anchor,
