@@ -77,20 +77,22 @@ impl NodeNetworkInterface {
 		Some(NetworkMut::new(metadata, &mut self.deltas, location))
 	}
 
-	/// Both halves of a node, or `None` if either is missing, after forking the catalog entries along the path.
+	/// Both halves of a node, or `None` if either is missing or its network is read-only.
 	pub(crate) fn node_mut<'a>(&'a mut self, locator: NodeLocator<'a>) -> Option<NodeMut<'a>> {
 		self.document_node(&locator.node_id, locator.network_path)?;
-		let (location, node_id) = self.locate_node_for_write(locator)?;
-		self.node_mut_at(location, node_id)
+		let location = self.locate_for_write(locator.network_path)?;
+		self.node_mut_at(location, locator.node_id)
 	}
 
 	/// Like [`Self::node_mut`], but also forks the catalog entry the node names, which holds its interface.
 	pub(crate) fn node_interface_mut<'a>(&'a mut self, locator: NodeLocator<'a>) -> Option<NodeMut<'a>> {
-		self.document_node(&locator.node_id, locator.network_path)?;
-		let node_path = self.fork_catalog_entries_along(&[locator.network_path, &[locator.node_id]].concat());
-		let (node_id, network_path) = node_path.split_last()?;
-		let location = self.locate(network_path)?;
-		self.node_mut_at(location, *node_id)
+		let implementation = &self.document_node(&locator.node_id, locator.network_path)?.implementation;
+		let names_catalog_entry = matches!(implementation, DocumentNodeImplementation::Definition(id) if catalog::is_protected(*id));
+		let location = self.locate_for_write(locator.network_path)?;
+		if names_catalog_entry {
+			self.fork_definition(locator)?;
+		}
+		self.node_mut_at(location, locator.node_id)
 	}
 
 	/// Like [`Self::node_mut`] without forking, for load-time repairs only.

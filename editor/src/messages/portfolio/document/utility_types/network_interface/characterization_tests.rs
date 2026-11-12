@@ -972,6 +972,7 @@ async fn signature_edits_keep_parallel_metadata_in_sync() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	let initial_imports = network_interface.number_of_imports(&path);
@@ -1008,6 +1009,7 @@ async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 
 	// Dropping an import or export just below itself leaves it where it was
 	let network_interface = &mut editor.active_document_mut().network_interface;
@@ -1056,6 +1058,7 @@ async fn moving_the_primary_import_among_the_secondary_ones_leaves_an_empty_prim
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.add_import(TaggedValue::Number(1.), true, -1, "Parameter", "", &path);
 	let primary_name = network_interface.displayed_import_name(0, &path);
@@ -1596,6 +1599,7 @@ async fn a_subgraph_output_fed_by_a_value_can_produce_its_type() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.add_export(TaggedValue::Number(1.), -1, "", &path);

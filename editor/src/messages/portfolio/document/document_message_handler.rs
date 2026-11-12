@@ -2646,11 +2646,36 @@ impl DocumentMessageHandler {
 			self.refresh_resource_registry();
 		}
 
+		self.leave_missing_networks(responses);
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SendWires);
+	}
+
+	/// Leaves the networks along the breadcrumb path that no longer exist, such as a copy an undo took back.
+	fn leave_missing_networks(&mut self, responses: &mut VecDeque<Message>) {
+		let network_exists = |network_path: &[NodeId]| self.network_interface.nested_network(network_path).is_some();
+		if !network_exists(&self.selection_network_path) {
+			self.selection_network_path.clone_from(&self.breadcrumb_network_path);
+		}
+		if network_exists(&self.breadcrumb_network_path) {
+			responses.add(NodeGraphMessage::UpdateGraphBarRight);
+			return;
+		}
+
+		let existing_depth = (0..self.breadcrumb_network_path.len())
+			.rev()
+			.find(|depth| network_exists(&self.breadcrumb_network_path[..*depth]))
+			.unwrap_or(0);
+		self.breadcrumb_network_path.truncate(existing_depth);
+		self.selection_network_path.clone_from(&self.breadcrumb_network_path);
+		self.network_interface.unload_import_export_ports(&self.breadcrumb_network_path);
+		responses.add(NodeGraphMessage::SendGraph);
+		responses.add(DocumentMessage::PTZUpdate);
+		responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
+		responses.add(NodeGraphMessage::UpdateGraphBarRight);
 	}
 
 	pub(crate) fn cache_declaration_bytes(&mut self, hash: ResourceHash, bytes: &[u8]) -> bool {
@@ -2674,6 +2699,7 @@ impl DocumentMessageHandler {
 		}
 		self.refresh_resource_registry();
 
+		self.leave_missing_networks(responses);
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);

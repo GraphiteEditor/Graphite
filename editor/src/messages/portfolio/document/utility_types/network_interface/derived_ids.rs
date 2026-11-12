@@ -3,7 +3,7 @@
 use super::*;
 
 /// The ID the node `node_id` gets in a copy of its network under the ID `network`.
-pub(super) fn derived_node_id(network: NetworkId, node_id: NodeId) -> NodeId {
+pub(crate) fn derived_node_id(network: NetworkId, node_id: NodeId) -> NodeId {
 	NodeId(truncated_hash(b"network node", &[network.0.to_le_bytes(), node_id.0.to_le_bytes()].concat()))
 }
 

@@ -72,7 +72,9 @@ impl NodeNetworkInterface {
 
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: &str, network_path: &[NodeId]) {
-		let network_path = &self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "add_export") {
+			return;
+		}
 		let inserted_index = if insert_index == -1 { self.number_of_exports(network_path) } else { insert_index as usize };
 		if !self.insert_export_slot(network_path, inserted_index, NodeInput::value(default_value, true), output_name.to_string(), String::new()) {
 			return;
@@ -110,7 +112,9 @@ impl NodeNetworkInterface {
 
 	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The input_name is used by the encapsulating node.
 	pub fn add_import(&mut self, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: &str, input_description: &str, network_path: &[NodeId]) {
-		let network_path = &self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "add_import") {
+			return;
+		}
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		let Some((first_path, first_node_id)) = encapsulating_nodes.first() else {
 			log::error!("Cannot add import for document network");
@@ -193,7 +197,9 @@ impl NodeNetworkInterface {
 
 	// First disconnects the export, then removes it
 	pub fn remove_export(&mut self, export_index: usize, network_path: &[NodeId]) {
-		let network_path = &self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "remove_export") {
+			return;
+		}
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		if encapsulating_nodes.is_empty() {
 			log::error!("Cannot remove export for document network");
@@ -238,7 +244,9 @@ impl NodeNetworkInterface {
 
 	// First disconnects the import, then removes it
 	pub fn remove_import(&mut self, import_index: usize, network_path: &[NodeId]) {
-		let network_path = &self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "remove_import") {
+			return;
+		}
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		let Some((first_path, first_parent_id)) = encapsulating_nodes.first() else {
 			log::error!("Cannot remove import for document network");
@@ -290,7 +298,9 @@ impl NodeNetworkInterface {
 
 	/// The end index is before the export is removed, so moving to the end is the length of the current exports
 	pub fn reorder_export(&mut self, start_index: usize, mut end_index: usize, network_path: &[NodeId]) {
-		let network_path = &self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "reorder_export") {
+			return;
+		}
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		if encapsulating_nodes.is_empty() {
 			log::error!("Could not reorder export for document network");
@@ -323,7 +333,9 @@ impl NodeNetworkInterface {
 
 	/// The end index is before the import is removed, so moving to the end is the length of the current imports
 	pub fn reorder_import(&mut self, start_index: usize, mut end_index: usize, network_path: &[NodeId]) {
-		let network_path = &self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "reorder_import") {
+			return;
+		}
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		if encapsulating_nodes.is_empty() {
 			log::error!("Could not reorder import for document network");

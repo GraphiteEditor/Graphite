@@ -56,7 +56,9 @@ impl NodeNetworkInterface {
 
 	/// Inserts an import at `index` into the network at `network_path`: its metadata once, and `input` on every node the network implements.
 	pub(crate) fn insert_import_slot(&mut self, network_path: &[NodeId], index: usize, input: NodeInput, metadata: InputMetadata) -> bool {
-		let network_path = &self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "insert_import_slot") {
+			return false;
+		}
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		if encapsulating_nodes.is_empty() {
 			log::error!("Cannot insert an import into the document network");
@@ -80,7 +82,9 @@ impl NodeNetworkInterface {
 
 	/// Removes the import at `index` from the network at `network_path` and from every node the network implements, returning its metadata.
 	pub(crate) fn remove_import_slot(&mut self, network_path: &[NodeId], index: usize) -> Option<InputMetadata> {
-		let network_path = &self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "remove_import_slot") {
+			return None;
+		}
 		for (path, node_id) in self.encapsulating_nodes(network_path) {
 			let Some(mut node) = self.node_mut(NodeLocator::new(node_id, &path)) else {
 				log::error!("Could not get node {node_id} in remove_import_slot");
@@ -100,7 +104,9 @@ impl NodeNetworkInterface {
 
 	/// Moves the import at `from` to `to`, carrying its metadata and each node's input with it.
 	pub(crate) fn move_import_slot(&mut self, network_path: &[NodeId], from: usize, to: usize) -> bool {
-		let network_path = &self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "move_import_slot") {
+			return false;
+		}
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		if encapsulating_nodes.is_empty() {
 			return false;
@@ -254,11 +260,11 @@ impl NodeNetworkInterface {
 
 	/// Writes the input at `connector`, returning the input it replaced.
 	pub(crate) fn set_input_slot(&mut self, connector: &InputConnector, network_path: &[NodeId], input: NodeInput) -> Option<NodeInput> {
-		let Some((location, connector)) = self.locate_connector_for_write(connector, network_path) else {
+		let Some(location) = self.locate_for_write(network_path) else {
 			log::error!("Could not locate network {network_path:?} in set_input_slot");
 			return None;
 		};
-		self.set_input_slot_at(&connector, location, input)
+		self.set_input_slot_at(connector, location, input)
 	}
 
 	/// Writes the input at `connector` in the network at `location`, like [`Self::set_input_slot`].
@@ -288,11 +294,10 @@ impl NodeNetworkInterface {
 	/// which avoids copying the value out and back. The recorded delta still carries the whole result,
 	/// since the storage op is a whole-value write.
 	pub(crate) fn edit_input_value(&mut self, connector: &InputConnector, network_path: &[NodeId], edit: impl FnOnce(&mut TaggedValue) -> bool) -> bool {
-		let Some((location, connector)) = self.locate_connector_for_write(connector, network_path) else {
+		let Some(location) = self.locate_for_write(network_path) else {
 			log::error!("Could not locate network {network_path:?} in edit_input_value");
 			return false;
 		};
-		let connector = &connector;
 		let Some(network) = self.network_graph_mut(location) else {
 			log::error!("Could not get nested network in edit_input_value");
 			return false;
@@ -372,11 +377,11 @@ impl NodeNetworkInterface {
 
 	/// Removes a node and its metadata, returning them joined as a template.
 	pub(crate) fn remove_node_entry(&mut self, locator: NodeLocator) -> Option<NodeTemplate> {
-		let Some((location, node_id)) = self.locate_node_for_write(locator) else {
+		let Some(location) = self.locate_for_write(locator.network_path) else {
 			log::error!("Could not locate network {:?} in remove_node_entry", locator.network_path);
 			return None;
 		};
-		self.remove_node_entry_at(location, node_id)
+		self.remove_node_entry_at(location, locator.node_id)
 	}
 
 	/// Removes the node `node_id` from the network at `location`, like [`Self::remove_node_entry`].
@@ -398,7 +403,8 @@ impl NodeNetworkInterface {
 
 	/// Swaps in a new implementation for the node, first moving an inline network it brings into the definitions table with the node's interface.
 	pub(crate) fn replace_node_implementation(&mut self, locator: NodeLocator, mut implementation: DocumentNodeImplementation, mut network_metadata: Option<NodeNetworkMetadata>) {
-		let Some((location, node_id)) = self.locate_node_for_write(locator) else {
+		let node_id = locator.node_id;
+		let Some(location) = self.locate_for_write(locator.network_path) else {
 			log::error!("Could not locate network {:?} in replace_node_implementation", locator.network_path);
 			return;
 		};
@@ -427,7 +433,8 @@ impl NodeNetworkInterface {
 		node.replace_implementation(implementation);
 	}
 
-	/// Moves an inline network `implementation` brings, and every inline network nested in it, into the definitions table under fresh IDs.
+	/// Moves an inline network `implementation` brings, and every inline network nested in it, into the definitions table under fresh IDs,
+	/// giving their nodes IDs derived from them.
 	/// Each entry is recorded before the entries and nodes that name it.
 	fn lift_into_table(&mut self, implementation: &mut DocumentNodeImplementation, network_metadata: &mut Option<NodeNetworkMetadata>) {
 		let DocumentNodeImplementation::Network(network) = &*implementation else { return };
@@ -449,6 +456,7 @@ impl NodeNetworkInterface {
 		}
 
 		let id = NetworkId::new();
+		rekey_nodes(id, &mut network, &mut metadata.persistent_metadata);
 		self.insert_definition(id, network, metadata);
 		*implementation = DocumentNodeImplementation::Definition(id);
 	}
@@ -526,7 +534,7 @@ impl NodeNetworkInterface {
 
 		let mut renamed = HashMap::new();
 		let mut carried = HashMap::new();
-		for CopiedDefinition { id, mut network, metadata } in definitions {
+		for CopiedDefinition { id, mut network, mut metadata } in definitions {
 			for node in network.nodes.values_mut() {
 				if let DocumentNodeImplementation::Definition(named) = &mut node.implementation
 					&& let Some(new_id) = renamed.get(named)
@@ -542,13 +550,14 @@ impl NodeNetworkInterface {
 				let metadata = self.network_metadata.persistent_metadata.definitions.get(&id)?.clone();
 				Some((network, metadata))
 			});
-			let id = match held {
-				Some((held_network, held_metadata)) if held_network != network || !same_content(&held_metadata.persistent_metadata, &metadata.persistent_metadata) => {
-					let new_id = NetworkId::new();
-					renamed.insert(id, new_id);
-					new_id
-				}
-				_ => id,
+			let diverged = held.is_some_and(|(held_network, held_metadata)| held_network != network || !same_content(&held_metadata.persistent_metadata, &metadata.persistent_metadata));
+			let id = if diverged {
+				let new_id = NetworkId::new();
+				rekey_nodes(new_id, &mut network, &mut metadata.persistent_metadata);
+				renamed.insert(id, new_id);
+				new_id
+			} else {
+				id
 			};
 			carried.insert(id, CopiedDefinition { id, network, metadata });
 		}
@@ -593,51 +602,38 @@ impl NodeNetworkInterface {
 		self.insert_definition(id, network, metadata);
 	}
 
-	/// Locates the network after forking the catalog entries along the path.
-	pub(super) fn locate_for_write(&mut self, network_path: &[NodeId]) -> Option<NetworkLocation> {
-		let network_path = self.fork_catalog_entries_along(network_path);
-		self.locate(&network_path)
-	}
-
-	/// Locates the node's network after forking the catalog entries along the path, with the ID the node has afterward.
-	pub(super) fn locate_node_for_write(&mut self, locator: NodeLocator) -> Option<(NetworkLocation, NodeId)> {
-		let node_path = self.fork_catalog_entries_before(&[locator.network_path, &[locator.node_id]].concat(), locator.network_path.len());
-		let (node_id, network_path) = node_path.split_last()?;
-		Some((self.locate(network_path)?, *node_id))
-	}
-
-	/// Locates the connector's network after forking the catalog entries along the path, with the connector as it reads afterward.
-	fn locate_connector_for_write(&mut self, connector: &InputConnector, network_path: &[NodeId]) -> Option<(NetworkLocation, InputConnector)> {
-		match *connector {
-			InputConnector::Node { node_id, input_index } => {
-				let (location, node_id) = self.locate_node_for_write(NodeLocator::new(node_id, network_path))?;
-				Some((location, InputConnector::Node { node_id, input_index }))
-			}
-			InputConnector::Export(_) => Some((self.locate_for_write(network_path)?, *connector)),
+	/// Locates the network for a write, or `None` if it is read-only.
+	pub(super) fn locate_for_write(&self, network_path: &[NodeId]) -> Option<NetworkLocation> {
+		if self.rejects_write(network_path, "locate_for_write") {
+			return None;
 		}
+		self.locate(network_path)
+	}
+
+	/// Whether the network at `network_path` is read-only, logging the write `caller` attempted there.
+	///
+	/// A write never forks the network it edits, since that would give its nodes new IDs while the caller still holds the old ones.
+	pub(super) fn rejects_write(&self, network_path: &[NodeId], caller: &str) -> bool {
+		let read_only = self.is_read_only(network_path);
+		if read_only {
+			log::error!("Cannot write to the read-only network {network_path:?} in {caller}, which has to be made editable first");
+		}
+		read_only
 	}
 
 	/// Forks each catalog instance along the path, outermost first, and returns the path with the IDs the forks gave its segments.
-	pub(super) fn fork_catalog_entries_along(&mut self, network_path: &[NodeId]) -> Vec<NodeId> {
-		self.fork_catalog_entries_before(network_path, network_path.len())
-	}
-
-	/// Like [`Self::fork_catalog_entries_along`], forking only the instances among the first `depth_limit` segments.
-	///
-	/// A fork gives the nodes of its copy new IDs, so the path is translated as it goes. Other IDs held for nodes inside a
-	/// forked copy go stale, which is why the graph edits catalog contents only after they are made editable.
-	fn fork_catalog_entries_before(&mut self, segments: &[NodeId], depth_limit: usize) -> Vec<NodeId> {
-		let mut segments = segments.to_vec();
-		while let Some(depth) = self.first_catalog_instance(&segments[..depth_limit]) {
-			let Some(forked) = self.fork_definition(NodeLocator::new(segments[depth], &segments[..depth])) else {
-				log::error!("Could not fork the catalog entry at {:?}", &segments[..=depth]);
+	fn fork_catalog_entries_along(&mut self, network_path: &[NodeId]) -> Vec<NodeId> {
+		let mut network_path = network_path.to_vec();
+		while let Some(depth) = self.first_catalog_instance(&network_path) {
+			let Some(forked) = self.fork_definition(NodeLocator::new(network_path[depth], &network_path[..depth])) else {
+				log::error!("Could not fork the catalog entry at {:?}", &network_path[..=depth]);
 				break;
 			};
-			if let Some(segment) = segments.get_mut(depth + 1) {
+			if let Some(segment) = network_path.get_mut(depth + 1) {
 				*segment = derived_node_id(forked, *segment);
 			}
 		}
-		segments
+		network_path
 	}
 
 	/// Whether the network at `network_path` lies inside a catalog instance, which the graph shows read-only until it is made editable.

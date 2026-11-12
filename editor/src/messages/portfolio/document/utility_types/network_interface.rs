@@ -6,6 +6,8 @@ mod catalog_tests;
 #[cfg(test)]
 pub(crate) use catalog::shipped_node_id;
 #[cfg(test)]
+pub(crate) use derived_ids::derived_node_id;
+#[cfg(test)]
 mod characterization_tests;
 mod derived_ids;
 mod deserialization;
