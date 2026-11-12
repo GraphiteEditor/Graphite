@@ -1397,9 +1397,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
-	// The Merge and Artboard networks no longer pass their content through a Monitor node, since thumbnails are found from the layers themselves.
+	// The Merge and Artboard networks no longer hold a Monitor node or stamp their content with the layer's path, since the editor finds thumbnails and adds the stamps itself.
 	// Pre-pass for the same reason as the Brush, Transform, and Image migrations above: rebuilding the network orphans its child paths.
-	let monitored_layers: Vec<(NodeId, Vec<NodeId>, DefinitionIdentifier)> = document
+	let outdated_layers: Vec<(NodeId, Vec<NodeId>, DefinitionIdentifier)> = document
 		.network_interface
 		.document_network()
 		.recursive_nodes()
@@ -1408,12 +1408,16 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			let reference = document.network_interface.reference(node_id, &path)?;
 			let is_merge_or_artboard = [DefinitionIdentifier::Network("Merge".into()), DefinitionIdentifier::Network("Artboard".into())].contains(&reference);
 
-			let has_monitor = network.nodes.values().any(|inner_node| is_monitor(&inner_node.implementation));
+			let path_of_subgraph = DocumentNodeImplementation::ProtoNode(graphene_std::graphic::path_of_subgraph::IDENTIFIER);
+			let has_removed_node = network
+				.nodes
+				.values()
+				.any(|inner_node| is_monitor(&inner_node.implementation) || inner_node.implementation == path_of_subgraph);
 
-			(is_merge_or_artboard && has_monitor).then_some((*node_id, path, reference))
+			(is_merge_or_artboard && has_removed_node).then_some((*node_id, path, reference))
 		})
 		.collect();
-	for (node_id, network_path, reference) in &monitored_layers {
+	for (node_id, network_path, reference) in &outdated_layers {
 		let Some(definition) = resolve_document_node_type(reference) else { continue };
 		document.network_interface.replace_implementation(node_id, network_path, &mut definition.default_node_template());
 	}

@@ -698,8 +698,7 @@ mod test_artboard {
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 		instrumented
-			.grab_all_input::<graphene_std::graphic::extend::NewInput, List<Artboard>>(&editor.runtime)
-			.flatten()
+			.grab_all_input::<graphene_std::graphic::extend::NewInput, graphene_std::list::Item<Artboard>>(&editor.runtime)
 			.collect()
 	}
 

@@ -987,17 +987,17 @@ mod test {
 			.iter()
 			.find_map(|(id, node)| (node.implementation == graph_craft::document::DocumentNodeImplementation::Definition(entry)).then_some(*id))
 			.expect("the pasted layer");
-		let (inner, input_index) = interface.document_network().definitions[&entry]
+		let extend = graph_craft::document::DocumentNodeImplementation::ProtoNode(graphene_std::graphic::extend::IDENTIFIER);
+		let inner = interface.document_network().definitions[&entry]
 			.nodes
 			.iter()
-			.find_map(|(id, node)| node.inputs.iter().position(|input| matches!(input, NodeInput::Value { .. })).map(|index| (*id, index)))
-			.expect("the entry should have a value input");
+			.find_map(|(id, node)| (node.implementation == extend).then_some(*id))
+			.expect("the entry should have an Extend node");
 		let before = interface.document_network().definitions[&entry].clone();
-		let NodeInput::Value { tagged_value, exposed } = &before.nodes[&inner].inputs[input_index] else {
-			unreachable!("the input was found as a value")
-		};
-		let flipped = NodeInput::value((**tagged_value).clone(), !exposed);
-		interface.set_input(&InputConnector::node_at_index(inner, input_index), flipped, &[layer]);
+
+		// Leaving out the stack below keeps the entry a working layer
+		let no_base = NodeInput::type_default(graphene_std::list!(graphene_std::Graphic), false);
+		interface.set_input(&InputConnector::node_at_index(inner, 0), no_base, &[layer]);
 		assert_ne!(interface.document_network().definitions[&entry], before, "the edit should change the pasted entry");
 
 		editor.paste_from_clipboard(clipboard.clone()).await;

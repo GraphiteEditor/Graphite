@@ -1,15 +1,15 @@
 use super::evaluated_output;
+use super::layer_content::layer_content;
 use crate::messages::frontend::FrontendMessage;
 #[cfg(feature = "gpu")]
 use atlas::ThumbnailAtlasLayout;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
-use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
+use graph_craft::document::{NodeId, NodeNetwork};
 #[cfg(feature = "gpu")]
 use graphene_std::application_io::{ApplicationIo, Texture};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::gradient::Gradient;
-use graphene_std::graphic::extend;
 use graphene_std::list::{Item, List};
 #[cfg(feature = "gpu")]
 use graphene_std::ops::ConvertAsync;
@@ -19,7 +19,7 @@ use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_std::transform::{Footprint, RenderQuality};
 use graphene_std::vector::Vector;
-use graphene_std::{Artboard, Color, Context, ContextFeatures, Graphic, NodeParameter};
+use graphene_std::{Artboard, Color, Context, ContextFeatures, Graphic};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -399,20 +399,7 @@ pub fn layers_svg(layers: &[NodeId], network: &NodeNetwork, executor: &DynamicEx
 
 /// The proto node giving the content a layer's thumbnail shows, which is only what the layer adds if it extends the stack below it.
 fn thumbnail_source(layer_path: &[NodeId], network: &NodeNetwork, executor: &DynamicExecutor) -> Option<NodeId> {
-	let output = network.output_source(layer_path, 0)?;
-
-	// A hidden layer, or one passing through what's below it, has nothing of its own to show
-	if !output.starts_with(layer_path) {
-		return None;
-	}
-
-	let (node_id, network_path) = output.split_last()?;
-	let node = network.nested_network(network_path)?.nodes.get(node_id)?;
-	let source = if node.implementation == DocumentNodeImplementation::ProtoNode(extend::IDENTIFIER) {
-		network.input_source(network_path, node.inputs.get(extend::NewInput::INDEX)?)?
-	} else {
-		output
-	};
+	let source = layer_content(layer_path, network)?.source(network)?;
 
 	executor.tree().source_map().get(source.as_slice()).map(|(id, _)| *id)
 }
@@ -480,6 +467,7 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 #[cfg(test)]
 mod tests {
 	use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, shipped_node_id};
+	use crate::node_graph_executor::runtime::layer_content::stamp_id;
 	use crate::test_utils::test_prelude::*;
 	use glam::UVec2;
 	use graph_craft::document::NodeId;
@@ -510,7 +498,7 @@ mod tests {
 		let layer = editor.get_selected_layer().await.expect("The drawn rectangle should be selected").to_node();
 
 		compile_and_run(&mut editor).await;
-		let merge_content = compiled_id(&editor, &[layer, shipped_node_id("Merge", NodeId(3))]);
+		let merge_content = compiled_id(&editor, &[layer, stamp_id(shipped_node_id("Merge", NodeId(2)))]);
 		assert!(merge_content.is_some(), "The Merge layer's content should be compiled");
 		assert_eq!(
 			editor.runtime.thumbnails.sources.get(&layer).copied(),

@@ -1216,9 +1216,9 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
-	let path = vec![merge];
-	editor.enter_editable_network(merge).await;
+	let subgraph = editor.create_node_by_name_at(DefinitionIdentifier::Network("Origins to Polyline".into()), 0, 0).await;
+	let path = vec![subgraph];
+	editor.enter_editable_network(subgraph).await;
 	let import_count = editor.active_document().network_interface.number_of_imports(&path);
 
 	// With a primary, the only one is past the last import
@@ -1226,20 +1226,20 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 	let empty_connectors = network_interface.empty_import_export_connectors(true, &path);
 	assert_eq!(empty_connectors.iter().map(|(index, _)| *index).collect::<Vec<_>>(), vec![import_count]);
 
-	// The attribute name given to Merge's interior Write Attribute node
-	let write_attribute = network_interface
+	// The closed setting given to the subgraph's interior Points to Polyline node
+	let points_to_polyline = network_interface
 		.nested_network(&path)
 		.and_then(|network| {
 			network
 				.nodes
 				.iter()
-				.find(|(_, node)| node.implementation == DocumentNodeImplementation::ProtoNode(graphene_std::graphic::write_attribute::IDENTIFIER))
+				.find(|(_, node)| node.implementation == DocumentNodeImplementation::ProtoNode(graphene_std::vector::points_to_polyline::IDENTIFIER))
 		})
 		.map(|(node_id, _)| *node_id)
-		.expect("Merge should contain a Write Attribute node");
-	let value_input = InputConnector::node_at_index(write_attribute, 1);
+		.expect("Origins to Polyline should contain a Points to Polyline node");
+	let value_input = InputConnector::node_at_index(points_to_polyline, 1);
 	let Some(NodeInput::Value { tagged_value, .. }) = network_interface.input_from_connector(&value_input, &path) else {
-		panic!("Merge's Write Attribute node should be given its attribute name as a value");
+		panic!("The Points to Polyline node should be given its closed setting as a value");
 	};
 	let displaced_value = (**tagged_value).clone();
 
@@ -1257,7 +1257,7 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 		"the new import should be wired to the input"
 	);
 	let network_interface = &editor.active_document().network_interface;
-	let new_input = network_interface.input_from_connector(&InputConnector::node_at_index(merge, import_count), &[]);
+	let new_input = network_interface.input_from_connector(&InputConnector::node_at_index(subgraph, import_count), &[]);
 	assert!(
 		matches!(new_input, Some(NodeInput::Value { tagged_value, exposed: true }) if **tagged_value == displaced_value),
 		"the new import should take over the value its wire displaced, found {new_input:?}"
@@ -1273,11 +1273,11 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 	let network_interface = &editor.active_document().network_interface;
 	assert!(network_interface.empty_import_export_connectors(true, &path).iter().any(|(index, _)| *index == 0));
 
-	// The content given to Merge's interior Write Attribute node by its Into Group node
-	let wired_input = InputConnector::node_at_index(write_attribute, 0);
+	// The points given to the subgraph's interior Points to Polyline node by its Combine Paths node
+	let wired_input = InputConnector::node_at_index(points_to_polyline, 0);
 	assert!(
 		matches!(network_interface.input_from_connector(&wired_input, &path), Some(NodeInput::Node { .. })),
-		"Merge's Write Attribute node should be wired its content from another node"
+		"The Points to Polyline node should have its points wired from another node"
 	);
 	editor
 		.handle_message(NodeGraphMessage::AddImportAndConnect {

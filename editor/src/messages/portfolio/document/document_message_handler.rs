@@ -5069,15 +5069,11 @@ mod document_message_handler_tests {
 		assert!(!base_lengths.is_empty(), "Instrumentation should have recorded at least one stack base");
 		assert!(base_lengths.iter().all(|&len| len == 0), "Every stack base should be empty, found lengths {base_lengths:?}");
 
-		let news: Vec<graphene_std::list::List<graphene_std::Graphic>> = instrumented
-			.grab_all_input::<graphene_std::graphic::extend::NewInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
+		let news: Vec<graphene_std::list::Item<graphene_std::Graphic>> = instrumented
+			.grab_all_input::<graphene_std::graphic::extend::NewInput, graphene_std::list::Item<graphene_std::Graphic>>(&editor.runtime)
 			.collect();
-		assert!(!news.is_empty(), "Instrumentation should have recorded at least one stacked element list");
-		let phantom_count = news
-			.iter()
-			.flat_map(|new| new.iter_element_values())
-			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None(_)))
-			.count();
+		assert!(!news.is_empty(), "Instrumentation should have recorded at least one stacked element");
+		let phantom_count = news.iter().filter(|new| matches!(new.element(), graphene_std::Graphic::None(_))).count();
 		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
 	}
 

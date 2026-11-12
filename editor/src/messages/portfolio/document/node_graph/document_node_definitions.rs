@@ -175,44 +175,25 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			icon: Some("NodeMerge"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(4), 0)],
+					exports: vec![NodeInput::node(NodeId(2), 0)],
 					nodes: [
 						// Primary (bottom) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::as_graphic::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -2)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -2)),
 							..Default::default()
 						},
 						// Secondary (left) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 1)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::into_group::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
-							..Default::default()
-						},
-						// Derive the parent layer's NodeId from the document path
-						NodeTemplate {
-							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, 0)),
-							..Default::default()
-						},
-						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
-						// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::node(NodeId(1), 0),
-								NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
-								NodeInput::node(NodeId(2), 0),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
 							..Default::default()
 						},
 						NodeTemplate {
 							call_argument: generic!(T),
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(3), 0)],
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -2)),
 							..Default::default()
@@ -244,7 +225,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			icon: Some("NodeArtboard"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(3), 0)],
+					exports: vec![NodeInput::node(NodeId(1), 0)],
 					nodes: [
 						NodeTemplate {
 							call_argument: generic!(T),
@@ -256,32 +237,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								NodeInput::import(item!(TaggedValue), 4),
 								NodeInput::import(item!(TaggedValue), 5),
 							],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
-							..Default::default()
-						},
-						// Derive the parent layer's NodeId from the document path
-						NodeTemplate {
-							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, 3)),
-							..Default::default()
-						},
-						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
-						// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::node(NodeId(0), 0),
-								NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
-								NodeInput::node(NodeId(1), 0),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
 							..Default::default()
 						},
 						NodeTemplate {
 							inputs: vec![
 								NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(list!(Artboard))), 0),
-								NodeInput::node(NodeId(2), 0),
+								NodeInput::node(NodeId(0), 0),
 							],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
