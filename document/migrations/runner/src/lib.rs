@@ -32,6 +32,10 @@ pub enum RunnerError {
 	Migration { migration: Declaration, anchor: NodeId, error: MigrationError },
 	#[error("node {anchor:?} chose {target}, which the migration from {migration} doesn't name")]
 	UnnamedTarget { migration: Declaration, anchor: NodeId, target: Declaration },
+	#[error("proto node {anchor:?} can't become {target}, which the migration from {migration} chose")]
+	ProtoToNetwork { migration: Declaration, anchor: NodeId, target: Declaration },
+	#[error("node {anchor:?} adds a node of {declaration}, but migrations only add proto nodes")]
+	AddedNetworkDefinition { anchor: NodeId, declaration: Declaration },
 	#[error("node {anchor:?} adds two nodes of {declaration} under the key {key:?}")]
 	DuplicateAddedNode { anchor: NodeId, declaration: Declaration, key: String },
 	#[error("added node {0:?} already exists")]

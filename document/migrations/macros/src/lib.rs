@@ -13,6 +13,7 @@ use syn::{Error, FnArg, Ident, ItemFn, ReturnType, Type, parse_macro_input};
 
 /// Turns a function into a node migration, named by its source and target declarations:
 /// `#[migration("module::node"@1 => @2)]` for a version step, `#[migration("module::old"@1 => "module::new"@2)]` for a replacement.
+/// A `network` prefix names a built-in network definition, as in `#[migration(network "Merge"@1 => "module::merge"@2)]`.
 ///
 /// Parameters state what the migration reads and writes: `&Node` and `&Graph` read the source state, `Option<&dyn Compiler>` asks what only the
 /// compiler can tell about it, and each `&mut` parameter is a view (`Inputs`, `Upstream`, `Downstream`, `Target`) recording edits to its region. The function may return `()` or `Result<(), MigrationError>`.
@@ -233,7 +234,16 @@ fn expand_rename(step: Step) -> syn::Result<TokenStream2> {
 }
 
 fn step_name(step: &Step) -> String {
-	format!("{}@{}=>{}@{}", step.source.identifier, step.source.version, step.target.identifier, step.target.version)
+	let prefix = |declaration: &Declaration| if declaration.network { "network " } else { "" };
+	format!(
+		"{}{}@{}=>{}{}@{}",
+		prefix(&step.source),
+		step.source.identifier,
+		step.source.version,
+		prefix(&step.target),
+		step.target.identifier,
+		step.target.version
+	)
 }
 
 /// Passes `migration` to `register` at startup: through `ctor` on native targets, and through an exported function the host calls
@@ -259,8 +269,11 @@ fn registration(core: &TokenStream2, register: TokenStream2, migration: TokenStr
 }
 
 fn declaration(core: &TokenStream2, declaration: &Declaration) -> TokenStream2 {
-	let Declaration { identifier, version } = declaration;
-	quote!(#core::Declaration::new(#identifier, #version))
+	let Declaration { identifier, version, network } = declaration;
+	match network {
+		true => quote!(#core::Declaration::network(#identifier, #version)),
+		false => quote!(#core::Declaration::new(#identifier, #version)),
+	}
 }
 
 /// How the expansion names `migration-core`: `crate` inside it, its (possibly renamed) dependency name elsewhere.

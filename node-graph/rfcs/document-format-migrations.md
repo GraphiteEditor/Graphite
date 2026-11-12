@@ -2,7 +2,7 @@
 
 A migration system for `.gdd` documents built around one rule: **history is always in the current shape**. A migration is a deterministic function over registry states. The runner applies it by replaying stored history and rewriting every delta into what it would have been had the author worked against the new shape, inserting deltas where the migration restructures the graph. Undo, time travel, replay, and deltas arriving from peers on an older build therefore never meet an outdated node shape, and the runtime never needs to execute one.
 
-Migrations come in two tiers sharing that rule. **Format migrations** step serialized payloads across a `format_version` bump. **Node migrations** step one proto-node declaration from `identifier@version` to its successor on the typed `Registry`. Migrations are written as plain functions whose parameter types state what they read and write, live in independent crates that register themselves, and are ordered automatically.
+Migrations come in two tiers sharing that rule. **Format migrations** step serialized payloads across a `format_version` bump. **Node migrations** step one declaration, a proto node or a built-in network definition, from `identifier@version` to its successor on the typed `Registry`. Migrations are written as plain functions whose parameter types state what they read and write, live in independent crates that register themselves, and are ordered automatically.
 
 # Motivation
 
@@ -326,6 +326,33 @@ Cycles are rejected in CI, as are two migrations from the same declaration. Migr
 
 A node migration is pending when its source declaration is referenced anywhere in the document, *including history*. A node removed long ago still has its old shape stored in its `AddNode` and in the removal snapshot, and undo can bring it back. Pending format migrations come from `manifest.format_version`.
 
+## Network definitions
+
+Built-in subgraphs such as Merge and Artboard aren't proto nodes. Each instance is a node whose `Implementation::Network` points at its own copy of a network from the editor's catalog. They migrate through the same tier, with the differences below.
+
+**Declarations.** `Declaration` carries a kind, `Proto` or `Network`. A network declaration is written `decl!(network "Merge"@1)`, and steps name it the same way:
+
+```rust
+rename!(network "Artboard"@1 => @2);                     // Version step
+rename!(network "Merge"@1 => "graphic_nodes::merge"@2);  // Replacement by a proto node
+```
+
+A proto declaration's encoding leaves the kind out, so IDs derived from declarations written before network definitions existed stay the same.
+
+**Stored reference.** The network's `ui::reference` attribute names its definition as a `NetworkReference { identifier, version }`. Version 1 stays the bare identifier string it was before versions existed, so existing documents keep their bytes. Later versions store an object with both fields. One attribute rather than one per field keeps identifier and version under one LWW timestamp, so concurrent writes can't pair one peer's identifier with another's version, and pending detection matches the exact version.
+
+`DocumentNodeDefinition` declares the `version`. The editor writes the catalog's current version whenever it stores a reference, the way runtime conversion takes a proto node's version from `NODE_METADATA`. Opening a document migrates every instance to its definition's current version, so the editor never holds an older one in memory.
+
+**Anchors.** A node is an anchor of a network declaration when it implements a network whose reference names that declaration. `references` finds the declaration in `AddNetwork`, in `RemoveNetwork` snapshots, and in writes to `ui::reference`.
+
+**Switching.** The runner switches a network anchor to a network declaration by rewriting the reference. It switches one to a proto declaration by setting the implementation and removing the network the anchor implemented, with every node in it and every network nested in it. A proto anchor can't become a network declaration, and migrations only add proto nodes.
+
+Removing the network drops whatever it holds, including nodes the user added. The alternatives are worse. Reporting an edited subgraph as `unrepresentable` opens the document read-only, and keeping the edited copy usually doesn't compile anyway, since the nodes inside it typically folded into the new proto node. Built-in subgraphs are rarely edited, so the loss is rare.
+
+**Whole states.** An instance consists of two entities that history adds in separate deltas, and the editor's diff adds the network first. In between, the network names the definition without an anchor to migrate it, so `M` would leave the old reference in rewritten history, and every later open would find the migration pending again. Migrations from a network declaration therefore run on whole states only, like those reading `&Graph`.
+
+**Checks.** An editor test requires a registered migration leading to every network definition above version 1. The API dump doesn't cover network definitions yet.
+
 ## Runner pipeline
 
 1. **Format tier.** While `format_version` is below the current version, apply the step whose `migrates_from` matches (a gap is a hard error) to the registry, history records, and session, then bump the version.
@@ -499,6 +526,8 @@ document/migrations/
 
 **Truncate always.** Simple and always possible, but it discards undo history on every node upgrade and needs every peer to agree on the truncation point.
 
+**Reference attribute vs. declaration resource for network definitions.** A content-addressed resource behind `Implementation::Network`, like `ProtoNode`, would let one resolver path cover both kinds. It changes the shape of `Implementation`, which needs a format step, and turns detaching an instance into a resource swap. A single attribute holding identifier and version gives the same atomicity and exact matching.
+
 **Frozen mirrors vs. runtime types.** Input values are stored as self-describing `graph-storage::Value`s, so a migration decodes them into its own frozen mirror. Old runtime types therefore never need to stay in the runtime crates.
 
 # Unresolved questions
@@ -511,6 +540,8 @@ document/migrations/
 - **`unrepresentable` in CI.** Whether reaching it in the commutation test fails CI outright.
 - **Layout.** Whether migrations may write node positions and chain placement, or leave inserted nodes to a host-side layout pass.
 - **Multiple pending migrations.** Whether consecutive pending node migrations run as separate rewrite passes or are fused into one replay.
+- **Migrations reading a subgraph.** A migration that inspects an instance's inner nodes depends on their versions, which change independently of the definition's. The planned answer is a cascading bump: the API dump lists a definition's inner `identifier@version`s, so bumping an inner node also requires bumping every definition containing it, and pins order that node's migrations around the definition's. Nothing reads a subgraph yet, so neither a read view for it nor the cascading bump exists.
+- **Detaching.** Whether a migration may clear an edited instance's reference, keeping it as a custom subgraph, instead of collapsing it.
 
 # Future possibilities
 
