@@ -25,8 +25,7 @@ pub trait Canvas {
 
 #[cfg(feature = "wgpu")]
 pub trait CanvasSurface: Canvas {
-	/// Presents the texture with the overlays, which have straight alpha, drawn over it.
-	fn present(&mut self, texture: &Texture, overlays: Option<&Texture>, executor: &WgpuExecutor);
+	fn present(&mut self, texture: &Texture, executor: &WgpuExecutor);
 }
 
 #[derive(Clone, DynAny)]
@@ -80,7 +79,6 @@ pub struct CanvasSurfaceHandle {
 	canvas: CanvasHandle,
 	surface: Option<Arc<WgpuSurface>>,
 	blitter: Option<wgpu::util::TextureBlitter>,
-	overlays_blitter: Option<wgpu::util::TextureBlitter>,
 }
 #[cfg(feature = "wgpu")]
 impl CanvasSurfaceHandle {
@@ -89,7 +87,6 @@ impl CanvasSurfaceHandle {
 			canvas: CanvasHandle::new(),
 			surface: None,
 			blitter: None,
-			overlays_blitter: None,
 		}
 	}
 	fn surface(&mut self) -> &WgpuSurface {
@@ -116,7 +113,7 @@ impl Canvas for CanvasSurfaceHandle {
 }
 #[cfg(feature = "wgpu")]
 impl CanvasSurface for CanvasSurfaceHandle {
-	fn present(&mut self, texture: &Texture, overlays: Option<&Texture>, executor: &WgpuExecutor) {
+	fn present(&mut self, texture: &Texture, executor: &WgpuExecutor) {
 		let context = executor.context();
 
 		let source_texture: &wgpu::Texture = texture.as_ref();
@@ -157,17 +154,6 @@ impl CanvasSurface for CanvasSurfaceHandle {
 		let source_view = source_texture.create_view(&wgpu::TextureViewDescriptor::default());
 		let target_view = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
 		blitter.copy(&context.device, &mut encoder, &source_view, &target_view);
-
-		if let Some(overlays) = overlays {
-			let overlays_blitter = self.overlays_blitter.get_or_insert_with(|| {
-				wgpu::util::TextureBlitterBuilder::new(&context.device, SURFACE_FORMAT)
-					.blend_state(wgpu::BlendState::ALPHA_BLENDING)
-					.build()
-			});
-			let overlays_texture: &wgpu::Texture = overlays.as_ref();
-			let overlays_view = overlays_texture.create_view(&wgpu::TextureViewDescriptor::default());
-			overlays_blitter.copy(&context.device, &mut encoder, &overlays_view, &target_view);
-		}
 
 		surface_texture.queue.submit([encoder.finish()]);
 		surface_texture.present();

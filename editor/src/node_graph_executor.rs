@@ -189,7 +189,6 @@ impl NodeGraphExecutor {
 	}
 
 	/// Hands the overlays to the runtime, which draws them over the viewport's artwork.
-	#[cfg(target_family = "wasm")]
 	pub fn submit_overlays(&self, context: crate::messages::portfolio::document::overlays::utility_types::OverlayContext) {
 		self.sender.send(GraphRuntimeRequest::RenderOverlays(context)).expect("Failed to send the overlays");
 	}

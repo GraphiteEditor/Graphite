@@ -3,7 +3,6 @@ use super::history::HistoryMessage;
 use super::persistent_state::PersistentStateMessage;
 use super::sync::SyncMessage;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
-#[cfg(target_family = "wasm")]
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::prelude::*;
 use document_container::AnyContainer;
@@ -158,7 +157,6 @@ pub enum PortfolioMessage {
 		artboard_name: Option<String>,
 		artboard_count: usize,
 	},
-	#[cfg(target_family = "wasm")]
 	RenderOverlays {
 		#[serde(skip, default = "OverlayContext::default")]
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]

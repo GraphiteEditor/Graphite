@@ -19,9 +19,6 @@ use graphene_std::color::SRGBA8;
 use graphene_std::vector::style::FillChoice;
 use std::path::PathBuf;
 
-#[cfg(not(target_family = "wasm"))]
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-
 #[impl_message(Message, Frontend)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize)]
@@ -395,12 +392,9 @@ pub enum FrontendMessage {
 		scale: f64,
 	},
 
+	/// Wakes the desktop's graph runtime so it draws the new overlays.
 	#[cfg(not(target_family = "wasm"))]
-	RenderOverlays {
-		#[serde(skip, default = "OverlayContext::default")]
-		#[derivative(Debug = "ignore", PartialEq = "ignore")]
-		context: OverlayContext,
-	},
+	WakeNodeRuntime,
 
 	// Window prefix: cause the application window to do something
 	#[cfg(not(target_family = "wasm"))]
