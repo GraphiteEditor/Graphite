@@ -2595,13 +2595,17 @@ impl DocumentMessageHandler {
 		if changes.is_empty() {
 			return true;
 		}
+		let open_network_transform = self
+			.network_interface
+			.network_metadata(&self.breadcrumb_network_path)
+			.map(|metadata| metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport);
 
 		if !changes.rebuilt
 			&& let Some(gdd) = self.history.storage()
 		{
 			match self.network_interface.reconcile_remote(gdd.registry(), self.history.declarations(), gdd.blobs(), &changes.touched) {
 				Ok(reconciled) => {
-					self.finish_remote_reconcile(reconciled, changes.touched.resources, responses);
+					self.finish_remote_reconcile(reconciled, changes.touched.resources, open_network_transform, responses);
 					return true;
 				}
 				Err(ReconcileError::DeclarationMissing(id)) => {
@@ -2615,7 +2619,7 @@ impl DocumentMessageHandler {
 
 		match self.history.rebuild_interface() {
 			Some(rebuilt) => {
-				self.apply_gdd_cursor_rebuild(rebuilt, responses);
+				self.apply_gdd_cursor_rebuild(rebuilt, open_network_transform, responses);
 				true
 			}
 			None => {
@@ -2625,7 +2629,7 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	fn finish_remote_reconcile(&mut self, reconciled: Reconciled, resources_changed: bool, responses: &mut VecDeque<Message>) {
+	fn finish_remote_reconcile(&mut self, reconciled: Reconciled, resources_changed: bool, open_network_transform: Option<DAffine2>, responses: &mut VecDeque<Message>) {
 		for path in self.network_interface.paths_reaching(&reconciled.networks) {
 			self.network_interface.unload_stack_dependents(&path);
 			self.network_interface.unload_import_export_ports(&path);
@@ -2642,7 +2646,9 @@ impl DocumentMessageHandler {
 			self.refresh_resource_registry();
 		}
 
-		self.leave_missing_networks(responses);
+		self.keep_open_network_shown(open_network_transform, responses);
+		responses.add(NodeGraphMessage::SendGraph);
+		responses.add(NodeGraphMessage::UpdateGraphBarRight);
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
@@ -2650,14 +2656,18 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::SendWires);
 	}
 
-	/// Leaves the networks along the breadcrumb path that no longer exist, such as a copy an undo took back.
-	fn leave_missing_networks(&mut self, responses: &mut VecDeque<Message>) {
+	/// Keeps the graph showing the open network across a reconcile, which can rebuild its view state or remove it.
+	/// The graph leaves the networks along the breadcrumb path that no longer exist, such as a copy an undo took back,
+	/// and otherwise keeps the open network panned and zoomed as it was.
+	fn keep_open_network_shown(&mut self, open_network_transform: Option<DAffine2>, responses: &mut VecDeque<Message>) {
 		let network_exists = |network_path: &[NodeId]| self.network_interface.nested_network(network_path).is_some();
 		if !network_exists(&self.selection_network_path) {
 			self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 		}
 		if network_exists(&self.breadcrumb_network_path) {
-			responses.add(NodeGraphMessage::UpdateGraphBarRight);
+			if let Some(transform) = open_network_transform {
+				self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
+			}
 			return;
 		}
 
@@ -2668,10 +2678,8 @@ impl DocumentMessageHandler {
 		self.breadcrumb_network_path.truncate(existing_depth);
 		self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 		self.network_interface.unload_import_export_ports(&self.breadcrumb_network_path);
-		responses.add(NodeGraphMessage::SendGraph);
 		responses.add(DocumentMessage::PTZUpdate);
 		responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
-		responses.add(NodeGraphMessage::UpdateGraphBarRight);
 	}
 
 	pub(crate) fn cache_declaration_bytes(&mut self, hash: ResourceHash, bytes: &[u8]) -> bool {
@@ -2683,7 +2691,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
-	fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, responses: &mut VecDeque<Message>) {
+	fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, open_network_transform: Option<DAffine2>, responses: &mut VecDeque<Message>) {
 		rebuilt.copy_all_transient_view_state(&self.network_interface);
 		std::mem::swap(&mut rebuilt.resolved_types, &mut self.network_interface.resolved_types);
 		rebuilt.load_structure();
@@ -2695,7 +2703,9 @@ impl DocumentMessageHandler {
 		}
 		self.refresh_resource_registry();
 
-		self.leave_missing_networks(responses);
+		self.keep_open_network_shown(open_network_transform, responses);
+		responses.add(NodeGraphMessage::SendGraph);
+		responses.add(NodeGraphMessage::UpdateGraphBarRight);
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);

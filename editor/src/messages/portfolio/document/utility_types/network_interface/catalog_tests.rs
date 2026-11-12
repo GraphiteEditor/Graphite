@@ -230,3 +230,23 @@ async fn undoing_the_creation_of_an_open_subgraph_leaves_it() {
 	assert!(editor.active_document().breadcrumb_network_path().is_empty());
 	assert!(editor.active_document().selection_network_path().is_empty());
 }
+
+#[tokio::test]
+async fn undoing_and_redoing_the_unlock_of_a_layer_keeps_its_nodes() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 10., 10.).await;
+	let layer = editor.get_selected_layer().await.expect("the drawn rectangle should be selected").to_node();
+	let path = vec![layer];
+	let node_count = |editor: &EditorTestUtils| editor.active_document().network_interface.nested_network(&path).map(|network| network.nodes.len());
+	let shipped = node_count(&editor);
+
+	editor.enter_editable_network(layer).await;
+	assert_eq!(node_count(&editor), shipped);
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(node_count(&editor), shipped, "undoing the unlock should bring back the shared contents");
+	editor.handle_message(DocumentMessage::Redo).await;
+	assert_eq!(node_count(&editor), shipped, "redoing the unlock should bring back the copy");
+	assert!(editor.active_document().network_interface.validate_invariants().is_empty());
+}
