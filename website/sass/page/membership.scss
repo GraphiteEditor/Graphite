@@ -110,6 +110,17 @@
 		}
 	}
 
+	.email-change-confirmation {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		overflow-wrap: anywhere;
+
+		&[hidden] {
+			display: none;
+		}
+	}
+
 	.signed-out {
 		.notices {
 			margin-bottom: 20px;
@@ -198,6 +209,16 @@
 			strong {
 				display: block;
 			}
+		}
+	}
+
+	.change-email {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+
+		&[hidden] {
+			display: none;
 		}
 	}
 
@@ -372,6 +393,65 @@
 
 	.field[hidden] {
 		display: none;
+	}
+
+	// Rewards above the member's tier, until they're tried on
+	.credits .locked-reward {
+		display: none;
+	}
+
+	// Rewards above the member's tier, while they're tried on, down to what's typed or chosen in them
+	.credits .previewed-reward {
+		&,
+		input,
+		select {
+			font-style: italic;
+		}
+
+		option:not(.previewed-reward) {
+			font-style: normal;
+		}
+	}
+
+	// Beside the label of each reward above the member's own tier
+	.tier-badge {
+		margin-left: 0.75em;
+		padding: 0.1em 0.5em;
+		font-size: calc(1rem * 7 / 9);
+		font-weight: 800;
+		text-transform: uppercase;
+		color: var(--color-fog);
+		background-color: var(--color-crimson);
+	}
+
+	// An action in a line of text, which reads as a link
+	.link-button {
+		padding: 0;
+		border: none;
+		background: none;
+		font: inherit;
+		color: var(--color-crimson);
+		text-decoration: underline;
+		cursor: pointer;
+	}
+
+	// Spaced from the fields below as far as from the heading above
+	.preview-toggle {
+		align-self: flex-start;
+		margin-bottom: 10px;
+		text-align: left;
+		font-size: calc(1rem * 7 / 9);
+	}
+
+	.preview-notice {
+		margin-bottom: 10px;
+		font-size: calc(1rem * 7 / 9);
+		color: var(--color-crimson);
+
+		// Links rather than buttons, which can't wrap across lines of text
+		a {
+			font-weight: 700;
+		}
 	}
 
 	// A row of chosen items followed by buttons to add and remove them, where squares narrow together when the row is too short
@@ -608,6 +688,12 @@
 			padding: 1em;
 			overflow: hidden;
 			background-color: white;
+		}
+
+		// A long name runs off the edge rather than wrapping, which would break up its colors
+		li {
+			white-space: nowrap;
+			overflow-wrap: normal;
 		}
 
 		// Clicking it selects the name field
