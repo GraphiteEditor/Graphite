@@ -205,6 +205,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				}
 			}
 			ParsedValueSource::SourceId => quote!(RegistryValueSource::SourceId),
+			ParsedValueSource::NodePath => quote!(RegistryValueSource::NodePath),
 			_ => quote!(RegistryValueSource::None),
 		})
 		.collect();

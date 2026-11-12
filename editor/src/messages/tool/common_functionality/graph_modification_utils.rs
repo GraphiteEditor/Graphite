@@ -23,7 +23,11 @@ pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier
 		.network_interface
 		.upstream_flow_back_from_nodes([layer.to_node()].to_vec(), &[], FlowType::HorizontalFlow)
 		.map(|node_id| (document.network_interface.reference(&node_id, &[]), node_id))
-		.take_while(|(reference, _)| reference.as_ref().is_some_and(|node_ref| node_ref != &DefinitionIdentifier::Network("Path".into())))
+		.take_while(|(reference, _)| {
+			reference
+				.as_ref()
+				.is_some_and(|node_ref| node_ref != &DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER))
+		})
 		.find(|(reference, _)| {
 			reference
 				.as_ref()
@@ -115,7 +119,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	// Add a path node after the combine paths node
 	let path_node_id = NodeId::new();
-	let path_node = document_node_definitions::resolve_network_node_type("Path")
+	let path_node = document_node_definitions::resolve_proto_node_type(graphene_std::vector::path::IDENTIFIER)
 		.expect("Failed to create path node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {

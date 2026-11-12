@@ -765,29 +765,11 @@ mod tests {
 		assert!(!type_feeds_input(&list!(f64), &item!(f64), None), "a list has no promotion down to an item");
 	}
 
-	#[tokio::test]
-	async fn subgraph_inputs_look_through_type_preserving_nodes() {
-		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-		use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-		use crate::test_utils::test_prelude::*;
-
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		let path_node_id = editor.create_node_by_name(DefinitionIdentifier::Network("Path".into())).await;
-
-		// The Path subgraph's content goes through a Monitor node, which accepts most types, before the node that needs a vector
-		let content_types = editor
-			.active_document()
-			.network_interface
-			.potential_valid_input_types(&InputConnector::node_at_index(path_node_id, 0), &[])
-			.iter()
-			.map(ToString::to_string)
-			.collect::<Vec<_>>();
-		assert!(content_types.iter().any(|ty| ty == "Vector"), "Path's content should accept a vector, found {content_types:?}");
-		assert!(
-			!content_types.iter().any(|ty| ty == "Color"),
-			"Path's content should not accept a color just because its Monitor does, found {content_types:?}"
-		);
+	#[test]
+	fn monitor_and_memoize_preserve_their_input_type() {
+		for identifier in [graphene_std::memo::monitor::IDENTIFIER, graphene_std::memo::memoize::IDENTIFIER] {
+			assert!(super::TYPE_PRESERVING_NODES.contains(&identifier), "{identifier:?} should pass its input's type through unchanged");
+		}
 	}
 
 	#[tokio::test]

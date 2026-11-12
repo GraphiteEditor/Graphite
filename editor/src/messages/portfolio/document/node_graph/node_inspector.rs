@@ -3143,8 +3143,8 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 	} else {
 		let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
 		for input_index in 1..number_of_inputs {
-			// Hide inputs that are connected to a scope
-			if let Some(NodeInput::Scope(_)) = context
+			// Hide inputs that are connected to a scope or filled in by the compiler
+			if let Some(NodeInput::Scope(_) | NodeInput::Reflection(_)) = context
 				.network_interface
 				.input_from_connector(&InputConnector::node_at_index(node_id, input_index), context.selection_network_path)
 			{

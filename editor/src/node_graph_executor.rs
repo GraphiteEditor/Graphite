@@ -1224,8 +1224,9 @@ mod test {
 					monitor_node_ids.push(path.clone());
 					path.pop();
 
-					// A None value is a unit wire with nothing to record and no Monitor row, so its slot stays a dead path that introspects as absent
-					if matches!(input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, graph_craft::document::value::TaggedValue::None)) {
+					// A None value has nothing to record and a reflection must stay on the node it describes, so such a slot stays a dead path that introspects as absent
+					let is_none = matches!(input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, graph_craft::document::value::TaggedValue::None));
+					if is_none || matches!(input, NodeInput::Reflection(_)) {
 						continue;
 					}
 

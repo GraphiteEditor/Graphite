@@ -944,8 +944,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::PathLengthNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::path_modify::IDENTIFIER,
+		node: graphene_std::vector::path::IDENTIFIER,
 		aliases: &[
+			"vector_nodes::vector_modification_nodes::PathModifyNode",
 			"graphene_core::vector::vector_modification_nodes::PathModifyNode",
 			"graphene_core::vector::vector_data::modification::PathModifyNode",
 			"graphene_core::vector::vector_modification::PathModifyNode",
@@ -1367,6 +1368,28 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		// Forward the embedded image data into input 0, where the `migrate_node` `image` pass finds it and converts it to a resource.
 		if let Some(image_input) = old_inputs.into_iter().find(|input| matches!(input.as_value(), Some(TaggedValue::ImageData(_)))) {
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), image_input, network_path);
+		}
+	}
+
+	// The "Path" wrapper network was replaced with the `path` proto node directly. Convert old `Network("Path")` instances to the proto node, forwarding the Content and Modification inputs.
+	// Pre-pass for the same reason as the Brush, Transform, and Image migrations above: replacing the outer Path's network impl orphans its child paths.
+	let path_wrappers: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Path".into()))).then_some((*node_id, path)))
+		.collect();
+	for (node_id, network_path) in &path_wrappers {
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+
+		for (index, input) in old_inputs.into_iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
 		}
 	}
 
@@ -3463,7 +3486,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// SVG-import legacy Path nodes baked their geometry at non-exposed input 0; move it to input 1 (the modern slot for VectorModification).
 	// For exposed input 0, any baked value is unused at runtime, so just reset it.
-	if reference == DefinitionIdentifier::Network("Path".into()) {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER) {
 		let input_0 = node.inputs.first()?;
 		if let NodeInput::Value { tagged_value, exposed } = input_0
 			&& let TaggedValue::VectorModification(modification) = &**tagged_value

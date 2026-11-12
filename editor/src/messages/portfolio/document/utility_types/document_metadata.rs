@@ -131,7 +131,7 @@ impl DocumentMetadata {
 
 		let mut use_local = true;
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-		let identifier = DefinitionIdentifier::Network("Path".into());
+		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER);
 		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&identifier)
 			&& let Some(&source) = self.first_element_source_ids.get(&layer.to_node())
 			&& !network_interface

@@ -4,3 +4,4 @@
 mod graphene_core;
 mod math_nodes;
 mod raster_nodes;
+mod vector_nodes;

@@ -635,7 +635,8 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 
 	// Must not already have an existing Path node, in the right-most part of the layer chain, which has an empty set of modifications
 	// (otherwise users could repeatedly keep running this command and stacking up empty Path nodes)
-	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input(&DefinitionIdentifier::Network("Path".into()), 1)
+	if let Some(TaggedValue::VectorModification(modifications)) =
+		NodeGraphLayer::new(first_layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER), 1)
 		&& modifications.is_empty()
 	{
 		return None;

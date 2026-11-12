@@ -8,19 +8,18 @@ use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::{CompileError, CompiledNetwork, Compiler};
-use graph_craft::proto::GraphErrors;
+use graph_craft::proto::{ConstructionArgs, GraphErrors};
 use graphene_hash::CacheHash;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, Texture};
 use graphene_std::list::{Item, List};
-use graphene_std::memo::IORecord;
 use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::vector::{Vector, VectorGeometry, paths_from_list_row_attributes};
-use graphene_std::{Context, NodeError, Poll};
+use graphene_std::vector::{Vector, VectorGeometry, path, paths_from_list_row_attributes};
+use graphene_std::{Context, NodeError, NodeParameter, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use observer::Observer;
@@ -57,7 +56,8 @@ pub struct NodeRuntime {
 	resources: ResourceRegistry,
 	node_graph_errors: GraphErrors,
 	node_graph_warnings: GraphErrors,
-	monitor_nodes: Vec<(Vec<NodeId>, NodeId)>,
+	/// Each Path node with the proto node feeding its content, which gives the geometry the node's edits apply to.
+	path_nodes: Vec<(NodeId, NodeId)>,
 	thumbnails: Thumbnails,
 	observer: Observer<ObservationKey>,
 	/// Whether an observation changed since its results were last sent.
@@ -155,7 +155,7 @@ impl NodeRuntime {
 
 			node_graph_errors: Vec::new(),
 			node_graph_warnings: Vec::new(),
-			monitor_nodes: Vec::new(),
+			path_nodes: Vec::new(),
 			thumbnails: Thumbnails::new(),
 			observer: Observer::default(),
 			observations_changed: false,
@@ -388,7 +388,7 @@ impl NodeRuntime {
 
 	async fn respond(&mut self, execution_id: u64, result: ExecutionResult) {
 		let mut responses = VecDeque::new();
-		let dropped_thumbnails = self.process_monitor_nodes(&mut responses).await;
+		let dropped_thumbnails = self.process_path_nodes_and_thumbnails(&mut responses).await;
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 
 		let response = ExecutionResponse {
@@ -429,11 +429,16 @@ impl NodeRuntime {
 			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
 		};
 		self.node_graph_warnings = warnings;
-		self.monitor_nodes = proto_network
+		self.path_nodes = proto_network
 			.nodes
 			.iter()
-			.filter(|(_, node)| node.identifier == graphene_std::memo::monitor::IDENTIFIER)
-			.map(|(id, node)| (node.original_location.path.clone().unwrap_or_default(), *id))
+			.filter(|(_, node)| node.identifier == path::IDENTIFIER)
+			.filter_map(|(_, node)| {
+				let path_node = *node.original_location.path.as_ref()?.last()?;
+				let ConstructionArgs::Nodes(inputs) = &node.construction_args else { return None };
+
+				Some((path_node, *inputs.get(path::ContentInput::INDEX)?))
+			})
 			.collect();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
@@ -466,23 +471,14 @@ impl NodeRuntime {
 	}
 
 	/// Updates state data, giving back the layers whose thumbnails were dropped because they no longer have content to show.
-	async fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
+	async fn process_path_nodes_and_thumbnails(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
 		let dropped_thumbnails = self.thumbnails.drop_sourceless();
 
-		for (monitor_node_path, _) in &self.monitor_nodes {
-			let Some(parent_network_node_id) = monitor_parent_node(monitor_node_path) else {
-				warn!("Monitor node has invalid node id");
-				continue;
-			};
-
-			if !records_vector(&self.executor, monitor_node_path) {
-				continue;
-			}
+		for &(path_node, content_node) in &self.path_nodes {
 			let tree = self.executor.tree();
-			let Ok(content_node) = tree.input_node(monitor_node_path, 0) else { continue };
 			let Ok(Some(context)) = tree.last_context(content_node) else { continue };
 			let context_hash = context_hash(&context);
-			if self.vector_evaluations.get(&parent_network_node_id) == Some(&(content_node, context_hash)) {
+			if self.vector_evaluations.get(&path_node) == Some(&(content_node, context_hash)) {
 				continue;
 			}
 
@@ -496,8 +492,8 @@ impl NodeRuntime {
 			} else {
 				continue;
 			};
-			self.vector_modify.insert(parent_network_node_id, geometry);
-			self.vector_evaluations.insert(parent_network_node_id, (content_node, context_hash));
+			self.vector_modify.insert(path_node, geometry);
+			self.vector_evaluations.insert(path_node, (content_node, context_hash));
 		}
 
 		self.thumbnails.render_stale(&self.executor, &self.editor_api, responses).await;
@@ -512,18 +508,6 @@ impl ExecutionResult {
 		let TaggedValue::RenderOutput(RenderOutput { data, .. }) = value else { return None };
 		Some(data)
 	}
-}
-
-/// The layer a monitor node belongs to, since monitor nodes sit within the network of the document node they monitor.
-fn monitor_parent_node(monitor_node_path: &[NodeId]) -> Option<NodeId> {
-	monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied()
-}
-
-fn records_vector(executor: &DynamicExecutor, monitor_node_path: &[NodeId]) -> bool {
-	// TODO: Tell this from the monitor node's type once the types the borrow tree records can be compared with concrete ones
-	executor
-		.introspect(monitor_node_path)
-		.is_ok_and(|data| data.is::<IORecord<Context, List<Vector>>>() || data.is::<IORecord<Context, Item<Vector>>>())
 }
 
 fn evaluated_output(poll: Poll<graphene_std::registry::Any>) -> Option<graphene_std::registry::Any> {
