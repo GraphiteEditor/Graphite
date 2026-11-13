@@ -226,10 +226,22 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes mesa-vulkan-drivers
 
       - name: 🖼️ Check the corpus renders against its references
+        id: check
         run: cargo run --package regression -- --corpus target/regression-corpus check --output target/regression
 
+      # The `comment-regression-renders.yml` workflow reads these to post the mismatches on the PR, since fork PRs can't be given the permission here
+      - name: 📝 Record the PR and outcome for the render comment
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          mkdir -p target/regression
+          echo "$PR_NUMBER" > target/regression/pr-number
+          echo "$OUTCOME" > target/regression/outcome
+
       - name: 📤 Upload the renders and diffs of mismatches
-        if: ${{ failure() }}
+        if: ${{ !cancelled() && (failure() || github.event_name == 'pull_request') }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: regression-mismatches

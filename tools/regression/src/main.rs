@@ -8,6 +8,7 @@ mod upgrade;
 use clap::{Parser, Subcommand};
 use compare::Comparison;
 use corpus::{Corpus, Entry};
+use image::math::Rect;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -209,23 +210,24 @@ async fn check(corpus: &Corpus, entry: &Entry, output: &Path) -> bool {
 				continue;
 			}
 			Comparison::SizeChanged { reference, actual } => (format!("the size changed from {reference:?} to {actual:?}"), None),
-			Comparison::Differs { differing, total, diff } => (format!("{differing} of {total} pixels differ"), Some(diff)),
+			Comparison::Differs { differing, total, diff, region } => (format!("{differing} of {total} pixels differ"), Some((diff, region))),
 		};
 		passed = false;
 
-		let written = save_mismatch(output, &entry.name, *time, &actual, diff.as_ref());
+		let written = save_mismatch(output, &entry.name, *time, &reference, &actual, diff.as_ref());
 		let location = written.map_or_else(|error| format!("writing the mismatch failed: {error}"), |directory| format!("see {}", directory.display()));
 		println!("FAIL {label}: {reason}, {location}");
 	}
 	passed
 }
 
-fn save_mismatch(output: &Path, name: &str, time: f64, actual: &image::RgbaImage, diff: Option<&image::RgbaImage>) -> Result<PathBuf, Box<dyn Error>> {
+fn save_mismatch(output: &Path, name: &str, time: f64, reference: &image::RgbaImage, actual: &image::RgbaImage, diff: Option<&(image::RgbaImage, Rect)>) -> Result<PathBuf, Box<dyn Error>> {
 	let directory = output.join(name);
 	std::fs::create_dir_all(&directory)?;
 	actual.save(directory.join(format!("{time:.3}s.actual.png")))?;
-	if let Some(diff) = diff {
+	if let Some((diff, region)) = diff {
 		diff.save(directory.join(format!("{time:.3}s.diff.png")))?;
+		compare::side_by_side(reference, actual, diff, *region).save(directory.join(format!("{time:.3}s.side-by-side.png")))?;
 	}
 	Ok(directory)
 }

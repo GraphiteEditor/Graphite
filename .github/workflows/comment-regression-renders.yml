@@ -1,0 +1,183 @@
+name: "Regression Render Comment"
+
+# Runs after the Check workflow in the base repository's context, which fork PRs can't reach themselves.
+# It never checks out or runs PR code, and everything read from the artifact is treated as untrusted data.
+on:
+  workflow_run:
+    workflows: ["Check"]
+    types: [completed]
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      # Download the artifact of the Check run
+      actions: read
+      # Post and update the render comment
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPOSITORY: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      MARKER: "<!-- regression-renders -->"
+    steps:
+      - name: 📥 Download the renders of mismatches
+        id: download
+        run: |
+          if ! gh run download "$RUN_ID" --repo "$REPOSITORY" --name regression-mismatches --dir mismatches; then
+            echo "The Check run has no render artifact (the regression job was skipped or didn't get that far)"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+      - name: 🔍 Validate the PR and outcome
+        id: validate
+        if: steps.download.outputs.found == 'true'
+        run: |
+          PR_NUMBER=$(head -c 32 mismatches/pr-number 2>/dev/null | tr -d '[:space:]')
+          OUTCOME=$(head -c 32 mismatches/outcome 2>/dev/null | tr -d '[:space:]')
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "The artifact names no valid PR number"
+            exit 1
+          fi
+          if [[ "$OUTCOME" != "success" && "$OUTCOME" != "failure" ]]; then
+            echo "The corpus check didn't finish (outcome '$OUTCOME'), so there is nothing to report"
+            exit 0
+          fi
+
+          # The artifact could claim any PR, so only accept the one whose head is the commit that was checked. A newer push gets its own run.
+          PR_HEAD=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
+          if [ "$PR_HEAD" != "$HEAD_SHA" ]; then
+            echo "PR #$PR_NUMBER has moved on from $HEAD_SHA, skipping"
+            exit 0
+          fi
+
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "outcome=$OUTCOME" >> "$GITHUB_OUTPUT"
+
+      - name: 🗂️ Collect the side-by-side images
+        id: collect
+        if: steps.validate.outputs.outcome == 'failure'
+        run: |
+          # Only PNGs from documents with plain names are published, so the artifact can't place pages or markup on the site or in the comment
+          mkdir -p site
+          COUNT=0
+          while IFS= read -r -d '' IMAGE; do
+            RELATIVE="${IMAGE#mismatches/}"
+            DOCUMENT="${RELATIVE%/*}"
+            FILE="${RELATIVE##*/}"
+            if ! [[ "$DOCUMENT" =~ ^[A-Za-z0-9\ ._-]+$ && "$FILE" =~ ^[0-9]+\.[0-9]+s\.side-by-side\.png$ ]]; then
+              echo "Skipping unexpected file '$RELATIVE'"
+              continue
+            fi
+            if [ "$(head -c 8 "$IMAGE" | od -An -tx1 | tr -d ' \n')" != "89504e470d0a1a0a" ]; then
+              echo "Skipping '$RELATIVE', which isn't a PNG"
+              continue
+            fi
+            mkdir -p "site/$DOCUMENT"
+            cp "$IMAGE" "site/$DOCUMENT/$FILE"
+            COUNT=$((COUNT + 1))
+          done < <(find mismatches -mindepth 2 -maxdepth 2 -type f -name '*.side-by-side.png' -print0 | sort -z)
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: 📤 Publish the images to Cloudflare Pages
+        id: cloudflare
+        if: steps.collect.outputs.count > 0
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ vars.REGRESSION_PAGES_PROJECT || 'graphite-regression' }}
+          PR_NUMBER: ${{ steps.validate.outputs.pr_number }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "No Cloudflare API token available, so the comment lists the mismatches without images"
+            exit 0
+          fi
+
+          # Creating the project fails harmlessly once it exists
+          npx wrangler@3 pages project create "$PROJECT" --production-branch=master || true
+
+          MAX_ATTEMPTS=5
+          DELAY=15
+          for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
+            npx wrangler@3 pages deploy site --project-name="$PROJECT" --branch="pr-$PR_NUMBER" --commit-dirty=true 2>&1 | tee /tmp/wrangler_output
+            if [ ${PIPESTATUS[0]} -eq 0 ]; then
+              # The deployment's own URL rather than the branch alias, so GitHub's image cache never shows an older push's images
+              URL=$(grep -oP 'https://[^\s]+\.pages\.dev' /tmp/wrangler_output | head -1)
+              echo "url=$URL" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+              sleep "$DELAY"
+              DELAY=$((DELAY * 2))
+            fi
+          done
+          echo "All $MAX_ATTEMPTS Cloudflare Pages publish attempts failed"
+          exit 1
+
+      - name: 💬 Post or update the render comment
+        if: steps.validate.outputs.outcome != ''
+        env:
+          PR_NUMBER: ${{ steps.validate.outputs.pr_number }}
+          OUTCOME: ${{ steps.validate.outputs.outcome }}
+          IMAGE_COUNT: ${{ steps.collect.outputs.count || 0 }}
+          SITE_URL: ${{ steps.cloudflare.outputs.url }}
+        run: |
+          EXISTING=$(gh api --paginate "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith(env.MARKER))) | .id' | head -1)
+
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$EXISTING" ]; then
+              echo "Every render matches and there is no earlier comment to update"
+              exit 0
+            fi
+            printf '%s\n### Corpus renders\n\nEvery corpus render matches its reference again.\n' "$MARKER" > body.md
+          else
+            {
+              echo "$MARKER"
+              echo "### Corpus render changes"
+              echo
+              if [ "$IMAGE_COUNT" -eq 0 ]; then
+                echo "The corpus check failed without differing images, so a document failed to render or changed size. See the [Check run]($RUN_URL)."
+              else
+                echo "Each image shows the reference, this PR's render, and the differing pixels in red, cropped to where they differ. If the change is intended, bless the affected documents in the corpus."
+                echo
+                MAX_IMAGES=20
+                SHOWN=0
+                while IFS= read -r -d '' IMAGE; do
+                  if [ "$SHOWN" -ge "$MAX_IMAGES" ]; then
+                    echo "And $((IMAGE_COUNT - MAX_IMAGES)) more, see the [Check run]($RUN_URL)."
+                    break
+                  fi
+                  RELATIVE="${IMAGE#site/}"
+                  DOCUMENT="${RELATIVE%/*}"
+                  TIME="${RELATIVE##*/}"
+                  TIME="${TIME%.side-by-side.png}"
+                  echo "<details open><summary>$DOCUMENT at $TIME</summary>"
+                  echo
+                  if [ -n "$SITE_URL" ]; then
+                    echo "<img src=\"$SITE_URL/$(jq -rn --arg path "$RELATIVE" '$path | @uri | gsub("%2F"; "/")')\" alt=\"$DOCUMENT at $TIME\">"
+                  else
+                    echo "Images couldn't be published, see the \`regression-mismatches\` artifact of the [Check run]($RUN_URL)."
+                  fi
+                  echo
+                  echo "</details>"
+                  SHOWN=$((SHOWN + 1))
+                done < <(find site -type f -name '*.side-by-side.png' -print0 | sort -z)
+                echo
+                echo "The full renders and diffs are in the \`regression-mismatches\` artifact of the [Check run]($RUN_URL)."
+              fi
+            } > body.md
+          fi
+
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/$REPOSITORY/issues/comments/$EXISTING" -F body=@body.md > /dev/null
+          else
+            gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -F body=@body.md > /dev/null
+          fi
