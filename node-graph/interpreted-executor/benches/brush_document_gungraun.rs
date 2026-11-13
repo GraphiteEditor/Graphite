@@ -3,7 +3,7 @@
 
 mod brush_util;
 
-use brush_util::{Style, StyledStroke, VIEWPORT, callgrind, lavapipe, strokes, wait};
+use brush_util::{Group, VIEWPORT, callgrind, document, lavapipe, wait};
 use core_types::transform::{Footprint, RenderQuality};
 use glam::DAffine2;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -14,7 +14,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graphene_std::Context;
 use graphene_std::application_io::RenderConfig;
 use graphene_std::brush::basic_brush::{basic_brush, basic_brush_pipeline};
-use graphene_std::brush::{BrushCache, Stroke, brush_strokes};
+use graphene_std::brush::{BrushCache, brush_strokes};
 use graphene_std::graphic;
 use graphene_std::runtime::{AsyncRuntime, Clock, Spawn, Task};
 use graphene_std::uuid::NodeId;
@@ -61,7 +61,7 @@ impl Session {
 
 /// A document of `existing` strokes rendered once, so the added stroke meets the caches the editor would have.
 fn setup(existing: usize) -> Session {
-	let (mut strokes, stroke) = strokes(existing);
+	let (before, after) = document(existing);
 	let gpu = lavapipe();
 	let mut session = Session {
 		editor_api: Arc::new(PlatformEditorApi {
@@ -74,27 +74,24 @@ fn setup(existing: usize) -> Session {
 		document: NodeNetwork::default(),
 	};
 
-	let before = strokes.clone();
-	strokes.push(stroke);
-
 	// Rendering the finished document through a brush cache that is then discarded compiles the device's shaders and allocates its textures before anything is measured
-	session.update(brush_layer(&BrushCache::default(), &strokes));
+	session.update(brush_layer(&BrushCache::default(), &after));
 
 	// The brush layer's cache lives in the graph, so it carries over between compilations like in the editor
 	let cache = BrushCache::default();
 	session.update(brush_layer(&cache, &before));
-	session.document = brush_layer(&cache, &strokes);
+	session.document = brush_layer(&cache, &after);
 	session
 }
 
-/// The `Basic Brush` node and the layer conversion after it, whose IDs stay put as groups are added below them.
+/// The `Basic Brush` node and the layer conversion after it, whose IDs stay put as groups are added.
 const BRUSH_NODE: NodeId = NodeId(0);
 const LAYER_NODE: NodeId = NodeId(1);
 
-/// A document holding just a brush layer with one `Brush Strokes` group per stroke, since each stroke has its own settings,
+/// A document holding just a brush layer with its `Brush Strokes` groups,
 /// stacked with the nodes the `Merge` layer uses and ending in the conversion the brush layer applies to its content.
 /// Each group keeps its node IDs as strokes are added, as in the editor.
-fn brush_layer(cache: &BrushCache, strokes: &[StyledStroke]) -> NodeNetwork {
+fn brush_layer(cache: &BrushCache, groups: &[Group]) -> NodeNetwork {
 	let node = |implementation, inputs| DocumentNode {
 		inputs,
 		call_argument: concrete!(Context),
@@ -103,22 +100,17 @@ fn brush_layer(cache: &BrushCache, strokes: &[StyledStroke]) -> NodeNetwork {
 	};
 	let id = |index: usize, part: u64| NodeId(10 + 3 * index as u64 + part);
 
-	// A layer without strokes still has the group the Brush tool fills
-	let empty = [(Stroke::default(), Style::default())];
-	let groups = if strokes.is_empty() { &empty[..] } else { strokes };
-
 	let mut nodes = Vec::new();
 	let mut stack = None;
-	for (index, (stroke, style)) in groups.iter().enumerate() {
-		let stroke = if stroke.is_empty() { Vec::new() } else { vec![stroke.clone()] };
+	for (index, group) in groups.iter().enumerate() {
 		let strokes = node(
 			brush_strokes::IDENTIFIER,
 			vec![
-				NodeInput::value(TaggedValue::Strokes(stroke), false),
-				NodeInput::value(TaggedValue::Color(style.color), false),
-				NodeInput::value(TaggedValue::Number(style.diameter), false),
-				NodeInput::value(TaggedValue::Number(style.hardness), false),
-				NodeInput::value(TaggedValue::Number(style.flow), false),
+				NodeInput::value(TaggedValue::Strokes(group.strokes.clone()), false),
+				NodeInput::value(TaggedValue::Color(group.style.color), false),
+				NodeInput::value(TaggedValue::Number(group.style.diameter), false),
+				NodeInput::value(TaggedValue::Number(group.style.hardness), false),
+				NodeInput::value(TaggedValue::Number(group.style.flow), false),
 			],
 		);
 		nodes.push((id(index, 0), strokes));

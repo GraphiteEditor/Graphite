@@ -47,7 +47,7 @@ pub fn wait(executor: &WgpuExecutor) {
 	let _ = executor.context().device.poll(wgpu::PollType::wait_indefinitely());
 }
 
-/// The `Brush Strokes` settings of one stroke's group, as the Brush tool starts a new group whenever its settings change.
+/// The `Brush Strokes` settings of a group, as the Brush tool starts a new group whenever its settings change.
 #[derive(Clone, Copy)]
 pub struct Style {
 	pub color: Color,
@@ -56,32 +56,35 @@ pub struct Style {
 	pub flow: f64,
 }
 
-impl Default for Style {
-	/// The `Brush Strokes` node's defaults.
-	fn default() -> Self {
-		Self {
-			color: Color::BLACK,
-			diameter: 40.,
-			hardness: 0.,
-			flow: 100.,
-		}
-	}
+/// Strokes drawn with the same settings, which the Brush tool keeps in one `Brush Strokes` group.
+#[derive(Clone)]
+pub struct Group {
+	pub style: Style,
+	pub strokes: Vec<Stroke>,
 }
 
-/// A stroke drawn with its own settings.
-pub type StyledStroke = (Stroke, Style);
+/// Strokes the Brush tool draws before its settings change.
+const STROKES_PER_GROUP: usize = 8;
 
-/// The document of `existing` strokes and the stroke added on top, the same on every run.
-/// Their colors go once around the color wheel, and their other settings vary a little around the Brush tool's defaults.
-pub fn strokes(existing: usize) -> (Vec<StyledStroke>, StyledStroke) {
+/// The groups of a document of `existing` strokes before and after one more stroke is drawn on top of it, the same on every run.
+/// The added stroke continues the top group, as drawing on with the same settings does.
+/// The groups' colors go once around the color wheel, and their other settings vary a little around the Brush tool's defaults.
+pub fn document(existing: usize) -> (Vec<Group>, Vec<Group>) {
 	let mut random = Random(existing as u64);
-	let mut styled = |index: usize, samples: usize| {
-		let stroke = random.stroke(samples);
-		let style = random.style(index as f32 / (existing + 1) as f32);
-		(stroke, style)
-	};
-	let document = (0..existing).map(|index| styled(index, DOCUMENT_STROKE_SAMPLES)).collect();
-	(document, styled(existing, STROKE_SAMPLES))
+	let count = existing.div_ceil(STROKES_PER_GROUP).max(1);
+	let mut before: Vec<_> = (0..count)
+		.map(|index| Group {
+			style: random.style(index as f32 / count as f32),
+			strokes: Vec::new(),
+		})
+		.collect();
+	for index in 0..existing {
+		before[index / STROKES_PER_GROUP].strokes.push(random.stroke(DOCUMENT_STROKE_SAMPLES));
+	}
+
+	let mut after = before.clone();
+	after.last_mut().expect("A document has at least one group").strokes.push(random.stroke(STROKE_SAMPLES));
+	(before, after)
 }
 
 /// Wandering pen strokes and their settings from a fixed seed.

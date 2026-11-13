@@ -3,14 +3,14 @@
 
 mod brush_util;
 
-use brush_util::{Style, StyledStroke, VIEWPORT, callgrind, lavapipe, strokes, wait};
+use brush_util::{Group, VIEWPORT, callgrind, document, lavapipe, wait};
 use core_types::list::{Item, List};
 use core_types::transform::{Footprint, RenderQuality};
 use core_types::value::ClonedNode;
 use core_types::{Context, Node, OwnedContextImpl, Poll};
 use glam::DAffine2;
 use graphene_std::brush::basic_brush::{BasicBrushNode, BasicBrushPipelineNode};
-use graphene_std::brush::{BrushCache, BrushStrokesNode, Stroke};
+use graphene_std::brush::{BrushCache, BrushStrokesNode};
 use graphene_std::graphic::Graphic;
 use graphene_std::raster_types::{GPU, Raster};
 use gungraun::prelude::*;
@@ -66,35 +66,32 @@ impl Session {
 
 /// A layer of `existing` strokes rendered once, so the added stroke meets the cache the editor would have.
 fn setup_add_stroke(existing: usize) -> Session {
-	let (mut document, stroke) = strokes(existing);
-	let before = document.clone();
-	document.push(stroke);
-	let session = Session::open(layer(document));
-	if !before.is_empty() {
-		black_box(session.render(layer(before)));
+	let (before, after) = document(existing);
+	let session = Session::open(layer(&after));
+	if existing > 0 {
+		black_box(session.render(layer(&before)));
 	}
 	session
 }
 
 /// The same layer with the stroke already added, meeting an empty brush cache, as after reopening the document.
 fn setup_render_layer(existing: usize) -> Session {
-	let (mut document, stroke) = strokes(existing);
-	document.push(stroke);
-	Session::open(layer(document))
+	let (_, after) = document(existing);
+	Session::open(layer(&after))
 }
 
-/// The stack of `Brush Strokes` groups a brush layer feeds to the `Basic Brush` node, one group per stroke since each has its own settings.
-fn layer(strokes: Vec<StyledStroke>) -> List<Graphic> {
-	strokes.into_iter().flat_map(|(stroke, style)| group(stroke, style)).collect()
+/// The stack of `Brush Strokes` groups a brush layer feeds to the `Basic Brush` node.
+fn layer(groups: &[Group]) -> List<Graphic> {
+	groups.iter().flat_map(group).collect()
 }
 
-fn group(stroke: Stroke, style: Style) -> List<Graphic> {
+fn group(group: &Group) -> List<Graphic> {
 	let node = BrushStrokesNode::new(
-		ClonedNode::new(List::new_from_element(stroke)),
-		ClonedNode::new(List::new_from_element(style.color)),
-		ClonedNode::new(Item::new_from_element(style.diameter)),
-		ClonedNode::new(Item::new_from_element(style.hardness)),
-		ClonedNode::new(Item::new_from_element(style.flow)),
+		ClonedNode::new(List::new_from_elements(group.strokes.clone())),
+		ClonedNode::new(List::new_from_element(group.style.color)),
+		ClonedNode::new(Item::new_from_element(group.style.diameter)),
+		ClonedNode::new(Item::new_from_element(group.style.hardness)),
+		ClonedNode::new(Item::new_from_element(group.style.flow)),
 	);
 	let Poll::Final(graphics) = node.eval(&NO_CONTEXT) else {
 		panic!("The Brush Strokes node failed");
