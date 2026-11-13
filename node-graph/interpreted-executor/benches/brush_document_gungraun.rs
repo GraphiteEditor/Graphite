@@ -3,7 +3,7 @@
 
 mod brush_util;
 
-use brush_util::{VIEWPORT, callgrind, lavapipe, strokes, wait};
+use brush_util::{Style, StyledStroke, VIEWPORT, callgrind, lavapipe, strokes, wait};
 use core_types::transform::{Footprint, RenderQuality};
 use glam::DAffine2;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -11,21 +11,19 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
+use graphene_std::Context;
 use graphene_std::application_io::RenderConfig;
 use graphene_std::brush::basic_brush::{basic_brush, basic_brush_pipeline};
 use graphene_std::brush::{BrushCache, Stroke, brush_strokes};
 use graphene_std::graphic;
 use graphene_std::runtime::{AsyncRuntime, Clock, Spawn, Task};
 use graphene_std::uuid::NodeId;
-use graphene_std::{Color, Context};
 use gungraun::prelude::*;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::hint::black_box;
 use std::sync::Arc;
 use wgpu_executor::WgpuExecutor;
-
-const STROKES_NODE: NodeId = NodeId(0);
 
 pub struct Session {
 	gpu: WgpuExecutor,
@@ -80,58 +78,78 @@ fn setup(existing: usize) -> Session {
 	strokes.push(stroke);
 
 	// Rendering the finished document through a brush cache that is then discarded compiles the device's shaders and allocates its textures before anything is measured
-	session.update(with_strokes(&brush_layer(BrushCache::default()), strokes.clone()));
+	session.update(brush_layer(&BrushCache::default(), &strokes));
 
 	// The brush layer's cache lives in the graph, so it carries over between compilations like in the editor
-	let template = brush_layer(BrushCache::default());
-	session.update(with_strokes(&template, before));
-	session.document = with_strokes(&template, strokes);
+	let cache = BrushCache::default();
+	session.update(brush_layer(&cache, &before));
+	session.document = brush_layer(&cache, &strokes);
 	session
 }
 
-/// A document holding just a brush layer, with the nodes and inputs the Brush tool creates and the conversion its layer applies to them.
-fn brush_layer(cache: BrushCache) -> NodeNetwork {
-	let strokes = DocumentNode {
-		inputs: vec![
-			NodeInput::value(TaggedValue::Strokes(Vec::new()), false),
-			NodeInput::value(TaggedValue::Color(Color::from_rgbaf32_unchecked(0.2, 0.4, 0.8, 1.)), false),
-			NodeInput::value(TaggedValue::Number(24.), false),
-			NodeInput::value(TaggedValue::Number(50.), false),
-			NodeInput::value(TaggedValue::Number(80.), false),
-		],
+/// The `Basic Brush` node and the layer conversion after it, whose IDs stay put as groups are added below them.
+const BRUSH_NODE: NodeId = NodeId(0);
+const LAYER_NODE: NodeId = NodeId(1);
+
+/// A document holding just a brush layer with one `Brush Strokes` group per stroke, since each stroke has its own settings,
+/// stacked with the nodes the `Merge` layer uses and ending in the conversion the brush layer applies to its content.
+/// Each group keeps its node IDs as strokes are added, as in the editor.
+fn brush_layer(cache: &BrushCache, strokes: &[StyledStroke]) -> NodeNetwork {
+	let node = |implementation, inputs| DocumentNode {
+		inputs,
 		call_argument: concrete!(Context),
-		implementation: DocumentNodeImplementation::ProtoNode(brush_strokes::IDENTIFIER),
+		implementation: DocumentNodeImplementation::ProtoNode(implementation),
 		..Default::default()
 	};
-	let brush = DocumentNode {
-		inputs: vec![
-			NodeInput::node(STROKES_NODE, 0),
-			NodeInput::value(TaggedValue::BrushCache(cache), false),
+	let id = |index: usize, part: u64| NodeId(10 + 3 * index as u64 + part);
+
+	// A layer without strokes still has the group the Brush tool fills
+	let empty = [(Stroke::default(), Style::default())];
+	let groups = if strokes.is_empty() { &empty[..] } else { strokes };
+
+	let mut nodes = Vec::new();
+	let mut stack = None;
+	for (index, (stroke, style)) in groups.iter().enumerate() {
+		let stroke = if stroke.is_empty() { Vec::new() } else { vec![stroke.clone()] };
+		let strokes = node(
+			brush_strokes::IDENTIFIER,
+			vec![
+				NodeInput::value(TaggedValue::Strokes(stroke), false),
+				NodeInput::value(TaggedValue::Color(style.color), false),
+				NodeInput::value(TaggedValue::Number(style.diameter), false),
+				NodeInput::value(TaggedValue::Number(style.hardness), false),
+				NodeInput::value(TaggedValue::Number(style.flow), false),
+			],
+		);
+		nodes.push((id(index, 0), strokes));
+		nodes.push((id(index, 1), node(graphic::into_group::IDENTIFIER, vec![NodeInput::node(id(index, 0), 0)])));
+		stack = Some(match stack {
+			None => id(index, 1),
+			Some(below) => {
+				nodes.push((id(index, 2), node(graphic::extend::IDENTIFIER, vec![NodeInput::node(below, 0), NodeInput::node(id(index, 1), 0)])));
+				id(index, 2)
+			}
+		});
+	}
+
+	let stack = stack.expect("A brush layer has at least one group");
+	let brush = node(
+		basic_brush::IDENTIFIER,
+		vec![
+			NodeInput::node(stack, 0),
+			NodeInput::value(TaggedValue::BrushCache(cache.clone()), false),
 			NodeInput::scope(basic_brush_pipeline::IDENTIFIER),
 		],
-		call_argument: concrete!(Context),
-		implementation: DocumentNodeImplementation::ProtoNode(basic_brush::IDENTIFIER),
-		..Default::default()
-	};
+	);
+	nodes.push((BRUSH_NODE, brush));
 	// The layer node takes its content through `Into Group` before merging it into the stack
-	let group = DocumentNode {
-		inputs: vec![NodeInput::node(NodeId(1), 0)],
-		call_argument: concrete!(Context),
-		implementation: DocumentNodeImplementation::ProtoNode(graphic::into_group::IDENTIFIER),
-		..Default::default()
-	};
+	nodes.push((LAYER_NODE, node(graphic::into_group::IDENTIFIER, vec![NodeInput::node(BRUSH_NODE, 0)])));
+
 	NodeNetwork {
-		exports: vec![NodeInput::node(NodeId(2), 0)],
-		nodes: [(STROKES_NODE, strokes), (NodeId(1), brush), (NodeId(2), group)].into_iter().collect(),
+		exports: vec![NodeInput::node(LAYER_NODE, 0)],
+		nodes: nodes.into_iter().collect(),
 		..Default::default()
 	}
-}
-
-fn with_strokes(template: &NodeNetwork, strokes: Vec<Stroke>) -> NodeNetwork {
-	let mut document = template.clone();
-	let node = document.nodes.get_mut(&STROKES_NODE).expect("The brush layer has no Brush Strokes node");
-	node.inputs[0] = NodeInput::value(TaggedValue::Strokes(strokes), false);
-	document
 }
 
 /// Runs spawned work to completion on the spot, so everything the graph starts happens in the measured section.

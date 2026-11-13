@@ -2,6 +2,7 @@
 //! with the counts including the "GPU" work.
 
 use glam::{DVec2, UVec2};
+use graphene_std::Color;
 use graphene_std::brush::{Channel, Stroke};
 use gungraun::{Callgrind, EntryPoint, LibraryBenchmarkConfig};
 use wgpu_executor::{WgpuContextBuilder, WgpuExecutor};
@@ -46,14 +47,44 @@ pub fn wait(executor: &WgpuExecutor) {
 	let _ = executor.context().device.poll(wgpu::PollType::wait_indefinitely());
 }
 
-/// The document of `existing` strokes and the stroke added on top, the same on every run.
-pub fn strokes(existing: usize) -> (Vec<Stroke>, Stroke) {
-	let mut random = Random(existing as u64);
-	let document = (0..existing).map(|_| random.stroke(DOCUMENT_STROKE_SAMPLES)).collect();
-	(document, random.stroke(STROKE_SAMPLES))
+/// The `Brush Strokes` settings of one stroke's group, as the Brush tool starts a new group whenever its settings change.
+#[derive(Clone, Copy)]
+pub struct Style {
+	pub color: Color,
+	pub diameter: f64,
+	pub hardness: f64,
+	pub flow: f64,
 }
 
-/// Wandering pen strokes from a fixed seed.
+impl Default for Style {
+	/// The `Brush Strokes` node's defaults.
+	fn default() -> Self {
+		Self {
+			color: Color::BLACK,
+			diameter: 40.,
+			hardness: 0.,
+			flow: 100.,
+		}
+	}
+}
+
+/// A stroke drawn with its own settings.
+pub type StyledStroke = (Stroke, Style);
+
+/// The document of `existing` strokes and the stroke added on top, the same on every run.
+/// Their colors go once around the color wheel, and their other settings vary a little around the Brush tool's defaults.
+pub fn strokes(existing: usize) -> (Vec<StyledStroke>, StyledStroke) {
+	let mut random = Random(existing as u64);
+	let mut styled = |index: usize, samples: usize| {
+		let stroke = random.stroke(samples);
+		let style = random.style(index as f32 / (existing + 1) as f32);
+		(stroke, style)
+	};
+	let document = (0..existing).map(|index| styled(index, DOCUMENT_STROKE_SAMPLES)).collect();
+	(document, styled(existing, STROKE_SAMPLES))
+}
+
+/// Wandering pen strokes and their settings from a fixed seed.
 struct Random(u64);
 
 impl Random {
@@ -64,6 +95,20 @@ impl Random {
 		z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
 		z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
 		((z ^ (z >> 31)) >> 11) as f64 / (1u64 << 53) as f64
+	}
+
+	/// A value in `center ± spread`.
+	fn around(&mut self, center: f64, spread: f64) -> f64 {
+		center + (self.next() * 2. - 1.) * spread
+	}
+
+	fn style(&mut self, hue: f32) -> Style {
+		Style {
+			color: Color::from_hsva(hue, 0.7, 0.9, 1.),
+			diameter: self.around(24., 4.),
+			hardness: self.around(50., 10.),
+			flow: self.around(80., 10.),
+		}
 	}
 
 	fn stroke(&mut self, samples: usize) -> Stroke {

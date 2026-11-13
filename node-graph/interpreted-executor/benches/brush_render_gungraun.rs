@@ -3,11 +3,11 @@
 
 mod brush_util;
 
-use brush_util::{VIEWPORT, callgrind, lavapipe, strokes, wait};
+use brush_util::{Style, StyledStroke, VIEWPORT, callgrind, lavapipe, strokes, wait};
 use core_types::list::{Item, List};
 use core_types::transform::{Footprint, RenderQuality};
 use core_types::value::ClonedNode;
-use core_types::{Color, Context, Node, OwnedContextImpl, Poll};
+use core_types::{Context, Node, OwnedContextImpl, Poll};
 use glam::DAffine2;
 use graphene_std::brush::basic_brush::{BasicBrushNode, BasicBrushPipelineNode};
 use graphene_std::brush::{BrushCache, BrushStrokesNode, Stroke};
@@ -83,14 +83,18 @@ fn setup_render_layer(existing: usize) -> Session {
 	Session::open(layer(document))
 }
 
-/// The `Brush Strokes` node's output for these strokes, as a brush layer feeds it to the `Basic Brush` node.
-fn layer(strokes: Vec<Stroke>) -> List<Graphic> {
+/// The stack of `Brush Strokes` groups a brush layer feeds to the `Basic Brush` node, one group per stroke since each has its own settings.
+fn layer(strokes: Vec<StyledStroke>) -> List<Graphic> {
+	strokes.into_iter().flat_map(|(stroke, style)| group(stroke, style)).collect()
+}
+
+fn group(stroke: Stroke, style: Style) -> List<Graphic> {
 	let node = BrushStrokesNode::new(
-		ClonedNode::new(List::new_from_elements(strokes)),
-		ClonedNode::new(List::new_from_element(Color::from_rgbaf32_unchecked(0.2, 0.4, 0.8, 1.))),
-		ClonedNode::new(Item::new_from_element(24.)),
-		ClonedNode::new(Item::new_from_element(50.)),
-		ClonedNode::new(Item::new_from_element(80.)),
+		ClonedNode::new(List::new_from_element(stroke)),
+		ClonedNode::new(List::new_from_element(style.color)),
+		ClonedNode::new(Item::new_from_element(style.diameter)),
+		ClonedNode::new(Item::new_from_element(style.hardness)),
+		ClonedNode::new(Item::new_from_element(style.flow)),
 	);
 	let Poll::Final(graphics) = node.eval(&NO_CONTEXT) else {
 		panic!("The Brush Strokes node failed");
