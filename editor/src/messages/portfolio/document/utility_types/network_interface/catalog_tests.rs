@@ -246,7 +246,10 @@ async fn undoing_and_redoing_the_unlock_of_a_layer_keeps_its_nodes() {
 
 	editor.handle_message(DocumentMessage::Undo).await;
 	assert_eq!(node_count(&editor), shipped, "undoing the unlock should bring back the shared contents");
+	assert!(editor.active_document().network_interface.is_read_only(&path));
+
 	editor.handle_message(DocumentMessage::Redo).await;
 	assert_eq!(node_count(&editor), shipped, "redoing the unlock should bring back the copy");
+	assert!(!editor.active_document().network_interface.is_read_only(&path));
 	assert!(editor.active_document().network_interface.validate_invariants().is_empty());
 }

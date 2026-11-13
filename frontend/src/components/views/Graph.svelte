@@ -346,7 +346,7 @@
 	></div>
 	<!-- Kept out of the graph's pointer input so its button doesn't also start a box selection -->
 	{#if $nodeGraph.readOnly}
-		<div class="read-only-banner" on:pointerdown|stopPropagation on:pointerup|stopPropagation on:wheel|passive|stopPropagation>
+		<div class="read-only-banner" on:pointerdown|stopPropagation on:wheel|passive|stopPropagation>
 			<IconLabel icon="PadlockLocked" />
 			<TextLabel>The contents of this built-in node are shared by all its instances and read-only</TextLabel>
 			<TextButton label="Edit Contents" action={() => editor.makeNetworkEditable()} />

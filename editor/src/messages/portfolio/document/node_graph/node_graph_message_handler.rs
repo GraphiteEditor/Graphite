@@ -163,7 +163,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 		} = context;
 
 		if message
-			.edited_network(selection_network_path)
+			.edited_network(selection_network_path, breadcrumb_network_path)
 			.is_some_and(|edited_network| network_interface.is_read_only(edited_network))
 		{
 			return;

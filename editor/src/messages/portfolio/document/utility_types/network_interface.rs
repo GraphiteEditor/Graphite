@@ -227,6 +227,7 @@ impl NodeNetworkInterface {
 			for id in &rekeyed {
 				if let Some(definition) = metadata.persistent_metadata.definitions.get_mut(id) {
 					derived_ids::rekey_node_metadata(*id, &mut definition.persistent_metadata);
+					definition.transient_metadata = Default::default();
 				}
 			}
 		});

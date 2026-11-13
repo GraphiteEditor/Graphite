@@ -660,7 +660,9 @@ impl<'m> ScopedConversion<'m> {
 	/// Converts the node `local_id` in the network at `location` into `registry`.
 	pub fn convert_node_at(&mut self, registry: &mut Registry, location: NetworkLocation, local_id: RuntimeNodeId, doc_node: &DocumentNode) -> Result<(), ConversionError> {
 		let node = convert_node(doc_node, location, local_id, registry, &mut self.ctx)?;
-		registry.node_instances.insert(storage_node_id(local_id), node);
+		if registry.node_instances.insert(storage_node_id(local_id), node).is_some() {
+			return Err(ConversionError::DuplicateNodeId(local_id.0));
+		}
 		Ok(())
 	}
 

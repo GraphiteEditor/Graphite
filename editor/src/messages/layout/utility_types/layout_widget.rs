@@ -988,6 +988,7 @@ impl Widget {
 			Self::DropdownInput(widget) => &mut widget.disabled,
 			Self::IconButton(widget) => &mut widget.disabled,
 			Self::IconLabel(widget) => &mut widget.disabled,
+			Self::ParameterExposeButton(widget) => &mut widget.disabled,
 			Self::MathExpressionInput(widget) => &mut widget.disabled,
 			Self::NodeCatalog(widget) => &mut widget.disabled,
 			Self::NumberInput(widget) => &mut widget.disabled,
@@ -1000,7 +1001,7 @@ impl Widget {
 			Self::TextInput(widget) => &mut widget.disabled,
 			Self::TextLabel(widget) => &mut widget.disabled,
 			Self::VisualColorPickersInput(widget) => &mut widget.disabled,
-			Self::ImageButton(_) | Self::ImageLabel(_) | Self::ShortcutLabel(_) | Self::ParameterChainToggle(_) | Self::ParameterExposeButton(_) | Self::Separator(_) | Self::WorkingColorsInput(_) => {
+			Self::ImageButton(_) | Self::ImageLabel(_) | Self::ShortcutLabel(_) | Self::ParameterChainToggle(_) | Self::Separator(_) | Self::WorkingColorsInput(_) => {
 				return;
 			}
 		};

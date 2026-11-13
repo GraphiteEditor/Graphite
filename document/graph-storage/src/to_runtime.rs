@@ -403,9 +403,8 @@ fn extract_ui_metadata(node: &crate::Node, network: NetworkLocation, local_id: R
 	}
 }
 
-/// Node references stored here are storage IDs, resolved back to runtime-local IDs the way
-/// `read_scope_injections` does. A reference to a node that is no longer in this network is dropped
-/// rather than failing the conversion: a pinned node can have been deleted.
+/// Keeps only the stored node references to nodes in this network. A reference to a node that is no
+/// longer there is dropped rather than failing the conversion, since a pinned node can have been deleted.
 fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes, network: NetworkLocation, network_id: NetworkId) -> NetworkMetadataEntry {
 	let to_runtime_id = |storage_id: NodeId| {
 		let in_network = registry.node_instances.get(&storage_id).is_some_and(|node| node.network == network_id);

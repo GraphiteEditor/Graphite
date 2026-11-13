@@ -354,7 +354,7 @@ pub enum NodeGraphMessage {
 
 impl NodeGraphMessage {
 	/// The network this message writes, or `None` for one that only reads it or changes view state.
-	pub fn edited_network<'a>(&'a self, selection_network_path: &'a [NodeId]) -> Option<&'a [NodeId]> {
+	pub fn edited_network<'a>(&'a self, selection_network_path: &'a [NodeId], breadcrumb_network_path: &'a [NodeId]) -> Option<&'a [NodeId]> {
 		match self {
 			Self::SetDisplayName { network_path, .. }
 			| Self::SetDisplayNameImpl { network_path, .. }
@@ -364,12 +364,22 @@ impl NodeGraphMessage {
 			| Self::SetVisibility { network_path, .. }
 			| Self::SetLockedOrVisibilitySideEffects { network_path, .. } => Some(network_path),
 			Self::AddPathNode | Self::CreateNodeInLayerNoTransaction { .. } | Self::CreateNodeInLayerWithTransaction { .. } => Some(&[]),
-			Self::AddNodes { .. }
-			| Self::AddImport
+			Self::AddImport
 			| Self::AddImportAndConnect { .. }
 			| Self::AddExport
 			| Self::AddPrimaryExport
 			| Self::AddSecondaryExport
+			| Self::DisconnectImportExport { .. }
+			| Self::ExposeEncapsulatingInput { .. }
+			| Self::ExposePrimaryExport { .. }
+			| Self::MergeSelectedNodes
+			| Self::ReorderImport { .. }
+			| Self::ReorderExport { .. }
+			| Self::SetImportExportName { .. }
+			| Self::SetImportExportNameImpl { .. }
+			| Self::SetImportExportDescription { .. }
+			| Self::SetImportExportDescriptionImpl { .. } => Some(breadcrumb_network_path),
+			Self::AddNodes { .. }
 			| Self::CreateNodeFromContextMenu { .. }
 			| Self::CreateWire { .. }
 			| Self::CreateWires { .. }
@@ -379,16 +389,12 @@ impl NodeGraphMessage {
 			| Self::DeleteSelectedNodes { .. }
 			| Self::RemoveOrphanedDots
 			| Self::DisconnectInput { .. }
-			| Self::DisconnectImportExport { .. }
 			| Self::DuplicateSelectedNodes
 			| Self::ExposeInput { .. }
-			| Self::ExposeEncapsulatingInput { .. }
-			| Self::ExposePrimaryExport { .. }
 			| Self::InsertNode { .. }
 			| Self::InsertNodeBetween { .. }
 			| Self::InsertDotOnWire { .. }
 			| Self::InsertDotOnOutput { .. }
-			| Self::MergeSelectedNodes
 			| Self::MoveLayerToStack { .. }
 			| Self::MoveNodeToChainStart { .. }
 			| Self::MoveChainNodes { .. }
@@ -402,8 +408,6 @@ impl NodeGraphMessage {
 			| Self::RemoveImport { .. }
 			| Self::RemoveExport { .. }
 			| Self::RemoveImportExport { .. }
-			| Self::ReorderImport { .. }
-			| Self::ReorderExport { .. }
 			| Self::SetInputValue { .. }
 			| Self::SetInput { .. }
 			| Self::BeginEditLayerName { .. }
@@ -413,10 +417,6 @@ impl NodeGraphMessage {
 			| Self::NudgeSelectedNodes { .. }
 			| Self::ShiftSelectedNodes { .. }
 			| Self::ShiftSelectedNodesByAmount { .. }
-			| Self::SetImportExportName { .. }
-			| Self::SetImportExportNameImpl { .. }
-			| Self::SetImportExportDescription { .. }
-			| Self::SetImportExportDescriptionImpl { .. }
 			| Self::ToggleSelectedAsLayersOrNodes
 			| Self::ToggleSelectedLocked
 			| Self::ToggleSelectedIsPinned
