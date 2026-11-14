@@ -25,8 +25,6 @@ pub enum ConversionError {
 	DeserializationError(String),
 	#[error("Blob {0} not found in provided blobs")]
 	BlobNotFound(BlobHash),
-	#[error("Network {network} has two nodes mapping to runtime ID {runtime_id}")]
-	DuplicateRuntimeNodeId { network: NetworkId, runtime_id: u64 },
 	#[error("Network {network} references node {referenced}, which lives in a different network")]
 	CrossNetworkReference { network: NetworkId, referenced: NodeId },
 	#[error("Scope injection {key:?} in network {network} references node {referenced}, which is missing or in a different network")]
@@ -155,10 +153,9 @@ fn runtime_location(id: NetworkId) -> NetworkLocation {
 	}
 }
 
-/// The id the node had in the runtime it was converted from, kept as an attribute so a conversion back
-/// lands it under the id the editor's metadata is keyed by.
-fn runtime_node_id(global_id: NodeId, node: &Node) -> RuntimeNodeId {
-	RuntimeNodeId(node.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(global_id.0))
+/// The runtime ID of a stored node, which carries the same number.
+fn runtime_node_id(id: NodeId) -> RuntimeNodeId {
+	RuntimeNodeId(id.0)
 }
 
 /// A node in runtime form with its metadata entry.
@@ -219,14 +216,14 @@ impl RuntimeProjection<'_> {
 	/// The location of the node's network in the runtime, and the node's ID in that network.
 	pub fn node_address(&self, id: NodeId) -> Option<(NetworkLocation, RuntimeNodeId)> {
 		let node = self.context.registry.node_instances.get(&id)?;
-		Some((self.network_location(node.network)?, runtime_node_id(id, node)))
+		Some((self.network_location(node.network)?, runtime_node_id(id)))
 	}
 
 	/// The node converted as a whole-document conversion would.
 	pub fn node(&self, id: NodeId) -> Result<ProjectedNode, ConversionError> {
 		let node = self.context.registry.node_instances.get(&id).ok_or(ConversionError::NodeNotFound(id))?;
 		let network = self.network_location(node.network).ok_or(ConversionError::NetworkNotFound(node.network))?;
-		let local_id = runtime_node_id(id, node);
+		let local_id = runtime_node_id(id);
 
 		// Reject a missing or cyclic network, like the whole-document conversion does
 		if let Implementation::Network(nested) = node.implementation {
@@ -236,7 +233,7 @@ impl RuntimeProjection<'_> {
 
 		Ok(ProjectedNode {
 			node: convert_node(&self.context, node)?,
-			metadata: extract_ui_metadata(node, id, network, local_id),
+			metadata: extract_ui_metadata(node, network, local_id),
 			network,
 			local_id,
 		})
@@ -307,10 +304,6 @@ fn detect_network_cycle(context: &ConversionContext, root: NetworkId) -> Result<
 
 /// Converts a single network, naming the networks its nodes implement by their table entries.
 ///
-/// The registry uses globally hashed IDs, and runtime networks need local IDs.
-/// Each node and each `NodeInput::Node` reference gets its local ID back from `attr::ORIGINAL_NODE_ID`.
-/// References only point within the same network, so a lookup per network is enough.
-///
 /// Storage keeps exports in a sparse `Vec<ExportSlot>` where `None` slots are valid.
 /// They are compacted here into the runtime's dense `Vec<NodeInput>`, since slot stability only matters in storage.
 fn convert_network(
@@ -326,18 +319,11 @@ fn convert_network(
 
 	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
 	for &(global_id, node) in context.nodes_by_network.get(&network_id).map(Vec::as_slice).unwrap_or_default() {
-		let runtime_id = runtime_node_id(global_id, node);
+		let runtime_id = runtime_node_id(global_id);
 
-		node_metadata.push(extract_ui_metadata(node, global_id, location, runtime_id));
+		node_metadata.push(extract_ui_metadata(node, location, runtime_id));
 
-		// Two storage nodes resolving to the same runtime ID would silently collapse into one on
-		// insert, dropping a node from the reconstructed graph.
-		if nodes.insert(runtime_id, convert_node(context, node)?).is_some() {
-			return Err(ConversionError::DuplicateRuntimeNodeId {
-				network: network_id,
-				runtime_id: runtime_id.0,
-			});
-		}
+		nodes.insert(runtime_id, convert_node(context, node)?);
 	}
 
 	let exports = convert_exports(context, network_id, network)?;
@@ -375,24 +361,24 @@ fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes:
 		.into_iter()
 		.map(|(key, (storage_id, ty))| {
 			// The injection must point at a node in this same network, like any `NodeInput::Node`.
-			let referenced = registry.node_instances.get(&storage_id).filter(|node| node.network == network_id);
-			let Some(referenced) = referenced else {
+			let in_network = registry.node_instances.get(&storage_id).is_some_and(|node| node.network == network_id);
+			if !in_network {
 				return Err(ConversionError::DanglingScopeInjection {
 					network: network_id,
 					key,
 					referenced: storage_id,
 				});
-			};
+			}
 
-			Ok((key, (runtime_node_id(storage_id, referenced), ty)))
+			Ok((key, (runtime_node_id(storage_id), ty)))
 		})
 		.collect()
 }
 
-/// Emitted for every node, since `storage_id` is worth restoring even where no `ui::*` attribute is.
+/// Emitted for every node, even one without any `ui::*` attribute.
 /// `input_metadata` is always sized to match `node.inputs.len()` for a strict slot-by-slot rebuild;
 /// empty slots use `InputMetadataEntry::default()`.
-fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network: NetworkLocation, local_id: RuntimeNodeId) -> NodeMetadataEntry {
+fn extract_ui_metadata(node: &crate::Node, network: NetworkLocation, local_id: RuntimeNodeId) -> NodeMetadataEntry {
 	let position: Option<Position> = node.attributes.get_typed(node::ui::POSITION);
 	let is_layer = node.attributes.get_or(node::ui::IS_LAYER, false);
 	let display_name: Option<String> = node.attributes.get_typed(node::ui::DISPLAY_NAME);
@@ -406,7 +392,6 @@ fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network: NetworkL
 	NodeMetadataEntry {
 		network,
 		local_id,
-		storage_id,
 		position,
 		is_layer,
 		display_name,
@@ -418,13 +403,12 @@ fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network: NetworkL
 	}
 }
 
-/// Node references stored here are storage IDs, resolved back to runtime-local IDs the way
-/// `read_scope_injections` does. A reference to a node that is no longer in this network is dropped
-/// rather than failing the conversion: a pinned node can have been deleted.
+/// Keeps only the stored node references to nodes in this network. A reference to a node that is no
+/// longer there is dropped rather than failing the conversion, since a pinned node can have been deleted.
 fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes, network: NetworkLocation, network_id: NetworkId) -> NetworkMetadataEntry {
 	let to_runtime_id = |storage_id: NodeId| {
-		let node = registry.node_instances.get(&storage_id).filter(|node| node.network == network_id)?;
-		Some(runtime_node_id(storage_id, node))
+		let in_network = registry.node_instances.get(&storage_id).is_some_and(|node| node.network == network_id);
+		in_network.then(|| runtime_node_id(storage_id))
 	};
 
 	let pinned_order = attributes
@@ -500,7 +484,7 @@ fn convert_input(context: &ConversionContext, network_id: NetworkId, input: &Nod
 			}
 
 			GraphCraftNodeInput::Node {
-				node_id: runtime_node_id(*node_id, referenced),
+				node_id: runtime_node_id(*node_id),
 				output_index: *output_index as usize,
 			}
 		}

@@ -236,7 +236,7 @@ impl DocumentHistory {
 			// The batch is drained by the time it reaches here, so a failed staging would leave the working copy
 			// permanently behind. Converting the whole document restages the same edit from whatever the working
 			// copy holds, including a batch that failed partway through.
-			false => Self::stage_recorded(storage, deltas, interface, registry, byte_store).or_else(|error| {
+			false => Self::stage_recorded(storage, deltas, registry, byte_store).or_else(|error| {
 				match error {
 					StagingError::NeedsWholeDocument(_) => log::debug!("{error}"),
 					_ => log::error!("Staging recorded deltas failed, falling back to a whole document snapshot: {error}"),
@@ -273,16 +273,9 @@ impl DocumentHistory {
 	/// This and the whole-document conversion produce the same registry for the same edit. They differ in
 	/// what they cost and in what they can miss: a conversion sees every change however it was made,
 	/// while this sees only what went through the store, so a write that bypasses it is not persisted.
-	fn stage_recorded(
-		storage: &mut document_format::GddV1,
-		deltas: &[EditorDelta],
-		interface: &NodeNetworkInterface,
-		registry: &ResourceRegistry,
-		byte_store: &dyn ResourceStorage,
-	) -> Result<Declarations, StagingError> {
+	fn stage_recorded(storage: &mut document_format::GddV1, deltas: &[EditorDelta], registry: &ResourceRegistry, byte_store: &dyn ResourceStorage) -> Result<Declarations, StagingError> {
 		let peer = storage.session().peer();
-		let metadata_view = StorageMetadataView::new(interface);
-		let constructed = construct_batch(deltas, storage.registry(), registry, &metadata_view, peer)?;
+		let constructed = construct_batch(deltas, storage.registry(), registry, peer)?;
 
 		storage
 			.stage_constructed_ops(constructed.ops, &constructed.declarations.bytes, byte_store)

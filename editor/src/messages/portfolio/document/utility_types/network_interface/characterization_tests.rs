@@ -972,6 +972,7 @@ async fn signature_edits_keep_parallel_metadata_in_sync() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	let initial_imports = network_interface.number_of_imports(&path);
@@ -1008,6 +1009,7 @@ async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 
 	// Dropping an import or export just below itself leaves it where it was
 	let network_interface = &mut editor.active_document_mut().network_interface;
@@ -1026,7 +1028,7 @@ async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
 	let parameter_index = network_interface.number_of_imports(&path) - 1;
 	let previous_primary_name = network_interface.displayed_import_name(0, &path);
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor
 		.handle_message(NodeGraphMessage::ReorderImport {
 			start_index: parameter_index,
@@ -1056,6 +1058,7 @@ async fn moving_the_primary_import_among_the_secondary_ones_leaves_an_empty_prim
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.add_import(TaggedValue::Number(1.), true, -1, "Parameter", "", &path);
 	let primary_name = network_interface.displayed_import_name(0, &path);
@@ -1063,7 +1066,7 @@ async fn moving_the_primary_import_among_the_secondary_ones_leaves_an_empty_prim
 	let fed_by_primary = fed_inputs(&editor, &OutputConnector::Import(0), &path);
 
 	// Drop the primary between the first and second secondary imports
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 0, end_index: 2 }).await;
 
 	let network_interface = &editor.active_document().network_interface;
@@ -1092,7 +1095,7 @@ async fn the_primary_import_can_become_the_first_secondary_and_an_empty_primary_
 	let import_count = network_interface.number_of_imports(&path);
 
 	// Dropped just below the separator, the primary becomes the first secondary import
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 0, end_index: 1 }).await;
 
 	let network_interface = &editor.active_document().network_interface;
@@ -1120,7 +1123,7 @@ async fn the_primary_export_can_become_the_first_secondary() {
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor.handle_message(NodeGraphMessage::AddSecondaryExport).await;
 	let network_interface = &editor.active_document().network_interface;
 	let primary_source = network_interface.upstream_output_connector(&InputConnector::Export(0), &path);
@@ -1158,11 +1161,11 @@ async fn dragging_a_dot_out_of_an_import_takes_over_the_wires_the_import_fed() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.enter_editable_network(merge).await;
 	let content_import = OutputConnector::Import(1);
 	let fed_before = fed_inputs(&editor, &content_import, &path);
 	assert!(!fed_before.is_empty(), "Merge's content import should feed its subgraph: fixture is wrong");
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
 	let import_position = editor
 		.active_document()
 		.network_interface
@@ -1186,7 +1189,7 @@ async fn editing_import_and_export_descriptions_stores_them_on_the_subgraph_node
 	editor.new_document().await;
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor
 		.handle_message(NodeGraphMessage::SetImportExportDescription {
 			description: "The artwork to add.".to_string(),
@@ -1215,6 +1218,7 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.enter_editable_network(merge).await;
 	let import_count = editor.active_document().network_interface.number_of_imports(&path);
 
 	// With a primary, the only one is past the last import
@@ -1239,7 +1243,6 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 	};
 	let displaced_value = (**tagged_value).clone();
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
 	editor
 		.handle_message(NodeGraphMessage::AddImportAndConnect {
 			import_index: import_count,
@@ -1303,10 +1306,10 @@ async fn showing_a_secondary_import_in_the_inspector_keeps_its_wires_in_the_subg
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.enter_editable_network(merge).await;
 	let content_import = OutputConnector::Import(1);
 	let fed_before = fed_inputs(&editor, &content_import, &path);
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
 	editor.handle_message(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 1, exposed: false }).await;
 
 	let network_interface = &editor.active_document().network_interface;
@@ -1596,6 +1599,7 @@ async fn a_subgraph_output_fed_by_a_value_can_produce_its_type() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.add_export(TaggedValue::Number(1.), -1, "", &path);
@@ -1711,7 +1715,7 @@ async fn a_wire_dragged_backward_from_the_dimmed_export_connector_adds_an_export
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 
 	let network_interface = &editor.active_document().network_interface;
 	let export_count = network_interface.number_of_exports(&path);
@@ -1746,7 +1750,7 @@ async fn a_wire_dragged_from_the_dimmed_import_connector_onto_empty_space_wires_
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 
 	let network_interface = &editor.active_document().network_interface;
 	let import_count = network_interface.number_of_imports(&path);
@@ -1813,7 +1817,7 @@ async fn leaving_a_subgraph_ends_the_wire_and_closes_the_node_menu_left_open_in_
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 
 	let (_, empty_export_position) = *editor
 		.active_document()
@@ -2692,7 +2696,7 @@ async fn dragging_a_dot_out_of_an_export_runs_its_wire_through_the_dot() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 
 	let export = InputConnector::Export(0);
 	let network_interface = &editor.active_document().network_interface;
@@ -2767,7 +2771,7 @@ async fn imports_and_exports_keep_just_a_grid_cell_from_a_dot() {
 
 	let subgraph = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
 	let path = [subgraph];
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: subgraph }).await;
+	editor.enter_editable_network(subgraph).await;
 
 	// The grid columns of the imports and exports
 	let import_export_columns = |editor: &EditorTestUtils| {
@@ -2858,7 +2862,7 @@ async fn removing_an_import_removes_the_dot_that_fed_its_input_on_the_subgraph_n
 		.network_interface
 		.create_wire(&OutputConnector::primary_output(dot), &InputConnector::node_at_index(merge, 1), &[]);
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor.handle_message(NodeGraphMessage::RemoveImport { import_index: 1 }).await;
 
 	assert!(!exists(&editor, dot), "the dot fed only the removed input, so it should go with it");
@@ -2972,7 +2976,7 @@ async fn a_press_right_after_dragging_a_wire_out_of_an_output_drags_another_wire
 /// Opens a new subgraph with one node inside, which is all that lies between its import and its export.
 async fn subgraph_holding_one_node(editor: &mut EditorTestUtils) -> (NodeId, NodeId) {
 	let subgraph = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: subgraph }).await;
+	editor.enter_editable_network(subgraph).await;
 	editor.handle_message(NodeGraphMessage::AddImport).await;
 	editor.handle_message(NodeGraphMessage::AddPrimaryExport).await;
 
@@ -3237,7 +3241,7 @@ async fn entering_a_node_while_its_network_glides_settles_it() {
 	gliding_nudged_node(&mut editor).await;
 	let merge = editor.create_node_by_name_at(merge_definition(), 20, 0).await;
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 
 	assert!(editor.active_document().network_interface.glide_offsets(&[]).is_empty());
 }

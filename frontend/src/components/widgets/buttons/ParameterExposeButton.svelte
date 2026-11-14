@@ -5,6 +5,7 @@
 	// Content
 	export let exposed: boolean;
 	export let dataType: FrontendGraphDataType;
+	export let disabled = false;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
@@ -16,6 +17,7 @@
 <LayoutRow class="parameter-expose-button">
 	<button
 		class:exposed
+		{disabled}
 		style:--data-type-color={`var(--color-data-${dataType.toLowerCase()})`}
 		style:--data-type-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 		on:click={action}
@@ -69,7 +71,11 @@
 				fill: var(--data-type-color);
 			}
 
-			&:hover {
+			&:disabled .interior {
+				fill: var(--color-8-uppergray);
+			}
+
+			&:hover:not(:disabled) {
 				.outline {
 					fill: var(--data-type-color);
 				}

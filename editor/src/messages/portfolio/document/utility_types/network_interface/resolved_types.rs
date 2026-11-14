@@ -811,7 +811,7 @@ mod tests {
 			.await;
 
 		// A new import passed straight through to Merge's export, which the editor bridges with a Passthrough node
-		editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+		editor.enter_editable_network(merge).await;
 		let import_index = editor.active_document().network_interface.number_of_imports(&[merge]);
 		editor
 			.handle_message(NodeGraphMessage::AddImportAndConnect {
