@@ -19,17 +19,20 @@ const SHADERS: &str = r#"
 using namespace metal;
 
 kernel void alu(device float4 *output [[buffer(0)]], uint id [[thread_position_in_grid]]) {
-	float4 a0 = float4(float(id) * 1e-7, 1.0, 2.0, 3.0);
+	float4 a0 = float(id) * 1e-7 + float4(0.0, 1.0, 2.0, 3.0);
 	float4 a1 = a0 + 0.1;
 	float4 a2 = a0 + 0.2;
 	float4 a3 = a0 + 0.3;
-	const float4 b = float4(0.9999, 0.9998, 0.9997, 0.9996);
+	const float4 b0 = float4(0.9999, 0.9998, 0.9997, 0.9996);
+	const float4 b1 = float4(0.9995, 0.9994, 0.9993, 0.9992);
+	const float4 b2 = float4(0.9991, 0.9990, 0.9989, 0.9988);
+	const float4 b3 = float4(0.9987, 0.9986, 0.9985, 0.9984);
 	const float4 c = float4(1e-4, 2e-4, 3e-4, 4e-4);
 	for (uint i = 0; i < 256; i++) {
-		a0 = fma(a0, b, c);
-		a1 = fma(a1, b, c);
-		a2 = fma(a2, b, c);
-		a3 = fma(a3, b, c);
+		a0 = fma(a0, b0, c);
+		a1 = fma(a1, b1, c);
+		a2 = fma(a2, b2, c);
+		a3 = fma(a3, b3, c);
 	}
 	output[id] = a0 + a1 + a2 + a3;
 }

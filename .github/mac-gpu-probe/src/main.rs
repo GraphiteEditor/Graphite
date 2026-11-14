@@ -10,23 +10,27 @@ const WARMUP_RUNS: usize = 3;
 const TIMED_RUNS: usize = 20;
 const SUBMIT_RUNS: usize = 100;
 
-// 4 independent FMA chains on vec4s, 256 iterations: 4 * 4 * 2 * 256 = 8192 FLOPs per invocation
+// 4 independent FMA chains on vec4s, 256 iterations: 4 * 4 * 2 * 256 = 8192 FLOPs per invocation.
+// Every component starts from the invocation ID, since a constant one lets the compiler precompute its whole chain.
 const ALU_SHADER: &str = r#"
 @group(0) @binding(0) var<storage, read_write> output: array<vec4<f32>>;
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-	var a0 = vec4<f32>(f32(id.x) * 1e-7, 1.0, 2.0, 3.0);
+	var a0 = f32(id.x) * 1e-7 + vec4<f32>(0.0, 1.0, 2.0, 3.0);
 	var a1 = a0 + 0.1;
 	var a2 = a0 + 0.2;
 	var a3 = a0 + 0.3;
-	let b = vec4<f32>(0.9999, 0.9998, 0.9997, 0.9996);
+	let b0 = vec4<f32>(0.9999, 0.9998, 0.9997, 0.9996);
+	let b1 = vec4<f32>(0.9995, 0.9994, 0.9993, 0.9992);
+	let b2 = vec4<f32>(0.9991, 0.9990, 0.9989, 0.9988);
+	let b3 = vec4<f32>(0.9987, 0.9986, 0.9985, 0.9984);
 	let c = vec4<f32>(1e-4, 2e-4, 3e-4, 4e-4);
 	for (var i = 0u; i < 256u; i++) {
-		a0 = fma(a0, b, c);
-		a1 = fma(a1, b, c);
-		a2 = fma(a2, b, c);
-		a3 = fma(a3, b, c);
+		a0 = fma(a0, b0, c);
+		a1 = fma(a1, b1, c);
+		a2 = fma(a2, b2, c);
+		a3 = fma(a3, b3, c);
 	}
 	output[id.x] = a0 + a1 + a2 + a3;
 }
@@ -162,13 +166,26 @@ fn alu_throughput(gpu: &Gpu) {
 		usage: wgpu::BufferUsages::STORAGE,
 		mapped_at_creation: false,
 	});
-	let (pipeline, bind_group) = pipeline(gpu, ALU_SHADER, &[&output]);
-
-	let (gpu_milliseconds, wall_milliseconds) = time_dispatch(gpu, &pipeline, &bind_group, ALU_WORKGROUPS);
 	let gflops = |milliseconds: f64| invocations as f64 * ALU_FLOPS_PER_INVOCATION / (milliseconds * 1e6);
 
 	println!("\n== FP32 compute ({:.1} GFLOP per dispatch)", invocations as f64 * ALU_FLOPS_PER_INVOCATION / 1e9);
-	report(&gpu_milliseconds, &wall_milliseconds, "GFLOPS", gflops);
+	for (variant, runtime_checks) in runtime_check_variants() {
+		let (pipeline, bind_group) = pipeline(gpu, ALU_SHADER, &[&output], runtime_checks);
+		let (gpu_milliseconds, wall_milliseconds) = time_dispatch(gpu, &pipeline, &bind_group, ALU_WORKGROUPS);
+		println!("-- Shader {variant}");
+		report(&gpu_milliseconds, &wall_milliseconds, "GFLOPS", gflops);
+	}
+}
+
+// The safety code wgpu adds to shaders by default, toggled to see which part (if any) slows them down
+fn runtime_check_variants() -> [(&'static str, wgpu::ShaderRuntimeChecks); 4] {
+	let checked = wgpu::ShaderRuntimeChecks::checked();
+	[
+		("with wgpu's default checks", checked),
+		("without bounds checks", wgpu::ShaderRuntimeChecks { bounds_checks: false, ..checked }),
+		("without forced loop bounding", wgpu::ShaderRuntimeChecks { force_loop_bounding: false, ..checked }),
+		("without any checks", wgpu::ShaderRuntimeChecks::unchecked()),
+	]
 }
 
 fn bandwidth(gpu: &Gpu) {
@@ -189,22 +206,26 @@ fn bandwidth(gpu: &Gpu) {
 	let pattern: Vec<u8> = (0..BANDWIDTH_BUFFER_BYTES).map(|i| (i * 2_654_435_761 >> 24) as u8).collect();
 	gpu.queue.write_buffer(&source, 0, &pattern);
 
-	let (pipeline, bind_group) = pipeline(gpu, BANDWIDTH_SHADER, &[&source, &destination]);
 	let workgroups = (BANDWIDTH_BUFFER_BYTES / 16 / 256) as u32;
-
-	let (gpu_milliseconds, wall_milliseconds) = time_dispatch(gpu, &pipeline, &bind_group, workgroups);
 	let bytes_moved = 2. * BANDWIDTH_BUFFER_BYTES as f64;
 	let gigabytes_per_second = |milliseconds: f64| bytes_moved / (milliseconds * 1e6);
 
 	println!("\n== Memory bandwidth ({} MiB read + {} MiB written per dispatch)", BANDWIDTH_BUFFER_BYTES >> 20, BANDWIDTH_BUFFER_BYTES >> 20);
-	report(&gpu_milliseconds, &wall_milliseconds, "GB/s", gigabytes_per_second);
+	for (variant, runtime_checks) in runtime_check_variants() {
+		let (pipeline, bind_group) = pipeline(gpu, BANDWIDTH_SHADER, &[&source, &destination], runtime_checks);
+		let (gpu_milliseconds, wall_milliseconds) = time_dispatch(gpu, &pipeline, &bind_group, workgroups);
+		println!("-- Shader {variant}");
+		report(&gpu_milliseconds, &wall_milliseconds, "GB/s", gigabytes_per_second);
+	}
 }
 
-fn pipeline(gpu: &Gpu, shader: &str, buffers: &[&wgpu::Buffer]) -> (wgpu::ComputePipeline, wgpu::BindGroup) {
-	let module = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+fn pipeline(gpu: &Gpu, shader: &str, buffers: &[&wgpu::Buffer], runtime_checks: wgpu::ShaderRuntimeChecks) -> (wgpu::ComputePipeline, wgpu::BindGroup) {
+	let descriptor = wgpu::ShaderModuleDescriptor {
 		label: None,
 		source: wgpu::ShaderSource::Wgsl(shader.into()),
-	});
+	};
+	// The shaders here only index within their dispatch, so skipping the checks can't read or write out of bounds
+	let module = unsafe { gpu.device.create_shader_module_trusted(descriptor, runtime_checks) };
 	let pipeline = gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
 		label: None,
 		layout: None,
