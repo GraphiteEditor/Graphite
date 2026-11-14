@@ -1,12 +1,12 @@
 +++
 title = "Looking back on 2023 and what's next"
 date = 2024-01-01
+authors = ["Keavon Chambers"]
+description = "Looking back on 2023, we reflect on our significant achievements and milestones. As we move forward, we're excited to share what's next, promising a year filled with innovation and progress."
 
 [extra]
 banner = "https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next.avif"
 banner_png = "https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next.png"
-author = "Keavon Chambers"
-summary = "Looking back on 2023, we reflect on our significant achievements and milestones. As we move forward, we're excited to share what's next, promising a year filled with innovation and progress."
 reddit = "https://www.reddit.com/r/graphite/comments/18xmoti/blog_post_looking_back_on_2023_and_whats_next/"
 twitter = "https://twitter.com/GraphiteEditor/status/1742576805532577937"
 
@@ -21,10 +21,10 @@ The new year is here, and with so many accomplishments to share from the past tw
 I am grateful to everyone who has placed their faith in my vision for Graphite since I laid forth the design and wrote its first line of code nearly three years ago. Meeting some of the amazing people this summer who helped to make it possible, and inspired the project in the first place, was a pleasure and an honor. From California to Europe and back again, my combined family vacation and Graphite outreach tour was an opportunity to make connections with those helping us reach our goals. This blog post is both a project update and a public thank-you to those who generously lent their time and attention to our small-but-growing project. And for readers eager for an update on the software itself, stick around (or skip ahead) for a development progress report and a look at what's coming down the pipeline in the new year.
 
 <div class="video-background" style="text-align: center">
-	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-		<source src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.webm" type="video/webm" />
-		<source src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.mp4" type="video/mp4" />
-	</video>
+ <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  <source src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.webm" type="video/webm" />
+  <source src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.mp4" type="video/mp4" />
+ </video>
 </div>
 
 <center><em>Happy Holidays from the Graphite team!<br />These procedural light strands are powered by the newly completed node graph features.<br /><a href="https://editor.graphite.art/#demo/procedural-string-lights">Click here to explore this demo</a> — drag the wire layer's points with the Path tool.</em></center>
