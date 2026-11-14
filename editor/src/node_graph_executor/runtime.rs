@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, RenderedLayers};
 use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
 use crate::task::{Spawn, Spawner, Task};
 use glam::UVec2;
@@ -74,8 +74,12 @@ pub struct NodeRuntime {
 	wasm_canvas_cache: CanvasSurfaceHandle,
 	/// The viewport's latest artwork.
 	viewport_artwork: Option<Texture>,
-	/// The overlays to render once the viewport has artwork.
-	pending_overlays: Option<OverlayContext>,
+	/// The layers as the viewport's latest artwork has them.
+	rendered_layers: RenderedLayers,
+	/// The latest overlays, drawn again over each new artwork.
+	overlays: Option<OverlayContext>,
+	/// Whether the overlays or the artwork changed since the overlays were last rendered.
+	overlays_stale: bool,
 	overlays_canvas: VelloCanvas,
 	/// The latest rendered overlays.
 	overlays_texture: Option<Texture>,
@@ -193,7 +197,9 @@ impl NodeRuntime {
 			#[cfg(all(target_family = "wasm", feature = "wasm"))]
 			wasm_canvas_cache: CanvasSurfaceHandle::new(),
 			viewport_artwork: None,
-			pending_overlays: None,
+			rendered_layers: RenderedLayers::default(),
+			overlays: None,
+			overlays_stale: false,
 			overlays_canvas: VelloCanvas::default(),
 			overlays_texture: None,
 		}
@@ -235,7 +241,10 @@ impl NodeRuntime {
 					let svg = self.old_graph.as_ref().and_then(|network| thumbnails::layers_svg(&layers, network, &self.executor));
 					self.sender.send(NodeGraphUpdate::ClipboardSvg { id, svg }).expect("Failed to send response");
 				}
-				GraphRuntimeRequest::RenderOverlays(context) => self.pending_overlays = Some(context),
+				GraphRuntimeRequest::RenderOverlays(context) => {
+					self.overlays = Some(context);
+					self.overlays_stale = true;
+				}
 			}
 		}
 
@@ -311,7 +320,7 @@ impl NodeRuntime {
 			}
 
 			// Overlays that changed without new artwork are drawn over the artwork already shown
-			if self.pending_overlays.is_some() {
+			if self.overlays_stale {
 				texture = self.composite_viewport_frame();
 			}
 		}
@@ -325,10 +334,13 @@ impl NodeRuntime {
 
 		let mut result = self.evaluate(request)?;
 
-		let texture = if let Some(data) = result.render_output()
+		let texture = if let Some(RenderOutput { data, metadata }) = result.render_output()
 			&& let RenderOutputType::Texture(texture) = data
 		{
 			self.viewport_artwork = Some(texture.clone());
+			let path_contents = path_contents(&self.observer.evaluate(&self.executor, self.old_graph.as_ref()));
+			self.rendered_layers = RenderedLayers::new(metadata, &path_contents, self.old_graph.as_ref());
+			self.overlays_stale = true;
 			let frame = self.composite_viewport_frame();
 
 			#[cfg(all(target_family = "wasm", feature = "wasm"))]
@@ -357,9 +369,11 @@ impl NodeRuntime {
 			return None;
 		};
 
-		if let Some(overlays) = self.pending_overlays.take() {
+		if std::mem::take(&mut self.overlays_stale)
+			&& let Some(overlays) = &self.overlays
+		{
 			self.overlays_texture = executor
-				.render_vello_scene_on_canvas(&mut self.overlays_canvas, overlays.take_scene())
+				.render_vello_scene_on_canvas(&mut self.overlays_canvas, overlays.render(&self.rendered_layers))
 				.inspect_err(|error| log::error!("Failed to render the overlays: {error:?}"))
 				.ok();
 		}
@@ -398,7 +412,7 @@ impl NodeRuntime {
 		let Some(mut result) = result else { return };
 		self.dirty.store(true, Ordering::Release);
 
-		if let Some(data) = result.render_output()
+		if let Some(RenderOutput { data, .. }) = result.render_output()
 			&& let RenderOutputType::Texture(texture) = data
 		{
 			let (buffer, width, height) = self.read_back(texture.clone()).await.to_flat_u8();
@@ -416,7 +430,10 @@ impl NodeRuntime {
 		}
 
 		if let Some(mut result) = self.evaluate(request)
-			&& let Some(RenderOutputType::Texture(texture)) = result.render_output()
+			&& let Some(RenderOutput {
+				data: RenderOutputType::Texture(texture),
+				..
+			}) = result.render_output()
 		{
 			let raster = self.read_back(texture.clone()).await;
 			self.sender.send(NodeGraphUpdate::EyedropperPreview(raster)).expect("Failed to send response");
@@ -488,7 +505,11 @@ impl NodeRuntime {
 
 	/// Puts the maps of effects' coverages the GPU rendered into an SVG result, in place of the placeholders its filters hold for them.
 	async fn resolve_effect_maps(&self, result: &mut ExecutionResult) {
-		let Some(RenderOutputType::Svg { svg, effect_maps, .. }) = result.render_output() else {
+		let Some(RenderOutput {
+			data: RenderOutputType::Svg { svg, effect_maps, .. },
+			..
+		}) = result.render_output()
+		else {
 			return;
 		};
 		if effect_maps.is_empty() {
@@ -579,10 +600,10 @@ impl NodeRuntime {
 }
 
 impl ExecutionResult {
-	fn render_output(&mut self) -> Option<&mut RenderOutputType> {
+	fn render_output(&mut self) -> Option<&mut RenderOutput> {
 		let (Self::Value(value) | Self::Fallback(value, _)) = self else { return None };
-		let TaggedValue::RenderOutput(RenderOutput { data, .. }) = value else { return None };
-		Some(data)
+		let TaggedValue::RenderOutput(output) = value else { return None };
+		Some(output)
 	}
 }
 
