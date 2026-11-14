@@ -194,6 +194,14 @@ impl DocumentMetadata {
 		footprint * transform
 	}
 
+	/// The layer whose transform moves along with this one's: itself, or for a group without a local transform, its first descendant that has one.
+	pub fn layer_to_follow(&self, layer: LayerNodeIdentifier) -> LayerNodeIdentifier {
+		std::iter::once(layer)
+			.chain(layer.descendants(self))
+			.find(|layer| self.local_transforms.contains_key(&layer.to_node()))
+			.unwrap_or(layer)
+	}
+
 	pub fn upstream_transform(&self, node_id: NodeId) -> DAffine2 {
 		self.local_transforms.get(&node_id).copied().unwrap_or(DAffine2::IDENTITY)
 	}

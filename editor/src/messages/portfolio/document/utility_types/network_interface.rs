@@ -32,6 +32,7 @@ pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
 pub use reconcile::{ReconcileError, Reconciled};
 use store::Guarded;
 pub use store::NodeLocator;
+pub use structure::vector_outline_targets;
 pub use template::*;
 pub use types::*;
 pub use view::{NetworkError, NetworkView};

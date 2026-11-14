@@ -30,17 +30,21 @@ pub fn draw_for_selected_layers(overlay_context: &mut OverlayContext, document: 
 		}
 
 		// A transformation from the layer's local space to the viewport space (where overlays are drawn)
-		let transform_to_viewport = document.metadata().transform_to_viewport(layer);
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 
-		// The origin of the layer in viewport space which is the center of the origin cross
-		let origin_viewport = transform_to_viewport.transform_point2(DVec2::ZERO);
-		// The forward +X direction vector from layer space (used to orient the origin cross)
-		let forward = transform_to_viewport.transform_vector2(DVec2::X).normalize_or_zero();
+		overlay_context.follow_layer(layer, layer_to_viewport, move |overlay_context, movement| {
+			let transform_to_viewport = movement * layer_to_viewport;
 
-		// Draw the origin cross
-		let offsets = [forward + forward.perp(), forward - forward.perp()].map(|offset| offset * core::f64::consts::FRAC_1_SQRT_2 * LAYER_ORIGIN_CROSS_DIAMETER / 2.);
-		for offset in offsets {
-			overlay_context.line(origin_viewport - offset, origin_viewport + offset, Some(COLOR_OVERLAY_BLUE), Some(LAYER_ORIGIN_CROSS_THICKNESS));
-		}
+			// The origin of the layer in viewport space which is the center of the origin cross
+			let origin_viewport = transform_to_viewport.transform_point2(DVec2::ZERO);
+			// The forward +X direction vector from layer space (used to orient the origin cross)
+			let forward = transform_to_viewport.transform_vector2(DVec2::X).normalize_or_zero();
+
+			// Draw the origin cross
+			let offsets = [forward + forward.perp(), forward - forward.perp()].map(|offset| offset * core::f64::consts::FRAC_1_SQRT_2 * LAYER_ORIGIN_CROSS_DIAMETER / 2.);
+			for offset in offsets {
+				overlay_context.line(origin_viewport - offset, origin_viewport + offset, Some(COLOR_OVERLAY_BLUE), Some(LAYER_ORIGIN_CROSS_THICKNESS));
+			}
+		});
 	}
 }

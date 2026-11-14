@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate, vector_outline_targets};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -874,7 +874,13 @@ impl SelectToolData {
 pub fn draw_layer_outline(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, color: Option<&str>) {
 	if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
 		let layer_to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
-		overlay_context.outline(targets.iter(), layer_to_viewport, color);
+		let source = document.network_interface.layer_vector_source(layer);
+		let color = color.map(str::to_owned);
+
+		overlay_context.with_rendered_layers(move |overlay_context, rendered| match rendered.vector(source) {
+			Some((vector, transform)) => overlay_context.outline(vector_outline_targets(&vector).iter(), transform, color.as_deref()),
+			None => overlay_context.outline(targets.iter(), layer_to_viewport, color.as_deref()),
+		});
 	} else {
 		let metadata = document.metadata();
 		let layers = std::iter::once(layer).chain(layer.descendants(metadata)).collect();
@@ -893,6 +899,33 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
 		.unwrap_or_default()
+}
+
+/// Draws the dowel pin at the layer's origin, following the layer as the render under the overlays has it.
+fn draw_dowel_pin(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, origin: DVec2, angle: f64, color: Option<&'static str>) {
+	let followed = document.metadata().layer_to_follow(layer);
+	let layer_to_viewport = document.metadata().transform_to_viewport(followed);
+
+	overlay_context.follow_layer(followed, layer_to_viewport, move |overlay_context, movement| {
+		overlay_context.dowel_pin(movement.transform_point2(origin), angle, color);
+	});
+}
+
+/// Draws the overlays placed around the selection from `draw` once they're rendered, giving it how the selection moved since they were made.
+/// The selection moves as the layer the cage is built around does.
+fn follow_selection(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, draw: impl Fn(&mut OverlayContext, DAffine2) + Send + 'static) {
+	let metadata = document.metadata();
+	let layer = document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+		.map(|layer| metadata.layer_to_follow(layer));
+
+	match layer {
+		Some(layer) => overlay_context.follow_layer(layer, metadata.transform_to_viewport(layer), draw),
+		None => draw(overlay_context, DAffine2::IDENTITY),
+	}
 }
 
 impl Fsm for SelectToolFsmState {
@@ -934,7 +967,9 @@ impl Fsm for SelectToolFsmState {
 						if document.metadata().is_text_layer(layer) {
 							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, fonts, responses);
-							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
+							overlay_context.follow_layer(layer, layer_to_viewport, move |overlay_context, movement| {
+								overlay_context.dashed_quad(movement * transformed_quad, None, None, Some(7.), Some(5.), None);
+							});
 						}
 					}
 				}
@@ -1046,7 +1081,12 @@ impl Fsm for SelectToolFsmState {
 					bounding_box_manager.transform = transform;
 					bounding_box_manager.transform_tampered = transform_tampered;
 					if overlay_context.visibility_settings.transform_cage() {
-						bounding_box_manager.render_overlays(&mut overlay_context, true);
+						let cage = bounding_box_manager.clone();
+						follow_selection(&mut overlay_context, document, move |overlay_context, movement| {
+							let mut cage = cage.clone();
+							cage.transform = movement * cage.transform;
+							cage.render_overlays(overlay_context, true);
+						});
 					}
 				} else {
 					tool_data.bounding_box_manager.take();
@@ -1086,7 +1126,12 @@ impl Fsm for SelectToolFsmState {
 					let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
 					let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
 					if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
-						bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
+						let (cage, skew_edge) = (bounds.clone(), tool_data.skew_edge);
+						follow_selection(&mut overlay_context, document, move |overlay_context, movement| {
+							let mut cage = cage.clone();
+							cage.transform = movement * cage.transform;
+							cage.render_skew_gizmos(overlay_context, skew_edge);
+						});
 					}
 					if !is_skewing
 						&& dragging_bounds && let Some(edges) = edges
@@ -1145,14 +1190,14 @@ impl Fsm for SelectToolFsmState {
 					for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 						let origin = graph_modification_utils::get_viewport_origin(layer, &document.network_interface);
 						if Some(layer) == tool_data.pivot_gizmo.layer {
-							active_origin = Some(origin);
+							active_origin = Some((layer, origin));
 							continue;
 						}
-						overlay_context.dowel_pin(origin, origin_angle, None);
+						draw_dowel_pin(&mut overlay_context, document, layer, origin, origin_angle, None);
 					}
 				}
-				if let Some(origin) = active_origin {
-					overlay_context.dowel_pin(origin, origin_angle, Some(COLOR_OVERLAY_YELLOW));
+				if let Some((layer, origin)) = active_origin {
+					draw_dowel_pin(&mut overlay_context, document, layer, origin, origin_angle, Some(COLOR_OVERLAY_YELLOW));
 				}
 
 				let has_layers = document.network_interface.selected_nodes().has_selected_nodes();
@@ -1171,7 +1216,10 @@ impl Fsm for SelectToolFsmState {
 						})
 						.unwrap_or_default();
 					let shift = tool_data.pivot_gizmo_shift.unwrap_or_default();
-					overlay_context.pivot(pivot + offset + shift, angle);
+					let position = pivot + offset + shift;
+					follow_selection(&mut overlay_context, document, move |overlay_context, movement| {
+						overlay_context.pivot(movement.transform_point2(position), angle)
+					});
 				}
 
 				// Update compass rose
@@ -1182,7 +1230,9 @@ impl Fsm for SelectToolFsmState {
 						tool_data.line_center = compass_center;
 					}
 
-					overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
+					follow_selection(&mut overlay_context, document, move |overlay_context, movement| {
+						overlay_context.compass_rose(movement.transform_point2(compass_center), angle, show_compass_with_ring);
+					});
 
 					let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
 						Some((axis, false))

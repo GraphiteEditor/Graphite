@@ -302,6 +302,14 @@ impl RenderedLayers {
 		Some((transform, self.targets.get(&layer.to_node()).map(Vec::as_slice).unwrap_or_default()))
 	}
 
+	/// How the layer moved in the viewport from `layer_to_viewport`, the transform the overlays were made with, to this render, or the identity if the render lacks the layer.
+	pub fn movement(&self, layer: LayerNodeIdentifier, layer_to_viewport: DAffine2) -> DAffine2 {
+		match self.transform_to_viewport(layer, true) {
+			Some(rendered) if layer_to_viewport.matrix2.determinant() != 0. => rendered * layer_to_viewport.inverse(),
+			_ => DAffine2::IDENTITY,
+		}
+	}
+
 	/// The layer's editable vector and its transform to the viewport, if the render has them.
 	pub fn vector(&self, source: LayerVectorSource) -> Option<(Cow<'_, VectorGeometry>, DAffine2)> {
 		let transform = self.transform_to_viewport(source.layer, source.local_transform_feeds)?;
@@ -347,6 +355,12 @@ impl OverlayContext {
 
 	fn record_resolved(&self, command: impl Fn(&mut OverlayContextInternal, &RenderedLayers) + Send + 'static) {
 		self.commands().push(Box::new(command));
+	}
+
+	/// Draws the overlays from `draw` once they're rendered, giving it how `layer` moved in the viewport since `layer_to_viewport`, its transform the overlays were made with.
+	/// Overlays placed by a layer's transform follow it this way, such as a cage around it.
+	pub fn follow_layer(&mut self, layer: LayerNodeIdentifier, layer_to_viewport: DAffine2, draw: impl Fn(&mut OverlayContext, DAffine2) + Send + 'static) {
+		self.with_rendered_layers(move |overlay_context, rendered| draw(overlay_context, rendered.movement(layer, layer_to_viewport)));
 	}
 
 	/// Draws the overlays from `draw` once they're rendered, giving it the render they're shown over.
