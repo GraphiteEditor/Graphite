@@ -3515,6 +3515,7 @@ dependencies = [
  "once_cell",
  "preprocessor",
  "serde",
+ "wgpu",
  "wgpu-executor",
 ]
 
