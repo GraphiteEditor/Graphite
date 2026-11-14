@@ -15,7 +15,9 @@ use graphene_std::vector::algorithms::util::pathseg_tangent;
 use graphene_std::vector::misc::{BezierHandles, ManipulatorPointId, PathSegPoints, dvec2_to_point, pathseg_points, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::{PointId, SegmentId, VectorGeometry, curve_type_at, handle_point, segment_id_of, span_endpoints, spans};
 use kurbo::{Affine, BezPath, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveDeriv, PathSeg, Rect, Shape};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 pub fn selected_segments(network_interface: &NodeNetworkInterface, shape_editor: &ShapeState) -> HashMap<LayerNodeIdentifier, Vec<SegmentId>> {
 	let mut map = HashMap::new();
@@ -171,102 +173,125 @@ fn overlay_bezier_handle_specific_point(
 	}
 }
 
+/// Draws the path, handles, and anchors of each selected visible and unlocked layer, as the render shown under the overlays has them.
 pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandles, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
-	let display_path = overlay_context.visibility_settings.path();
-	let display_handles = overlay_context.visibility_settings.handles();
-	let display_anchors = overlay_context.visibility_settings.anchors();
 	let document_zoom = document_zoom(document);
+	let draw_handles = Arc::new(draw_handles);
 
 	// Locked layers can't be edited, so they get no points to grab
 	for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
-		if display_path {
-			overlay_context.outline_vector(&vector, transform);
-		}
+		let source = document.network_interface.layer_vector_source(layer);
+		let selected_shape_state = shape_editor.selected_shape_state.entry(layer).or_default().clone();
+		let draw_handles = draw_handles.clone();
 
-		let selected_shape_state = shape_editor.selected_shape_state.entry(layer).or_default();
-		// Get the selected segments and then add a bold line overlay on them
-		for (segment_id, bezier, _, _) in vector.segment_iter() {
-			if selected_shape_state.is_segment_selected(segment_id) {
-				overlay_context.outline_select_bezier(bezier, transform);
+		overlay_context.with_rendered_layers(move |overlay_context, rendered| {
+			let (vector, transform) = rendered.vector(source).unwrap_or((Cow::Borrowed(&vector), transform));
+			layer_path_overlays(layer, &vector, transform, &draw_handles, &selected_shape_state, document_zoom, overlay_context);
+		});
+	}
+}
+
+fn layer_path_overlays(
+	layer: LayerNodeIdentifier,
+	vector: &VectorGeometry,
+	transform: DAffine2,
+	draw_handles: &DrawHandles,
+	selected_shape_state: &SelectedLayerState,
+	document_zoom: f64,
+	overlay_context: &mut OverlayContext,
+) {
+	let display_path = overlay_context.visibility_settings.path();
+	let display_handles = overlay_context.visibility_settings.handles();
+	let display_anchors = overlay_context.visibility_settings.anchors();
+
+	if display_path {
+		overlay_context.outline_vector(vector, transform);
+	}
+
+	// Get the selected segments and then add a bold line overlay on them
+	for (segment_id, bezier, _, _) in vector.segment_iter() {
+		if selected_shape_state.is_segment_selected(segment_id) {
+			overlay_context.outline_select_bezier(bezier, transform);
+		}
+	}
+
+	let path_index_labels = path_marker_overlays(vector, transform, document_zoom, false, overlay_context);
+
+	let is_selected = |point: ManipulatorPointId| selected_shape_state.is_point_selected(point);
+
+	let mut drawn_handles = Vec::new();
+	if display_handles {
+		let opposite_handles_data = selected_shape_state.selected_points().filter_map(|point_id| vector.adjacent_segment(&point_id)).collect::<Vec<_>>();
+
+		match draw_handles {
+			DrawHandles::All => {
+				vector.segment_iter().for_each(|(segment_id, segment, _start, _end)| {
+					drawn_handles.extend(overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context).into_iter().flatten());
+				});
 			}
-		}
+			DrawHandles::SelectedAnchors(selected_segments) => {
+				let focused_segments = selected_segments.get(&layer).map(Vec::as_slice).unwrap_or_default();
 
-		let path_index_labels = path_marker_overlays(&vector, transform, document_zoom, false, overlay_context);
-
-		let is_selected = |point: ManipulatorPointId| selected_shape_state.is_point_selected(point);
-
-		let mut drawn_handles = Vec::new();
-		if display_handles {
-			let opposite_handles_data = selected_shape_state.selected_points().filter_map(|point_id| vector.adjacent_segment(&point_id)).collect::<Vec<_>>();
-
-			match draw_handles {
-				DrawHandles::All => {
-					vector.segment_iter().for_each(|(segment_id, segment, _start, _end)| {
+				vector
+					.segment_iter()
+					.filter(|(segment_id, ..)| focused_segments.contains(segment_id))
+					.for_each(|(segment_id, segment, _start, _end)| {
 						drawn_handles.extend(overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context).into_iter().flatten());
 					});
-				}
-				DrawHandles::SelectedAnchors(ref selected_segments) => {
-					let focused_segments = selected_segments.get(&layer).map(Vec::as_slice).unwrap_or_default();
 
+				for (segment_id, segment, start, end) in vector.segment_iter() {
+					if let Some((corresponding_anchor, _)) = opposite_handles_data.iter().find(|(_, adj_segment_id)| adj_segment_id == &segment_id) {
+						let drawn = overlay_bezier_handle_specific_point(segment, segment_id, (start, end), *corresponding_anchor, transform, is_selected, overlay_context);
+						drawn_handles.extend(drawn.into_iter().flatten());
+					}
+				}
+			}
+			DrawHandles::FrontierHandles(segment_endpoints_by_layer) => {
+				if let Some(segment_endpoints) = segment_endpoints_by_layer.get(&layer) {
 					vector
 						.segment_iter()
-						.filter(|(segment_id, ..)| focused_segments.contains(segment_id))
-						.for_each(|(segment_id, segment, _start, _end)| {
-							drawn_handles.extend(overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context).into_iter().flatten());
-						});
-
-					for (segment_id, segment, start, end) in vector.segment_iter() {
-						if let Some((corresponding_anchor, _)) = opposite_handles_data.iter().find(|(_, adj_segment_id)| adj_segment_id == &segment_id) {
-							let drawn = overlay_bezier_handle_specific_point(segment, segment_id, (start, end), *corresponding_anchor, transform, is_selected, overlay_context);
+						.filter(|(segment_id, ..)| segment_endpoints.contains_key(segment_id))
+						.for_each(|(segment_id, segment, start, end)| {
+							let drawn = if segment_endpoints.get(&segment_id).unwrap().len() == 1 {
+								let point_to_render = segment_endpoints.get(&segment_id).unwrap()[0];
+								overlay_bezier_handle_specific_point(segment, segment_id, (start, end), point_to_render, transform, is_selected, overlay_context)
+							} else {
+								overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context)
+							};
 							drawn_handles.extend(drawn.into_iter().flatten());
-						}
-					}
+						});
 				}
-				DrawHandles::FrontierHandles(ref segment_endpoints_by_layer) => {
-					if let Some(segment_endpoints) = segment_endpoints_by_layer.get(&layer) {
-						vector
-							.segment_iter()
-							.filter(|(segment_id, ..)| segment_endpoints.contains_key(segment_id))
-							.for_each(|(segment_id, segment, start, end)| {
-								let drawn = if segment_endpoints.get(&segment_id).unwrap().len() == 1 {
-									let point_to_render = segment_endpoints.get(&segment_id).unwrap()[0];
-									overlay_bezier_handle_specific_point(segment, segment_id, (start, end), point_to_render, transform, is_selected, overlay_context)
-								} else {
-									overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context)
-								};
-								drawn_handles.extend(drawn.into_iter().flatten());
-							});
-					}
-				}
-				DrawHandles::None => {}
 			}
+			DrawHandles::None => {}
 		}
-
-		if display_anchors {
-			for (id, position) in vector.anchors() {
-				overlay_context.manipulator_anchor(transform.transform_point2(position), is_selected(ManipulatorPointId::Anchor(id)), None);
-			}
-		}
-
-		index_label_overlays(&vector, transform, false, &drawn_handles, path_index_labels, overlay_context);
 	}
+
+	if display_anchors {
+		for (id, position) in vector.anchors() {
+			overlay_context.manipulator_anchor(transform.transform_point2(position), is_selected(ManipulatorPointId::Anchor(id)), None);
+		}
+	}
+
+	index_label_overlays(vector, transform, false, &drawn_handles, path_index_labels, overlay_context);
 }
 
 /// Draws an anchor overlay at each endpoint of every open path on the selected visible layers, in the selected style for endpoints that are part of the path editing selection.
 /// Given a pointer position, the endpoint a press there would continue from is drawn in the hover style instead.
+/// The paths are drawn as the render shown under the overlays has them.
 pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &ShapeState, pointer: Option<DVec2>, overlay_context: &mut OverlayContext) {
 	if !overlay_context.visibility_settings.anchors() {
 		return;
 	}
 
 	let selected_nodes = document.network_interface.selected_nodes();
-	let is_selected = |layer: LayerNodeIdentifier, id: PointId| {
-		shape_editor
-			.selected_shape_state
-			.get(&layer)
-			.is_some_and(|state| state.is_point_selected(ManipulatorPointId::Anchor(id)))
+	let selected_anchors_of = |layer: LayerNodeIdentifier| -> HashSet<PointId> {
+		let Some(state) = shape_editor.selected_shape_state.get(&layer) else { return HashSet::new() };
+		state
+			.selected_points()
+			.filter_map(|point| if let ManipulatorPointId::Anchor(id) = point { Some(id) } else { None })
+			.collect()
 	};
 	let hovered = pointer.and_then(|pointer| closest_open_path_endpoint(document, pointer, SNAP_POINT_TOLERANCE, selected_nodes.selected_visible_layers(&document.network_interface)));
 	let document_zoom = document_zoom(document);
@@ -274,25 +299,37 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 	for layer in selected_nodes.selected_visible_layers(&document.network_interface) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+		let source = document.network_interface.layer_vector_source(layer);
+		let selected_anchors = selected_anchors_of(layer);
+		let hovered_anchor = hovered.and_then(|(hovered_layer, id, _)| (hovered_layer == layer).then_some(id));
 
-		let path_index_labels = path_marker_overlays(&vector, transform, document_zoom, true, overlay_context);
+		overlay_context.with_rendered_layers(move |overlay_context, rendered| {
+			let (vector, transform) = rendered.vector(source).unwrap_or((Cow::Borrowed(&vector), transform));
+			let path_index_labels = path_marker_overlays(&vector, transform, document_zoom, true, overlay_context);
 
-		for id in vector.anchor_endpoints() {
-			if hovered.is_some_and(|(hovered_layer, hovered_id, _)| hovered_layer == layer && hovered_id == id) {
-				continue;
+			for id in vector.anchor_endpoints() {
+				if hovered_anchor == Some(id) {
+					continue;
+				}
+				let Some(position) = vector.position_from_id(id) else { continue };
+
+				overlay_context.manipulator_anchor(transform.transform_point2(position), selected_anchors.contains(&id), None);
 			}
-			let Some(position) = vector.position_from_id(id) else { continue };
 
-			overlay_context.manipulator_anchor(transform.transform_point2(position), is_selected(layer, id), None);
-		}
-
-		index_label_overlays(&vector, transform, true, &[], path_index_labels, overlay_context);
+			index_label_overlays(&vector, transform, true, &[], path_index_labels, overlay_context);
+		});
 	}
 
 	// Drawn last so its halo sits above any other endpoint at the same spot
 	if let Some((layer, id, position)) = hovered {
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
-		overlay_context.hover_manipulator_anchor(transform.transform_point2(position), is_selected(layer, id));
+		let source = document.network_interface.layer_vector_source(layer);
+		let selected = selected_anchors_of(layer).contains(&id);
+
+		overlay_context.with_rendered_layers(move |overlay_context, rendered| {
+			let transform = rendered.vector(source).map_or(transform, |(_, transform)| transform);
+			overlay_context.hover_manipulator_anchor(transform.transform_point2(position), selected);
+		});
 	}
 }
 

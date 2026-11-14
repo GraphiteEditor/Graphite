@@ -1,4 +1,5 @@
 use super::*;
+use crate::messages::portfolio::document::overlays::utility_types::LayerVectorSource;
 use graphene_std::list::Item;
 use graphene_std::vector::VectorGeometry;
 
@@ -20,6 +21,17 @@ impl NodeNetworkInterface {
 		}
 
 		self.document_metadata.layer_vector_data.get(&layer).map(|item| VectorGeometry::from_item(item))
+	}
+
+	/// Where [`Self::compute_modified_vector`] and the layer's transform come from, for overlays to look them up in the render they're shown over.
+	pub fn layer_vector_source(&self, layer: LayerNodeIdentifier) -> LayerVectorSource {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
+
+		LayerVectorSource {
+			layer,
+			path_node: graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into())),
+			local_transform_feeds: self.document_metadata.local_transform_feeds(layer, self),
+		}
 	}
 
 	/// The vector geometry an upstream Path node would surface for editing.

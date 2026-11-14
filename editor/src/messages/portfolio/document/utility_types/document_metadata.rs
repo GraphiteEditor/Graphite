@@ -129,7 +129,14 @@ impl DocumentMetadata {
 
 		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
 
-		let mut use_local = true;
+		let use_local = self.local_transform_feeds(layer, network_interface);
+		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
+
+		footprint * local_transform
+	}
+
+	/// Whether the layer's local transform applies to the vector its upstream Path node edits, which it doesn't when the first element comes from elsewhere.
+	pub fn local_transform_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
 		let identifier = DefinitionIdentifier::Network("Path".into());
 		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&identifier)
@@ -138,12 +145,11 @@ impl DocumentMetadata {
 				.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
 				.any(|upstream| Some(upstream) == source)
 		{
-			use_local = false;
 			info!("Local transform is invalid. Using the identity for the local transform instead.");
+			return false;
 		}
-		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
 
-		footprint * local_transform
+		true
 	}
 
 	pub fn transform_to_document_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {

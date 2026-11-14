@@ -14,16 +14,20 @@ use crate::messages::viewport::ToPhysical;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeNetwork};
 use graphene_std::ATTR_TRANSFORM;
-use graphene_std::list::List;
+use graphene_std::list::{Item, List};
 use graphene_std::math::quad::Quad;
+use graphene_std::renderer::RenderMetadata;
 use graphene_std::renderer::vello_scene_builder::VelloSceneBuilder;
 use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
-use graphene_std::vector::click_target::ClickTargetType;
+use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::point_to_dvec2;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorGeometry, no_paths, paths_from_list_row_attributes};
 use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use vello_gpu::peniko;
@@ -197,30 +201,21 @@ impl OverlaysVisibilitySettings {
 	}
 }
 
+/// Records the overlays as commands, which the graph runtime replays over each frame of artwork it shows.
+/// Commands that resolve layers against that frame's render keep them in step with the artwork.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
 	#[serde(skip)]
-	internal: Arc<Mutex<OverlayContextInternal>>,
+	commands: Arc<Mutex<Vec<OverlayCommand>>>,
 	pub viewport: ViewportMessageHandler,
 	pub visibility_settings: OverlaysVisibilitySettings,
 }
 
-impl Clone for OverlayContext {
-	fn clone(&self) -> Self {
-		let internal = self.internal.lock().expect("Failed to lock internal overlay context");
-		let visibility_settings = internal.visibility_settings;
-		drop(internal); // Explicitly release the lock before cloning the Arc<Mutex<_>>
-		Self {
-			internal: self.internal.clone(),
-			viewport: self.viewport,
-			visibility_settings,
-		}
-	}
-}
+type OverlayCommand = Box<dyn Fn(&mut OverlayContextInternal, &RenderedLayers) + Send>;
 
-// Manual implementations since VelloSceneBuilder doesn't implement PartialEq or Debug
+// Manual implementations since the commands are closures
 impl PartialEq for OverlayContext {
 	fn eq(&self, other: &Self) -> bool {
 		self.viewport == other.viewport && self.visibility_settings == other.visibility_settings
@@ -230,21 +225,10 @@ impl PartialEq for OverlayContext {
 impl std::fmt::Debug for OverlayContext {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("OverlayContext")
-			.field("scene", &"VelloSceneBuilder { ... }")
+			.field("commands", &self.commands().len())
 			.field("viewport", &self.viewport)
 			.field("visibility_settings", &self.visibility_settings)
 			.finish()
-	}
-}
-
-// Default implementation for VelloSceneBuilder
-impl Default for OverlayContext {
-	fn default() -> Self {
-		Self {
-			internal: Mutex::new(OverlayContextInternal::default()).into(),
-			viewport: ViewportMessageHandler::default(),
-			visibility_settings: OverlaysVisibilitySettings::default(),
-		}
 	}
 }
 
@@ -253,98 +237,216 @@ impl core::hash::Hash for OverlayContext {
 	fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
 }
 
+/// The layers' geometry in a render, which the overlays shown over its artwork resolve layers against.
+#[derive(Debug, Default)]
+pub struct RenderedLayers {
+	/// Each rendered layer's footprint transform, from document space to the viewport.
+	footprints: HashMap<NodeId, DAffine2>,
+	local_transforms: HashMap<NodeId, DAffine2>,
+	/// Each layer's own outline targets if it has any, otherwise its own click targets, leaving out a group's descendants.
+	targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
+	/// Each Path node's vector after the modification the render applied.
+	path_vectors: HashMap<NodeId, VectorGeometry>,
+	layer_vectors: HashMap<NodeId, Arc<Item<Vector>>>,
+}
+
+/// Where a layer's editable vector and its transform come from, as `compute_modified_vector` and `transform_to_viewport_if_feeds` find them.
+#[derive(Clone, Copy, Debug)]
+pub struct LayerVectorSource {
+	pub layer: LayerNodeIdentifier,
+	/// The visible Path node upstream in the layer, whose output is the vector when the render recorded it.
+	pub path_node: Option<NodeId>,
+	pub local_transform_feeds: bool,
+}
+
+impl RenderedLayers {
+	/// Gathers the layers from a render's metadata and the Path node vectors it recorded in the network it evaluated.
+	pub fn new(metadata: &RenderMetadata, path_inputs: &HashMap<NodeId, VectorGeometry>, network: Option<&NodeNetwork>) -> Self {
+		let mut targets = metadata.click_targets.clone();
+		targets.extend(metadata.outlines.iter().map(|(node, outlines)| (*node, outlines.clone())));
+
+		let path_vectors = path_inputs
+			.iter()
+			.map(|(&path_node, input)| {
+				let mut vector = input.clone();
+				let modification = network
+					.and_then(|network| network.nodes.get(&path_node))
+					.and_then(|node| node.inputs.get(1))
+					.and_then(|input| input.as_value());
+				if let Some(TaggedValue::VectorModification(modification)) = modification {
+					modification.apply(&mut vector.vector, &mut vector.paths);
+				}
+				(path_node, vector)
+			})
+			.collect();
+
+		Self {
+			footprints: metadata.upstream_footprints.iter().map(|(node, footprint)| (*node, footprint.transform)).collect(),
+			local_transforms: metadata.local_transforms.clone(),
+			targets,
+			path_vectors,
+			layer_vectors: metadata.vector_data.clone(),
+		}
+	}
+
+	/// The layer's transform to the viewport, if the render has the layer.
+	fn transform_to_viewport(&self, layer: LayerNodeIdentifier, include_local: bool) -> Option<DAffine2> {
+		let node = layer.to_node();
+		let local_transform = include_local.then(|| self.local_transforms.get(&node).copied()).flatten().unwrap_or_default();
+		self.footprints.get(&node).map(|footprint| *footprint * local_transform)
+	}
+
+	/// The layer's transform to the viewport and its own targets, if the render has the layer.
+	fn layer(&self, layer: LayerNodeIdentifier) -> Option<(DAffine2, &[Arc<ClickTarget>])> {
+		let transform = self.transform_to_viewport(layer, true)?;
+		Some((transform, self.targets.get(&layer.to_node()).map(Vec::as_slice).unwrap_or_default()))
+	}
+
+	/// The layer's editable vector and its transform to the viewport, if the render has them.
+	pub fn vector(&self, source: LayerVectorSource) -> Option<(Cow<'_, VectorGeometry>, DAffine2)> {
+		let transform = self.transform_to_viewport(source.layer, source.local_transform_feeds)?;
+
+		let vector = match source.path_node.and_then(|path_node| self.path_vectors.get(&path_node)) {
+			Some(vector) => Cow::Borrowed(vector),
+			None => Cow::Owned(VectorGeometry::from_item(self.layer_vectors.get(&source.layer.to_node())?)),
+		};
+
+		Some((vector, transform))
+	}
+}
+
+fn owned(color: Option<&str>) -> Option<String> {
+	color.map(str::to_owned)
+}
+
 impl OverlayContext {
-	#[cfg_attr(test, expect(dead_code, reason = "Tests skip drawing overlays"))]
 	pub(super) fn new(viewport: ViewportMessageHandler, visibility_settings: OverlaysVisibilitySettings) -> Self {
 		Self {
-			internal: Arc::new(Mutex::new(OverlayContextInternal::new(viewport, visibility_settings))),
+			commands: Arc::default(),
 			viewport,
 			visibility_settings,
 		}
 	}
 
-	pub fn take_scene(self) -> VelloSceneBuilder {
-		let mut internal = self.internal.lock().expect("Failed to lock internal overlay context");
-		let empty_scene = overlay_scene(&internal.viewport);
-		std::mem::replace(&mut internal.scene, empty_scene)
+	/// Draws the recorded overlays, resolving layers against `rendered`.
+	pub fn render(&self, rendered: &RenderedLayers) -> VelloSceneBuilder {
+		let mut overlays = OverlayContextInternal::new(self.viewport);
+		for command in self.commands().iter() {
+			command(&mut overlays, rendered);
+		}
+		overlays.scene
 	}
 
-	fn internal(&'_ self) -> MutexGuard<'_, OverlayContextInternal> {
-		self.internal.lock().expect("Failed to lock internal overlay context")
+	fn commands(&'_ self) -> MutexGuard<'_, Vec<OverlayCommand>> {
+		self.commands.lock().expect("Failed to lock the overlay commands")
+	}
+
+	fn record(&self, command: impl Fn(&mut OverlayContextInternal) + Send + 'static) {
+		self.record_resolved(move |overlays, _| command(overlays));
+	}
+
+	fn record_resolved(&self, command: impl Fn(&mut OverlayContextInternal, &RenderedLayers) + Send + 'static) {
+		self.commands().push(Box::new(command));
+	}
+
+	/// Draws the overlays from `draw` once they're rendered, giving it the render they're shown over.
+	pub fn with_rendered_layers(&mut self, draw: impl Fn(&mut OverlayContext, &RenderedLayers) + Send + 'static) {
+		let (viewport, visibility_settings) = (self.viewport, self.visibility_settings);
+		self.record_resolved(move |overlays, rendered| {
+			let overlay_context = &mut OverlayContext::new(viewport, visibility_settings);
+			draw(overlay_context, rendered);
+
+			for command in overlay_context.commands().iter() {
+				command(overlays, rendered);
+			}
+		});
 	}
 
 	pub fn quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>) {
-		self.internal().quad(quad, stroke_color, color_fill);
+		let (stroke_color, color_fill) = (owned(stroke_color), owned(color_fill));
+		self.record(move |overlays| overlays.quad(quad, stroke_color.as_deref(), color_fill.as_deref()));
 	}
 
 	pub fn draw_triangle(&mut self, base: DVec2, direction: DVec2, size: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
-		self.internal().draw_triangle(base, direction, size, color_fill, color_stroke);
+		let (color_fill, color_stroke) = (owned(color_fill), owned(color_stroke));
+		self.record(move |overlays| overlays.draw_triangle(base, direction, size, color_fill.as_deref(), color_stroke.as_deref()));
 	}
 
 	pub fn dashed_quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		self.internal().dashed_quad(quad, stroke_color, color_fill, dash_width, dash_gap_width, dash_offset);
+		let (stroke_color, color_fill) = (owned(stroke_color), owned(color_fill));
+		self.record(move |overlays| overlays.dashed_quad(quad, stroke_color.as_deref(), color_fill.as_deref(), dash_width, dash_gap_width, dash_offset));
 	}
 
 	pub fn polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>) {
-		self.internal().polygon(polygon, stroke_color, color_fill);
+		let (polygon, stroke_color, color_fill) = (polygon.to_vec(), owned(stroke_color), owned(color_fill));
+		self.record(move |overlays| overlays.polygon(&polygon, stroke_color.as_deref(), color_fill.as_deref()));
 	}
 
 	pub fn dashed_polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		self.internal().dashed_polygon(polygon, stroke_color, color_fill, dash_width, dash_gap_width, dash_offset);
+		let (polygon, stroke_color, color_fill) = (polygon.to_vec(), owned(stroke_color), owned(color_fill));
+		self.record(move |overlays| overlays.dashed_polygon(&polygon, stroke_color.as_deref(), color_fill.as_deref(), dash_width, dash_gap_width, dash_offset));
 	}
 
 	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>) {
-		self.internal().line(start, end, color, thickness);
+		let color = owned(color);
+		self.record(move |overlays| overlays.line(start, end, color.as_deref(), thickness));
 	}
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		self.internal().dashed_line(start, end, color, thickness, dash_width, dash_gap_width, dash_offset);
+		let color = owned(color);
+		self.record(move |overlays| overlays.dashed_line(start, end, color.as_deref(), thickness, dash_width, dash_gap_width, dash_offset));
 	}
 
 	pub fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
-		self.internal().hover_manipulator_handle(position, selected);
+		self.record(move |overlays| overlays.hover_manipulator_handle(position, selected));
 	}
 
 	pub fn hover_manipulator_anchor(&mut self, position: DVec2, selected: bool) {
-		self.internal().hover_manipulator_anchor(position, selected);
+		self.record(move |overlays| overlays.hover_manipulator_anchor(position, selected));
 	}
 
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
-		self.internal().manipulator_handle(position, selected, color);
+		let color = owned(color);
+		self.record(move |overlays| overlays.manipulator_handle(position, selected, color.as_deref()));
 	}
 
 	pub fn manipulator_anchor(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
-		self.internal().manipulator_anchor(position, selected, color);
+		let color = owned(color);
+		self.record(move |overlays| overlays.manipulator_anchor(position, selected, color.as_deref()));
 	}
 
 	pub fn gradient_color_stop(&mut self, position: DVec2, emphasis: GizmoEmphasis, color: &str, small: bool) {
-		self.internal().gradient_color_stop(position, emphasis, color, small);
+		let color = color.to_owned();
+		self.record(move |overlays| overlays.gradient_color_stop(position, emphasis, &color, small));
 	}
 
 	pub fn gradient_midpoint(&mut self, position: DVec2, emphasis: GizmoEmphasis, angle: f64) {
-		self.internal().gradient_midpoint(position, emphasis, angle);
+		self.record(move |overlays| overlays.gradient_midpoint(position, emphasis, angle));
 	}
 
 	pub fn resize_handle(&mut self, position: DVec2, rotation: f64) {
-		self.internal().resize_handle(position, rotation);
+		self.record(move |overlays| overlays.resize_handle(position, rotation));
 	}
 
 	pub fn skew_handles(&mut self, edge_start: DVec2, edge_end: DVec2) {
-		self.internal().skew_handles(edge_start, edge_end);
+		self.record(move |overlays| overlays.skew_handles(edge_start, edge_end));
 	}
 
 	pub fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
-		self.internal().square(position, size, color_fill, color_stroke);
+		let (color_fill, color_stroke) = (owned(color_fill), owned(color_stroke));
+		self.record(move |overlays| overlays.square(position, size, color_fill.as_deref(), color_stroke.as_deref()));
 	}
 
 	/// Fills a square dot about `size` pixels across at each position, all in one fill, with their edges on whole physical pixels so they stay crisp.
 	pub fn dots(&mut self, positions: &[DVec2], size: f64, color: Option<&str>) {
-		self.internal().dots(positions, size, color);
+		let (positions, color) = (positions.to_vec(), owned(color));
+		self.record(move |overlays| overlays.dots(&positions, size, color.as_deref()));
 	}
 
 	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
-		self.internal().circle(position, radius, color_fill, color_stroke);
+		let (color_fill, color_stroke) = (owned(color_fill), owned(color_stroke));
+		self.record(move |overlays| overlays.circle(position, radius, color_fill.as_deref(), color_stroke.as_deref()));
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -363,106 +465,134 @@ impl OverlayContext {
 		dash_gap_width: Option<f64>,
 		dash_offset: Option<f64>,
 	) {
-		self.internal().dashed_ellipse(
-			center,
-			radius_x,
-			radius_y,
-			rotation,
-			start_angle,
-			end_angle,
-			counterclockwise,
-			color_fill,
-			color_stroke,
-			dash_width,
-			dash_gap_width,
-			dash_offset,
-		);
+		let (color_fill, color_stroke) = (owned(color_fill), owned(color_stroke));
+		self.record(move |overlays| {
+			overlays.dashed_ellipse(
+				center,
+				radius_x,
+				radius_y,
+				rotation,
+				start_angle,
+				end_angle,
+				counterclockwise,
+				color_fill.as_deref(),
+				color_stroke.as_deref(),
+				dash_width,
+				dash_gap_width,
+				dash_offset,
+			)
+		});
 	}
 
 	pub fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
-		self.internal().draw_arc(center, radius, start_from, end_at);
+		self.record(move |overlays| overlays.draw_arc(center, radius, start_from, end_at));
 	}
 
 	pub fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
-		self.internal().draw_arc_gizmo_angle(pivot, bold_radius, arc_radius, offset_angle, angle);
+		self.record(move |overlays| overlays.draw_arc_gizmo_angle(pivot, bold_radius, arc_radius, offset_angle, angle));
 	}
 
 	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
-		self.internal().draw_angle(pivot, radius, arc_radius, offset_angle, angle);
+		self.record(move |overlays| overlays.draw_angle(pivot, radius, arc_radius, offset_angle, angle));
 	}
 
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
-		self.internal().draw_scale(start, scale, radius, text);
+		let text = text.to_owned();
+		self.record(move |overlays| overlays.draw_scale(start, scale, radius, &text));
 	}
 
 	pub fn compass_rose(&mut self, compass_center: DVec2, angle: f64, show_compass_with_hover_ring: Option<bool>) {
-		self.internal().compass_rose(compass_center, angle, show_compass_with_hover_ring);
+		self.record(move |overlays| overlays.compass_rose(compass_center, angle, show_compass_with_hover_ring));
 	}
 
 	pub fn pivot(&mut self, position: DVec2, angle: f64) {
-		self.internal().pivot(position, angle);
+		self.record(move |overlays| overlays.pivot(position, angle));
 	}
 
 	pub fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
-		self.internal().dowel_pin(position, angle, color);
+		let color = owned(color);
+		self.record(move |overlays| overlays.dowel_pin(position, angle, color.as_deref()));
 	}
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
-		self.internal().arc_sweep_angle(offset_angle, angle, end_point_position, bold_radius, pivot, text, transform);
+		let text = text.to_owned();
+		self.record(move |overlays| overlays.arc_sweep_angle(offset_angle, angle, end_point_position, bold_radius, pivot, &text, transform));
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
 	pub fn outline_vector(&mut self, vector: &VectorGeometry, transform: DAffine2) {
-		self.internal().outline_vector(vector, transform);
+		let vector = vector.clone();
+		self.record(move |overlays| overlays.outline_vector(&vector, transform));
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
 	pub fn outline_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
-		self.internal().outline_bezier(bezier, transform);
+		self.record(move |overlays| overlays.outline_bezier(bezier, transform));
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
 	pub fn outline_select_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
-		self.internal().outline_select_bezier(bezier, transform);
+		self.record(move |overlays| overlays.outline_select_bezier(bezier, transform));
 	}
 
 	pub fn outline_overlay_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
-		self.internal().outline_overlay_bezier(bezier, transform);
+		self.record(move |overlays| overlays.outline_overlay_bezier(bezier, transform));
 	}
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
-		self.internal().outline(target_types, transform, color);
+		let (target_types, color) = (target_types.map(|target_type| target_type.borrow().clone()).collect::<Vec<_>>(), owned(color));
+		self.record(move |overlays| overlays.outline(target_types.iter(), transform, color.as_deref()));
+	}
+
+	/// Outlines the layers as the render the overlays are shown over has them, each by its own targets, or draws `target_types` placed by `transform` if that render lacks any of them.
+	/// A group is outlined by passing it along with its descendants.
+	pub fn outline_rendered_layers(&mut self, layers: Vec<LayerNodeIdentifier>, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
+		let (target_types, color) = (target_types.map(|target_type| target_type.borrow().clone()).collect::<Vec<_>>(), owned(color));
+		self.record_resolved(move |overlays, rendered| {
+			let Some(rendered_layers) = layers.iter().map(|&layer| rendered.layer(layer)).collect::<Option<Vec<_>>>() else {
+				overlays.outline(target_types.iter(), transform, color.as_deref());
+				return;
+			};
+
+			for (layer_to_viewport, targets) in rendered_layers {
+				overlays.outline(targets.iter().map(|target| target.target_type()), layer_to_viewport, color.as_deref());
+			}
+		});
 	}
 
 	/// Strokes the path with a 1px line, leaving any open subpaths open.
 	pub fn stroke_path(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
-		self.internal().stroke_path(bezpath, transform, color);
+		let (bezpath, color) = (bezpath.clone(), color.to_owned());
+		self.record(move |overlays| overlays.stroke_path(&bezpath, transform, &color));
 	}
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
 	pub fn fill_path(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
-		self.internal().fill_path(bezpath, transform, color);
+		let (bezpath, color) = (bezpath.clone(), color.to_owned());
+		self.record(move |overlays| overlays.fill_path(&bezpath, transform, &color));
 	}
 
 	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
 	/// Used by the fill tool to show the area to be filled.
 	pub fn fill_path_pattern(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
-		self.internal().fill_path_pattern(bezpath, transform, color);
+		let (bezpath, color) = (bezpath.clone(), color.to_owned());
+		self.record(move |overlays| overlays.fill_path_pattern(&bezpath, transform, &color));
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
-		let mut internal = self.internal();
-		internal.text(text, font_color, background_color, transform, padding, pivot);
+		let (text, font_color, background_color) = (text.to_owned(), font_color.to_owned(), owned(background_color));
+		self.record(move |overlays| overlays.text(&text, &font_color, background_color.as_deref(), transform, padding, pivot));
 	}
 
 	pub fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
-		self.internal().translation_box(translation, quad, typed_string);
+		self.record(move |overlays| overlays.translation_box(translation, quad, typed_string.clone()));
 	}
 }
 
+#[derive(Clone, Copy)]
 pub enum Pivot {
 	Start,
 	Middle,
@@ -476,10 +606,9 @@ pub enum DrawHandles {
 	None,
 }
 
-pub(super) struct OverlayContextInternal {
+struct OverlayContextInternal {
 	scene: VelloSceneBuilder,
 	viewport: ViewportMessageHandler,
-	visibility_settings: OverlaysVisibilitySettings,
 }
 
 /// An empty scene covering the viewport's physical pixels, matching the resolution the viewport renders at.
@@ -491,18 +620,11 @@ fn overlay_scene(viewport: &ViewportMessageHandler) -> VelloSceneBuilder {
 	VelloSceneBuilder::new(size.x as u16, size.y as u16, Affine::IDENTITY, MAX_TEXTURE_SIZE)
 }
 
-impl Default for OverlayContextInternal {
-	fn default() -> Self {
-		Self::new(ViewportMessageHandler::default(), OverlaysVisibilitySettings::default())
-	}
-}
-
 impl OverlayContextInternal {
-	pub(super) fn new(viewport: ViewportMessageHandler, visibility_settings: OverlaysVisibilitySettings) -> Self {
+	fn new(viewport: ViewportMessageHandler) -> Self {
 		Self {
 			scene: overlay_scene(&viewport),
 			viewport,
-			visibility_settings,
 		}
 	}
 
