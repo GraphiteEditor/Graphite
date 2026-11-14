@@ -35,6 +35,7 @@ graphene-resource = { workspace = true }
 graphene-hash = { workspace = true }
 raster-types = { workspace = true }
 vector-types = { workspace = true }
+wgpu-executor = { workspace = true }
 
 # Workspace dependencies
 bytemuck = { workspace = true }

@@ -5745,6 +5745,7 @@ dependencies = [
  "tsify",
  "vector-types",
  "wasm-bindgen",
+ "wgpu-executor",
 ]
 
 [[package]]
@@ -8523,6 +8524,7 @@ dependencies = [
  "futures",
  "glam",
  "graphene-application-io",
+ "half",
  "log",
  "node-macro",
  "raster-types",

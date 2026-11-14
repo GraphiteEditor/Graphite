@@ -4,7 +4,7 @@ pub(super) struct Convert {
 }
 
 impl Convert {
-	pub(super) fn new(device: &wgpu::Device) -> Self {
+	pub(super) fn new(device: &wgpu::Device, raster_format: wgpu::TextureFormat) -> Self {
 		let shader = device.create_shader_module(wgpu::include_wgsl!("convert.wgsl"));
 		let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: Some("basic_brush_convert_bind_group_layout"),
@@ -37,7 +37,7 @@ impl Convert {
 				module: &shader,
 				entry_point: Some("fs_main"),
 				compilation_options: Default::default(),
-				targets: &[Some(wgpu::TextureFormat::Rgba8Unorm.into())],
+				targets: &[Some(raster_format.into())],
 			}),
 			primitive: wgpu::PrimitiveState {
 				topology: wgpu::PrimitiveTopology::TriangleList,
