@@ -16,9 +16,6 @@ use crate::Value;
 pub struct NodeMetadataEntry {
 	pub network: NetworkLocation,
 	pub local_id: RuntimeNodeId,
-	/// The node's storage identity. Restoring it pins the node to this identity, so a later conversion
-	/// keeps it instead of re-deriving one from the node's location.
-	pub storage_id: crate::NodeId,
 	pub position: Option<Position>,
 	pub is_layer: bool,
 	pub display_name: Option<String>,
@@ -98,12 +95,6 @@ pub trait NodeMetadataSource {
 	/// Returns owned to stay object-safe. Each entry is stored as `ui::input_data::<key>` for per-key LWW.
 	fn input_data(&self, _network: NetworkLocation, _local_id: RuntimeNodeId, _input_index: usize) -> HashMap<String, Value> {
 		HashMap::new()
-	}
-
-	/// The storage identity this node is pinned to, if it has one. A node the source does not name
-	/// falls back to a hash of its location.
-	fn storage_node_id(&self, _network: NetworkLocation, _local_id: RuntimeNodeId) -> Option<crate::NodeId> {
-		None
 	}
 
 	/// The definition the network was instantiated from, if it still names one.

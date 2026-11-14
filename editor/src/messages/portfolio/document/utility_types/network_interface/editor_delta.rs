@@ -4,8 +4,11 @@ use super::{InputMetadata, InputPersistentMetadata};
 use document_graph_storage::attr::network as network_attr;
 use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
-use document_graph_storage::{AttributeDelta, AttributeValue, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp, Value};
-use document_graph_storage::{convert_input_attributes, convert_resource_entry, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs, value_resource_ref};
+use document_graph_storage::{AttributeDelta, AttributeValue, Attributes, Implementation, NoMetadata, NodeMetadataSource, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp, Value};
+use document_graph_storage::{
+	convert_input, convert_input_attributes, convert_resource_entry, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs, storage_location_id, storage_node_id,
+	value_resource_ref,
+};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
 use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
 use graph_craft::runtime_delta::RuntimeDelta;
@@ -114,23 +117,8 @@ pub struct BatchDeclarations {
 /// resource liveness are computed against the whole batch, since several removals in one gesture
 /// can jointly orphan a resource that each alone would not. Op timestamps are placeholders,
 /// re-stamped by the staging clock.
-///
-/// `metadata` addresses each delta's node by the identity the interface holds for it, so the ops
-/// land on the same nodes a whole-document conversion of that interface would produce.
-pub fn construct_batch(
-	deltas: &[EditorDelta],
-	working: &Registry,
-	resources: &ResourceRegistry,
-	metadata: &dyn NodeMetadataSource,
-	peer: document_graph_storage::PeerId,
-) -> Result<ConstructedOps, StagingError> {
-	let identities = IdentitiesOnly(metadata);
-	let context = ConversionContext {
-		resources,
-		identities: &identities,
-		resolver: PathResolver::new(Some(&identities), peer),
-		peer,
-	};
+pub fn construct_batch(deltas: &[EditorDelta], working: &Registry, resources: &ResourceRegistry, peer: document_graph_storage::PeerId) -> Result<ConstructedOps, StagingError> {
+	let context = ConversionContext { resources, peer };
 	let mut batch = BatchRegistry::new(working);
 	let mut ops = Vec::new();
 	let mut declarations = BatchDeclarations::default();
@@ -150,8 +138,6 @@ pub fn construct_batch(
 /// What every delta in a batch converts against, fixed for the whole batch.
 struct ConversionContext<'a> {
 	resources: &'a ResourceRegistry,
-	identities: &'a dyn NodeMetadataSource,
-	resolver: PathResolver<'a>,
 	peer: document_graph_storage::PeerId,
 }
 
@@ -174,8 +160,8 @@ impl EditorDelta {
 				construct_structural_additions(*network, *node_id, node, batch, context, ops, declarations)?;
 			}
 
-			EditorDelta::Graph(RuntimeDelta::RemoveNode { network, node_id }) => {
-				construct_node_removal(context.resolver.node_id(*network, *node_id), batch, batch_removed_nodes, ops);
+			EditorDelta::Graph(RuntimeDelta::RemoveNode { network: _, node_id }) => {
+				construct_node_removal(storage_node_id(*node_id), batch, batch_removed_nodes, ops);
 			}
 
 			EditorDelta::Graph(RuntimeDelta::AddNetwork { id, network }) => {
@@ -183,13 +169,13 @@ impl EditorDelta {
 			}
 
 			EditorDelta::Graph(RuntimeDelta::RemoveNetwork { id }) => {
-				let network_id = context.resolver.network_id(Some(*id));
+				let network_id = storage_location_id(Some(*id));
 				construct_network_removal(network_id, batch, batch_removed_nodes, ops);
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetVisibility { network, node_id, visible }) => {
+			EditorDelta::Graph(RuntimeDelta::SetVisibility { network: _, node_id, visible }) => {
 				ops.push(RegistryDelta::ChangeNodeAttribute {
-					id: context.resolver.node_id(*network, *node_id),
+					id: storage_node_id(*node_id),
 					delta: AttributeDelta {
 						key: node_attr::VISIBLE.to_string(),
 						value: (!visible).then_some(Value::Bool(false)),
@@ -197,12 +183,17 @@ impl EditorDelta {
 				});
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id, input_index, input }) => {
-				let new_input = context.resolver.convert_input_at(input, *network)?;
-				construct_referenced_resource(Some(context.resolver.node_id(*network, *node_id)), &new_input, context, batch, ops)?;
+			EditorDelta::Graph(RuntimeDelta::SetInput {
+				network: _,
+				node_id,
+				input_index,
+				input,
+			}) => {
+				let new_input = convert_input(input)?;
+				construct_referenced_resource(Some(storage_node_id(*node_id)), &new_input, context, batch, ops)?;
 
 				ops.push(RegistryDelta::ChangeNodeInput {
-					id: context.resolver.node_id(*network, *node_id),
+					id: storage_node_id(*node_id),
 					index: (*input_index).try_into().map_err(|_| ConversionError::IndexOverflow(*input_index))?,
 					new_input,
 				});
@@ -210,8 +201,8 @@ impl EditorDelta {
 
 			EditorDelta::Graph(RuntimeDelta::SetExport { network, export_index, input }) => {
 				let location = network;
-				let export = input.as_ref().map(|input| context.resolver.convert_input_at(input, *location)).transpose()?;
-				let network_id = context.resolver.network_id(*location);
+				let export = input.as_ref().map(convert_input).transpose()?;
+				let network_id = storage_location_id(*location);
 				if let Some(export) = export.as_ref() {
 					construct_referenced_resource(None, export, context, batch, ops)?;
 					if let Some(resource) = value_resource_ref(export) {
@@ -226,25 +217,24 @@ impl EditorDelta {
 				});
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetCallArgument { network, node_id, call_argument }) => {
+			EditorDelta::Graph(RuntimeDelta::SetCallArgument { network: _, node_id, call_argument }) => {
 				ops.push(RegistryDelta::ChangeNodeAttribute {
-					id: context.resolver.node_id(*network, *node_id),
+					id: storage_node_id(*node_id),
 					delta: document_graph_storage::from_runtime::encode_call_argument(call_argument)?,
 				});
 			}
 
 			EditorDelta::NodeMetadataSnapshot { network, node_id, metadata } => {
-				construct_metadata_snapshot(*network, *node_id, metadata, batch, &context.resolver, ops)?;
+				construct_metadata_snapshot(*network, *node_id, metadata, batch, ops)?;
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetInputs { network, node_id, inputs }) => {
+			EditorDelta::Graph(RuntimeDelta::SetInputs { network: _, node_id, inputs }) => {
 				// The slots' `ui::*` attributes arrive with the paired input metadata delta
-				let location = network;
 				let inputs = inputs
 					.iter()
 					.map(|input| {
 						Ok(document_graph_storage::InputSlot {
-							input: context.resolver.convert_input_at(input, *location)?,
+							input: convert_input(input)?,
 							timestamp: TimeStamp::ORIGIN,
 							attributes: convert_input_attributes(input)?,
 						})
@@ -252,22 +242,22 @@ impl EditorDelta {
 					.collect::<Result<Vec<_>, ConversionError>>()?;
 
 				for slot in &inputs {
-					construct_referenced_resource(Some(context.resolver.node_id(*network, *node_id)), &slot.input, context, batch, ops)?;
+					construct_referenced_resource(Some(storage_node_id(*node_id)), &slot.input, context, batch, ops)?;
 				}
 
 				ops.push(RegistryDelta::SetNodeInputs {
-					id: context.resolver.node_id(*network, *node_id),
+					id: storage_node_id(*node_id),
 					inputs,
 				});
 			}
 
-			EditorDelta::NodeMetadata { network, node_id, change } => {
-				ops.extend(node_metadata_ops(context.resolver.node_id(*network, *node_id), change)?);
+			EditorDelta::NodeMetadata { network: _, node_id, change } => {
+				ops.extend(node_metadata_ops(storage_node_id(*node_id), change)?);
 			}
 
 			EditorDelta::NodeInputMetadata { network, node_id, input_metadata } => {
 				let location = network;
-				let global_id = context.resolver.node_id(*location, *node_id);
+				let global_id = storage_node_id(*node_id);
 				let source = InputMetadataSource(input_metadata);
 				let working_node = batch.node(global_id);
 
@@ -293,8 +283,7 @@ impl EditorDelta {
 						value: reference.clone().map(Value::Str),
 					},
 					NetworkMetadataChange::PinnedOrder(order) => {
-						let location = network;
-						let stored: Vec<_> = order.iter().map(|node_id| context.resolver.node_id(*location, *node_id)).collect();
+						let stored: Vec<_> = order.iter().map(|node_id| storage_node_id(*node_id)).collect();
 						AttributeDelta {
 							key: network_attr::PINNED_ORDER.to_string(),
 							value: (!stored.is_empty()).then(|| serialize_attribute(network_attr::PINNED_ORDER, &stored)).transpose()?,
@@ -306,7 +295,7 @@ impl EditorDelta {
 				};
 
 				ops.push(RegistryDelta::ChangeNetworkAttribute {
-					id: context.resolver.network_id(*network),
+					id: storage_location_id(*network),
 					delta,
 				});
 			}
@@ -391,8 +380,7 @@ fn node_metadata_ops(global_id: document_graph_storage::NodeId, change: &NodeMet
 	})
 }
 
-/// Converts through the same encoders as a whole-document conversion, with identities only as the
-/// source: ui attributes arrive via the gesture's paired `NodeMetadata` delta.
+/// Converts through the same encoders as a whole-document conversion, without metadata: ui attributes arrive via the gesture's paired `NodeMetadata` delta.
 fn construct_structural_additions(
 	location: NetworkLocation,
 	node_id: NodeId,
@@ -402,7 +390,7 @@ fn construct_structural_additions(
 	ops: &mut Vec<RegistryDelta>,
 	declarations: &mut BatchDeclarations,
 ) -> Result<(), StagingError> {
-	let mut scoped = ScopedConversion::new(context.identities, context.peer);
+	let mut scoped = ScopedConversion::new(&NoMetadata, context.peer);
 	let mut scratch = Registry::default();
 	scoped.convert_node_at(&mut scratch, location, node_id, node)?;
 	stage_conversion(scoped, scratch, batch, context, ops, declarations)
@@ -418,7 +406,7 @@ fn construct_network_addition(
 	declarations: &mut BatchDeclarations,
 ) -> Result<(), StagingError> {
 	let location = Some(id);
-	let mut scoped = ScopedConversion::new(context.identities, context.peer);
+	let mut scoped = ScopedConversion::new(&NoMetadata, context.peer);
 	let mut scratch = Registry::default();
 	scoped.convert_network_entry_at(&mut scratch, location, network)?;
 
@@ -567,11 +555,10 @@ fn construct_metadata_snapshot(
 	node_id: NodeId,
 	metadata: &DocumentNodePersistentMetadata,
 	batch: &BatchRegistry,
-	resolver: &PathResolver,
 	ops: &mut Vec<RegistryDelta>,
 ) -> Result<(), ConversionError> {
 	let source = MetadataCopySource { location, node_id, metadata };
-	let global_id = resolver.node_id(location, node_id);
+	let global_id = storage_node_id(node_id);
 	let working_node = batch.node(global_id);
 
 	let mut encoded = Attributes::new();
@@ -850,17 +837,6 @@ impl<'a> BatchRegistry<'a> {
 /// The resources a stored network's exports hold as values.
 fn network_resource_refs(network: &document_graph_storage::Network) -> impl Iterator<Item = ResourceId> + '_ {
 	network.exports.iter().filter_map(|slot| slot.target.as_ref().and_then(value_resource_ref))
-}
-
-/// Narrows a metadata source to the node identities alone, so a scoped conversion addresses nodes the
-/// way a whole-document conversion does without also re-encoding ui attributes the gesture's paired
-/// `NodeMetadata` delta already carries.
-struct IdentitiesOnly<'a>(&'a dyn NodeMetadataSource);
-
-impl NodeMetadataSource for IdentitiesOnly<'_> {
-	fn storage_node_id(&self, network: NetworkLocation, local_id: NodeId) -> Option<document_graph_storage::NodeId> {
-		self.0.storage_node_id(network, local_id)
-	}
 }
 
 /// Serves one node's input metadata for encoding a [`EditorDelta::NodeInputMetadata`] delta. Only the

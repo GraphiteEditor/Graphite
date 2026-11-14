@@ -37,9 +37,7 @@ fn committed_deltas(editor: &mut EditorTestUtils) -> Vec<EditorDelta> {
 
 fn construct(editor: &EditorTestUtils, deltas: &[EditorDelta], working: &Registry) -> Vec<RegistryDelta> {
 	let document = editor.active_document();
-	construct_batch(deltas, working, &document.resources.registry, &StorageMetadataView::new(&document.network_interface), PEER)
-		.expect("construction should succeed")
-		.ops
+	construct_batch(deltas, working, &document.resources.registry, PEER).expect("construction should succeed").ops
 }
 
 fn node_metadata(editor: &EditorTestUtils, node_id: NodeId) -> DocumentNodePersistentMetadata {
@@ -336,6 +334,7 @@ async fn emitted_deltas_reproduce_the_diff_for_an_arity_change() {
 
 	let working = convert(&editor);
 	editor.active_document_mut().network_interface.discard_deltas();
+	editor.active_document_mut().network_interface.make_editable(&[group]);
 
 	editor
 		.active_document_mut()
@@ -378,6 +377,7 @@ async fn an_arity_change_keeps_an_earlier_edit_to_the_same_node() {
 	editor.active_document_mut().network_interface.discard_deltas();
 
 	editor.active_document_mut().network_interface.set_display_name(&group, "Renamed".to_string(), &[]);
+	editor.active_document_mut().network_interface.make_editable(&[group]);
 	editor
 		.active_document_mut()
 		.network_interface
@@ -474,6 +474,7 @@ async fn replaying_metadata_edits_reproduces_the_interface() {
 async fn replaying_an_arity_change_reproduces_the_interface() {
 	assert_replay_reproduces(|editor| {
 		let group = only_group(editor);
+		editor.active_document_mut().network_interface.make_editable(&[group]);
 		editor
 			.active_document_mut()
 			.network_interface
@@ -684,7 +685,6 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 		})
 		.await;
 	editor.active_document_mut().network_interface.discard_deltas();
-	editor.active_document_mut().network_interface.pin_storage_identities(PEER);
 
 	let mut mirror = editor.active_document().network_interface.clone();
 	let baseline = conversion(&editor);
@@ -694,20 +694,12 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 
 	edit(&mut editor);
 	editor.active_document_mut().network_interface.settle_definitions();
-	editor.active_document_mut().network_interface.pin_storage_identities(PEER);
 
 	let recorded = editor.active_document_mut().network_interface.take_deltas();
 	assert!(!recorded.is_empty(), "the edit should have recorded something to send");
 	let constructed = {
 		let document = editor.active_document();
-		construct_batch(
-			&recorded,
-			&baseline.registry,
-			&document.resources.registry,
-			&StorageMetadataView::new(&document.network_interface),
-			PEER,
-		)
-		.expect("construction")
+		construct_batch(&recorded, &baseline.registry, &document.resources.registry, PEER).expect("construction")
 	};
 	declarations.extend(constructed.declarations.decoded);
 
@@ -717,7 +709,7 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 	}
 	peer.stage_computed_ops(constructed.ops).expect("the peer applies the batch");
 
-	mirror.reconcile_remote(peer.registry(), &declarations, &baseline.blob_bytes, &touched, PEER).expect("reconcile");
+	mirror.reconcile_remote(peer.registry(), &declarations, &baseline.blob_bytes, &touched).expect("reconcile");
 
 	let edited = &editor.active_document().network_interface;
 	assert!(
@@ -794,6 +786,7 @@ async fn reconciling_metadata_edits_reproduces_the_interface() {
 async fn reconciling_an_arity_change_reproduces_the_interface() {
 	assert_remote_reconcile_reproduces(|editor| {
 		let group = only_group(editor);
+		editor.active_document_mut().network_interface.make_editable(&[group]);
 		editor
 			.active_document_mut()
 			.network_interface
@@ -814,6 +807,7 @@ async fn reconciling_a_node_insertion_reproduces_the_interface() {
 async fn reconciling_a_node_insertion_inside_a_group_reproduces_the_interface() {
 	assert_remote_reconcile_reproduces(|editor| {
 		let group = only_group(editor);
+		editor.active_document_mut().network_interface.make_editable(&[group]);
 		editor.active_document_mut().network_interface.insert_node(NodeId(0xDE17B), rectangle_template(), &[group]);
 	})
 	.await;
@@ -832,6 +826,7 @@ async fn reconciling_a_new_instance_of_a_shared_network_reproduces_the_interface
 async fn reconciling_an_edit_inside_a_shared_network_reproduces_the_interface() {
 	assert_remote_reconcile_reproduces(|editor| {
 		let group = only_group(editor);
+		editor.active_document_mut().network_interface.make_editable(&[group]);
 		insert_shared_copy(editor, group);
 		editor
 			.active_document_mut()
@@ -867,6 +862,7 @@ async fn reconciling_an_implementation_swap_reproduces_the_interface() {
 async fn reconciling_an_input_value_edit_reproduces_the_interface() {
 	assert_remote_reconcile_reproduces(|editor| {
 		let group = only_group(editor);
+		editor.active_document_mut().network_interface.make_editable(&[group]);
 		let interface = &mut editor.active_document_mut().network_interface;
 		let (inner, index) = interface
 			.nested_network(&[group])
@@ -887,7 +883,6 @@ async fn reconciling_an_untouched_node_changes_nothing() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	editor.draw_rect(0., 0., 100., 100.).await;
-	editor.active_document_mut().network_interface.pin_storage_identities(PEER);
 
 	let baseline = conversion(&editor);
 	let mut touched = Touched::default();
@@ -898,7 +893,7 @@ async fn reconciling_an_untouched_node_changes_nothing() {
 	let reconciled = editor
 		.active_document_mut()
 		.network_interface
-		.reconcile_remote(&baseline.registry, &baseline.declarations, &baseline.blob_bytes, &touched, PEER)
+		.reconcile_remote(&baseline.registry, &baseline.declarations, &baseline.blob_bytes, &touched)
 		.expect("reconcile");
 
 	assert!(reconciled.networks.is_empty(), "nothing differed, so nothing should have been applied: {:?}", reconciled.networks);
@@ -930,6 +925,7 @@ async fn output_descriptions_follow_their_exports() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let merge = editor.create_node_by_name(merge_definition()).await;
+	editor.active_document_mut().network_interface.make_editable(&[merge]);
 
 	{
 		let network_interface = &mut editor.active_document_mut().network_interface;
@@ -966,6 +962,7 @@ async fn exports_of_a_subgraph_without_descriptions_emit_no_description_write() 
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let merge = editor.create_node_by_name(merge_definition()).await;
+	editor.active_document_mut().network_interface.make_editable(&[merge]);
 	{
 		let network_interface = &mut editor.active_document_mut().network_interface;
 		let mut node = network_interface.node_mut(super::NodeLocator::new(merge, &[])).expect("Merge should exist");
@@ -1006,6 +1003,7 @@ async fn adding_an_export_past_the_described_ones_matches_the_diff() {
 	let working = convert(&editor);
 	editor.active_document_mut().network_interface.discard_deltas();
 
+	editor.active_document_mut().network_interface.make_editable(&[merge]);
 	editor.active_document_mut().network_interface.add_export(TaggedValue::None, -1, "", &[merge]);
 
 	let emitted = committed_deltas(&mut editor);
@@ -1020,6 +1018,7 @@ async fn exports_past_the_end_of_the_description_list_emit_no_description_write(
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let merge = editor.create_node_by_name(merge_definition()).await;
+	editor.active_document_mut().network_interface.make_editable(&[merge]);
 	{
 		let network_interface = &mut editor.active_document_mut().network_interface;
 		network_interface.add_export(TaggedValue::None, -1, "", &[merge]);
@@ -1117,6 +1116,8 @@ async fn an_edit_inside_a_table_entry_constructs_the_diff() {
 	editor.new_document().await;
 	editor.draw_rect(0., 0., 100., 100.).await;
 
+	let (layer, _) = table_layer(&editor);
+	editor.active_document_mut().network_interface.make_editable(&[layer]);
 	let (layer, definition) = table_layer(&editor);
 	let (inner, input_index) = value_input_inside(&editor, definition);
 
@@ -1170,6 +1171,8 @@ async fn a_write_keeps_its_network_when_the_instance_changes_implementation() {
 	editor.new_document().await;
 	editor.draw_rect(0., 0., 100., 100.).await;
 
+	let (layer, _) = table_layer(&editor);
+	editor.active_document_mut().network_interface.make_editable(&[layer]);
 	let (layer, definition) = table_layer(&editor);
 	let (inner, input_index) = value_input_inside(&editor, definition);
 	let interface = &mut editor.active_document_mut().network_interface;
@@ -1356,6 +1359,7 @@ async fn a_resource_exported_and_removed_in_one_batch_leaves_nothing_behind() {
 	let (layer, _) = table_layer(&editor);
 	assert_stages_incrementally(&mut editor, "export a resource, then remove the entry", |editor| {
 		let interface = &mut editor.active_document_mut().network_interface;
+		interface.make_editable(&[layer]);
 		interface.set_input(&InputConnector::Export(0), NodeInput::value(TaggedValue::Resource(resource), false), &[layer]);
 		interface.delete_nodes(vec![layer], true, &[]);
 	});

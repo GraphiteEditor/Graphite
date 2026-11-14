@@ -112,6 +112,7 @@ pub struct ParameterExposeButton {
 	pub exposed: bool,
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
+	pub disabled: bool,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]

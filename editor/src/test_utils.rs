@@ -415,6 +415,12 @@ impl EditorTestUtils {
 		self.create_node(node_type, None).await
 	}
 
+	/// Opens the subnetwork of `node_id` in the graph with its contents made editable.
+	pub async fn enter_editable_network(&mut self, node_id: NodeId) {
+		self.handle_message(DocumentMessage::EnterNestedNetwork { node_id }).await;
+		self.handle_message(DocumentMessage::MakeNetworkEditable).await;
+	}
+
 	pub async fn create_node_by_name_at(&mut self, node_type: DefinitionIdentifier, x: i32, y: i32) -> NodeId {
 		self.create_node(node_type, Some((x, y))).await
 	}

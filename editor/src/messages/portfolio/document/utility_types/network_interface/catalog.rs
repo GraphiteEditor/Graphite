@@ -1,5 +1,6 @@
 //! The catalog's networks, shared under fixed IDs and forked before any write.
 
+use super::derived_ids::{rekey_nodes, truncated_hash};
 use super::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{network_node_identifiers, resolve_network_node_type};
 
@@ -20,7 +21,9 @@ impl Catalog {
 		for identifier in network_node_identifiers() {
 			let Some(definition) = resolve_network_node_type(identifier) else { continue };
 			let (node, metadata) = definition.default_node_template().into_parts();
-			if let (DocumentNodeImplementation::Network(network), Some(network_metadata)) = (node.implementation, metadata.network_metadata) {
+			if let (DocumentNodeImplementation::Network(network), Some(network_metadata)) = (node.implementation, metadata.network_metadata)
+				&& !network.nodes.is_empty()
+			{
 				inline.insert(identifier, (network, network_metadata.persistent_metadata));
 			}
 		}
@@ -38,8 +41,10 @@ impl Catalog {
 		catalog
 	}
 
-	/// Nested inline networks get IDs derived from `id` and the node holding them.
+	/// Nodes get IDs derived from `id` and their template ID, and nested inline networks get IDs derived from `id` and the node holding them.
 	fn lift(&mut self, id: NetworkId, mut network: NodeNetwork, mut metadata: NodeNetworkMetadata) {
+		rekey_nodes(id, &mut network, &mut metadata.persistent_metadata);
+
 		for (node_id, node) in &mut network.nodes {
 			if !matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
 				continue;
@@ -85,12 +90,12 @@ pub(crate) fn is_protected(id: NetworkId) -> bool {
 	CATALOG.with(|catalog| catalog.entries.contains_key(&id))
 }
 
-/// Truncated blake3 under a domain tag, like graph-storage's derived IDs.
+/// The ID the node with `template_id` has in the shipped network of `identifier`.
+#[cfg(test)]
+pub(crate) fn shipped_node_id(identifier: &str, template_id: NodeId) -> NodeId {
+	super::derived_ids::derived_node_id(network_id(identifier.as_bytes()), template_id)
+}
+
 fn network_id(key: &[u8]) -> NetworkId {
-	let mut hasher = blake3::Hasher::new();
-	hasher.update(b"catalog network");
-	hasher.update(key);
-	let mut truncated = [0_u8; 8];
-	truncated.copy_from_slice(&hasher.finalize().as_bytes()[..8]);
-	NetworkId(u64::from_le_bytes(truncated))
+	NetworkId(truncated_hash(b"catalog network", key))
 }

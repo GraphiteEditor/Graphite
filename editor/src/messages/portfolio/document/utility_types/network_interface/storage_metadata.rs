@@ -131,9 +131,6 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 		self.subnetwork_persistent(network).map(|persistent| persistent.export_descriptions.clone()).unwrap_or_default()
 	}
 
-	fn storage_node_id(&self, network: NetworkLocation, local_id: NodeId) -> Option<document_graph_storage::NodeId> {
-		self.persistent(network, local_id)?.storage_id.map(document_graph_storage::NodeId)
-	}
 	fn reference(&self, network: NetworkLocation) -> Option<&str> {
 		self.network_persistent(network)?.reference.as_deref()
 	}
@@ -387,10 +384,6 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 			};
 
 			let persistent = &mut document_node_metadata.persistent_metadata;
-
-			// Pins the node to the identity storage holds for it, so the next conversion reuses it rather
-			// than re-deriving one from the node's location.
-			persistent.storage_id = Some(entry.storage_id.0);
 
 			if let Some(position) = entry.position {
 				persistent.node_type_metadata = position_to_runtime(position, entry.is_layer);

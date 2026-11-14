@@ -351,3 +351,117 @@ pub enum NodeGraphMessage {
 	UpdateHints,
 	SendSelectedNodes,
 }
+
+impl NodeGraphMessage {
+	/// The network this message writes, or `None` for one that only reads it or changes view state.
+	pub fn edited_network<'a>(&'a self, selection_network_path: &'a [NodeId], breadcrumb_network_path: &'a [NodeId]) -> Option<&'a [NodeId]> {
+		match self {
+			Self::SetDisplayName { network_path, .. }
+			| Self::SetDisplayNameImpl { network_path, .. }
+			| Self::ToggleLocked { network_path, .. }
+			| Self::SetLocked { network_path, .. }
+			| Self::ToggleVisibility { network_path, .. }
+			| Self::SetVisibility { network_path, .. }
+			| Self::SetLockedOrVisibilitySideEffects { network_path, .. } => Some(network_path),
+			Self::AddPathNode | Self::CreateNodeInLayerNoTransaction { .. } | Self::CreateNodeInLayerWithTransaction { .. } => Some(&[]),
+			Self::AddImport
+			| Self::AddImportAndConnect { .. }
+			| Self::AddExport
+			| Self::AddPrimaryExport
+			| Self::AddSecondaryExport
+			| Self::DisconnectImportExport { .. }
+			| Self::ExposeEncapsulatingInput { .. }
+			| Self::ExposePrimaryExport { .. }
+			| Self::MergeSelectedNodes
+			| Self::ReorderImport { .. }
+			| Self::ReorderExport { .. }
+			| Self::SetImportExportName { .. }
+			| Self::SetImportExportNameImpl { .. }
+			| Self::SetImportExportDescription { .. }
+			| Self::SetImportExportDescriptionImpl { .. } => Some(breadcrumb_network_path),
+			Self::AddNodes { .. }
+			| Self::CreateNodeFromContextMenu { .. }
+			| Self::CreateWire { .. }
+			| Self::CreateWires { .. }
+			| Self::ConnectUpstreamOutputToInput { .. }
+			| Self::Cut
+			| Self::DeleteNodes { .. }
+			| Self::DeleteSelectedNodes { .. }
+			| Self::RemoveOrphanedDots
+			| Self::DisconnectInput { .. }
+			| Self::DuplicateSelectedNodes
+			| Self::ExposeInput { .. }
+			| Self::InsertNode { .. }
+			| Self::InsertNodeBetween { .. }
+			| Self::InsertDotOnWire { .. }
+			| Self::InsertDotOnOutput { .. }
+			| Self::MoveLayerToStack { .. }
+			| Self::MoveNodeToChainStart { .. }
+			| Self::MoveChainNodes { .. }
+			| Self::DuplicateChainNodes { .. }
+			| Self::DuplicateNodesInFlow { .. }
+			| Self::PasteIntoChain { .. }
+			| Self::ReorderPinnedNode { .. }
+			| Self::SetChainPosition { .. }
+			| Self::InsertNodes { .. }
+			| Self::ShakeNode
+			| Self::RemoveImport { .. }
+			| Self::RemoveExport { .. }
+			| Self::RemoveImportExport { .. }
+			| Self::SetInputValue { .. }
+			| Self::SetInput { .. }
+			| Self::BeginEditLayerName { .. }
+			| Self::MakeUnique { .. }
+			| Self::SetToNodeOrLayer { .. }
+			| Self::ShiftNodePosition { .. }
+			| Self::NudgeSelectedNodes { .. }
+			| Self::ShiftSelectedNodes { .. }
+			| Self::ShiftSelectedNodesByAmount { .. }
+			| Self::ToggleSelectedAsLayersOrNodes
+			| Self::ToggleSelectedLocked
+			| Self::ToggleSelectedIsPinned
+			| Self::ToggleSelectedVisibility
+			| Self::SetPinned { .. } => Some(selection_network_path),
+			Self::Init
+			| Self::SelectedNodesUpdated
+			| Self::Copy
+			| Self::EnterNestedNetwork
+			| Self::PointerDown { .. }
+			| Self::PointerMove { .. }
+			| Self::PointerUp
+			| Self::PointerOutsideViewport { .. }
+			| Self::WireHoverTick
+			| Self::SendGlide
+			| Self::GlideTick
+			| Self::UpdateNodeGraphWidth
+			| Self::RunDocumentGraph
+			| Self::ForceRunDocumentGraph
+			| Self::SelectedNodesAdd { .. }
+			| Self::SelectedNodesRemove { .. }
+			| Self::SelectedNodesSet { .. }
+			| Self::SendClickTargets
+			| Self::EndSendClickTargets
+			| Self::UnloadWires
+			| Self::SendWires
+			| Self::UpdateVisibleNodes
+			| Self::SendGraph
+			| Self::SendNodePositions
+			| Self::TogglePreview { .. }
+			| Self::TogglePreviewImpl { .. }
+			| Self::UpdateBoxSelection
+			| Self::UpdateHoveredConnector
+			| Self::UpdateWireInsertionPreview
+			| Self::UpdateImportsExports
+			| Self::UpdateLayerPanel
+			| Self::SendLayerPanelDetails { .. }
+			| Self::UpdateNewNodeGraph
+			| Self::UpdateTypes { .. }
+			| Self::UpdateEvaluationErrors { .. }
+			| Self::UpdateActionButtons
+			| Self::UpdateGraphBarRight
+			| Self::UpdateInSelectedNetwork
+			| Self::UpdateHints
+			| Self::SendSelectedNodes => None,
+		}
+	}
+}

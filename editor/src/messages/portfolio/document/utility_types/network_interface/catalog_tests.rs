@@ -49,7 +49,8 @@ async fn every_catalog_template_inserts_as_its_shipped_entry() {
 		.filter(|identifier| {
 			let node_id = NodeId::new();
 			let template = resolve_network_node_type(identifier).expect("listed identifiers resolve").default_node_template();
-			if !matches!(template.implementation, NodeTemplateImplementation::Network(_)) {
+			// An empty network has nothing to share, so it inserts as a definition of its own
+			if !matches!(&template.implementation, NodeTemplateImplementation::Network(network) if !network.nodes.is_empty()) {
 				return false;
 			}
 			let interface = &mut editor.active_document_mut().network_interface;
@@ -68,6 +69,7 @@ async fn editing_the_signature_of_one_catalog_node_leaves_its_siblings_wired() {
 	interface.create_wire(&OutputConnector::node(blends[2], 0), &sibling_input, &[]);
 	let sibling_input_count = interface.document_network().nodes[&blends[1]].inputs.len();
 
+	interface.make_editable(&[blends[0]]);
 	interface.remove_import(1, &[blends[0]]);
 
 	let interface = &editor.active_document().network_interface;
@@ -88,29 +90,39 @@ async fn navigating_inside_a_catalog_node_does_not_fork_it() {
 }
 
 #[tokio::test]
-async fn an_edit_inside_a_catalog_node_forks_only_that_node() {
+async fn an_edit_inside_a_catalog_node_applies_only_once_it_is_made_editable() {
 	let (mut editor, blends) = editor_with_blends(2).await;
 	let shipped = entry_of(&editor, blends[0]);
+	let toggled_value_input = |interface: &super::NodeNetworkInterface, definition: NetworkId| {
+		let (inner, input_index) = interface.document_network().definitions[&definition]
+			.nodes
+			.iter()
+			.find_map(|(id, node)| node.inputs.iter().position(|input| matches!(input, NodeInput::Value { .. })).map(|index| (*id, index)))
+			.expect("Blend should have a value input inside");
+		let NodeInput::Value { tagged_value, exposed } = interface.document_network().definitions[&definition].nodes[&inner].inputs[input_index].clone() else {
+			unreachable!("the input was found as a value")
+		};
+		(InputConnector::node_at_index(inner, input_index), NodeInput::value((*tagged_value).clone(), !exposed))
+	};
 
 	let interface = &mut editor.active_document_mut().network_interface;
-	let (inner, input_index) = interface.document_network().definitions[&shipped]
-		.nodes
-		.iter()
-		.find_map(|(id, node)| node.inputs.iter().position(|input| matches!(input, NodeInput::Value { .. })).map(|index| (*id, index)))
-		.expect("Blend should have a value input inside");
-	let NodeInput::Value { tagged_value, exposed } = interface.document_network().definitions[&shipped].nodes[&inner].inputs[input_index].clone() else {
-		unreachable!("the input was found as a value")
-	};
-	interface.set_input(&InputConnector::node_at_index(inner, input_index), NodeInput::value((*tagged_value).clone(), !exposed), &[blends[0]]);
+	let (connector, input) = toggled_value_input(interface, shipped);
+	interface.set_input(&connector, input, &[blends[0]]);
+	assert_eq!(entry_of(&editor, blends[0]), shipped, "a write into a read-only network should be refused rather than fork it");
 
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.make_editable(&[blends[0]]);
 	let forked = entry_of(&editor, blends[0]);
+	let interface = &mut editor.active_document_mut().network_interface;
+	let (connector, input) = toggled_value_input(interface, forked);
+	interface.set_input(&connector, input.clone(), &[blends[0]]);
+
+	let interface = &editor.active_document().network_interface;
+	assert_eq!(interface.input_from_connector(&connector, &[blends[0]]), Some(&input));
 	assert_ne!(forked, shipped);
 	assert!(!catalog::is_protected(forked));
 	assert_eq!(entry_of(&editor, blends[1]), shipped);
-	assert_eq!(
-		editor.active_document().network_interface.document_network().definitions[&shipped],
-		catalog::entry(shipped).expect("shipped").network
-	);
+	assert_eq!(interface.document_network().definitions[&shipped], catalog::entry(shipped).expect("shipped").network);
 }
 
 #[tokio::test]
@@ -159,4 +171,85 @@ async fn a_reopened_document_keeps_its_catalog_entries() {
 	reopened.give_diverged_catalog_entries_new_ids();
 
 	assert!(reopened.document_network().definitions.contains_key(&shipped));
+}
+
+#[tokio::test]
+async fn an_entered_catalog_node_stays_read_only_until_made_editable() {
+	let (mut editor, blends) = editor_with_blends(2).await;
+	let shared = entry_of(&editor, blends[0]);
+	let path = vec![blends[0]];
+	let import_count = editor.active_document().network_interface.number_of_imports(&path);
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: blends[0] }).await;
+	assert!(editor.active_document().network_interface.is_read_only(&path));
+	editor.handle_message(NodeGraphMessage::AddImport).await;
+	assert_eq!(
+		editor.active_document().network_interface.number_of_imports(&path),
+		import_count,
+		"a read-only network should ignore edits"
+	);
+	assert_eq!(entry_of(&editor, blends[0]), shared, "an ignored edit shouldn't fork the entry");
+
+	editor.handle_message(DocumentMessage::MakeNetworkEditable).await;
+	assert!(!editor.active_document().network_interface.is_read_only(&path));
+	assert_ne!(entry_of(&editor, blends[0]), shared, "the entered node should get its own copy");
+	assert_eq!(entry_of(&editor, blends[1]), shared, "its sibling should keep the shared entry");
+	let definitions = &editor.active_document().network_interface.document_network().definitions;
+	let copied_ids = definitions[&entry_of(&editor, blends[0])].nodes.keys();
+	assert!(
+		copied_ids.into_iter().all(|node_id| !definitions[&shared].nodes.contains_key(node_id)),
+		"the copy's nodes should get IDs of their own"
+	);
+
+	editor.handle_message(NodeGraphMessage::AddImport).await;
+	assert_eq!(editor.active_document().network_interface.number_of_imports(&path), import_count + 1);
+	assert!(editor.active_document().network_interface.validate_invariants().is_empty());
+}
+
+#[tokio::test]
+async fn undoing_the_unlock_of_an_open_catalog_node_shows_it_read_only_again() {
+	let (mut editor, blends) = editor_with_blends(1).await;
+	let path = vec![blends[0]];
+	editor.enter_editable_network(blends[0]).await;
+	assert!(!editor.active_document().network_interface.is_read_only(&path));
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(editor.active_document().breadcrumb_network_path(), path, "the catalog node itself still exists");
+	assert!(editor.active_document().network_interface.is_read_only(&path));
+}
+
+#[tokio::test]
+async fn undoing_the_creation_of_an_open_subgraph_leaves_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let subgraph = editor.create_node_by_name(DefinitionIdentifier::Network("Custom Node".to_string())).await;
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: subgraph }).await;
+	assert_eq!(editor.active_document().breadcrumb_network_path(), [subgraph]);
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert!(editor.active_document().breadcrumb_network_path().is_empty());
+	assert!(editor.active_document().selection_network_path().is_empty());
+}
+
+#[tokio::test]
+async fn undoing_and_redoing_the_unlock_of_a_layer_keeps_its_nodes() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 10., 10.).await;
+	let layer = editor.get_selected_layer().await.expect("the drawn rectangle should be selected").to_node();
+	let path = vec![layer];
+	let node_count = |editor: &EditorTestUtils| editor.active_document().network_interface.nested_network(&path).map(|network| network.nodes.len());
+	let shipped = node_count(&editor);
+
+	editor.enter_editable_network(layer).await;
+	assert_eq!(node_count(&editor), shipped);
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(node_count(&editor), shipped, "undoing the unlock should bring back the shared contents");
+	assert!(editor.active_document().network_interface.is_read_only(&path));
+
+	editor.handle_message(DocumentMessage::Redo).await;
+	assert_eq!(node_count(&editor), shipped, "redoing the unlock should bring back the copy");
+	assert!(!editor.active_document().network_interface.is_read_only(&path));
+	assert!(editor.active_document().network_interface.validate_invariants().is_empty());
 }
