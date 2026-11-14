@@ -26,6 +26,8 @@ env:
   CARGO_TERM_COLOR: always
   # The four benchmarks, built and run by one `cargo bench` call so their slow thin-LTO links happen in parallel
   BENCHMARKS: --bench compile_demo_art_gungraun --bench update_executor_gungraun --bench run_once_gungraun --bench run_cached_gungraun
+  # The brush benchmark, which needs the GPU nodes and so gets its own call rather than changing what the others build
+  BRUSH_BENCHMARK: -p interpreted-executor --features gpu --bench brush_stroke_gungraun
 
 jobs:
   profile:
@@ -53,6 +55,13 @@ jobs:
       - name: Install gungraun-runner and valgrind
         uses: gungraun/setup-gungraun@62591572561bb2f4ed2ae300b8a8bea99ea8ddaf # v1.1.3
 
+      - name: Install lavapipe
+        run: |
+          # The runners have no GPU, so the brush benchmark renders on Mesa's software Vulkan device
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers
+          echo "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json" >> "$GITHUB_ENV"
+
       - name: Checkout baseline commit
         if: github.event_name == 'pull_request'
         run: git checkout --detach HEAD^1
@@ -73,7 +82,13 @@ jobs:
 
       - name: Run baseline benchmarks
         if: steps.restore-baseline.outputs.cache-hit != 'true'
-        run: cargo bench $BENCHMARKS -- --save-baseline=master
+        run: |
+          cargo bench $BENCHMARKS -- --save-baseline=master
+
+          # Until the brush benchmark reaches master, a baseline commit may predate it
+          if [ -f node-graph/interpreted-executor/benches/brush_stroke_gungraun.rs ]; then
+            cargo bench $BRUSH_BENCHMARK -- --save-baseline=master
+          fi
 
       # Saved before the PR benchmarks run, since they write their own results into the same folder
       - name: Save benchmark baseline
@@ -92,7 +107,13 @@ jobs:
         # Unlike the default, this sets `pipefail`, so a failed benchmark fails the step rather than leaving its results empty
         shell: bash
         run: |
-          cargo bench $BENCHMARKS -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/all_output.json
+          # The brush benchmark has nothing to compare against until the baseline commit has it
+          git cat-file -e HEAD^1:node-graph/interpreted-executor/benches/brush_stroke_gungraun.rs 2>/dev/null && brush=true || brush=false
+
+          {
+            cargo bench $BENCHMARKS -- --baseline=master --output-format=json
+            if $brush; then cargo bench $BRUSH_BENCHMARK -- --baseline=master --output-format=json; fi
+          } | jq -sc | sed 's/\\"//g' > /tmp/all_output.json
 
           # Split the results into one file per benchmark for the analysis below
           split_results() { jq -c --arg prefix "$1::" '[.[] | select(.module_path | startswith($prefix))]' /tmp/all_output.json > "/tmp/$2_output.json"; }
@@ -100,6 +121,9 @@ jobs:
           split_results update_executor_gungraun update
           split_results run_once_gungraun run_once
           split_results run_cached_gungraun run_cached
+          if $brush; then
+            split_results brush_stroke_gungraun brush_stroke
+          fi
 
       - name: Make old comments collapsed by default
         # Only run if we have write permissions (not a fork)
@@ -152,14 +176,18 @@ jobs:
               return benchmark.profiles?.find((profile) => profile.tool === 'Callgrind')?.data?.total?.metrics;
             }
 
+            // The brush benchmark only has results once the baseline commit has it too
+            const brush = fs.existsSync('/tmp/brush_stroke_output.json');
+
             const allOutputs = [
               JSON.parse(fs.readFileSync('/tmp/compile_output.json', 'utf8')),
               JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8')),
               JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8')),
-              JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8'))
+              JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8')),
+              ...(brush ? [JSON.parse(fs.readFileSync('/tmp/brush_stroke_output.json', 'utf8'))] : [])
             ];
-            const outputNames = ['compile', 'update', 'run_once', 'run_cached'];
-            const sectionTitles = ['Compilation', 'Update', 'Run Once', 'Cached Execution'];
+            const outputNames = ['compile', 'update', 'run_once', 'run_cached', ...(brush ? ['brush_stroke'] : [])];
+            const sectionTitles = ['Compilation', 'Update', 'Run Once', 'Cached Execution', ...(brush ? ['Brush Stroke'] : [])];
 
             // Fail instead of reporting no changes when a benchmark has no baseline comparison, such as after gungraun changes its output format
             const missingComparisons = [];
@@ -222,6 +250,9 @@ jobs:
             const updateOutput = JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8'));  
             const runOnceOutput = JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8'));
             const runCachedOutput = JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8'));
+            // The brush benchmark only has results once the baseline commit has it too, and a section without results is left out
+            const readOptional = (path) => (fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')) : []);
+            const brushStrokeOutput = readOptional('/tmp/brush_stroke_output.json');
 
             const hasSignificantChanges = '${{ steps.analyze.outputs.has-significant-changes }}' === 'true';
             let commentBody = "";
@@ -310,7 +341,8 @@ jobs:
               { output: compileOutput, title: "🔧 Graph Compilation" },
               { output: updateOutput, title: "🔄 Executor Update" },
               { output: runOnceOutput, title: "🚀 Render: Cold Execution" },
-              { output: runCachedOutput, title: "⚡ Render: Cached Execution" }
+              { output: runCachedOutput, title: "⚡ Render: Cached Execution" },
+              { output: brushStrokeOutput, title: "🖌️ Render: Brush Strokes" }
             ];
 
             // Generate sections and determine which ones have results
