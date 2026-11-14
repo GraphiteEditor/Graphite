@@ -179,6 +179,7 @@ impl Lattice {
 			GridTopology::PointsOnly => return self.points_only(),
 			GridTopology::Serpentine => self.serpentine(),
 			GridTopology::HilbertCurve => self.hilbert_curve(),
+			GridTopology::MooreCurve => self.moore_curve(),
 			GridTopology::Spiral => self.spiral(),
 			GridTopology::Loop => match self.loop_route() {
 				Some(route) => vec![GridPath::closed(route)],
@@ -413,13 +414,17 @@ impl Lattice {
 		pieces.into_iter().filter(|piece| piece.len() > 1).map(GridPath::open).collect()
 	}
 
-	/// The generalized Hilbert curve through the points the rows reach, so the Symmetric shapes leave out the same points Rows Only does.
-	fn hilbert_curve(&self) -> Vec<GridPath> {
-		let full_rows = if self.grid_type == GridType::IsometricSymmetricMinusOne {
+	/// How many rows reach across every column, leaving out the extra points of the Symmetric shapes just as Rows Only does.
+	fn full_rows(&self) -> i64 {
+		if self.grid_type == GridType::IsometricSymmetricMinusOne {
 			(self.rows - 1).max(0)
 		} else {
 			self.rows
-		};
+		}
+	}
+
+	/// The points along a route through the full rows, given as the column and row of each step.
+	fn along_full_rows(&self, route: Vec<(i64, i64)>) -> Vec<usize> {
 		let height = |x: i64, y: i64| {
 			if !self.isometric() || x % 2 == 0 {
 				2 * y
@@ -430,8 +435,20 @@ impl Lattice {
 			}
 		};
 
-		let points = gilbert_curve(self.columns, full_rows).into_iter().filter_map(|(x, y)| self.at((x, height(x, y)))).collect();
-		vec![GridPath::open(points)]
+		route.into_iter().filter_map(|(x, y)| self.at((x, height(x, y)))).collect()
+	}
+
+	/// The generalized Hilbert curve through the points the full rows reach.
+	fn hilbert_curve(&self) -> Vec<GridPath> {
+		vec![GridPath::open(self.along_full_rows(gilbert_curve(self.columns, self.full_rows())))]
+	}
+
+	/// The generalized Moore curve through the same points as the Hilbert curve, falling back to that open curve where a single row or column leaves no room for a loop.
+	fn moore_curve(&self) -> Vec<GridPath> {
+		match generalized_moore_curve(self.columns, self.full_rows()) {
+			Some(route) => vec![GridPath::closed(self.along_full_rows(route))],
+			None => self.hilbert_curve(),
+		}
 	}
 
 	/// The corners around each cell between two neighboring columns, row by row: top left, top right, bottom right, then bottom left, where the grid may lack any of them.
@@ -829,53 +846,82 @@ fn comb(lines: &[Vec<usize>]) -> Vec<usize> {
 /// The generalized Hilbert curve (the Gilbert curve) through every cell of a rectangle, matching the Hilbert curve on power-of-two squares.
 /// It takes one diagonal step when the long side is odd and the short side even, where no route along the edges can link its two corners.
 fn gilbert_curve(width: i64, height: i64) -> Vec<(i64, i64)> {
-	fn generate(order: &mut Vec<(i64, i64)>, (x, y): (i64, i64), (ax, ay): (i64, i64), (bx, by): (i64, i64)) {
-		let (width, height) = ((ax + ay).abs(), (bx + by).abs());
-		let (step_ax, step_ay, step_bx, step_by) = (ax.signum(), ay.signum(), bx.signum(), by.signum());
-
-		// A single row or column is walked straight through
-		if height == 1 || width == 1 {
-			let ((step_x, step_y), count) = if height == 1 { ((step_ax, step_ay), width) } else { ((step_bx, step_by), height) };
-			order.extend((0..count).map(|i| (x + step_x * i, y + step_y * i)));
-			return;
-		}
-
-		let (mut ax_half, mut ay_half, mut bx_half, mut by_half) = (ax.div_euclid(2), ay.div_euclid(2), bx.div_euclid(2), by.div_euclid(2));
-		let (width_half, height_half) = ((ax_half + ay_half).abs(), (bx_half + by_half).abs());
-
-		if 2 * width > 3 * height {
-			// Long rectangles split in two along their length
-			if width_half % 2 == 1 && width > 2 {
-				(ax_half, ay_half) = (ax_half + step_ax, ay_half + step_ay);
-			}
-			generate(order, (x, y), (ax_half, ay_half), (bx, by));
-			generate(order, (x + ax_half, y + ay_half), (ax - ax_half, ay - ay_half), (bx, by));
-		} else {
-			// Others split into the Hilbert curve's up, across, and down thirds
-			if height_half % 2 == 1 && height > 2 {
-				(bx_half, by_half) = (bx_half + step_bx, by_half + step_by);
-			}
-			generate(order, (x, y), (bx_half, by_half), (ax_half, ay_half));
-			generate(order, (x + bx_half, y + by_half), (ax, ay), (bx - bx_half, by - by_half));
-			generate(
-				order,
-				(x + (ax - step_ax) + (bx_half - step_bx), y + (ay - step_ay) + (by_half - step_by)),
-				(-bx_half, -by_half),
-				(-(ax - ax_half), -(ay - ay_half)),
-			);
-		}
-	}
-
 	let mut order = Vec::new();
 	if width > 0 && height > 0 {
 		if width >= height {
-			generate(&mut order, (0, 0), (width, 0), (0, height));
+			gilbert_section(&mut order, (0, 0), (width, 0), (0, height));
 		} else {
-			generate(&mut order, (0, 0), (0, height), (width, 0));
+			gilbert_section(&mut order, (0, 0), (0, height), (width, 0));
 		}
 	}
 
 	order
+}
+
+/// Appends the generalized Hilbert curve through the rectangle spanned by two axes from its corner at `(x, y)`, heading for the corner that the first axis leads to.
+fn gilbert_section(order: &mut Vec<(i64, i64)>, (x, y): (i64, i64), (ax, ay): (i64, i64), (bx, by): (i64, i64)) {
+	let (width, height) = ((ax + ay).abs(), (bx + by).abs());
+	let (step_ax, step_ay, step_bx, step_by) = (ax.signum(), ay.signum(), bx.signum(), by.signum());
+
+	// A single row or column is walked straight through
+	if height == 1 || width == 1 {
+		let ((step_x, step_y), count) = if height == 1 { ((step_ax, step_ay), width) } else { ((step_bx, step_by), height) };
+		order.extend((0..count).map(|i| (x + step_x * i, y + step_y * i)));
+		return;
+	}
+
+	let (mut ax_half, mut ay_half, mut bx_half, mut by_half) = (ax.div_euclid(2), ay.div_euclid(2), bx.div_euclid(2), by.div_euclid(2));
+	let (width_half, height_half) = ((ax_half + ay_half).abs(), (bx_half + by_half).abs());
+
+	if 2 * width > 3 * height {
+		// Long rectangles split in two along their length
+		if width_half % 2 == 1 && width > 2 {
+			(ax_half, ay_half) = (ax_half + step_ax, ay_half + step_ay);
+		}
+		gilbert_section(order, (x, y), (ax_half, ay_half), (bx, by));
+		gilbert_section(order, (x + ax_half, y + ay_half), (ax - ax_half, ay - ay_half), (bx, by));
+	} else {
+		// Others split into the Hilbert curve's up, across, and down thirds
+		if height_half % 2 == 1 && height > 2 {
+			(bx_half, by_half) = (bx_half + step_bx, by_half + step_by);
+		}
+		gilbert_section(order, (x, y), (bx_half, by_half), (ax_half, ay_half));
+		gilbert_section(order, (x + bx_half, y + by_half), (ax, ay), (bx - bx_half, by - by_half));
+		gilbert_section(
+			order,
+			(x + (ax - step_ax) + (bx_half - step_bx), y + (ay - step_ay) + (by_half - step_by)),
+			(-bx_half, -by_half),
+			(-(ax - ax_half), -(ay - ay_half)),
+		);
+	}
+}
+
+/// The generalized Moore curve through every cell of a rectangle (two Gilbert curves, one through each half, joined at their corners beside the divide), or none if a side is too short to loop.
+/// It matches the Moore curve on power-of-two squares and takes one diagonal step when both sides are odd, where no loop along the edges can pass through every cell.
+fn generalized_moore_curve(width: i64, height: i64) -> Option<Vec<(i64, i64)>> {
+	// Splitting the longer side keeps the halves closest to square
+	let transposed = height > width;
+	let (long, short) = if transposed { (height, width) } else { (width, height) };
+	if short < 2 {
+		return None;
+	}
+
+	// An odd short side needs each half to be an odd number of cells wide for its corners to link along the edges
+	let mut divide = long / 2;
+	if short % 2 == 1 && divide % 2 == 0 {
+		divide += 1;
+	}
+
+	// Both halves are laid out in positive directions and mirrored into place, since halving negative sizes rounds the other way and can miss the corner to join
+	let half_route = |half_width: i64| {
+		let mut order = Vec::new();
+		gilbert_section(&mut order, (0, 0), (0, short), (half_width, 0));
+		order
+	};
+	let first = half_route(divide).into_iter().map(|(x, y)| (divide - 1 - x, y));
+	let second = half_route(long - divide).into_iter().map(|(x, y)| (divide + x, short - 1 - y));
+
+	Some(first.chain(second).map(|(x, y)| if transposed { (y, x) } else { (x, y) }).collect())
 }
 
 /// Joins edges into the fewest trails that draw each edge once, each continuing as straight as possible through the points it passes.
@@ -1188,7 +1234,7 @@ mod tests {
 		GridType::IsometricSymmetricPlusOne,
 		GridType::IsometricSymmetricMinusOne,
 	];
-	const TOPOLOGIES: [GridTopology; 14] = [
+	const TOPOLOGIES: [GridTopology; 15] = [
 		GridTopology::Lines,
 		GridTopology::Edges,
 		GridTopology::FewestPaths,
@@ -1198,6 +1244,7 @@ mod tests {
 		GridTopology::PointsOnly,
 		GridTopology::Serpentine,
 		GridTopology::HilbertCurve,
+		GridTopology::MooreCurve,
 		GridTopology::Spiral,
 		GridTopology::Loop,
 		GridTopology::Rings,
@@ -1483,6 +1530,58 @@ mod tests {
 
 			if matches!(lattice.grid_type, GridType::Rectangular | GridType::IsometricTiling) {
 				assert_eq!(points.len(), lattice.positions.len(), "{case}");
+			}
+		});
+	}
+
+	#[test]
+	fn moore_curve_steps_to_a_neighbor_except_once_diagonally_on_odd_by_odd_rectangles() {
+		for width in 2..=64_i64 {
+			for height in 2..=64_i64 {
+				let route = generalized_moore_curve(width, height).unwrap_or_default();
+
+				let mut visited = vec![false; (width * height) as usize];
+				for &(x, y) in &route {
+					assert!((0..width).contains(&x) && (0..height).contains(&y), "{width}x{height}: ({x}, {y}) is outside");
+					assert!(!std::mem::replace(&mut visited[(y * width + x) as usize], true), "{width}x{height}: ({x}, {y}) is visited twice");
+				}
+				assert!(visited.iter().all(|&visited| visited), "{width}x{height}: a cell is missed");
+
+				let mut diagonals = 0;
+				for (&(ax, ay), &(bx, by)) in route.iter().zip(route.iter().cycle().skip(1)) {
+					match ((ax - bx).abs(), (ay - by).abs()) {
+						(0, 1) | (1, 0) => {}
+						(1, 1) => diagonals += 1,
+						step => panic!("{width}x{height}: the step from ({ax}, {ay}) spans {step:?}"),
+					}
+				}
+				assert_eq!(diagonals, usize::from(width % 2 == 1 && height % 2 == 1), "{width}x{height}");
+			}
+		}
+	}
+
+	#[test]
+	fn moore_curve_closes_through_the_hilbert_curve_points() {
+		each_lattice(GridTopology::MooreCurve, |lattice, case| {
+			let layout = lattice.layout(GridTopology::MooreCurve);
+			let path = &layout.paths[0];
+			assert_eq!(path.closed, lattice.full_rows() >= 2, "{case}");
+
+			let mut distinct = path.points.clone();
+			distinct.sort_unstable();
+			distinct.dedup();
+			assert_eq!(distinct.len(), path.points.len(), "{case}: a point is visited more than once");
+
+			let mut hilbert_points = lattice.layout(GridTopology::HilbertCurve).paths[0].points.clone();
+			hilbert_points.sort_unstable();
+			assert_eq!(distinct, hilbert_points, "{case}");
+
+			// Only grids with an odd number of both columns and rows need a step off the edges to close the loop
+			let leaps = path_steps(path).filter(|&(a, b)| !lattice.are_neighbors(a, b)).count();
+			if lattice.grid_type == GridType::Rectangular {
+				assert_eq!(leaps, usize::from(lattice.columns % 2 == 1 && lattice.rows % 2 == 1), "{case}");
+			} else {
+				assert!(leaps <= 1, "{case}: {leaps} steps follow no edge");
 			}
 		});
 	}
