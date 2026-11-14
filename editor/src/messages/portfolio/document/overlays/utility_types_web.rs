@@ -255,10 +255,10 @@ impl OverlayContext {
 			array.push(&JsValue::from(dash_width));
 			array.push(&JsValue::from(dash_gap_width));
 
-			if let Some(dash_offset) = dash_offset {
-				if dash_offset != 0. {
-					self.render_context.set_line_dash_offset(dash_offset);
-				}
+			if let Some(dash_offset) = dash_offset
+				&& dash_offset != 0.
+			{
+				self.render_context.set_line_dash_offset(dash_offset);
 			}
 
 			self.render_context
@@ -314,10 +314,10 @@ impl OverlayContext {
 			array.push(&JsValue::from(dash_width));
 			array.push(&JsValue::from(dash_gap_width));
 
-			if let Some(dash_offset) = dash_offset {
-				if dash_offset != 0. {
-					self.render_context.set_line_dash_offset(dash_offset);
-				}
+			if let Some(dash_offset) = dash_offset
+				&& dash_offset != 0.
+			{
+				self.render_context.set_line_dash_offset(dash_offset);
 			}
 
 			self.render_context
@@ -378,10 +378,10 @@ impl OverlayContext {
 			array.push(&JsValue::from(dash_width));
 			array.push(&JsValue::from(dash_gap_width));
 
-			if let Some(dash_offset) = dash_offset {
-				if dash_offset != 0. {
-					self.render_context.set_line_dash_offset(dash_offset);
-				}
+			if let Some(dash_offset) = dash_offset
+				&& dash_offset != 0.
+			{
+				self.render_context.set_line_dash_offset(dash_offset);
 			}
 
 			self.render_context
@@ -425,6 +425,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn dashed_circle(
 		&mut self,
 		position: DVec2,
@@ -452,10 +453,10 @@ impl OverlayContext {
 			array.push(&JsValue::from(dash_width));
 			array.push(&JsValue::from(dash_gap_width));
 
-			if let Some(dash_offset) = dash_offset {
-				if dash_offset != 0. {
-					self.render_context.set_line_dash_offset(dash_offset);
-				}
+			if let Some(dash_offset) = dash_offset
+				&& dash_offset != 0.
+			{
+				self.render_context.set_line_dash_offset(dash_offset);
 			}
 
 			self.render_context
@@ -885,10 +886,11 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
 		self.manipulator_handle(end_point_position, true, None);
 		self.draw_arc_gizmo_angle(pivot, bold_radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
-		self.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
+		self.text(text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.

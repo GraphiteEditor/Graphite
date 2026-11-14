@@ -28,7 +28,7 @@ pub trait CanvasSurface: Canvas {
 	fn present(&mut self, texture: &Texture, executor: &WgpuExecutor);
 }
 
-#[derive(Clone, DynAny)]
+#[derive(Clone, Default, DynAny)]
 pub struct CanvasHandle(Option<Arc<CanvasImpl>>);
 impl CanvasHandle {
 	pub fn new() -> Self {
@@ -75,6 +75,7 @@ pub async fn create_wgpu_executor() -> Option<WgpuExecutor> {
 }
 
 #[cfg(feature = "wgpu")]
+#[derive(Default)]
 pub struct CanvasSurfaceHandle {
 	canvas: CanvasHandle,
 	surface: Option<Arc<WgpuSurface>>,
@@ -181,7 +182,7 @@ impl CanvasImpl {
 		let image_canvases_key = JsValue::from_str(CANVASES_OBJECT_KEY);
 
 		let mut canvases = Reflect::get(&window_obj, &image_canvases_key);
-		if canvases.is_err() || canvases.as_ref().map_or(false, |v| v.is_undefined() || v.is_null()) {
+		if canvases.is_err() || canvases.as_ref().is_ok_and(|v| v.is_undefined() || v.is_null()) {
 			Reflect::set(&window_obj.clone(), &image_canvases_key, &Object::new()).unwrap();
 			canvases = Reflect::get(&window_obj, &image_canvases_key);
 		}

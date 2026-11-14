@@ -133,7 +133,8 @@ pub fn editor_commands_impl(attr: TokenStream, module: ItemMod) -> syn::Result<T
 			#[wasm_bindgen(js_name = #js_name)]
 			pub fn #fn_name(&self, #(#param_names: #param_types,)*) {
 				#(#unwrapping_tsify)*
-				self.dispatch((move || #return_type #body)())
+				fn #fn_name(#(#param_names: #tsify_free_param_types,)*) #return_type #body
+				self.dispatch(#fn_name(#(#param_names,)*))
 			}
 			#(#docs)*
 			#[cfg(feature = "native")]

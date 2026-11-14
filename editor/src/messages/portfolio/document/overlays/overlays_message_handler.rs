@@ -60,21 +60,21 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 					responses.add(DocumentMessage::GridOverlays {
 						context: OverlayContext {
 							render_context: canvas_context.clone(),
-							visibility_settings: visibility_settings.clone(),
+							visibility_settings,
 							viewport: *viewport,
 						},
 					});
 					responses.add(DocumentMessage::LayersPanelHoverOverlays {
 						context: OverlayContext {
 							render_context: canvas_context.clone(),
-							visibility_settings: visibility_settings.clone(),
+							visibility_settings,
 							viewport: *viewport,
 						},
 					});
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: canvas_context.clone(),
-							visibility_settings: visibility_settings.clone(),
+							visibility_settings,
 							viewport: *viewport,
 						}));
 					}
