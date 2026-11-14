@@ -26,8 +26,8 @@ env:
   CARGO_TERM_COLOR: always
   # The four benchmarks, built and run by one `cargo bench` call so their slow thin-LTO links happen in parallel
   BENCHMARKS: --bench compile_demo_art_gungraun --bench update_executor_gungraun --bench run_once_gungraun --bench run_cached_gungraun
-  # The brush benchmarks, which need the GPU nodes and so get their own call rather than changing what the others build
-  BRUSH_BENCHMARKS: -p interpreted-executor --features gpu --bench brush_render_gungraun --bench brush_document_gungraun
+  # The brush benchmark, which needs the GPU nodes and so gets its own call rather than changing what the others build
+  BRUSH_BENCHMARK: -p interpreted-executor --features gpu --bench brush_stroke_gungraun
 
 jobs:
   profile:
@@ -57,7 +57,7 @@ jobs:
 
       - name: Install lavapipe
         run: |
-          # The runners have no GPU, so the brush benchmarks render on Mesa's software Vulkan device
+          # The runners have no GPU, so the brush benchmark renders on Mesa's software Vulkan device
           sudo apt-get update
           sudo apt-get install -y mesa-vulkan-drivers
           echo "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json" >> "$GITHUB_ENV"
@@ -85,9 +85,9 @@ jobs:
         run: |
           cargo bench $BENCHMARKS -- --save-baseline=master
 
-          # Until the brush benchmarks reach master, a baseline commit may predate them
-          if [ -f node-graph/interpreted-executor/benches/brush_util.rs ]; then
-            cargo bench $BRUSH_BENCHMARKS -- --save-baseline=master
+          # Until the brush benchmark reaches master, a baseline commit may predate it
+          if [ -f node-graph/interpreted-executor/benches/brush_stroke_gungraun.rs ]; then
+            cargo bench $BRUSH_BENCHMARK -- --save-baseline=master
           fi
 
       # Saved before the PR benchmarks run, since they write their own results into the same folder
@@ -107,12 +107,12 @@ jobs:
         # Unlike the default, this sets `pipefail`, so a failed benchmark fails the step rather than leaving its results empty
         shell: bash
         run: |
-          # The brush benchmarks have nothing to compare against until the baseline commit has them
-          git cat-file -e HEAD^1:node-graph/interpreted-executor/benches/brush_util.rs 2>/dev/null && brush=true || brush=false
+          # The brush benchmark has nothing to compare against until the baseline commit has it
+          git cat-file -e HEAD^1:node-graph/interpreted-executor/benches/brush_stroke_gungraun.rs 2>/dev/null && brush=true || brush=false
 
           {
             cargo bench $BENCHMARKS -- --baseline=master --output-format=json
-            if $brush; then cargo bench $BRUSH_BENCHMARKS -- --baseline=master --output-format=json; fi
+            if $brush; then cargo bench $BRUSH_BENCHMARK -- --baseline=master --output-format=json; fi
           } | jq -sc | sed 's/\\"//g' > /tmp/all_output.json
 
           # Split the results into one file per benchmark for the analysis below
@@ -122,8 +122,7 @@ jobs:
           split_results run_once_gungraun run_once
           split_results run_cached_gungraun run_cached
           if $brush; then
-            split_results brush_render_gungraun brush_render
-            split_results brush_document_gungraun brush_document
+            split_results brush_stroke_gungraun brush_stroke
           fi
 
       - name: Make old comments collapsed by default
@@ -177,21 +176,18 @@ jobs:
               return benchmark.profiles?.find((profile) => profile.tool === 'Callgrind')?.data?.total?.metrics;
             }
 
-            // The brush benchmarks only have results once the baseline commit has them too
-            const brush = fs.existsSync('/tmp/brush_render_output.json');
+            // The brush benchmark only has results once the baseline commit has it too
+            const brush = fs.existsSync('/tmp/brush_stroke_output.json');
 
             const allOutputs = [
               JSON.parse(fs.readFileSync('/tmp/compile_output.json', 'utf8')),
               JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8')),
               JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8')),
               JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8')),
-              ...(brush ? [
-                JSON.parse(fs.readFileSync('/tmp/brush_render_output.json', 'utf8')),
-                JSON.parse(fs.readFileSync('/tmp/brush_document_output.json', 'utf8'))
-              ] : [])
+              ...(brush ? [JSON.parse(fs.readFileSync('/tmp/brush_stroke_output.json', 'utf8'))] : [])
             ];
-            const outputNames = ['compile', 'update', 'run_once', 'run_cached', ...(brush ? ['brush_render', 'brush_document'] : [])];
-            const sectionTitles = ['Compilation', 'Update', 'Run Once', 'Cached Execution', ...(brush ? ['Brush Node', 'Brush Document'] : [])];
+            const outputNames = ['compile', 'update', 'run_once', 'run_cached', ...(brush ? ['brush_stroke'] : [])];
+            const sectionTitles = ['Compilation', 'Update', 'Run Once', 'Cached Execution', ...(brush ? ['Brush Stroke'] : [])];
 
             // Fail instead of reporting no changes when a benchmark has no baseline comparison, such as after gungraun changes its output format
             const missingComparisons = [];
@@ -254,10 +250,9 @@ jobs:
             const updateOutput = JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8'));  
             const runOnceOutput = JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8'));
             const runCachedOutput = JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8'));
-            // The brush benchmarks only have results once the baseline commit has them too, and a section without results is left out
+            // The brush benchmark only has results once the baseline commit has it too, and a section without results is left out
             const readOptional = (path) => (fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')) : []);
-            const brushRenderOutput = readOptional('/tmp/brush_render_output.json');
-            const brushDocumentOutput = readOptional('/tmp/brush_document_output.json');
+            const brushStrokeOutput = readOptional('/tmp/brush_stroke_output.json');
 
             const hasSignificantChanges = '${{ steps.analyze.outputs.has-significant-changes }}' === 'true';
             let commentBody = "";
@@ -347,8 +342,7 @@ jobs:
               { output: updateOutput, title: "🔄 Executor Update" },
               { output: runOnceOutput, title: "🚀 Render: Cold Execution" },
               { output: runCachedOutput, title: "⚡ Render: Cached Execution" },
-              { output: brushRenderOutput, title: "🖌️ Brush: Adding a Stroke (Node)" },
-              { output: brushDocumentOutput, title: "🖌️ Brush: Adding a Stroke (Document)" }
+              { output: brushStrokeOutput, title: "🖌️ Render: Brush Strokes" }
             ];
 
             // Generate sections and determine which ones have results

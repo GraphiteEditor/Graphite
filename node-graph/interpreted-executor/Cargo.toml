@@ -70,11 +70,6 @@ name = "run_cached_gungraun"
 harness = false
 
 [[bench]]
-name = "brush_render_gungraun"
-harness = false
-required-features = ["gpu"]
-
-[[bench]]
-name = "brush_document_gungraun"
+name = "brush_stroke_gungraun"
 harness = false
 required-features = ["gpu"]
