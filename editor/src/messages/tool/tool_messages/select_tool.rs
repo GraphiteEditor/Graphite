@@ -876,8 +876,9 @@ pub fn draw_layer_outline(overlay_context: &mut OverlayContext, document: &Docum
 		let layer_to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		overlay_context.outline(targets.iter(), layer_to_viewport, color);
 	} else {
-		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-		overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, color);
+		let metadata = document.metadata();
+		let layers = std::iter::once(layer).chain(layer.descendants(metadata)).collect();
+		overlay_context.outline_rendered_layers(layers, metadata.layer_with_free_points_outline(layer), metadata.transform_to_viewport(layer), color);
 	}
 }
 
