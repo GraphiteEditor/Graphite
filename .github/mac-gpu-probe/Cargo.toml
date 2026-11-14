@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "dx12", "metal", "vulkan", "wgsl"] }
 pollster = "0.4"
+env_logger = "0.11"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

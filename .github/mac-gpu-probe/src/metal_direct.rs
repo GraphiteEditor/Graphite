@@ -8,8 +8,8 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
-	MTLBuffer, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLComputeCommandEncoder, MTLComputePipelineState, MTLCounterSamplingPoint, MTLCounterSet, MTLCreateSystemDefaultDevice, MTLDevice, MTLLibrary,
-	MTLResourceOptions, MTLSize,
+	MTLBuffer, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLCompileOptions, MTLComputeCommandEncoder, MTLComputePipelineState, MTLCounterSamplingPoint, MTLCounterSet, MTLCreateSystemDefaultDevice, MTLDevice,
+	MTLLibrary, MTLResourceOptions, MTLSize,
 };
 
 use crate::{ALU_FLOPS_PER_INVOCATION, ALU_WORKGROUPS, BANDWIDTH_BUFFER_BYTES, TIMED_RUNS, WARMUP_RUNS, median, summarize};
@@ -59,29 +59,39 @@ pub fn run() {
 		println!("RESULT: no Metal command queue");
 		return;
 	};
-	let library = match device.newLibraryWithSource_options_error(&NSString::from_str(SHADERS), None) {
-		Ok(library) => library,
-		Err(error) => {
-			println!("RESULT: Metal shader compilation failed: {error}");
-			return;
-		}
-	};
-	let pipeline = |name: &str| {
+	// The same source compiled with Metal's defaults, with the invariance setting wgpu uses, and without fast math
+	let default_options = MTLCompileOptions::new();
+	let invariance_options = MTLCompileOptions::new();
+	invariance_options.setPreserveInvariance(true);
+	let precise_options = MTLCompileOptions::new();
+	#[allow(deprecated)]
+	precise_options.setFastMathEnabled(false);
+	let compile_variants = [("Metal's default options", &default_options), ("preserveInvariance, as wgpu sets", &invariance_options), ("fast math disabled", &precise_options)];
+
+	let pipeline = |name: &str, options: &MTLCompileOptions| {
+		let library = match device.newLibraryWithSource_options_error(&NSString::from_str(SHADERS), Some(options)) {
+			Ok(library) => library,
+			Err(error) => {
+				println!("RESULT: Metal shader compilation failed: {error}");
+				return None;
+			}
+		};
 		let function = library.newFunctionWithName(&NSString::from_str(name))?;
 		device.newComputePipelineStateWithFunction_error(&function).ok()
-	};
-	let (Some(alu_pipeline), Some(bandwidth_pipeline)) = (pipeline("alu"), pipeline("bandwidth")) else {
-		println!("RESULT: Metal pipeline creation failed");
-		return;
 	};
 
 	// FP32 compute
 	let invocations = ALU_WORKGROUPS as u64 * 256;
 	let Some(output) = device.newBufferWithLength_options(invocations as usize * 16, MTLResourceOptions::StorageModePrivate) else { return };
-	let (gpu_milliseconds, wall_milliseconds) = time_dispatch(&queue, &alu_pipeline, &[&output], ALU_WORKGROUPS as usize);
 	let gflops = |milliseconds: f64| invocations as f64 * ALU_FLOPS_PER_INVOCATION / (milliseconds * 1e6);
 	println!("\n== FP32 compute, direct Metal");
-	crate::report(&gpu_milliseconds, &wall_milliseconds, "GFLOPS", gflops);
+	for (variant, options) in compile_variants {
+		let Some(alu_pipeline) = pipeline("alu", options) else { continue };
+		let (gpu_milliseconds, wall_milliseconds) = time_dispatch(&queue, &alu_pipeline, &[&output], ALU_WORKGROUPS as usize);
+		println!("-- Compiled with {variant}");
+		crate::report(&gpu_milliseconds, &wall_milliseconds, "GFLOPS", gflops);
+	}
+	let Some(bandwidth_pipeline) = pipeline("bandwidth", &default_options) else { return };
 
 	// Memory bandwidth, with nonzero contents in case the hardware compresses zeros
 	let pattern: Vec<u8> = (0..BANDWIDTH_BUFFER_BYTES).map(|i| (i * 2_654_435_761 >> 24) as u8).collect();

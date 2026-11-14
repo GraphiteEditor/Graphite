@@ -37,4 +37,6 @@ jobs:
         run: cargo build --release --manifest-path .github/mac-gpu-probe/Cargo.toml
 
       - name: Run the probe
+        env:
+          RUST_LOG: wgpu_hal::metal::device=debug
         run: .github/mac-gpu-probe/target/release/mac-gpu-probe

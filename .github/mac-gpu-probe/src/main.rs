@@ -65,6 +65,9 @@ struct Timestamps {
 }
 
 fn main() {
+	// With `RUST_LOG=wgpu_hal::metal::device=debug`, prints the Metal source wgpu generates for each shader
+	env_logger::init();
+
 	pollster::block_on(run());
 }
 
