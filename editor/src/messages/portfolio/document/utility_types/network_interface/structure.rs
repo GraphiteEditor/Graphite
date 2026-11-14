@@ -49,22 +49,7 @@ impl NodeNetworkInterface {
 	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer); returns `None` otherwise so the
 	/// caller can fall back to the layer's recorded `outlines`/`click_targets`.
 	pub fn path_aware_outline_targets(&self, layer: LayerNodeIdentifier) -> Option<Vec<ClickTargetType>> {
-		let vector = self.upstream_path_node_vector(layer)?;
-
-		let mut targets = Vec::new();
-		let mut combined = BezPath::new();
-		for bezpath in vector.stroke_bezpath_iter() {
-			combined.extend(bezpath.elements().iter().copied());
-		}
-		if !combined.is_empty() {
-			targets.push(ClickTargetType::Path(combined));
-		}
-
-		for (point_id, position) in vector.free_points() {
-			targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
-		}
-
-		Some(targets)
+		self.upstream_path_node_vector(layer).map(|vector| vector_outline_targets(&vector))
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -218,4 +203,22 @@ impl NodeNetworkInterface {
 		self.document_metadata.mark_changed();
 		self.document_metadata.layer_effects_reach = new_layer_effects_reach;
 	}
+}
+
+/// The vector's paths combined into one outline target, followed by a target for each free point.
+pub fn vector_outline_targets(vector: &VectorGeometry) -> Vec<ClickTargetType> {
+	let mut targets = Vec::new();
+	let mut combined = BezPath::new();
+	for bezpath in vector.stroke_bezpath_iter() {
+		combined.extend(bezpath.elements().iter().copied());
+	}
+	if !combined.is_empty() {
+		targets.push(ClickTargetType::Path(combined));
+	}
+
+	for (point_id, position) in vector.free_points() {
+		targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
+	}
+
+	targets
 }
