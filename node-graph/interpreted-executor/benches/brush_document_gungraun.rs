@@ -16,7 +16,7 @@ use graphene_std::application_io::RenderConfig;
 use graphene_std::brush::basic_brush::{basic_brush, basic_brush_pipeline};
 use graphene_std::brush::{BrushCache, brush_strokes};
 use graphene_std::graphic;
-use graphene_std::runtime::{AsyncRuntime, Clock, Spawn, Task};
+use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
 use graphene_std::uuid::NodeId;
 use gungraun::prelude::*;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -68,7 +68,7 @@ fn setup(existing: usize) -> Session {
 			application_io: Some(Arc::new(PlatformApplicationIo::new_with_executor(gpu.clone()))),
 		}),
 		gpu,
-		runtime: AsyncRuntime::new(Arc::new(BlockingSpawner), Arc::new(StoppedClock)),
+		runtime: AsyncRuntime::new(Arc::new(BlockingSpawner)),
 		preprocessor: preprocessor::Preprocessor::new(),
 		executor: DynamicExecutor::default(),
 		document: NodeNetwork::default(),
@@ -150,15 +150,6 @@ struct BlockingSpawner;
 impl Spawn for BlockingSpawner {
 	fn spawn(&self, task: Task) {
 		futures::executor::block_on(task);
-	}
-}
-
-/// Keeps the same time throughout, so animation never depends on how slowly Valgrind runs.
-struct StoppedClock;
-
-impl Clock for StoppedClock {
-	fn now(&self) -> std::time::Duration {
-		std::time::Duration::ZERO
 	}
 }
 
