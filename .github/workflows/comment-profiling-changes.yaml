@@ -117,13 +117,22 @@ jobs:
             if [ -n "$gpu_benchmarks" ]; then cargo bench -p interpreted-executor --features gpu $gpu_benchmarks -- --baseline=master --output-format=json; fi
           } | jq -sc | sed 's/\\"//g' > /tmp/all_output.json
 
-          # Split the results into one file per benchmark for the analysis below
-          split_results() { jq -c --arg prefix "$1::" '[.[] | select(.module_path | startswith($prefix))]' /tmp/all_output.json > "/tmp/$2_output.json"; }
+          # Split the results into one file per benchmark, or per function of one, for the analysis below
+          split_results() { jq -c --arg path "$1" '[.[] | select(.module_path == $path or (.module_path | startswith($path + "::")))]' /tmp/all_output.json > "/tmp/$2_output.json"; }
           split_results compile_demo_art_gungraun compile
           split_results update_executor_gungraun update
           split_results run_once_gungraun run_once
           split_results run_cached_gungraun run_cached
-          for benchmark in $baselined; do split_results "$benchmark" "$benchmark"; done
+          for benchmark in $baselined; do
+            case $benchmark in
+              # Its edits and zooms take different render paths, so each gets a section of its own
+              artwork_gungraun)
+                split_results artwork_gungraun::artwork_group::add_rectangle artwork_edit
+                split_results artwork_gungraun::artwork_group::zoom artwork_zoom
+                ;;
+              *) split_results "$benchmark" "$benchmark" ;;
+            esac
+          done
 
       - name: Make old comments collapsed by default
         # Only run if we have write permissions (not a fork)
@@ -179,7 +188,8 @@ jobs:
             // A GPU benchmark only has results once the baseline commit has it too
             const gpuBenchmarks = [
               ['brush_stroke_gungraun', 'Brush Strokes'],
-              ['artwork_gungraun', 'Artwork'],
+              ['artwork_edit', 'Artwork Edit'],
+              ['artwork_zoom', 'Zoom'],
             ].filter(([name]) => fs.existsSync(`/tmp/${name}_output.json`));
 
             const allOutputs = [
@@ -256,7 +266,8 @@ jobs:
             // A GPU benchmark only has results once the baseline commit has it too, and a section without results is left out
             const readOptional = (path) => (fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')) : []);
             const brushStrokeOutput = readOptional('/tmp/brush_stroke_gungraun_output.json');
-            const artworkOutput = readOptional('/tmp/artwork_gungraun_output.json');
+            const artworkEditOutput = readOptional('/tmp/artwork_edit_output.json');
+            const artworkZoomOutput = readOptional('/tmp/artwork_zoom_output.json');
 
             const hasSignificantChanges = '${{ steps.analyze.outputs.has-significant-changes }}' === 'true';
             let commentBody = "";
@@ -347,7 +358,8 @@ jobs:
               { output: runOnceOutput, title: "🚀 Render: Cold Execution" },
               { output: runCachedOutput, title: "⚡ Render: Cached Execution" },
               { output: brushStrokeOutput, title: "🖌️ Render: Brush Strokes" },
-              { output: artworkOutput, title: "🎨 Render: Artwork Edits and Zoom" }
+              { output: artworkEditOutput, title: "✏️ Render: Artwork Edit" },
+              { output: artworkZoomOutput, title: "🔍 Render: Zoom" }
             ];
 
             // Generate sections and determine which ones have results
