@@ -586,7 +586,8 @@ impl ApplicationHandler for App {
 			state: ElementState::Released,
 			button,
 			..
-		} = &event && button.clone().mouse_button() == Some(MouseButton::Left)
+		} = &event
+			&& button.clone().mouse_button() == Some(MouseButton::Left)
 			&& let Some(pointer_lock_position) = self.input_state.unlock_pointer()
 		{
 			if let Some(window) = &self.window {

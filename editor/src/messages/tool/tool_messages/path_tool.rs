@@ -3570,7 +3570,8 @@ fn update_dynamic_hints(
 				&& let (Some(anchor), Some(layer)) = (
 					shape_editor.selected_points().next(),
 					document.network_interface.selected_nodes().selected_layers(document.metadata()).next(),
-				) && let Some(vector) = document.network_interface.compute_modified_vector(layer)
+				)
+				&& let Some(vector) = document.network_interface.compute_modified_vector(layer)
 			{
 				single_colinear_anchor_selected = vector.colinear(*anchor)
 			}

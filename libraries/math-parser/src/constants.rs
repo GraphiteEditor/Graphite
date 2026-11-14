@@ -532,7 +532,8 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			};
 			// An odd root of a negative real is real, where `powf` alone would climb to the principal complex root
 			if let Some(x) = x.as_real()
-				&& x < 0. && n.rem_euclid(2.) == 1.
+				&& x < 0.
+				&& n.rem_euclid(2.) == 1.
 			{
 				return Some(Value::from_f64(-(-x).powf(1. / n)));
 			}

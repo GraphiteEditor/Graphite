@@ -1088,7 +1088,8 @@ impl Fsm for SelectToolFsmState {
 						bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 					}
 					if !is_skewing
-						&& dragging_bounds && let Some(edges) = edges
+						&& dragging_bounds
+						&& let Some(edges) = edges
 					{
 						tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
 					}

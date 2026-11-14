@@ -283,7 +283,8 @@ impl NodeNetworkInterface {
 		if let Some(outward_wires) = self
 			.outward_wires(network_path)
 			.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(*node_id)))
-			.cloned() && outward_wires.len() == 1
+			.cloned()
+			&& outward_wires.len() == 1
 		{
 			self.try_set_upstream_to_chain(&outward_wires[0], network_path);
 		}

@@ -358,7 +358,8 @@ impl Fsm for ArtboardToolFsmState {
 				let not_resizing = !matches!(state, ArtboardToolFsmState::ResizingBounds);
 
 				if quick_measurement_enabled
-					&& not_resizing && alt_pressed
+					&& not_resizing
+					&& alt_pressed
 					&& let Some(selected_artboard) = tool_data.selected_artboard
 					&& let Some(selected_bounds) = document.metadata().bounding_box_document(selected_artboard).map(Rect::from_box)
 				{

@@ -580,7 +580,8 @@ mod test {
 				if let FrontendMessage::UpdateLayout {
 					layout_target: LayoutTarget::DialogColumn1,
 					diff,
-				} = response && let DiffUpdate::Layout(sub_layout) = &diff[0].new_value
+				} = response
+					&& let DiffUpdate::Layout(sub_layout) = &diff[0].new_value
 					&& let LayoutGroup::Row(WidgetRow { widgets }) = &sub_layout.0[0]
 					&& let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget
 				{
