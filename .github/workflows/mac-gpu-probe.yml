@@ -13,6 +13,8 @@ jobs:
   probe:
     strategy:
       fail-fast: false
+      # One at a time, so jobs can't land on one host and share its GPU
+      max-parallel: 1
       matrix:
         runner: [blacksmith-6vcpu-macos-latest, macos-latest]
         # Repeated to see how much separate jobs (and possibly separate hosts) differ

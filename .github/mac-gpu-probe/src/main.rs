@@ -3,6 +3,9 @@
 
 use std::time::Instant;
 
+#[cfg(target_os = "macos")]
+mod metal_direct;
+
 const WARMUP_RUNS: usize = 3;
 const TIMED_RUNS: usize = 20;
 const SUBMIT_RUNS: usize = 100;
@@ -131,6 +134,9 @@ async fn run() {
 	submit_latency(&gpu);
 	alu_throughput(&gpu);
 	bandwidth(&gpu);
+
+	#[cfg(target_os = "macos")]
+	metal_direct::run();
 }
 
 // Round trips of an empty submission, the fixed overhead any per-frame measurement includes
