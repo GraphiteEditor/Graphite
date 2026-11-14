@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::document::NetworkLocation;
 
-use crate::Value;
+use crate::{NetworkReference, Value};
 
 /// One node's editor-side metadata, produced by `Registry::to_runtime_with_metadata`. One entry per
 /// node, since every node carries an identity to restore even when it carries no `ui::*` attribute.
@@ -107,7 +107,7 @@ pub trait NodeMetadataSource {
 	}
 
 	/// The definition the network was instantiated from, if it still names one.
-	fn reference(&self, _network: NetworkLocation) -> Option<&str> {
+	fn reference(&self, _network: NetworkLocation) -> Option<NetworkReference> {
 		None
 	}
 

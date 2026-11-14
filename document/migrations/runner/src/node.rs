@@ -1,9 +1,11 @@
 //! The node tier: `M` as a function on registry states, and the history rewrite derived from it.
 
 use crate::{MigrationBlobs, RunnerError};
+use document_graph_storage::TimeStamp;
+use document_graph_storage::attributes::attr::node::ui::REFERENCE;
 use document_graph_storage::delta::compute_deltas;
 use document_graph_storage::{Delta, Implementation, NetworkId, Node, NodeId, NodeInput, ProtoNode, Registry, RegistryDelta, ResourceHash, ResourceId, Rev, apply_retired_op};
-use migration_core::{AnchorContext, Compiler, Declaration, DeclarationResolver, Edits, InputConnector, InputsEdit, MigrationHost, NodeMigration, OutputConnector};
+use migration_core::{AnchorContext, Compiler, Declaration, DeclarationResolver, Edits, InputConnector, InputsEdit, MigrationHost, NodeMigration, OutputConnector, implements};
 use std::collections::{HashMap, HashSet};
 
 /// A [`DeclarationResolver`] over a fixed set of declarations for tests, whose resource IDs derive from `identifier@version` rather than the encoded declarations documents store.
@@ -201,19 +203,76 @@ fn apply_runs(migration: &dyn NodeMigration, source: &Registry, anchors: &[NodeI
 			});
 		}
 
-		if let Some(node) = target.node_instances.get_mut(anchor) {
-			*node.implementation_mut() = Implementation::ProtoNode(resolver.resource(chosen));
-		}
+		switch_implementation(&mut target, *anchor, chosen, resolver).map_err(|error| error.for_anchor(migration.source(), *anchor))?;
 		used_declarations.push(chosen);
 		used_declarations.extend(edits.added_nodes.iter().map(|added| added.node.declaration));
 	}
-	for declaration in used_declarations {
+	for declaration in used_declarations.into_iter().filter(|declaration| !declaration.is_network()) {
 		if let Some(entry) = resolver.resource_entry(declaration) {
 			target.resources.entry(resolver.resource(declaration)).or_insert(entry);
 		}
 	}
 
 	Ok(target)
+}
+
+/// Why an anchor can't switch to the declaration its run chose.
+enum SwitchError {
+	/// Only a network anchor can become a network definition, since a proto node has no network to name it.
+	ProtoToNetwork(Declaration),
+}
+
+impl SwitchError {
+	fn for_anchor(self, migration: Declaration, anchor: NodeId) -> RunnerError {
+		match self {
+			Self::ProtoToNetwork(target) => RunnerError::ProtoToNetwork { migration, anchor, target },
+		}
+	}
+}
+
+/// Switch `anchor` to `declaration`. A network anchor becoming a proto node drops the network it implemented, with every network nested in it.
+fn switch_implementation(registry: &mut Registry, anchor: NodeId, declaration: Declaration, resolver: &dyn DeclarationResolver) -> Result<(), SwitchError> {
+	let Some(implementation) = registry.node_instances.get(&anchor).map(|node| node.implementation().clone()) else {
+		return Ok(());
+	};
+
+	match (implementation, declaration.is_network()) {
+		(Implementation::ProtoNode(_), true) => Err(SwitchError::ProtoToNetwork(declaration)),
+		(Implementation::Network(network), true) => {
+			if let Some(network) = registry.networks.get_mut(&network) {
+				network.attributes.set(REFERENCE, declaration.network_reference().to_value(), TimeStamp::ORIGIN);
+			}
+			Ok(())
+		}
+		(implementation, false) => {
+			if let Implementation::Network(network) = implementation {
+				remove_network_tree(registry, network);
+			}
+			if let Some(node) = registry.node_instances.get_mut(&anchor) {
+				*node.implementation_mut() = Implementation::ProtoNode(resolver.resource(declaration));
+			}
+			Ok(())
+		}
+	}
+}
+
+/// Remove `network`, its nodes, and every network one of them implements.
+fn remove_network_tree(registry: &mut Registry, network: NetworkId) {
+	let mut pending = vec![network];
+
+	while let Some(network) = pending.pop() {
+		registry.networks.remove(&network);
+
+		registry.node_instances.retain(|_, node| {
+			if node.network() != network {
+				return true;
+			}
+			if let Implementation::Network(nested) = node.implementation() {
+				pending.push(*nested);
+			}
+			false
+		});
+	}
 }
 
 /// Whether a live node of `registry` implements `declaration`.
@@ -226,7 +285,7 @@ fn anchors(declaration: Declaration, registry: &Registry, resolver: &dyn Declara
 	let mut anchors: Vec<NodeId> = registry
 		.node_instances
 		.iter()
-		.filter(|(_, node)| matches!(node.implementation(), Implementation::ProtoNode(resource) if resolver.declaration(*resource) == Some(declaration)))
+		.filter(|(_, node)| implements(registry, node, declaration, resolver))
 		.map(|(id, _)| *id)
 		.collect();
 	anchors.sort_unstable();
@@ -240,6 +299,12 @@ fn add_nodes(target: &mut Registry, runs: &[(NodeId, Edits)], resolver: &dyn Dec
 		let Some(network) = target.node_instances.get(anchor).map(Node::network) else { continue };
 
 		for added in &edits.added_nodes {
+			if added.node.declaration.is_network() {
+				return Err(RunnerError::AddedNetworkDefinition {
+					anchor: *anchor,
+					declaration: added.node.declaration,
+				});
+			}
 			if !added_ids.insert(added.id) {
 				return Err(RunnerError::DuplicateAddedNode {
 					anchor: *anchor,
@@ -305,7 +370,7 @@ struct Branch {
 /// Undoing and then editing leaves an abandoned branch, which rewrites like any other since each delta only depends on its ancestors.
 /// Fails on a delta that merges branches, or whose parent isn't in `history`.
 ///
-/// A migration reading the graph or asking the compiler needs whole states, so it only runs at the boundaries undo can land on, the end of an interaction,
+/// A migration reading the graph, asking the compiler, or starting from a network definition needs whole states, so it only runs at the boundaries undo can land on, the end of an interaction,
 /// and rewrites everything since the last one as a single chain. Each delta inside maps to the boundary before it, and `kept` names further states to keep.
 ///
 /// Each delta costs one full evaluation of `M` and one full diff, so this is O(history × registry), until the RFC's footprint-scoped
@@ -328,7 +393,7 @@ pub(crate) fn rewrite_history(
 	}
 
 	let child_counts = children.clone();
-	let whole_states_only = migration.footprint().reads_network();
+	let whole_states_only = needs_whole_states(migration);
 	let is_boundary = |delta: &Delta| {
 		let continues_alone = child_counts.get(&Some(delta.id)) == Some(&1) && child_authors.get(&delta.id).is_some_and(|authors| authors.contains(&delta.author));
 		delta.is_interaction_end() || !continues_alone || kept.contains(&delta.id)
@@ -423,6 +488,12 @@ pub fn registry_at(deltas: &[Delta], head: Option<Rev>) -> Result<Registry, Runn
 		apply_retired_op(&mut registry, delta.kind.clone(), delta.timestamp)?;
 	}
 	Ok(registry)
+}
+
+/// A network definition's instance is a node and the network it implements, which a history adds in separate deltas. In between, the network
+/// names the definition without an anchor to migrate it, so only states where both or neither exist are migrated.
+pub(crate) fn needs_whole_states(migration: &dyn NodeMigration) -> bool {
+	migration.footprint().reads_network() || migration.source().is_network()
 }
 
 /// Ops `M` can't affect and `compute_deltas` doesn't diff, which therefore keep their original form.

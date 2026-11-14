@@ -43,6 +43,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			description,
 			inspector,
 			output_fields,
+			version,
 			..
 		} = metadata;
 
@@ -85,6 +86,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			identifier,
 			DocumentNodeDefinition {
 				identifier: display_name,
+				version: *version,
 				node_template: NodeTemplate {
 					inputs,
 					call_argument: input_type.clone(),

@@ -2,7 +2,8 @@
 
 use crate::node::{apply_migration, rewrite_history};
 use crate::{MigrationBlobs, RewrittenHistory, RunnerError};
-use document_graph_storage::{Delta, Implementation, Node, Registry, RegistryDelta, Rev};
+use document_graph_storage::attributes::attr::node::ui::REFERENCE;
+use document_graph_storage::{Delta, Implementation, NetworkReference, Node, Registry, RegistryDelta, Rev};
 use migration_core::{Declaration, DeclarationResolver, MigrationHost, NodeMigration};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -121,8 +122,24 @@ pub fn migrate_registry(
 	Ok(migrated)
 }
 
-/// Whether `kind` stores a node implementing `declaration`.
+/// Whether `kind` stores a node implementing `declaration`, or for a network definition, a network naming it.
 pub fn references(kind: &RegistryDelta, declaration: Declaration, resolver: &dyn DeclarationResolver) -> bool {
+	if declaration.is_network() {
+		return match kind {
+			RegistryDelta::AddNetwork { network, .. } => declaration.describes_network(&network.attributes),
+			RegistryDelta::RemoveNetwork { snapshot, .. } => declaration.describes_network(&snapshot.attributes),
+			RegistryDelta::ChangeNetworkAttribute { delta, .. } => {
+				delta.key == REFERENCE
+					&& delta
+						.value
+						.as_ref()
+						.and_then(NetworkReference::from_value)
+						.is_some_and(|reference| declaration.is_reference(&reference))
+			}
+			_ => false,
+		};
+	}
+
 	let is_declaration = |implementation: &Implementation| matches!(implementation, Implementation::ProtoNode(resource) if resolver.declaration(*resource) == Some(declaration));
 	let implements = |node: &Node| is_declaration(node.implementation());
 

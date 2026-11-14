@@ -11,7 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::attr::*;
 use crate::blob::{BlobBytes, decode_blob};
 use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry};
-use crate::{BlobHash, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId, Value, from_value};
+use crate::{BlobHash, Implementation, NetworkId, NetworkReference, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId, Value, from_value};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
@@ -437,7 +437,7 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 	NetworkMetadataEntry {
 		network,
 		network_id,
-		reference: attributes.get_typed(node::ui::REFERENCE),
+		reference: NetworkReference::read(attributes).map(|reference| reference.identifier),
 		pinned_order,
 		import_metadata: attributes.get_or_default(network::IMPORT_METADATA),
 		export_names: attributes.get_or_default(network::EXPORT_NAMES),

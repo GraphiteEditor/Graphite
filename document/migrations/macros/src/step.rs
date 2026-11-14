@@ -1,16 +1,18 @@
 use proc_macro2::{TokenStream, TokenTree};
 use syn::parse::{Parse, ParseStream};
-use syn::{Error, LitInt, LitStr, Token};
+use syn::{Error, Ident, LitInt, LitStr, Token};
 
-/// A declaration as written in macro input: `"identifier"@version`.
+/// A declaration as written in macro input: `"identifier"@version`, or `network "identifier"@version` for a network definition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Declaration {
 	pub identifier: String,
 	pub version: u32,
+	pub network: bool,
 }
 
 impl Parse for Declaration {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
+		let network = parse_network_keyword(input)?;
 		let identifier: LitStr = input.parse()?;
 		input.parse::<Token![@]>()?;
 		let version: LitInt = input.parse()?;
@@ -18,11 +20,26 @@ impl Parse for Declaration {
 		Ok(Self {
 			identifier: identifier.value(),
 			version: version.base10_parse()?,
+			network,
 		})
 	}
 }
 
-/// `"identifier"@n => "identifier"@m`, or `"identifier"@n => @m` for a version step that keeps the identifier.
+/// Consumes a leading `network` keyword, returning whether it was there.
+fn parse_network_keyword(input: ParseStream) -> syn::Result<bool> {
+	if !input.peek(Ident) {
+		return Ok(false);
+	}
+
+	let keyword: Ident = input.parse()?;
+	if keyword != "network" {
+		return Err(Error::new(keyword.span(), "expected `network` or a declaration identifier string"));
+	}
+	Ok(true)
+}
+
+/// `"identifier"@n => "identifier"@m`, or `"identifier"@n => @m` for a version step that keeps the identifier and kind. Either side may be a
+/// `network` definition.
 pub(crate) struct Step {
 	pub source: Declaration,
 	pub target: Declaration,
@@ -33,9 +50,12 @@ impl Parse for Step {
 		let source: Declaration = input.parse()?;
 		input.parse::<Token![=>]>()?;
 
-		let target_identifier = match input.peek(LitStr) {
-			true => input.parse::<LitStr>()?.value(),
-			false => source.identifier.clone(),
+		let (target_identifier, target_network) = match input.peek(LitStr) || input.peek(Ident) {
+			true => {
+				let network = parse_network_keyword(input)?;
+				(input.parse::<LitStr>()?.value(), network)
+			}
+			false => (source.identifier.clone(), source.network),
 		};
 		input.parse::<Token![@]>()?;
 		let target_version_literal: LitInt = input.parse()?;
@@ -52,6 +72,7 @@ impl Parse for Step {
 		let target = Declaration {
 			identifier: target_identifier,
 			version: target_version,
+			network: target_network,
 		};
 		Ok(Self { source, target })
 	}

@@ -895,3 +895,35 @@ fn large_input_value_round_trips_through_a_blob() {
 	let error = registry.to_runtime_with_metadata(&declarations, &crate::blob::BlobBytes::new()).expect_err("a missing blob must error");
 	assert!(matches!(error, crate::to_runtime::ConversionError::BlobNotFound(hash) if hash == blob), "{error}");
 }
+
+/// Names the nested network a built-in definition at `version`.
+struct ReferenceMetadata {
+	version: u32,
+}
+
+impl NodeMetadataSource for ReferenceMetadata {
+	fn reference(&self, network: NetworkLocation) -> Option<crate::NetworkReference> {
+		(network == Some(NESTED)).then(|| crate::NetworkReference {
+			identifier: "Merge".into(),
+			version: self.version,
+		})
+	}
+}
+
+#[test]
+fn network_reference_round_trips_with_its_version() {
+	for version in [1, 2] {
+		let network = create_nested_network();
+		let conversion = Registry::convert_from_runtime(&network, &ReferenceMetadata { version }, &Default::default(), PeerId(0)).expect("the nested network converts");
+
+		let stored: Vec<_> = conversion.registry.networks.values().filter_map(|network| crate::NetworkReference::read(&network.attributes)).collect();
+		assert_eq!(stored, vec![crate::NetworkReference { identifier: "Merge".into(), version }]);
+
+		let (_, _, network_entries) = conversion
+			.registry
+			.to_runtime_with_full_metadata(&conversion.declarations, &conversion.blob_bytes)
+			.expect("the registry converts back");
+		let references: Vec<_> = network_entries.iter().filter_map(|entry| entry.reference.as_deref()).collect();
+		assert_eq!(references, vec!["Merge"]);
+	}
+}

@@ -1,5 +1,5 @@
 use crate::{Compiler, Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector};
-use document_graph_storage::{InputSlot, NetworkId, NodeId, NodeInput, Registry, TimeStamp};
+use document_graph_storage::{Implementation, InputSlot, NetworkId, NodeId, NodeInput, Registry, TimeStamp};
 use std::ops::Deref;
 
 /// Which part of the registry around an anchor a view reads or edits. A migration's footprint is the union of its views' regions.
@@ -148,9 +148,9 @@ impl<'a> Graph<'a> {
 		self.registry.node_instances.get(&id).filter(|node| node.network() == self.network)
 	}
 
-	/// The declaration a node of this network implements, if it is one a migration knows.
+	/// The proto-node declaration a node of this network implements, if it is one a migration knows.
 	pub fn declaration(&self, id: NodeId) -> Option<Declaration> {
-		let document_graph_storage::Implementation::ProtoNode(resource) = self.node(id)?.implementation() else {
+		let Implementation::ProtoNode(resource) = self.node(id)?.implementation() else {
 			return None;
 		};
 		self.resolver.declaration(*resource)
@@ -193,6 +193,14 @@ impl<'a> Graph<'a> {
 		}
 
 		readers
+	}
+}
+
+/// Whether `node` implements `declaration`: a proto node through its declaration resource, a network instance through the definition its network names.
+pub fn implements(registry: &Registry, node: &document_graph_storage::Node, declaration: Declaration, resolver: &dyn DeclarationResolver) -> bool {
+	match node.implementation() {
+		Implementation::ProtoNode(resource) => !declaration.is_network() && resolver.declaration(*resource) == Some(declaration),
+		Implementation::Network(network) => registry.networks.get(network).is_some_and(|network| declaration.describes_network(&network.attributes)),
 	}
 }
 
