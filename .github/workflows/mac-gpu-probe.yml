@@ -1,0 +1,38 @@
+name: "Mac GPU Probe"
+
+# Throwaway feasibility test of macOS runners' GPUs for profiling, run only by pushes to this branch
+on:
+  push:
+    branches:
+      - mac-gpu-probe
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [blacksmith-6vcpu-macos-latest, macos-latest]
+        # Repeated to see how much separate jobs (and possibly separate hosts) differ
+        attempt: [1, 2, 3]
+    name: probe (${{ matrix.runner }}, ${{ matrix.attempt }})
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Describe the hardware
+        run: |
+          sw_vers
+          echo "CPU: $(sysctl -n machdep.cpu.brand_string), model: $(sysctl -n hw.model), memory: $(( $(sysctl -n hw.memsize) / 1073741824 )) GiB, running in a VM: $(sysctl -n kern.hv_vmm_present 2>/dev/null || echo unknown)"
+          system_profiler SPDisplaysDataType SPHardwareDataType
+
+      - name: Build the probe
+        run: cargo build --release --manifest-path .github/mac-gpu-probe/Cargo.toml
+
+      - name: Run the probe
+        run: .github/mac-gpu-probe/target/release/mac-gpu-probe

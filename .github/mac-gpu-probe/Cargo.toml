@@ -1,0 +1,12 @@
+[package]
+name = "mac-gpu-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Kept out of the repository's workspace
+[workspace]
+
+[dependencies]
+wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "dx12", "metal", "vulkan", "wgsl"] }
+pollster = "0.4"
