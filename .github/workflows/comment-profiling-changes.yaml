@@ -57,17 +57,11 @@ jobs:
         if: github.event_name == 'pull_request'
         run: git checkout --detach HEAD^1
 
-      - name: Get CPU and compiler info
-        id: cpu-info
+      - name: Get toolchain info
+        id: toolchain-info
         run: |
-          # Get CPU model and create a short hash for cache key
-          CPU_MODEL=$(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d: -f2 | xargs)
-          CPU_HASH=$(echo "$CPU_MODEL" | sha256sum | cut -c1-8)
-          echo "cpu-hash=$CPU_HASH" >> $GITHUB_OUTPUT
-          echo "CPU: $CPU_MODEL (hash: $CPU_HASH)"
-
-          # New releases of Rust, Valgrind, or the C library change the instruction counts too
-          echo "toolchain-hash=$( (rustc -vV; valgrind --version; ldd --version | head -1) | sha256sum | cut -c1-8)" >> $GITHUB_OUTPUT
+          # Instruction counts match across x64 CPU models, but new releases of Rust, Valgrind, or the C library change them
+          echo "hash=$( (rustc -vV; valgrind --version; ldd --version | sed -n 1p) | sha256sum | cut -c1-8)" >> $GITHUB_OUTPUT
 
       - name: Restore benchmark baseline
         id: restore-baseline
@@ -75,7 +69,7 @@ jobs:
         with:
           path: target/gungraun
           # Keyed by the baseline commit's benchmark inputs, so master commits that don't change them share one baseline
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-${{ steps.cpu-info.outputs.toolchain-hash }}-gungraun-baseline-${{ hashFiles('node-graph/**', 'document/**', 'libraries/**', 'demo-artwork/**', 'Cargo.toml', 'Cargo.lock', '.cargo/config.toml', '.github/workflows/comment-profiling-changes.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain-info.outputs.hash }}-gungraun-baseline-${{ hashFiles('node-graph/**', 'document/**', 'libraries/**', 'demo-artwork/**', 'Cargo.toml', 'Cargo.lock', '.cargo/config.toml', '.github/workflows/comment-profiling-changes.yaml') }}
 
       - name: Run baseline benchmarks
         if: steps.restore-baseline.outputs.cache-hit != 'true'
@@ -153,6 +147,11 @@ jobs:
                 : meetsPercentageThreshold;
             }
 
+            // Each Callgrind metric holds its counts in `values.old` and `values.new`, plus `change.diff_pct` (a string) when compared against the baseline
+            function callgrindMetrics(benchmark) {
+              return benchmark.profiles?.find((profile) => profile.tool === 'Callgrind')?.data?.total?.metrics;
+            }
+
             const allOutputs = [
               JSON.parse(fs.readFileSync('/tmp/compile_output.json', 'utf8')),
               JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8')),
@@ -162,40 +161,50 @@ jobs:
             const outputNames = ['compile', 'update', 'run_once', 'run_cached'];
             const sectionTitles = ['Compilation', 'Update', 'Run Once', 'Cached Execution'];
 
+            // Fail instead of reporting no changes when a benchmark has no baseline comparison, such as after gungraun changes its output format
+            const missingComparisons = [];
+            allOutputs.forEach((benchmarkOutput, i) => {
+              if (benchmarkOutput.length === 0) missingComparisons.push(`${outputNames[i]} (no results)`);
+
+              benchmarkOutput
+                .filter((benchmark) => !callgrindMetrics(benchmark)?.Ir?.change)
+                .forEach((benchmark) => missingComparisons.push(`${benchmark.module_path} ${benchmark.id}`));
+            });
+            if (missingComparisons.length > 0) {
+              core.setFailed(`Benchmark results without a baseline comparison: ${missingComparisons.join(', ')}`);
+              return;
+            }
+
             let hasSignificantChanges = false;
             let hasRegressions = false;
             let regressionDetails = [];
 
-            for (let i = 0; i < allOutputs.length; i++) {
-              const benchmarkOutput = allOutputs[i];
+            allOutputs.forEach((benchmarkOutput, i) => {
               const outputName = outputNames[i];
               const sectionTitle = sectionTitles[i];
 
-              for (const benchmark of benchmarkOutput) {
-                if (benchmark.profiles?.[0]?.summaries?.parts?.[0]?.metrics_summary?.Callgrind?.Ir?.diffs?.diff_pct) {
-                  const diffPct = parseFloat(benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.diffs.diff_pct);
-                  const oldValue = benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.metrics.Both[1].Int;
-                  const newValue = benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.metrics.Both[0].Int;
-                  const absoluteChange = Math.abs(newValue - oldValue);
+              benchmarkOutput.forEach((benchmark) => {
+                const instructions = callgrindMetrics(benchmark).Ir;
+                const diffPct = parseFloat(instructions.change.diff_pct);
+                const absoluteChange = Math.abs(instructions.values.new - instructions.values.old);
 
-                  if (isSignificantChange(diffPct, absoluteChange, outputName)) {
-                    hasSignificantChanges = true;
+                if (isSignificantChange(diffPct, absoluteChange, outputName)) {
+                  hasSignificantChanges = true;
 
-                    // Only an increase in instruction count is a regression; improvements must not fail CI.
-                    if (diffPct > 0) {
-                      hasRegressions = true;
-                      regressionDetails.push({
-                        module_path: benchmark.module_path,
-                        id: benchmark.id,
-                        diffPct,
-                        absoluteChange,
-                        sectionTitle
-                      });
-                    }
+                  // Only an increase in instruction count is a regression; improvements must not fail CI.
+                  if (diffPct > 0) {
+                    hasRegressions = true;
+                    regressionDetails.push({
+                      module_path: benchmark.module_path,
+                      id: benchmark.id,
+                      diffPct,
+                      absoluteChange,
+                      sectionTitle
+                    });
                   }
                 }
-              }
-            }
+              });
+            });
 
             core.setOutput('has-significant-changes', hasSignificantChanges);
             core.setOutput('has-regressions', hasRegressions);
@@ -234,6 +243,10 @@ jobs:
               return str.padStart(len);
             }
 
+            function callgrindMetrics(benchmark) {
+              return benchmark.profiles?.find((profile) => profile.tool === 'Callgrind')?.data?.total?.metrics;
+            }
+
             function processBenchmarkOutput(benchmarkOutput, sectionTitle, isLast = false) {
               let sectionBody = "";
               let hasResults = false;
@@ -249,53 +262,40 @@ jobs:
                   ? (meetsPercentageThreshold && meetsAbsoluteThreshold)
                   : meetsPercentageThreshold;
               }
-              
-              for (const benchmark of benchmarkOutput) {
-                if (benchmark.profiles && benchmark.profiles.length > 0) {
-                  const profile = benchmark.profiles[0];
-                  if (profile.summaries && profile.summaries.parts && profile.summaries.parts.length > 0) {
-                    const part = profile.summaries.parts[0];
-                    if (part.metrics_summary && part.metrics_summary.Callgrind && part.metrics_summary.Callgrind.Ir) {
-                      const irData = part.metrics_summary.Callgrind.Ir;
-                      if (irData.diffs && irData.diffs.diff_pct !== null) {
-                        const irDiff = {
-                          diff_pct: parseFloat(irData.diffs.diff_pct),
-                          old: irData.metrics.Both[1].Int,
-                          new: irData.metrics.Both[0].Int
-                        };
-                    hasResults = true;
-                    const changePercentage = formatPercentage(irDiff.diff_pct);
-                    const color = irDiff.diff_pct > 0 ? "red" : "lime";
-                    
-                    sectionBody += `**${benchmark.module_path} ${benchmark.id}:${benchmark.details}**\n`;
-                    sectionBody += `Instructions: \`${formatNumber(irDiff.old)}\` (master) → \`${formatNumber(irDiff.new)}\` (HEAD) : `;
-                    sectionBody += `$$\\color{${color}}${changePercentage.replace("%", "\\\\%")}$$\n\n`;
-                    
-                    sectionBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
-                    sectionBody += `Baselines:                master|       HEAD\n`;
-                    
-                    for (const [metricName, metricData] of Object.entries(part.metrics_summary.Callgrind)) {
-                      if (metricData.diffs && metricData.diffs.diff_pct !== null) {
-                        const changePercentage = formatPercentage(parseFloat(metricData.diffs.diff_pct));
-                        const oldValue = metricData.metrics.Both[1].Int || metricData.metrics.Both[1].Float;
-                        const newValue = metricData.metrics.Both[0].Int || metricData.metrics.Both[0].Float;
-                        const line = `${padRight(metricName, 20)} ${padLeft(formatNumber(Math.round(oldValue)), 11)}|${padLeft(formatNumber(Math.round(newValue)), 11)} ${padLeft(changePercentage, 15)}`;
-                        sectionBody += `${line}\n`;
-                      }
-                    }
-                    
-                    sectionBody += "```\n</details>\n\n";
 
-                        if (isSignificantChange(irDiff.diff_pct, Math.abs(irDiff.new - irDiff.old), sectionTitle)) {
-                          significantChanges = true;
-                          hasSignificantChanges = true;
-                        }
-                      }
-                    }
-                  }
+              benchmarkOutput.forEach((benchmark) => {
+                const metrics = callgrindMetrics(benchmark);
+                const instructions = metrics?.Ir;
+                if (!instructions?.change) return;
+
+                hasResults = true;
+                const diffPct = parseFloat(instructions.change.diff_pct);
+                const changePercentage = formatPercentage(diffPct);
+                const color = diffPct > 0 ? "red" : "lime";
+                const name = [benchmark.id, benchmark.description].filter(Boolean).join(':');
+
+                sectionBody += `**${benchmark.module_path} ${name}**\n`;
+                sectionBody += `Instructions: \`${formatNumber(instructions.values.old)}\` (master) → \`${formatNumber(instructions.values.new)}\` (HEAD) : `;
+                sectionBody += `$$\\color{${color}}${changePercentage.replace("%", "\\\\%")}$$\n\n`;
+
+                sectionBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
+                sectionBody += `Baselines:                master|       HEAD\n`;
+
+                Object.entries(metrics).forEach(([metricName, metricData]) => {
+                  if (!metricData.change) return;
+
+                  const changePercentage = formatPercentage(parseFloat(metricData.change.diff_pct));
+                  const line = `${padRight(metricName, 20)} ${padLeft(formatNumber(Math.round(metricData.values.old)), 11)}|${padLeft(formatNumber(Math.round(metricData.values.new)), 11)} ${padLeft(changePercentage, 15)}`;
+                  sectionBody += `${line}\n`;
+                });
+
+                sectionBody += "```\n</details>\n\n";
+
+                if (isSignificantChange(diffPct, Math.abs(instructions.values.new - instructions.values.old), sectionTitle)) {
+                  hasSignificantChanges = true;
                 }
-              }
-              
+              });
+
               if (hasResults) {
                 // Wrap section in collapsible details, open only if there are significant changes
                 const openAttribute = hasSignificantChanges ? " open" : "";
