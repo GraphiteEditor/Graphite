@@ -409,8 +409,8 @@ fn weld_nearby_points(vector: &mut Vector, paths: &mut List<Path>, transform: DA
 	let mut grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
 
 	// Add points to grid cells without collecting all positions first
-	for i in 0..point_count {
-		let pos = transform.transform_point2(working.point_positions[i]);
+	for (i, &position) in working.point_positions.iter().enumerate() {
+		let pos = transform.transform_point2(position);
 		let grid_x = ((pos.x - min_x) / distance).floor() as i64;
 		let grid_y = ((pos.y - min_y) / distance).floor() as i64;
 

@@ -129,6 +129,13 @@
 	background-blend-mode: overlay;
 	background-position: center;
 
+	// Shown by the Worker to a signed-in member, styled like the membership page's notices
+	.member-notice {
+		padding: 12px 20px;
+		margin-bottom: 10px;
+		background-color: var(--color-seaside);
+	}
+
 	// Every visibility rule below is driven by these, so they're taken out of the layout without losing keyboard focusability
 	input:is([type="radio"], [type="checkbox"]) {
 		position: absolute;

@@ -1933,7 +1933,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		&& inner.nodes.values().any(|n| {
 			matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::math_nodes::floor::IDENTIFIER)
 				&& n.inputs.iter().any(|input| matches!(input, NodeInput::Import { import_index: 1, .. }))
-		}) && let Some(node_definition) = resolve_network_node_type("Blend")
+		})
+		&& let Some(node_definition) = resolve_network_node_type("Blend")
 	{
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 	}
@@ -1945,7 +1946,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			n.inputs
 				.iter()
 				.any(|input| matches!(input, NodeInput::Import { import_type, import_index: 2 } if *import_type == item!(f64)))
-		}) && let Some(node_definition) = resolve_network_node_type("Regex Find")
+		})
+		&& let Some(node_definition) = resolve_network_node_type("Regex Find")
 	{
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 	}

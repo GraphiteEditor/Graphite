@@ -229,7 +229,8 @@ where
 					let p = [x, y][pass] as i32 + (i as i32 - half_kernel as i32);
 
 					if p >= 0
-						&& p < max as i32 && let Some(px) = old_buffer.get_pixel([p as u32, x][pass], [y, p as u32][pass])
+						&& p < max as i32
+						&& let Some(px) = old_buffer.get_pixel([p as u32, x][pass], [y, p as u32][pass])
 					{
 						r_sum += px.r() as f64 * weight;
 						g_sum += px.g() as f64 * weight;

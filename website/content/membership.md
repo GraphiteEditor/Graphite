@@ -29,7 +29,8 @@ Thank you for helping make Graphite possible! Signed-in members can manage how t
 			<div class="notice" data-notice="session-expired" hidden>You've been signed out, so that didn't go through. Please sign in and try again.</div>
 			<div class="notice confirmation" data-notice="sign-in-link-sent" hidden>If that email address has an active membership with direct payments (not GitHub Sponsors), a sign-in link is on its way.</div>
 			<div class="notice" data-notice="sign-in-link-expired" hidden>That sign-in link has expired. Enter your email address below for a new one.</div>
-			<div class="notice confirmation" data-notice="already-member" hidden>Looks like you're already a member! Sign in below to change your tier instead of starting a second membership.</div>
+			<div class="notice" data-notice="email-change-sign-in" hidden>To finish changing your email address, sign in below with the one your membership uses now.</div>
+			<div class="notice" data-notice="email-change-expired" hidden>That confirmation link no longer works. To change your email address, ask for a new link while signed in.</div>
 		</div>
 		<h2>How are you paying for your membership?</h2>
 		<div class="payment-method">
@@ -56,14 +57,33 @@ Thank you for helping make Graphite possible! Signed-in members can manage how t
 		</div>
 		<div class="account">
 			<span class="account-name">Signed in <span data-sign-in-method>with GitHub</span> as <strong data-account-name></strong></span>
+			<button type="button" class="text-button" aria-expanded="false" data-change-email-toggle hidden>Change email</button>
 			<form method="POST" action="/donate/membership/logout"><button type="submit" class="text-button">Sign out</button></form>
 		</div>
+		<form class="change-email" method="POST" action="/donate/membership/email" data-change-email hidden>
+			<label class="field">
+				<span class="field-label">New email address</span>
+				<input type="email" name="email" maxlength="254" autocomplete="email" required data-new-email-address />
+				<span class="field-hint">Your membership, receipts, and sign-in move to this address once you confirm it with the link we email there</span>
+			</label>
+			<button type="submit" class="button arrow">Email me a confirmation link</button>
+		</form>
 		<div class="notices">
+			<form class="notice confirmation email-change-confirmation" method="POST" action="/donate/membership/verify/new-email" data-email-change-confirmation hidden>
+				<span>Make <strong data-pending-email></strong> the email address for your Graphite membership?</span>
+				<button type="submit" class="button arrow">Confirm new email address</button>
+			</form>
+			<div class="notice" data-notice="email-change-expired" hidden>That confirmation link no longer works. To change your email address, ask for a new link while signed in.</div>
+			<div class="notice" data-notice="email-taken" hidden>That email address already has its own membership, so yours stayed where it was. Sign in with that address to manage its membership, or <a href="/contact">contact us</a> to combine the two.</div>
+			<div class="notice" data-notice="email-change-failed" hidden>Your email address couldn't be changed. Please try again in a moment.</div>
 			<div class="notice" data-notice="save-failed" hidden>Your changes couldn't be saved. Please try again in a moment.</div>
 			<div class="notice" data-notice="link-invalid" hidden>That link isn't a web address, so your changes weren't saved.</div>
 			<div class="notice" data-notice="avatar-invalid" hidden>That picture couldn't be used, so your changes weren't saved. It needs to be a still PNG, JPEG, or WebP under 512 KB and no larger than 256x256 pixels.</div>
 			<div class="notice" data-notice="discord-failed" hidden>Something went wrong with Discord. Please try again.</div>
 			<div class="notice" data-notice="billing-failed" hidden>We couldn't open your billing settings. Please try again, or go straight to <a href="https://billing.stripe.com/p/login/aEU9EzctSfe3cfK5kk">Stripe's billing portal</a>.</div>
+			<div class="notice" data-notice="email-invalid" hidden>That isn't an email address, so nothing changed.</div>
+			<div class="notice confirmation" data-notice="email-change-sent" hidden>A confirmation link is on its way to your new email address. Your address changes once you confirm with that link.</div>
+			<div class="notice confirmation passing" role="status" data-notice="email-changed" hidden>Your membership now uses your new email address.</div>
 			<div class="notice confirmation passing" role="status" data-notice="saved" hidden>Your changes are saved.</div>
 			<div class="notice confirmation passing" role="status" data-notice="discord-linked" hidden>Your Discord account is linked, and your gold nametag is ready.</div>
 		</div>
@@ -76,7 +96,7 @@ Thank you for helping make Graphite possible! Signed-in members can manage how t
 			</div>
 			<div class="billing" data-billing-provider="github">
 				<h2>Billing</h2>
-				<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Change or cancel on GitHub</a>
+				<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow" data-change-tier>Change or cancel on GitHub</a>
 			</div>
 			<div class="discord" data-reward-tier="quark">
 				<h2>Discord perks</h2>
@@ -92,30 +112,37 @@ Thank you for helping make Graphite possible! Signed-in members can manage how t
 			</div>
 			<form class="credits" method="POST" action="/donate/membership/save" enctype="multipart/form-data" data-credits-form>
 				<h2>Credits</h2>
-				<div class="field name-opt-in">
+				<div class="aside" data-credits-locked><a href="/donate/" data-upgrade-button>Upgrade your tier to Proton ($10/month)</a> to have your name included in the credits.</div>
+				<button type="button" class="link-button preview-toggle" data-try-higher-tiers hidden>Want to preview the personalization available at higher tiers?</button>
+				<button type="button" class="link-button preview-toggle" data-stop-previewing hidden>End previewing the personalization available at higher tiers.</button>
+				<div class="preview-notice" data-preview-notice hidden>
+					<template data-preview-sentence><span><span data-preview-choices></span> <span data-preview-verb>are</span> just a preview and won't appear in the credits until you <a href="#" data-upgrade-button>upgrade your tier to <span data-needed-tier></span> (<span data-needed-tier-price></span>/month)</a>.</span></template>
+					<span data-preview-sentences></span>Or <a href="#" data-stop-previewing>stop previewing</a> to remove <span data-preview-pronoun>them</span>.
+				</div>
+				<div class="field name-opt-in" data-reward-tier="proton">
 					<span class="field-label">Name opt-in</span>
 					<div class="checkboxes">
-						<label class="checkbox"><input type="checkbox" name="show_in_site_credits" data-show-in-site-credits /><span>Show in site credits</span></label>
-						<label class="checkbox"><input type="checkbox" name="show_in_video_credits" data-show-in-video-credits /><span>Show in YouTube video outro credits</span></label>
-						<label class="checkbox" data-reward-tier="diamond"><input type="checkbox" name="speak_in_video_credits" data-speak-in-video-credits /><span>Speak my name in YouTube outro acknowledgments</span></label>
+						<label class="checkbox" data-reward-tier="proton"><input type="checkbox" name="show_in_site_credits" data-show-in-site-credits /><span data-reward-label>Show in site credits</span></label>
+						<label class="checkbox" data-reward-tier="proton"><input type="checkbox" name="show_in_video_credits" data-show-in-video-credits /><span data-reward-label>Show in YouTube video outro credits</span></label>
+						<label class="checkbox" data-reward-tier="diamond"><input type="checkbox" name="speak_in_video_credits" data-speak-in-video-credits /><span data-reward-label>Speak my name in YouTube outro acknowledgments</span></label>
 					</div>
 				</div>
-				<label class="field">
-					<span class="field-label">Name to show</span>
+				<label class="field" data-reward-tier="proton">
+					<span class="field-label" data-reward-label>Name to show</span>
 					<input type="text" name="credits_name" maxlength="60" autocomplete="name" data-credits-name />
 					<span class="field-hint">We may remove names that aren't appropriate for public credits</span>
 				</label>
 				<label class="field spoken-name-field" data-reward-tier="diamond">
-					<span class="field-label">Name to speak</span>
+					<span class="field-label" data-reward-label>Name to speak</span>
 					<input type="text" name="spoken_name" maxlength="120" data-spoken-name />
 					<span class="field-hint">Add how to say it, like "Inara Serra (ih-NAR-uh SAIR-uh)"</span>
 				</label>
 				<label class="field" data-reward-tier="graphene">
-					<span class="field-label">Link on my name</span>
+					<span class="field-label" data-reward-label>Link on my name</span>
 					<input type="text" name="credits_link" maxlength="200" inputmode="url" autocomplete="url" placeholder="https://" data-credits-link />
 				</label>
 				<div class="avatar-field" data-reward-tier="graphite">
-					<label class="field-label" for="credits-avatar">Avatar picture</label>
+					<label class="field-label" for="credits-avatar" data-reward-label>Avatar picture</label>
 					<div class="avatar-picker">
 						<img class="avatar" alt="" width="72" height="72" data-credits-avatar hidden />
 						<div class="avatar-controls">
@@ -133,20 +160,20 @@ Thank you for helping make Graphite possible! Signed-in members can manage how t
 						<span class="field-hint">Drag the picture to choose what's shown</span>
 					</div>
 				</div>
-				<div class="credits-preview" data-reward-tier="nucleus" data-credits-preview hidden>
+				<div class="credits-preview" data-reward-tier="proton" data-credits-preview hidden>
 					<span class="field-label">Site credits preview</span>
 					<ul class="credits-names">
-						<li data-name-particle-shape="" data-credits-preview-entry><img alt="" width="48" height="48" data-reward-tier="graphite" data-credits-preview-avatar hidden /><span class="credits-name" data-credits-preview-name></span></li>
+						<li data-name-particle-shape="" data-credits-preview-entry><img alt="" width="48" height="48" data-credits-preview-avatar hidden /><span class="credits-name" data-credits-preview-name></span></li>
 					</ul>
 					<span class="field-hint">Colors, pictures, links, and effects only appear in the site credits</span>
 				</div>
 				<div class="field" data-reward-tier="nucleus">
-					<label class="field-label" for="credits-color-style">Name color</label>
+					<label class="field-label" for="credits-color-style" data-reward-label>Name color</label>
 					<select id="credits-color-style" name="credits_color_style" data-credits-color-style></select>
 					<div class="tile-row" data-color-row="credits_colors">
 						<span class="tiles" data-color-swatches></span>
-						<button type="button" class="tile-button" aria-label="Add a color" data-reward-tier="carbon" data-add-color>+</button>
-						<button type="button" class="tile-button" aria-label="Click a color to remove it" aria-pressed="false" data-reward-tier="carbon" data-remove-color>−</button>
+						<button type="button" class="tile-button" aria-label="Add a color" data-add-color>+</button>
+						<button type="button" class="tile-button" aria-label="Click a color to remove it" aria-pressed="false" data-remove-color>−</button>
 						<div class="color-popover" data-color-popover hidden>
 							<div class="saturation-value" tabindex="0" role="slider" aria-label="Saturation and brightness" data-saturation-value><span class="saturation-value-handle"></span></div>
 							<div class="hue-slider" tabindex="0" role="slider" aria-label="Hue" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="360" data-hue-slider><span class="hue-handle"></span></div>
@@ -156,7 +183,7 @@ Thank you for helping make Graphite possible! Signed-in members can manage how t
 					<template data-swatch-template><span class="swatch"><input type="color" name="credits_colors" data-color-picker value="#16323f" aria-label="Color" /></span></template>
 				</div>
 				<label class="field" data-reward-tier="carbide">
-					<span class="field-label">Particle motion</span>
+					<span class="field-label" data-reward-label>Particle motion</span>
 					<select name="credits_particle_motion" data-credits-particle-motion>
 						<option value="">None</option>
 						<option value="ascent">Ascent</option>
@@ -175,7 +202,7 @@ Thank you for helping make Graphite possible! Signed-in members can manage how t
 					</select>
 				</label>
 				<div class="field" data-reward-tier="carbide" data-particle-shapes-field>
-					<span class="field-label">Particle shapes</span>
+					<span class="field-label" data-reward-label>Particle shapes</span>
 					<div class="tile-row shape-row" data-shape-row>
 						<span class="tiles" data-shape-list></span>
 						<button type="button" class="tile-button" aria-label="Add a particle shape" data-add-shape>+</button>
@@ -184,7 +211,7 @@ Thank you for helping make Graphite possible! Signed-in members can manage how t
 					<template data-shape-template><span class="shape-choice"><select name="credits_particle_shapes" aria-label="Particle shape" data-particle-shape><option value="bats">Bats</option><option value="blossoms">Blossoms</option><option value="bubbles">Bubbles</option><option value="butterflies">Butterflies</option><option value="confetti">Confetti</option><option value="crescents">Crescents</option><option value="fireworks">Fireworks</option><option value="flames">Flames</option><option value="gems">Gems</option><option value="hearts">Hearts</option><option value="leaves">Leaves</option><option value="bolts">Lightning bolts</option><option value="notes">Music notes</option><option value="orbs">Orbs</option><option value="petals">Petals</option><option value="pixels">Pixels</option><option value="snowflakes">Snowflakes</option><option value="stars">Stars</option><option value="vectors">Vector paths</option></select></span></template>
 				</div>
 				<div class="field" data-reward-tier="carbide" data-particle-colors-field>
-					<span class="field-label">Particle colors</span>
+					<span class="field-label" data-reward-label>Particle colors</span>
 					<div class="tile-row" data-color-row="credits_particle_colors">
 						<span class="tiles" data-color-swatches></span>
 						<button type="button" class="tile-button" aria-label="Add a particle color" data-add-color>+</button>
@@ -192,9 +219,8 @@ Thank you for helping make Graphite possible! Signed-in members can manage how t
 					</div>
 					<span class="field-hint">Leave empty to keep each shape's own colors</span>
 				</div>
-				<button type="submit" class="button arrow" data-save-changes>Save changes</button>
+				<button type="submit" class="button arrow" data-reward-tier="proton" data-save-changes>Save changes</button>
 			</form>
-			<div class="aside" data-credits-locked>Getting your name in the credits starts at the Proton tier. <a href="/donate/">See the tiers.</a></div>
 		</div>
 		<div class="membership" data-membership-state="past-due">
 			<p>Your last membership payment didn't go through, so your rewards are paused. Update your payment details below. Your rewards will return automatically once the payment goes through.</p>

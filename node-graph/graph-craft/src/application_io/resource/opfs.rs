@@ -1,5 +1,6 @@
 use graphene_application_io::resource::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
 use js_sys::Uint8Array;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -74,9 +75,9 @@ impl ResourceStorage for OpfsResourceStorage {
 		let mut guard = self.inner.lock().unwrap();
 
 		let mut bytes = None;
-		if !guard.cache.contains_key(&hash) {
+		if let Entry::Vacant(entry) = guard.cache.entry(hash) {
 			let resource_bytes = Arc::<[u8]>::from(data);
-			guard.cache.insert(hash, Resource::new_unchecked(resource_bytes.clone(), hash));
+			entry.insert(Resource::new_unchecked(resource_bytes.clone(), hash));
 			bytes = Some(resource_bytes);
 		}
 

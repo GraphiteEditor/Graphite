@@ -81,18 +81,42 @@ window.addEventListener("DOMContentLoaded", () => {
 		render();
 	};
 
+	const storedSource = preview.getAttribute("src");
+	const storedHidden = preview.hidden;
+
 	fileInput.addEventListener("change", async () => {
 		const file = fileInput.files?.[0];
 		if (fileStatus) fileStatus.textContent = file?.name || "No file selected";
-		if (!file) return;
+
+		// Clearing the choice, as canceling the file dialog or undoing a previewed picture does, brings back the stored picture or none
+		if (!file) {
+			window.clearTimeout(commitTimeout);
+			commitTimeout = 0;
+			cropper.hidden = true;
+
+			if (preview.src.startsWith("blob:")) URL.revokeObjectURL(preview.src);
+			if (storedSource) preview.src = storedSource;
+			else preview.removeAttribute("src");
+			preview.hidden = storedHidden;
+			return;
+		}
 
 		// A picture the browser can't decode is sent as it is, for the server to turn down
 		if (image.src.startsWith("blob:")) URL.revokeObjectURL(image.src);
+		/** @type {Promise<boolean>} */
+		const loaded = new Promise((resolve) => {
+			image.onload = () => resolve(true);
+			image.onerror = () => resolve(false);
+		});
 		image.src = URL.createObjectURL(file);
-		const decoded = await image.decode().then(
-			() => true,
-			() => false,
-		);
+
+		// Firefox's decoding answers for the picture already shown, so it waits for the new one to load first
+		const decoded =
+			(await loaded) &&
+			(await image.decode().then(
+				() => true,
+				() => false,
+			));
 		cropper.hidden = !decoded;
 		if (!decoded) return;
 
@@ -178,9 +202,194 @@ window.addEventListener("DOMContentLoaded", () => {
 	const particleMotion = /** @type {HTMLSelectElement | null} */ (document.querySelector("[data-credits-particle-motion]"));
 	const particleShapesField = /** @type {HTMLElement | null} */ (document.querySelector("[data-particle-shapes-field]"));
 	const avatar = /** @type {HTMLImageElement | null} */ (document.querySelector("[data-credits-avatar]"));
+	const avatarFile = /** @type {HTMLInputElement | null} */ (document.querySelector("[data-credits-avatar-file]"));
 	const removeAvatar = /** @type {HTMLInputElement | null} */ (document.querySelector("[data-remove-avatar-checkbox]"));
+	const showInSiteCredits = /** @type {HTMLInputElement | null} */ (document.querySelector("[data-show-in-site-credits]"));
+	const showInVideoCredits = /** @type {HTMLInputElement | null} */ (document.querySelector("[data-show-in-video-credits]"));
+	const speakInVideoCredits = /** @type {HTMLInputElement | null} */ (document.querySelector("[data-speak-in-video-credits]"));
+	const tryHigherTiers = /** @type {HTMLButtonElement | null} */ (document.querySelector("[data-try-higher-tiers]"));
+	const stopPreviewingLink = /** @type {HTMLButtonElement | null} */ (document.querySelector("[data-credits-form] > [data-stop-previewing]"));
+
+	// The billing control the upgrade link presses, preferring a membership's tier change over renewing one that's ending
+	const upgradeControl = document.querySelector(`[data-change-tier="change"]`) || document.querySelector("[data-change-tier]");
+	const creditsLocked = /** @type {HTMLElement | null} */ (document.querySelector("[data-credits-locked]"));
+	const previewNotice = /** @type {HTMLElement | null} */ (document.querySelector("[data-preview-notice]"));
+	const previewSentence = /** @type {HTMLTemplateElement | null} */ (document.querySelector("[data-preview-sentence]"));
+	const previewSentences = document.querySelector("[data-preview-sentences]");
+	const previewPronoun = document.querySelector("[data-preview-pronoun]");
 	const form = colorStyle?.form;
 	if (!previewBox || !entry || !previewName || !nameInput || !colorStyle || !nameColorsRow || !swatchTemplate || !form) return;
+
+	// Rewards and the color menu's options are marked with the tier they begin at, ranked by the Worker's list of tiers
+	const tiers = (form.dataset.tiers || "").split(" ").filter(Boolean);
+	const rank = (/** @type {string | null | undefined} */ tier) => tiers.findIndex((name) => name.toLowerCase() === tier);
+	const memberRank = rank(form.dataset.memberTier);
+	const tierOf = (/** @type {Element | null | undefined} */ element) => rank(element?.closest("[data-reward-tier]")?.getAttribute("data-reward-tier"));
+	const aboveTier = (/** @type {Element | null | undefined} */ element) => tierOf(element) > memberRank;
+	const tierPrices = (form.dataset.tierPrices || "").split(" ");
+	const tierLabel = (/** @type {number} */ tierRank) => `${tiers[tierRank]} Tier`;
+
+	const marked = Array.from(/** @type {NodeListOf<HTMLElement>} */ (form.querySelectorAll("[data-reward-tier]")));
+	const rewards = marked.filter((element) => !(element instanceof HTMLOptionElement));
+	const styleNames = new Map(Array.from(colorStyle.options, (option) => [option, option.textContent || ""]));
+
+	// The rewards that are fields, by their own label, which leaves out the credits preview and the save button
+	const ownLabel = (/** @type {HTMLElement} */ reward) => Array.from(reward.querySelectorAll("[data-reward-label]")).find((candidate) => candidate.closest("[data-reward-tier]") === reward);
+	const rewardFields = rewards.filter((reward) => ownLabel(reward));
+
+	// Fields above the member's tier are labeled with the tier they need, which shows once they're tried on
+	rewardFields.filter(aboveTier).forEach((reward) => {
+		const badge = document.createElement("span");
+		badge.className = "tier-badge";
+		badge.textContent = tierLabel(tierOf(reward));
+		ownLabel(reward)?.append(badge);
+	});
+
+	const optedIn = () => Boolean(showInSiteCredits?.checked || showInVideoCredits?.checked);
+
+	// Each choice that puts something in the credits, with its name in the preview line and how to undo it
+	const choices = () => [
+		{
+			element: showInSiteCredits,
+			used: optedIn(),
+			name: "your name",
+			undo: () => {
+				if (showInSiteCredits) showInSiteCredits.checked = false;
+				if (showInVideoCredits) showInVideoCredits.checked = false;
+			},
+		},
+		{
+			element: colorStyle.selectedOptions[0],
+			used: Boolean(colorStyle.value),
+			// Menu choices are quoted as the menu names them, so they don't read as part of the sentence
+			name: `your "${styleNames.get(colorStyle.selectedOptions[0])}" name color`,
+			// The best style the member's tier includes takes its place, or none
+			undo: () => {
+				colorStyle.value =
+					Array.from(colorStyle.options)
+						.filter((option) => !aboveTier(option))
+						.at(-1)?.value || "";
+			},
+		},
+		{
+			element: avatar,
+			used: Boolean(avatar && !avatar.hidden && !removeAvatar?.checked),
+			name: "your avatar picture",
+			// A newly chosen picture is dropped, and a stored one is marked for removal
+			undo: () => {
+				if (avatarFile?.files?.length) {
+					avatarFile.value = "";
+					avatarFile.dispatchEvent(new Event("change"));
+				}
+				if (removeAvatar && avatar && !avatar.hidden) removeAvatar.checked = true;
+			},
+		},
+		{
+			element: linkInput,
+			used: Boolean(linkInput?.value.trim()),
+			name: "the link on your name",
+			undo: () => {
+				if (linkInput) linkInput.value = "";
+			},
+		},
+		{
+			element: particleMotion,
+			used: Boolean(particleMotion?.value),
+			name: `your "${particleMotion?.selectedOptions[0]?.textContent}" particles`,
+			plural: true,
+			undo: () => {
+				if (particleMotion) particleMotion.value = "";
+			},
+		},
+		{
+			element: speakInVideoCredits,
+			used: Boolean(speakInVideoCredits?.checked),
+			name: "your spoken name",
+			undo: () => {
+				if (speakInVideoCredits) speakInVideoCredits.checked = false;
+			},
+		},
+	];
+	const previewedChoices = () => choices().filter((choice) => choice.used && aboveTier(choice.element));
+	const singular = (/** @type {{ plural?: boolean }[]} */ listed) => listed.length === 1 && !listed[0].plural;
+
+	// While tried on, higher rewards are in view, and color styles above their field's tier name their own
+	let previewing = false;
+	const previewHigherTiers = () => {
+		previewing = true;
+		if (creditsLocked) creditsLocked.hidden = true;
+
+		const badgedRank = Math.max(memberRank, tierOf(colorStyle));
+		Array.from(colorStyle.options)
+			.filter((option) => tierOf(option) > badgedRank)
+			.forEach((option) => {
+				option.textContent = `${styleNames.get(option)} (${tierLabel(tierOf(option))})`;
+			});
+	};
+
+	// Stopping puts the form back to what the member's tier includes, undoing each choice above it
+	const stopPreviewingHigherTiers = () => {
+		previewedChoices().forEach((choice) => choice.undo());
+		previewing = false;
+		if (creditsLocked) creditsLocked.hidden = false;
+
+		Array.from(colorStyle.options).forEach((option) => {
+			option.textContent = styleNames.get(option) || "";
+		});
+	};
+
+	// Saved choices above the member's tier, like those kept from a higher tier they've left, open the page already trying them on
+	if (previewedChoices().length > 0) previewHigherTiers();
+
+	const showTiers = () => {
+		if (tiers.length === 0) return;
+
+		rewards.forEach((reward) => reward.classList.toggle("locked-reward", !previewing && aboveTier(reward)));
+		Array.from(colorStyle.options).forEach((option) => {
+			option.hidden = !previewing && aboveTier(option);
+			option.disabled = option.hidden;
+		});
+
+		// While tried on, the fields and color styles that are only a preview are set in italics
+		rewardFields.forEach((reward) => reward.classList.toggle("previewed-reward", previewing && aboveTier(reward)));
+		Array.from(colorStyle.options).forEach((option) => option.classList.toggle("previewed-reward", previewing && aboveTier(option)));
+		colorStyle.classList.toggle("previewed-reward", previewing && aboveTier(colorStyle.selectedOptions[0]));
+		if (tryHigherTiers) tryHigherTiers.hidden = previewing || !rewards.some(aboveTier);
+
+		const previewed = previewedChoices().sort((a, b) => tierOf(a.element) - tierOf(b.element));
+		const neededRank = Math.max(memberRank, ...previewed.map((choice) => tierOf(choice.element)));
+		if (previewNotice) previewNotice.hidden = previewed.length === 0;
+		if (stopPreviewingLink) stopPreviewingLink.hidden = !previewing || previewed.length > 0;
+
+		// Each tier the choices need gets its own sentence, cheapest first, so a costly choice doesn't make the smaller steps look out of reach
+		const sentences = [...new Set(previewed.map((choice) => tierOf(choice.element)))].flatMap((tierRank) => {
+			const sentence = previewSentence?.content.firstElementChild?.cloneNode(true);
+			if (!(sentence instanceof HTMLElement)) return [];
+
+			// Without a billing control to press, the upgrade is named in plain text
+			const upgradeLink = sentence.querySelector("[data-upgrade-button]");
+			if (!upgradeControl) upgradeLink?.replaceWith(...upgradeLink.childNodes);
+
+			const inTier = previewed.filter((choice) => tierOf(choice.element) === tierRank);
+			const listed = new Intl.ListFormat("en", { type: "conjunction" }).format(inTier.map((choice) => choice.name));
+			const fill = (/** @type {string} */ selector, /** @type {string} */ text) => {
+				const part = sentence.querySelector(selector);
+				if (part) part.textContent = text;
+			};
+			fill("[data-preview-choices]", listed.charAt(0).toUpperCase() + listed.slice(1));
+			fill("[data-preview-verb]", singular(inTier) ? "is" : "are");
+			fill("[data-needed-tier]", tiers[tierRank]);
+			fill("[data-needed-tier-price]", tierPrices[tierRank]);
+			return [sentence, " "];
+		});
+		previewSentences?.replaceChildren(...sentences);
+		if (previewPronoun) previewPronoun.textContent = singular(previewed) ? "it" : "them";
+
+		// Names are sized by tier in the credits, so the preview takes the size of the tier that would show it, starting from the first with credits
+		const shownTier = tiers[Math.max(neededRank, Math.min(...rewards.map(tierOf)))];
+		previewBox.classList.remove(...tiers.map((tier) => tier.toLowerCase()));
+		if (shownTier) previewBox.classList.add(shownTier.toLowerCase());
+	};
 
 	const shapeSelects = () => Array.from(/** @type {NodeListOf<HTMLSelectElement>} */ (shapeList?.querySelectorAll("[data-particle-shape]") || []));
 	const shapeTemplateMenu = shapeTemplate?.content.querySelector("[data-particle-shape]");
@@ -193,9 +402,6 @@ window.addEventListener("DOMContentLoaded", () => {
 	// The name and the particles each keep their own colors, sharing the one picker
 	const nameColors = colorRow(nameColorsRow, swatchTemplate, picker, () => update());
 	const particleColors = particleColorsRow ? colorRow(particleColorsRow, swatchTemplate, picker, () => update()) : undefined;
-
-	// Only members whose tier includes gradients have the buttons for keeping more than one name color
-	const manyColors = Boolean(nameColors.addButton);
 
 	// Each new shape copies its template, starting as the first one not already chosen
 	const appendShape = () => {
@@ -215,6 +421,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
 	const update = () => {
 		if (!previewName) return;
+		showTiers();
 
 		// Choosing a motion starts the particles with a shape, while None hides them but keeps the shapes for later
 		const motion = particleMotion?.value || "";
@@ -227,16 +434,15 @@ window.addEventListener("DOMContentLoaded", () => {
 
 		// A fade needs two colors and shows all of them with the buttons for more, while a solid name shows just its first, beside the menu
 		const fewest = fading ? 2 : style ? 1 : 0;
-		const showsAll = manyColors && fading;
 		while (nameColors.inputs().length < fewest) nameColors.append();
 		const inputs = nameColors.inputs();
 		inputs.forEach((input, index) => {
-			if (input.parentElement) input.parentElement.hidden = !showsAll && index >= fewest;
+			if (input.parentElement) input.parentElement.hidden = !fading && index >= fewest;
 			input.setAttribute("aria-label", `Color ${index + 1}`);
 		});
 		nameColorsRow.hidden = fewest === 0;
 		nameColorsRow.parentElement?.classList.toggle("color-beside-menu", style === "solid");
-		nameColors.showButtons(showsAll, fewest);
+		nameColors.showButtons(fading, fewest);
 
 		// The particles take any number of colors, or none to leave each shape its own
 		const particleInputs = particleColors?.inputs() || [];
@@ -292,6 +498,29 @@ window.addEventListener("DOMContentLoaded", () => {
 		nameInput.select();
 	});
 
+	// Focus moves to the link that takes the step back, since the one pressed disappears
+	tryHigherTiers?.addEventListener("click", () => {
+		previewHigherTiers();
+		update();
+		stopPreviewingLink?.focus();
+	});
+	form.querySelectorAll("[data-stop-previewing]").forEach((button) =>
+		button.addEventListener("click", (e) => {
+			e.preventDefault();
+			stopPreviewingHigherTiers();
+			update();
+			tryHigherTiers?.focus();
+		}),
+	);
+
+	// Upgrade links press the billing control, or follow their own address to the tiers when there's none
+	form.addEventListener("click", (e) => {
+		if (!(e.target instanceof Element) || !e.target.closest("[data-upgrade-button]") || !(upgradeControl instanceof HTMLElement)) return;
+
+		e.preventDefault();
+		upgradeControl.click();
+	});
+
 	addShape?.addEventListener("click", () => {
 		shapeRemoval.set(false);
 		appendShape();
@@ -319,6 +548,20 @@ window.addEventListener("DOMContentLoaded", () => {
 
 	update();
 	previewBox.hidden = false;
+});
+
+// The form for a new email address opens beneath the account it changes
+window.addEventListener("DOMContentLoaded", () => {
+	const toggle = document.querySelector("[data-change-email-toggle]");
+	const form = document.querySelector("[data-change-email]");
+	if (!(toggle instanceof HTMLButtonElement) || !(form instanceof HTMLFormElement)) return;
+
+	toggle.addEventListener("click", () => {
+		form.hidden = !form.hidden;
+		toggle.setAttribute("aria-expanded", String(!form.hidden));
+		const input = form.querySelector("[data-new-email-address]");
+		if (!form.hidden && input instanceof HTMLInputElement) input.focus();
+	});
 });
 
 // After a sign-in link is requested, the button counts down until the Worker would send that address another, timed in this browser so it says nothing about who's a member
@@ -527,7 +770,7 @@ function colorRow(row, template, picker, changed) {
 		picker?.toggle(e.target);
 	});
 
-	return { inputs, append, showButtons, addButton };
+	return { inputs, append, showButtons };
 }
 
 /**

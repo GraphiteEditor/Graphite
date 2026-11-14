@@ -45,6 +45,7 @@ js = ["/js/page/donate.js", "/js/component/credits-particles.js"]
 </div>
 <div class="donation-picker-column">
 <div class="donation-picker" id="supporter-memberships">
+	<div class="member-notice" data-member-notice hidden>You're already a member, so <a href="/donate/membership/">change your tier on the membership page</a> rather than starting a second membership.</div>
 	<div class="frequency">
 		<label><input type="radio" name="donation-frequency" value="monthly" checked /><span>Monthly</span></label>
 		<label><input type="radio" name="donation-frequency" value="one-time" /><span>One-time</span></label>

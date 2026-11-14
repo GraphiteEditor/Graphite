@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 publish.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 document-graph-storage = { workspace = true, features = ["conversion"] }
 graph-craft = { workspace = true }
