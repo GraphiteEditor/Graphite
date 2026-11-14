@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 publish.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 migration-core = { workspace = true, features = ["typed"] }
 serde = { workspace = true }

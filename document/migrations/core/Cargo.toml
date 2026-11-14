@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 publish.workspace = true
 
+[lints]
+workspace = true
+
 [features]
 default = ["typed"]
 # Node-tier migrations over the typed registry. Format-tier-only crates like migration-formats

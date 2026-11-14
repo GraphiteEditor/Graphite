@@ -2558,14 +2558,10 @@ dependencies = [
 name = "graphene-canvas-utils"
 version = "0.0.0"
 dependencies = [
- "core-types",
  "dyn-any",
  "glam",
  "graphene-application-io",
  "log",
- "serde",
- "text-nodes",
- "vector-types",
  "web-sys",
  "wgpu",
  "wgpu-executor",
@@ -4526,8 +4522,6 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "indoc",
- "interpreted-executor",
- "preprocessor",
 ]
 
 [[package]]

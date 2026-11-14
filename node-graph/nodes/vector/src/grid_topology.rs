@@ -764,8 +764,8 @@ impl Lattice {
 				comb(&self.column_points)
 			} else {
 				let mut route = self.column_points[0].clone();
-				for x in 1..columns - 2 {
-					let below_top = &self.column_points[x][1..];
+				for (x, column) in self.column_points.iter().enumerate().take(columns - 2).skip(1) {
+					let below_top = &column[1..];
 					if x % 2 == 1 {
 						route.extend(below_top.iter().rev());
 					} else {
