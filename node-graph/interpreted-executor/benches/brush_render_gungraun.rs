@@ -112,8 +112,9 @@ pub fn render_layer(session: Session) -> Session {
 }
 
 fn measure(session: Session) -> Session {
+	let strokes = session.strokes.clone();
 	callgrind::start();
-	black_box(session.render(session.strokes.clone()));
+	black_box(session.render(strokes));
 	callgrind::stop();
 
 	// Return the session so its teardown happens outside the measured section

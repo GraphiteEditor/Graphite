@@ -98,6 +98,7 @@ fn brush_layer(cache: &BrushCache, groups: &[Group]) -> NodeNetwork {
 		implementation: DocumentNodeImplementation::ProtoNode(implementation),
 		..Default::default()
 	};
+	// Each group's `Brush Strokes`, `Into Group` and `Extend` nodes, numbered after the layer's own
 	let id = |index: usize, part: u64| NodeId(10 + 3 * index as u64 + part);
 
 	let mut nodes = Vec::new();

@@ -10,9 +10,9 @@ use wgpu_executor::{WgpuContextBuilder, WgpuExecutor};
 /// Small enough to keep Valgrind runs short, since the full-frame passes scale with it.
 pub const VIEWPORT: UVec2 = UVec2::new(960, 540);
 /// Samples in the added stroke.
-pub const STROKE_SAMPLES: usize = 128;
+const STROKE_SAMPLES: usize = 128;
 /// Samples in each stroke already in the document.
-pub const DOCUMENT_STROKE_SAMPLES: usize = 48;
+const DOCUMENT_STROKE_SAMPLES: usize = 48;
 /// Distance between consecutive pointer samples, about what a quick drag moves between pointer events.
 const SAMPLE_SPACING: f64 = 4.;
 
