@@ -4976,10 +4976,11 @@ mod tests {
 			else {
 				panic!("{name} should stay a network node")
 			};
-			assert!(
-				network.nodes.values().all(|inner_node| !is_monitor(&inner_node.implementation)),
-				"{name} should no longer have a Monitor node"
-			);
+			// A Monitor left in place would become a Passthrough, so only the rebuilt network has the definition's node count
+			let NodeTemplateImplementation::Network(shipped) = resolve_network_node_type(name).expect("The definition should exist").default_node_template().implementation else {
+				panic!("{name} should be a network node")
+			};
+			assert_eq!(network.nodes.len(), shipped.nodes.len(), "{name} should be rebuilt from its definition, without the Monitor node");
 		}
 	}
 
