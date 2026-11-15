@@ -221,8 +221,19 @@ pub(super) async fn open_document_file(
 ) -> Message {
 	document_locks::claim(document_id).await;
 	let materialized = async {
-		let mut container = store.open(document_key(document_id)).await.map_err(|error| error.to_string())?;
-		document_container::archive::open_auto(&content, &mut container).map_err(|error| error.to_string())?;
+		let container = store.open(document_key(document_id)).await.map_err(|error| error.to_string())?;
+		let resources_prefix = format!("{}/", GddV1Layout.resources_dir());
+		document_container::archive::unpack_auto(&content, &mut |path, size, fill| {
+			if path.starts_with(&resources_prefix) {
+				let mut bytes = vec![0; size];
+				fill(&mut bytes)?;
+				resources.store(&bytes);
+				return Ok(());
+			}
+
+			container.write_sized_non_blocking(path, size, fill)
+		})
+		.map_err(|error| error.to_string())?;
 		Ok::<_, String>(container)
 	}
 	.await;

@@ -1,7 +1,7 @@
 //! Zip archive codec.
 
-use crate::archive::{Archive, ArchiveWriter, checked_entry_size};
-use crate::{AsyncContainer, ContainerError, Result, validate_path};
+use crate::archive::{Archive, ArchiveWriter, UnpackEntry, checked_entry_size};
+use crate::{ContainerError, Result, validate_path};
 use std::io::{Read, Seek, Write};
 
 use zip::ZipArchive;
@@ -24,7 +24,7 @@ impl Archive for Zip {
 		})
 	}
 
-	fn open<R: Read + Seek, C: AsyncContainer>(source: R, dest: &mut C) -> Result<()> {
+	fn unpack<R: Read + Seek>(source: R, sink: &mut UnpackEntry) -> Result<()> {
 		let mut archive = ZipArchive::new(source).map_err(zip_err)?;
 
 		// Zip headers declare each entry's uncompressed size up front; `checked_entry_size` caps the running
@@ -41,7 +41,7 @@ impl Archive for Zip {
 
 			let size = checked_entry_size(&mut total_size, entry.size())?;
 
-			dest.write_sized_non_blocking(&name, size, &mut |buffer| {
+			sink(&name, size, &mut |buffer| {
 				entry.read_exact(buffer).map_err(ContainerError::Io)?;
 				Ok(())
 			})?;
