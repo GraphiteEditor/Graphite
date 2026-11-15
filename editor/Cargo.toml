@@ -26,6 +26,7 @@ document-format = { workspace = true, features = ["migrations", "network"] }
 migration-formats = { workspace = true }
 migration-compiled = { workspace = true }
 migration-nodes = { workspace = true }
+migration-core = { workspace = true, features = ["typed"] }
 document-graph-storage = { workspace = true, features = ["conversion"] }
 document-container = { workspace = true }
 peer-transport = { workspace = true }
@@ -49,6 +50,7 @@ kurbo = { workspace = true }
 futures = { workspace = true }
 glam = { workspace = true }
 derivative = { workspace = true }
+convert_case = { workspace = true }
 tsify = { workspace = true }
 dyn-any = { workspace = true }
 num_enum = { workspace = true }
@@ -80,4 +82,3 @@ env_logger = { workspace = true }
 futures = { workspace = true }
 node-macro = { workspace = true }
 core-types = { workspace = true }
-migration-core = { workspace = true, features = ["typed"] }

@@ -120,6 +120,9 @@ pub struct FrontendNodeType {
 	pub category: String,
 	#[serde(rename = "inputTypes")]
 	pub input_types: Vec<InputTypeConstraint>,
+	/// Names the node went by before migrations replaced it, which the catalog search also matches.
+	#[serde(rename = "searchAliases")]
+	pub search_aliases: Vec<String>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

@@ -2846,6 +2846,7 @@ dependencies = [
  "bitflags 2.13.2",
  "blake3",
  "color",
+ "convert_case 0.12.0",
  "core-types",
  "derivative",
  "document-container",

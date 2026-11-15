@@ -8,9 +8,11 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	InputMetadata, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, Vec2InputSettings, WidgetOverride,
 };
+use crate::messages::portfolio::document_migration::legacy_aliases;
 use crate::messages::portfolio::ingest::utility_types::TypeFilter;
 use crate::messages::prelude::{DocumentId, FontsMessage, FontsMessageHandler, Message, ResourceMessageHandler, Responses};
 use crate::node_graph_executor::NodeGraphExecutor;
+use convert_case::{Boundary, Case, Casing};
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::*;
@@ -21,6 +23,7 @@ use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, 
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::*;
+use migration_core::{DeclarationKind, NodeMigration};
 use std::collections::{HashMap, VecDeque};
 
 pub struct NodeInspectorContext<'a> {
@@ -1620,6 +1623,8 @@ impl InputTypeConstraint {
 
 /// The node catalog's entries, ordered by category and then by name.
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
+	let migrations = migration_core::registered_migrations();
+
 	let mut node_types: Vec<FrontendNodeType> = DOCUMENT_NODE_TYPES
 		.iter()
 		// A Passthrough is placed as a redirect dot on a wire, so it isn't offered as a node
@@ -1633,6 +1638,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 			FrontendNodeType {
 				identifier: identifier.serialized(),
 				input_types: InputTypeConstraint::constraints_for_all_inputs(&definition.node_template, &name),
+				search_aliases: former_names(identifier, &name, &migrations),
 				name,
 				category: definition.category.to_string(),
 			}
@@ -1645,6 +1651,51 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 			.then_with(|| a.name.cmp(&b.name))
 	});
 	node_types
+}
+
+/// The display names of every declaration that migrates, directly or through others, to the node of `identifier`, and of its legacy aliases.
+fn former_names(identifier: &DefinitionIdentifier, current_name: &str, migrations: &[&'static dyn NodeMigration]) -> Vec<String> {
+	let (current, legacy_aliases): (_, Vec<&str>) = match identifier {
+		DefinitionIdentifier::ProtoNode(proto_node_identifier) => ((proto_node_identifier.as_str(), DeclarationKind::Proto), legacy_aliases(proto_node_identifier).collect()),
+		DefinitionIdentifier::Network(name) => ((name.as_str(), DeclarationKind::Network), Vec::new()),
+	};
+
+	let mut visited = vec![current];
+	let mut pending = vec![current];
+	while let Some((identifier, kind)) = pending.pop() {
+		for migration in migrations {
+			let (source, target) = (migration.source(), migration.target());
+			let predecessor = (source.identifier, source.kind);
+
+			if target.identifier == identifier && target.kind == kind && !visited.contains(&predecessor) {
+				visited.push(predecessor);
+				pending.push(predecessor);
+			}
+		}
+	}
+
+	let mut names: Vec<String> = visited
+		.into_iter()
+		.skip(1)
+		.chain(legacy_aliases.into_iter().map(|alias| (alias, DeclarationKind::Proto)))
+		.map(|(identifier, kind)| declaration_display_name(identifier, kind))
+		.filter(|name| !name.eq_ignore_ascii_case(current_name))
+		.collect();
+	names.sort();
+	names.dedup();
+	names
+}
+
+/// A network definition's identifier is its display name, and a proto node's is approximated from its type name, like `MathFxNode` becoming "Math Fx".
+fn declaration_display_name(identifier: &str, kind: DeclarationKind) -> String {
+	match kind {
+		DeclarationKind::Network => identifier.to_string(),
+		DeclarationKind::Proto => {
+			let type_name = identifier.rsplit("::").next().unwrap_or(identifier);
+			let name = type_name.strip_suffix("Node").unwrap_or(type_name);
+			name.set_boundaries(&[Boundary::LowerUpper, Boundary::DigitUpper, Boundary::Acronym]).to_case(Case::Title)
+		}
+	}
 }
 
 pub fn collect_node_descriptions() -> Vec<(String, String)> {

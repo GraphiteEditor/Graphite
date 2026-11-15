@@ -55,6 +55,14 @@ fn into_group_aliases() -> impl Iterator<Item = &'static &'static str> {
 		.flat_map(|replacement| replacement.aliases)
 }
 
+/// The identifiers and display names that legacy documents use for `node`.
+pub fn legacy_aliases(node: &ProtoNodeIdentifier) -> impl Iterator<Item = &'static str> + '_ {
+	NODE_REPLACEMENTS
+		.iter()
+		.filter(move |replacement| replacement.node == *node)
+		.flat_map(|replacement| replacement.aliases.iter().copied())
+}
+
 /// Clears a migrated node's stored display name if it was only the replaced node's default name, so it shows its new node's name instead.
 fn reset_default_display_name(document: &mut DocumentMessageHandler, node_id: &NodeId, network_path: &[NodeId], old_default_name: &str) {
 	if document.network_interface.display_name(node_id, network_path) == old_default_name {

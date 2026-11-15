@@ -53,11 +53,12 @@
 				matchesRemainingTerms = remainingSearchTerms.every((term) => {
 					const nameMatch = node.name.toLowerCase().includes(term);
 					const categoryMatch = node.category.toLowerCase().includes(term);
+					const aliasMatch = node.searchAliases.some((alias) => alias.toLowerCase().includes(term));
 
 					// Quick and dirty hack to alias "Layer" to "Merge" in the search
 					const layerAliasMatch = node.name === "Merge" && "layer".includes(term);
 
-					return nameMatch || categoryMatch || layerAliasMatch;
+					return nameMatch || categoryMatch || aliasMatch || layerAliasMatch;
 				});
 			}
 
