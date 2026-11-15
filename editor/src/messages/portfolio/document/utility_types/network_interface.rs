@@ -143,12 +143,6 @@ impl PartialEq for NodeNetworkInterface {
 }
 
 impl NodeNetworkInterface {
-	// TODO: Eventually remove this document upgrade code
-	/// Moves the interface metadata an older document stored on each instance node onto the network implementing it.
-	pub fn move_interface_metadata_into_networks(&mut self) {
-		self.migrate_metadata(NodeNetworkMetadata::move_interface_metadata_into_networks);
-	}
-
 	/// Gives each entry under a catalog ID that differs from the shipped network a fresh ID.
 	pub fn give_diverged_catalog_entries_new_ids(&mut self) {
 		loop {
@@ -457,12 +451,11 @@ mod network_interface_tests {
 		let mut definition_metadata = NodeNetworkMetadata::default();
 		definition_metadata.persistent_metadata.node_metadata.insert(NodeId(0), DocumentNodeMetadata::default());
 
-		let mut instance_metadata = DocumentNodeMetadata::default();
-		instance_metadata.persistent_metadata.input_metadata = vec![InputMetadata::default()];
-		instance_metadata.persistent_metadata.output_names = vec![String::new()];
+		definition_metadata.persistent_metadata.import_metadata = vec![InputMetadata::default()];
+		definition_metadata.persistent_metadata.export_names = vec![String::new()];
 		let mut network_metadata = NodeNetworkMetadata::default();
 		for id in instances {
-			network_metadata.persistent_metadata.node_metadata.insert(id, instance_metadata.clone());
+			network_metadata.persistent_metadata.node_metadata.insert(id, DocumentNodeMetadata::default());
 		}
 		network_metadata.persistent_metadata.definitions.insert(definition, definition_metadata);
 
@@ -500,6 +493,19 @@ mod network_interface_tests {
 				assert_eq!(name, expected.input_name, "input {index}");
 			}
 		}
+	}
+
+	#[test]
+	fn an_extract_node_shows_its_definition_signature() {
+		use super::*;
+
+		let definition = resolve_document_node_type(&DefinitionIdentifier::Network("Extract".into())).expect("Extract should have a definition");
+		let mut interface = NodeNetworkInterface::default();
+		interface.insert_node(NodeId(1), definition.default_node_template(), &[]);
+
+		let expected = &definition.node_template.input_metadata[0].persistent_metadata;
+		let shown = interface.displayed_input_name_and_description(&NodeId(1), 0, &[]);
+		assert_eq!(shown, (expected.input_name.clone(), expected.input_description.clone()));
 	}
 
 	#[test]

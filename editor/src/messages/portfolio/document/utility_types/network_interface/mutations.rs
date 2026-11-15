@@ -466,7 +466,7 @@ impl NodeNetworkInterface {
 		Some(old_inputs)
 	}
 
-	/// Used when opening an old document to add the persistent metadata for each input if it doesn't exist, which is where the name/description are saved.
+	/// Used when opening an old document to give the interface of the subgraph a node names one metadata entry per input.
 	pub fn validate_input_metadata(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
 		let number_of_inputs = node.inputs.len();
 		let definition = self.reference(node_id, network_path).as_ref().and_then(resolve_document_node_type);
@@ -493,8 +493,8 @@ impl NodeNetworkInterface {
 		node.resize_output_names(number_of_exports);
 	}
 
-	/// Used when opening a `.graphite` document to update the descriptions each node stores a copy of: "TODO" input descriptions take the definition's
-	/// text (or become empty where the node no longer matches it), and a node saved without any output descriptions takes the definition's.
+	/// Used when opening a `.graphite` document to update the descriptions in the interface of the subgraph a node names: "TODO" input descriptions take
+	/// the definition's text (or become empty where the node no longer matches it), and a subgraph saved without any output descriptions takes the definition's.
 	pub fn validate_descriptions(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
 		let definition_template = self
 			.reference(node_id, network_path)
@@ -1203,16 +1203,6 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 		self.invalidate_node_appearance(node_id, network_path);
-	}
-
-	/// Replaces the full list of output port names for a node. Used by document migrations that turn a single-output node
-	/// into a multi-output one, since the port labels are otherwise unnamed and fall back to the type name.
-	pub fn set_output_names(&mut self, node_id: &NodeId, output_names: Vec<String>, network_path: &[NodeId]) {
-		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*node_id, network_path)) else {
-			log::error!("Could not get node {node_id} in set_output_names");
-			return;
-		};
-		node.set_output_names(output_names);
 	}
 
 	pub fn set_import_export_name(&mut self, name: String, index: ImportOrExport, network_path: &[NodeId]) {

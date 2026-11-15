@@ -147,7 +147,7 @@ impl NodeNetworkInterface {
 		established_type_name(&self.output_type(&OutputConnector::Import(import_index), network_path)).unwrap_or_else(|| format!("Import #{import_index}"))
 	}
 
-	/// The description of a subgraph's import, which its encapsulating node stores for the input.
+	/// The description of a subgraph's import, from the interface of the network implementing it.
 	pub fn import_description(&self, import_index: usize, network_path: &[NodeId]) -> String {
 		let Some((encapsulating_node_id, encapsulating_path)) = network_path.split_last() else {
 			return String::new();

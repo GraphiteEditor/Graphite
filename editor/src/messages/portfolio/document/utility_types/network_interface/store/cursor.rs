@@ -245,11 +245,7 @@ impl NodeMut<'_> {
 		let changed = input_metadata.persistent_metadata.input_name != input_name;
 		input_metadata.persistent_metadata.input_name = input_name;
 		if changed {
-			let change = NodeMetadataChange::InputName {
-				index: input_index,
-				name: input_metadata.persistent_metadata.input_name.clone(),
-			};
-			self.record_input_change(change);
+			self.emit_input_metadata();
 		}
 		changed
 	}
@@ -275,11 +271,7 @@ impl NodeMut<'_> {
 		let changed = input_metadata.persistent_metadata.widget_override != widget_override;
 		input_metadata.persistent_metadata.widget_override = widget_override;
 		if changed {
-			let change = NodeMetadataChange::WidgetOverride {
-				index: input_index,
-				widget_override: input_metadata.persistent_metadata.widget_override.clone(),
-			};
-			self.record_input_change(change);
+			self.emit_input_metadata();
 		}
 		changed
 	}
@@ -292,20 +284,6 @@ impl NodeMut<'_> {
 		*existing = output_name;
 		if changed {
 			let output_names = output_names.clone();
-			self.record_output_names(output_names);
-		}
-		changed
-	}
-
-	/// The encapsulating node's names for every one of the network's exports, replaced together since
-	/// they are stored as one array.
-	pub(crate) fn set_output_names(&mut self, output_names: Vec<String>) -> bool {
-		let Some(interface) = self.interface() else { return false };
-		let existing = interface.output_names;
-		let changed = *existing != output_names;
-		*existing = output_names;
-		if changed {
-			let output_names = existing.clone();
 			self.record_output_names(output_names);
 		}
 		changed
@@ -353,33 +331,21 @@ impl NodeMut<'_> {
 		}
 	}
 
-	fn record_input_change(&mut self, change: NodeMetadataChange) {
-		match self.interface_network() {
-			Some(_) => self.emit_input_metadata(),
-			None => self.deltas.metadata(change),
-		}
-	}
-
 	fn record_output_names(&mut self, output_names: Vec<String>) {
-		match self.interface_network() {
-			Some(network) => self.deltas.owned_network(network, NetworkMetadataChange::ExportNames(output_names)),
-			None => self.deltas.metadata(NodeMetadataChange::OutputNames(output_names)),
+		if let Some(network) = self.interface_network() {
+			self.deltas.owned_network(network, NetworkMetadataChange::ExportNames(output_names));
 		}
 	}
 
 	fn record_output_descriptions(&mut self, output_descriptions: Vec<String>) {
-		match self.interface_network() {
-			Some(network) => self.deltas.owned_network(network, NetworkMetadataChange::ExportDescriptions(output_descriptions)),
-			None => self.deltas.metadata(NodeMetadataChange::OutputDescriptions(output_descriptions)),
+		if let Some(network) = self.interface_network() {
+			self.deltas.owned_network(network, NetworkMetadataChange::ExportDescriptions(output_descriptions));
 		}
 	}
 
-	/// The metadata array the node's inputs index, one entry per input.
+	/// The metadata array the node's inputs index, which only a node naming a table entry stores.
 	pub(crate) fn input_metadata(&self) -> &[InputMetadata] {
-		if let Some(definition_metadata) = &self.definition_metadata {
-			return &definition_metadata.import_metadata;
-		}
-		&self.metadata.input_metadata
+		self.definition_metadata.as_ref().map_or(&[], |definition_metadata| &definition_metadata.import_metadata)
 	}
 
 	/// Grows `output_names` to one entry per export, which an older document may be missing.
@@ -416,9 +382,6 @@ impl NodeMut<'_> {
 		self.node.implementation = implementation;
 		self.metadata.network_metadata = None;
 		self.definition_metadata = None;
-		self.metadata.input_metadata.clear();
-		self.metadata.output_names.clear();
-		self.metadata.output_descriptions.clear();
 
 		let delta = RuntimeDelta::ReplaceNode {
 			network: self.deltas.network(),
@@ -435,13 +398,6 @@ impl NodeMut<'_> {
 
 		let snapshot = Box::new(self.metadata.clone());
 		self.deltas.snapshot(snapshot);
-	}
-
-	/// Replaces the metadata array the node's inputs index, leaving the inputs themselves alone.
-	pub(crate) fn set_input_metadata(&mut self, input_metadata: Vec<InputMetadata>) {
-		let Some(interface) = self.interface() else { return };
-		*interface.input_metadata = input_metadata;
-		self.emit_input_metadata();
 	}
 
 	/// Swaps in new inputs together with their metadata, returning the inputs replaced. The metadata is kept only where the node stores its interface.

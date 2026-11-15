@@ -588,22 +588,6 @@ impl NodeNetworkMetadata {
 		}
 	}
 
-	pub fn move_interface_metadata_into_networks(&mut self, document_network: &NodeNetwork) {
-		let mut instance_interfaces = Vec::new();
-		move_interface_metadata(document_network, self, &mut instance_interfaces);
-		for (id, definition_metadata) in &mut self.persistent_metadata.definitions {
-			if let Some(definition) = document_network.definitions.get(id) {
-				move_interface_metadata(definition, definition_metadata, &mut instance_interfaces);
-			}
-		}
-
-		for (id, interface) in instance_interfaces {
-			if let Some(definition_metadata) = self.persistent_metadata.definitions.get_mut(&id) {
-				fill_empty_interface(&mut definition_metadata.persistent_metadata, interface);
-			}
-		}
-	}
-
 	/// Moves the metadata of each network that [`NodeNetwork::lift_nested_networks`] lifted into the definitions table.
 	pub fn lift_nested_metadata(&mut self, lifted: &[LiftedNetwork]) {
 		for entry in lifted {
@@ -643,36 +627,9 @@ impl NodeNetworkMetadata {
 	}
 }
 
-type InterfaceMetadata = (Vec<InputMetadata>, Vec<String>, Vec<String>);
+pub(super) type InterfaceMetadata = (Vec<InputMetadata>, Vec<String>, Vec<String>);
 
-fn move_interface_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata, instance_interfaces: &mut Vec<(NetworkId, InterfaceMetadata)>) {
-	for (node_id, node) in &network.nodes {
-		let Some(node_metadata) = metadata.persistent_metadata.node_metadata.get_mut(node_id) else {
-			continue;
-		};
-		let DocumentNodePersistentMetadata {
-			input_metadata,
-			output_names,
-			output_descriptions,
-			network_metadata,
-			..
-		} = &mut node_metadata.persistent_metadata;
-		let mut take_interface = || (std::mem::take(input_metadata), std::mem::take(output_names), std::mem::take(output_descriptions));
-
-		match &node.implementation {
-			DocumentNodeImplementation::Network(nested) => {
-				let Some(nested_metadata) = network_metadata else { continue };
-				fill_empty_interface(&mut nested_metadata.persistent_metadata, take_interface());
-				move_interface_metadata(nested, nested_metadata, instance_interfaces);
-			}
-			DocumentNodeImplementation::Definition(id) => instance_interfaces.push((*id, take_interface())),
-			// A proto node's interface is its definition's, so an older document's copy of it is dropped
-			DocumentNodeImplementation::ProtoNode(_) | DocumentNodeImplementation::Extract => drop(take_interface()),
-		}
-	}
-}
-
-fn fill_empty_interface(network_metadata: &mut NodeNetworkPersistentMetadata, (import_metadata, export_names, export_descriptions): InterfaceMetadata) {
+pub(super) fn fill_empty_interface(network_metadata: &mut NodeNetworkPersistentMetadata, (import_metadata, export_names, export_descriptions): InterfaceMetadata) {
 	if network_metadata.import_metadata.is_empty() {
 		network_metadata.import_metadata = import_metadata;
 	}
@@ -956,9 +913,7 @@ pub enum WidgetOverride {
 // TODO: Custom deserialization/serialization to ensure number of input metadata rows matches number of node inputs
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InputPersistentMetadata {
-	/// A general datastore than can store key value pairs of any types for any input
-	/// Each instance of the input node needs to store its own data, since it can lose the reference to its
-	/// node definition if the node signature is modified by the user. For example adding/removing/renaming an import/export of a network node.
+	/// A general datastore that can store key value pairs of any types for any input.
 	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap_as_sorted_object")]
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
@@ -1042,13 +997,6 @@ pub struct DocumentNodePersistentMetadata {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed to the user in italics.
 	#[serde(default)]
 	pub display_name: String,
-	/// Stores metadata to override the widgets in the Inspector for each input. These can either be generated automatically based on the type, or with a custom function.
-	/// Must match the length of node inputs
-	pub input_metadata: Vec<InputMetadata>,
-	pub output_names: Vec<String>,
-	/// Indexed like `output_names`, where a missing or empty entry means the output has no description.
-	#[serde(default)]
-	pub output_descriptions: Vec<String>,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,

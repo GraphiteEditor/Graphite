@@ -45,8 +45,7 @@ impl NodeNetworkInterface {
 	/// Builds an interface around a freshly-assembled pair of trees, for a document arriving from
 	/// storage or from an older format rather than being edited into existence. Nothing is recorded: the
 	/// trees are the document, not a set of changes to it.
-	pub(super) fn from_trees(network: NodeNetwork, mut network_metadata: NodeNetworkMetadata) -> Self {
-		network_metadata.move_interface_metadata_into_networks(&network);
+	pub(super) fn from_trees(network: NodeNetwork, network_metadata: NodeNetworkMetadata) -> Self {
 		Self {
 			network: Guarded::new(MemoNetwork::new(network)),
 			network_metadata: Guarded::new(network_metadata),

@@ -977,8 +977,8 @@ async fn exports_of_a_subgraph_without_descriptions_emit_no_description_write() 
 		.filter(|delta| {
 			matches!(
 				delta,
-				EditorDelta::NodeMetadata {
-					change: NodeMetadataChange::OutputDescriptions(_),
+				EditorDelta::NetworkMetadata {
+					change: NetworkMetadataChange::ExportDescriptions(_),
 					..
 				}
 			)
@@ -1034,8 +1034,8 @@ async fn exports_past_the_end_of_the_description_list_emit_no_description_write(
 		.filter(|delta| {
 			matches!(
 				delta,
-				EditorDelta::NodeMetadata {
-					change: NodeMetadataChange::OutputDescriptions(_),
+				EditorDelta::NetworkMetadata {
+					change: NetworkMetadataChange::ExportDescriptions(_),
 					..
 				}
 			)

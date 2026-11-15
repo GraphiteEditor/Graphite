@@ -823,12 +823,6 @@ impl NodeNetworkInterface {
 		self.view(network_path).ok().and_then(|view| view.persistent_input_metadata(node_id, index).ok())
 	}
 
-	/// The input metadata the document stores for the node, which only upgrades of old documents should read, as evidence of when they were saved.
-	pub fn stored_input_metadata(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&InputPersistentMetadata> {
-		let view = self.view(network_path).ok()?;
-		view.stored_input_metadata(node_id).ok()?.get(index).map(|input_metadata| &input_metadata.persistent_metadata)
-	}
-
 	/// Whether the input is internal state of its proto node (named with a leading `_`), which is never exposed to the graph.
 	pub fn is_internal_input(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> bool {
 		let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) else {

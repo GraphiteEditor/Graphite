@@ -187,12 +187,6 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 			violations.push(format!("Node {node_id} in network {path:?} implements an inline network, which belongs in the definitions table"));
 		}
 
-		// A node's interface belongs to what implements it: a proto node's definition, or the network it names
-		let stores_interface = !persistent.input_metadata.is_empty() || !persistent.output_names.is_empty() || !persistent.output_descriptions.is_empty();
-		if stores_interface {
-			violations.push(format!("Node {node_id} in network {path:?} stores interface metadata that belongs to what implements it"));
-		}
-
 		// Input metadata is a parallel array to the node's inputs and the lengths must stay in sync
 		if let Some(network_metadata) = implementation_metadata {
 			let import_metadata = &network_metadata.persistent_metadata.import_metadata;

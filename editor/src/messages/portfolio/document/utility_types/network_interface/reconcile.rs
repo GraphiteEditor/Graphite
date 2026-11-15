@@ -340,12 +340,6 @@ fn field_deltas(
 	if current_metadata.pinned != target_metadata.pinned {
 		deltas.push(metadata(NodeMetadataChange::Pinned(target_metadata.pinned)));
 	}
-	if current_metadata.output_names != target_metadata.output_names {
-		deltas.push(metadata(NodeMetadataChange::OutputNames(target_metadata.output_names.clone())));
-	}
-	if current_metadata.output_descriptions != target_metadata.output_descriptions {
-		deltas.push(metadata(NodeMetadataChange::OutputDescriptions(target_metadata.output_descriptions.clone())));
-	}
 
 	deltas
 }

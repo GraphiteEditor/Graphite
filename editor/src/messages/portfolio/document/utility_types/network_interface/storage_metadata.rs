@@ -62,10 +62,6 @@ impl StorageMetadataView<'_> {
 		Some(&self.network_persistent(network)?.node_metadata.get(&local_id)?.persistent_metadata)
 	}
 
-	fn input_persistent(&self, network: NetworkLocation, local_id: NodeId, input_index: usize) -> Option<&InputPersistentMetadata> {
-		Some(&self.persistent(network, local_id)?.input_metadata.get(input_index)?.persistent_metadata)
-	}
-
 	fn subnetwork_persistent(&self, network: NetworkLocation) -> Option<&NodeNetworkPersistentMetadata> {
 		self.network_persistent(Some(network?))
 	}
@@ -98,32 +94,6 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 
 	fn pinned(&self, network: NetworkLocation, local_id: NodeId) -> bool {
 		self.persistent(network, local_id).is_some_and(|p| p.pinned)
-	}
-
-	fn input_name(&self, network: NetworkLocation, local_id: NodeId, input_index: usize) -> Option<&str> {
-		Some(self.input_persistent(network, local_id, input_index)?.input_name.as_str())
-	}
-
-	fn input_description(&self, network: NetworkLocation, local_id: NodeId, input_index: usize) -> Option<&str> {
-		Some(self.input_persistent(network, local_id, input_index)?.input_description.as_str())
-	}
-
-	fn widget_override(&self, network: NetworkLocation, local_id: NodeId, input_index: usize) -> Option<&str> {
-		self.input_persistent(network, local_id, input_index)?.widget_override.as_deref()
-	}
-
-	fn input_data(&self, network: NetworkLocation, local_id: NodeId, input_index: usize) -> HashMap<String, Value> {
-		self.input_persistent(network, local_id, input_index)
-			.map(|p| p.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
-			.unwrap_or_default()
-	}
-
-	fn output_names(&self, network: NetworkLocation, local_id: NodeId) -> Vec<String> {
-		self.persistent(network, local_id).map(|p| p.output_names.clone()).unwrap_or_default()
-	}
-
-	fn output_descriptions(&self, network: NetworkLocation, local_id: NodeId) -> Vec<String> {
-		self.persistent(network, local_id).map(|p| p.output_descriptions.clone()).unwrap_or_default()
 	}
 
 	fn import_metadata(&self, network: NetworkLocation) -> Vec<InputMetadataEntry> {
@@ -235,11 +205,8 @@ pub(super) fn node_metadata_from_projection(projected: document_graph_storage::P
 	seed_metadata_tree(&scratch, &mut metadata);
 	apply_entries_into_tree(&scratch, &mut metadata, vec![entry])?;
 
-	let mut persistent = metadata.persistent_metadata.node_metadata.remove(&local_id).map(|node| node.persistent_metadata).unwrap_or_default();
+	let persistent = metadata.persistent_metadata.node_metadata.remove(&local_id).map(|node| node.persistent_metadata).unwrap_or_default();
 	let node = scratch.nodes.remove(&local_id).expect("inserted above");
-	persistent.input_metadata.clear();
-	persistent.output_names.clear();
-	persistent.output_descriptions.clear();
 	Ok((node, persistent))
 }
 
@@ -422,15 +389,6 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 					expected,
 					got: entry.input_metadata.len(),
 				});
-			}
-
-			persistent.input_metadata = entry.input_metadata.into_iter().map(input_metadata_entry_to_runtime).collect();
-
-			if !entry.output_names.is_empty() {
-				persistent.output_names = entry.output_names;
-			}
-			if !entry.output_descriptions.is_empty() {
-				persistent.output_descriptions = entry.output_descriptions;
 			}
 
 			document_node_metadata.transient_metadata = DocumentNodeTransientMetadata::default();

@@ -2,6 +2,7 @@
 // This file holds the older serialized shapes of the network metadata, read once when a document is
 // opened and converted to the current form.
 
+use super::types::fill_empty_interface;
 use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, InputPersistentMetadata, NodeNetworkMetadata, NodeTypePersistentMetadata};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -139,16 +140,50 @@ struct DocumentNodePersistentMetadataStringReference {
 	pub network_metadata: Option<NodeNetworkMetadata>,
 }
 
-impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersistentMetadata {
+impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersistentMetadataInstanceInterface {
 	fn from(mut old: DocumentNodePersistentMetadataStringReference) -> Self {
 		if let Some(metadata) = old.network_metadata.as_mut() {
 			metadata.persistent_metadata.reference = old.reference;
 		}
-		DocumentNodePersistentMetadata {
+		DocumentNodePersistentMetadataInstanceInterface {
 			display_name: old.display_name,
 			input_metadata: old.input_metadata,
 			output_names: old.output_names,
 			output_descriptions: Vec::new(),
+			locked: old.locked,
+			pinned: old.pinned,
+			node_type_metadata: old.node_type_metadata,
+			network_metadata: old.network_metadata,
+		}
+	}
+}
+
+/// The shape from when each node stored a copy of its interface, which now belongs to its definition or the network implementing it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentNodePersistentMetadataInstanceInterface {
+	#[serde(default)]
+	pub display_name: String,
+	pub input_metadata: Vec<InputMetadata>,
+	pub output_names: Vec<String>,
+	#[serde(default)]
+	pub output_descriptions: Vec<String>,
+	#[serde(default)]
+	pub locked: bool,
+	#[serde(default)]
+	pub pinned: bool,
+	pub node_type_metadata: NodeTypePersistentMetadata,
+	pub network_metadata: Option<NodeNetworkMetadata>,
+}
+
+impl From<DocumentNodePersistentMetadataInstanceInterface> for DocumentNodePersistentMetadata {
+	fn from(mut old: DocumentNodePersistentMetadataInstanceInterface) -> Self {
+		// An inline network takes the interface its node stored, while any other node's copy is dropped
+		if let Some(network_metadata) = old.network_metadata.as_mut() {
+			fill_empty_interface(&mut network_metadata.persistent_metadata, (old.input_metadata, old.output_names, old.output_descriptions));
+		}
+		DocumentNodePersistentMetadata {
+			display_name: old.display_name,
 			locked: old.locked,
 			pinned: old.pinned,
 			node_type_metadata: old.node_type_metadata,
@@ -162,6 +197,7 @@ impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersist
 enum DocumentNodePersistentMetadataVersioned {
 	// Newest first
 	Current(DocumentNodePersistentMetadata),
+	InstanceInterface(DocumentNodePersistentMetadataInstanceInterface),
 	StringReference(DocumentNodePersistentMetadataStringReference),
 	HasPrimaryOutput(DocumentNodePersistentMetadataHasPrimaryOutput),
 	PropertiesRow(DocumentNodePersistentMetadataPropertiesRow),
@@ -178,12 +214,10 @@ where
 
 	let versioned_document = serde_json::from_value::<DocumentNodePersistentMetadataVersioned>(value).map_err(serde::de::Error::custom)?;
 
-	let current: DocumentNodePersistentMetadata = match versioned_document {
-		DocumentNodePersistentMetadataVersioned::Current(v) => v,
-		DocumentNodePersistentMetadataVersioned::StringReference(v) => {
-			let v: DocumentNodePersistentMetadataStringReference = v;
-			v.into()
-		}
+	let instance_interface: DocumentNodePersistentMetadataInstanceInterface = match versioned_document {
+		DocumentNodePersistentMetadataVersioned::Current(v) => return Ok(v),
+		DocumentNodePersistentMetadataVersioned::InstanceInterface(v) => v,
+		DocumentNodePersistentMetadataVersioned::StringReference(v) => v.into(),
 		DocumentNodePersistentMetadataVersioned::HasPrimaryOutput(v) => {
 			let v: DocumentNodePersistentMetadataStringReference = v.into();
 			v.into()
@@ -200,6 +234,58 @@ where
 			v.into()
 		}
 	};
+	let current: DocumentNodePersistentMetadata = instance_interface.into();
 
 	Ok(current)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// A node's metadata as a document saved it while each node stored a copy of its interface.
+	fn saved_with_interface(network_metadata: Option<NodeNetworkMetadata>) -> Value {
+		serde_json::json!({
+			"display_name": "",
+			"input_metadata": [{ "persistent_metadata": { "input_data": {}, "widget_override": null, "input_name": "Content", "input_description": "What is drawn." } }],
+			"output_names": ["Result"],
+			"output_descriptions": [],
+			"locked": false,
+			"pinned": false,
+			"node_type_metadata": NodeTypePersistentMetadata::default(),
+			"network_metadata": network_metadata,
+		})
+	}
+
+	#[test]
+	fn an_inline_network_takes_the_interface_its_node_stored() {
+		let metadata = deserialize_node_persistent_metadata(saved_with_interface(Some(NodeNetworkMetadata::default()))).unwrap();
+		let network = metadata.network_metadata.expect("the network should be kept").persistent_metadata;
+
+		assert_eq!(network.import_metadata[0].persistent_metadata.input_name, "Content");
+		assert_eq!(network.import_metadata[0].persistent_metadata.input_description, "What is drawn.");
+		assert_eq!(network.export_names, ["Result"]);
+	}
+
+	#[test]
+	fn a_node_without_a_network_opens_without_the_interface_it_stored() {
+		let metadata = deserialize_node_persistent_metadata(saved_with_interface(None)).unwrap();
+		assert_eq!(metadata, DocumentNodePersistentMetadata::default());
+	}
+
+	#[test]
+	fn a_node_copied_while_nodes_stored_their_interface_still_pastes() {
+		use super::super::NodeTemplate;
+
+		let template = NodeTemplate {
+			display_name: "Copied".into(),
+			..Default::default()
+		};
+		let mut copied = serde_json::to_value(&template).unwrap();
+		copied["persistent_node_metadata"] = saved_with_interface(None);
+		copied["persistent_node_metadata"]["display_name"] = "Copied".into();
+
+		let pasted: NodeTemplate = serde_json::from_value(copied).expect("the copied node should parse");
+		assert_eq!(pasted.display_name, "Copied");
+	}
 }
