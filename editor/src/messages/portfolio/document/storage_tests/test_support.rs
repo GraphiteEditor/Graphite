@@ -134,7 +134,7 @@ pub async fn round_trip_through_gdd(document: &DocumentMessageHandler) -> RoundT
 	let declarations = reopened.declarations(&byte_store).await;
 	let registry = reopened.registry().clone();
 	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, reopened.blobs()).expect("to_runtime_with_full_metadata");
-	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage");
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries);
 	let view_settings = reopened.view_settings().clone();
 
 	RoundTrip { rebuilt, registry, view_settings }

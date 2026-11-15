@@ -22,13 +22,6 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlaysVisib
 use crate::messages::portfolio::document::utility_types::misc::SnappingState;
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 
-/// Fired when the storage entry list disagrees with the converted `NodeNetwork`.
-#[derive(Debug, thiserror::Error)]
-pub enum InterfaceRebuildError {
-	#[error("input_metadata length {got} does not match inputs length {expected} for node {node:?} in network {network:?}")]
-	InputMetadataLengthMismatch { node: NodeId, network: NetworkLocation, expected: usize, got: usize },
-}
-
 /// Per-peer view settings persisted in `session.json` under `ui::doc::*` (viewport view, render mode,
 /// overlay/ruler visibility, snapping, collapsed layers). Not part of the registry/CRDT/history; see
 /// [`DocumentSettings::to_view_map`].
@@ -184,17 +177,17 @@ pub fn position_to_runtime(position: Position, is_layer: bool) -> NodeTypePersis
 }
 
 /// Builds a `NodeNetworkInterface` from a `NodeNetwork` plus the metadata vecs `Registry::to_runtime_with_full_metadata` emits.
-pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<NodeMetadataEntry>, network_entries: Vec<NetworkMetadataEntry>) -> Result<NodeNetworkInterface, InterfaceRebuildError> {
+pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<NodeMetadataEntry>, network_entries: Vec<NetworkMetadataEntry>) -> NodeNetworkInterface {
 	let mut network_metadata = NodeNetworkMetadata::default();
 	seed_metadata_tree(&network, &mut network_metadata);
-	apply_entries_into_tree(&network, &mut network_metadata, node_entries)?;
+	apply_entries_into_tree(&mut network_metadata, node_entries);
 	apply_network_entries_into_tree(&mut network_metadata, network_entries);
 
-	Ok(NodeNetworkInterface::from_trees(network, network_metadata))
+	NodeNetworkInterface::from_trees(network, network_metadata)
 }
 
 /// The node and its metadata from a single-node projection, patched like a whole rebuild's entry.
-pub(super) fn node_metadata_from_projection(projected: document_graph_storage::ProjectedNode) -> Result<(graph_craft::document::DocumentNode, DocumentNodePersistentMetadata), InterfaceRebuildError> {
+pub(super) fn node_metadata_from_projection(projected: document_graph_storage::ProjectedNode) -> (graph_craft::document::DocumentNode, DocumentNodePersistentMetadata) {
 	let document_graph_storage::ProjectedNode { local_id, node, metadata: entry, .. } = projected;
 
 	let entry = NodeMetadataEntry { network: None, ..entry };
@@ -203,11 +196,11 @@ pub(super) fn node_metadata_from_projection(projected: document_graph_storage::P
 	scratch.nodes.insert(local_id, node);
 	let mut metadata = NodeNetworkMetadata::default();
 	seed_metadata_tree(&scratch, &mut metadata);
-	apply_entries_into_tree(&scratch, &mut metadata, vec![entry])?;
+	apply_entries_into_tree(&mut metadata, vec![entry]);
 
 	let persistent = metadata.persistent_metadata.node_metadata.remove(&local_id).map(|node| node.persistent_metadata).unwrap_or_default();
 	let node = scratch.nodes.remove(&local_id).expect("inserted above");
-	Ok((node, persistent))
+	(node, persistent)
 }
 
 /// Maps each runtime network location to its stable `NetworkId`, from the entries `to_runtime_with_full_metadata` returns.
@@ -342,8 +335,7 @@ fn seed_network_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMetada
 
 /// Patches entries onto the metadata tree previously seeded by [`seed_metadata_tree`].
 /// Entries with a stale `(network, local_id)` are skipped with a warning.
-/// An `input_metadata` length mismatch returns an `InterfaceRebuildError`.
-fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata, entries: Vec<NodeMetadataEntry>) -> Result<(), InterfaceRebuildError> {
+fn apply_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: Vec<NodeMetadataEntry>) {
 	// Group entries by network so we do one nested_metadata_mut lookup per network.
 	let mut by_network: HashMap<NetworkLocation, Vec<NodeMetadataEntry>> = HashMap::new();
 	for entry in entries {
@@ -351,8 +343,6 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 	}
 
 	for (location, entries) in by_network {
-		let nested_network = network.located_network(location);
-
 		let Some(network_metadata) = metadata.nested_metadata_mut(location) else {
 			log::warn!("apply_entries_into_tree: network at {location:?} not found, skipping {} entries", entries.len());
 			continue;
@@ -378,24 +368,9 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 			persistent.locked = entry.locked;
 			persistent.pinned = entry.pinned;
 
-			// The converted runtime is the source of truth for input count; drift indicates a bug worth surfacing.
-			let expected_inputs = nested_network.and_then(|net| net.nodes.get(&entry.local_id)).map(|doc_node| doc_node.inputs.len());
-			if let Some(expected) = expected_inputs
-				&& expected != entry.input_metadata.len()
-			{
-				return Err(InterfaceRebuildError::InputMetadataLengthMismatch {
-					node: entry.local_id,
-					network: location,
-					expected,
-					got: entry.input_metadata.len(),
-				});
-			}
-
 			document_node_metadata.transient_metadata = DocumentNodeTransientMetadata::default();
 		}
 	}
-
-	Ok(())
 }
 
 pub(super) fn input_metadata_entry_from_runtime(input_metadata: &InputMetadata) -> InputMetadataEntry {

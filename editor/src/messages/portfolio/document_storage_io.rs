@@ -365,13 +365,7 @@ async fn build_document_from_storage(gdd: GddV1, byte_store: &ResourcesHandle, d
 		}
 	};
 	let network_ids = network_ids_from_entries(&network_entries);
-	let mut interface = match build_interface_from_storage(network, node_entries, network_entries) {
-		Ok(interface) => interface,
-		Err(error) => {
-			log::error!("Opening document {document_id:?}: failed to build interface: {error}");
-			return None;
-		}
-	};
+	let mut interface = build_interface_from_storage(network, node_entries, network_entries);
 	apply_network_view_settings(&mut interface, &network_ids, gdd.network_view_settings());
 	interface.give_diverged_catalog_entries_new_ids();
 	interface.adopt_catalog_interfaces();

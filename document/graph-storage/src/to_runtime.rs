@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use core_types::memo::MemoHash;
 use core_types::uuid::NodeId as RuntimeNodeId;
@@ -10,7 +10,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::attr::*;
 use crate::blob::{BlobBytes, decode_blob};
-use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry};
+use crate::metadata_source::{NetworkMetadataEntry, NodeMetadataEntry};
 use crate::{BlobHash, Implementation, NetworkId, NetworkReference, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId, Value, from_value};
 
 #[derive(Debug, thiserror::Error)]
@@ -376,18 +376,12 @@ fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes:
 }
 
 /// Emitted for every node, even one without any `ui::*` attribute.
-/// `input_metadata` is always sized to match `node.inputs.len()` for a strict slot-by-slot rebuild;
-/// empty slots use `InputMetadataEntry::default()`.
 fn extract_ui_metadata(node: &crate::Node, network: NetworkLocation, local_id: RuntimeNodeId) -> NodeMetadataEntry {
 	let position: Option<Position> = node.attributes.get_typed(node::ui::POSITION);
 	let is_layer = node.attributes.get_or(node::ui::IS_LAYER, false);
 	let display_name: Option<String> = node.attributes.get_typed(node::ui::DISPLAY_NAME);
 	let locked = node.attributes.get_or(node::ui::LOCKED, false);
 	let pinned = node.attributes.get_or(node::ui::PINNED, false);
-	let output_names: Vec<String> = node.attributes.get_or_default(node::ui::OUTPUT_NAMES);
-	let output_descriptions: Vec<String> = node.attributes.get_or_default(node::ui::OUTPUT_DESCRIPTIONS);
-
-	let input_metadata: Vec<InputMetadataEntry> = node.inputs.iter().map(|slot| &slot.attributes).map(extract_input_metadata).collect();
 
 	NodeMetadataEntry {
 		network,
@@ -397,9 +391,6 @@ fn extract_ui_metadata(node: &crate::Node, network: NetworkLocation, local_id: R
 		display_name,
 		locked,
 		pinned,
-		input_metadata,
-		output_names,
-		output_descriptions,
 	}
 }
 
@@ -426,21 +417,6 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 		import_metadata: attributes.get_or_default(network::IMPORT_METADATA),
 		export_names: attributes.get_or_default(network::EXPORT_NAMES),
 		export_descriptions: attributes.get_or_default(network::EXPORT_DESCRIPTIONS),
-	}
-}
-
-/// Reassembles `input_data` by scanning every attribute under `ui::input_data::` and stripping the prefix.
-fn extract_input_metadata(attributes: &crate::Attributes) -> InputMetadataEntry {
-	let input_data: BTreeMap<String, Value> = attributes
-		.live()
-		.filter_map(|(key, value)| key.strip_prefix(node::input::ui::DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone())))
-		.collect();
-
-	InputMetadataEntry {
-		input_name: attributes.get_typed(node::input::ui::NAME),
-		input_description: attributes.get_typed(node::input::ui::DESCRIPTION),
-		widget_override: attributes.get_typed(node::input::ui::WIDGET_OVERRIDE),
-		input_data,
 	}
 }
 

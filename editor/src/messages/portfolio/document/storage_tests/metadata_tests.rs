@@ -57,17 +57,6 @@ fn editor_metadata_round_trip_against_demo() {
 		let expected_display = source.display_name(network, local_id).map(str::to_owned);
 		let expected_locked = source.locked(network, local_id);
 		let expected_pinned = source.pinned(network, local_id);
-		let expected_output_names = source.output_names(network, local_id);
-		let expected_output_descriptions = normalize_output_descriptions(source.output_descriptions(network, local_id));
-
-		// Use the node's input count as the slot-by-slot iteration bound for the per-input metadata checks.
-		let input_count = located_node(interface, &network, local_id).map(|node| node.inputs.len()).unwrap_or(0);
-		let any_input_metadata_present = (0..input_count).any(|i| {
-			source.input_name(network, local_id, i).is_some_and(|s| !s.is_empty())
-				|| source.input_description(network, local_id, i).is_some_and(|s| !s.is_empty())
-				|| source.widget_override(network, local_id, i).is_some()
-				|| !source.input_data(network, local_id, i).is_empty()
-		});
 
 		let entry = entries_by_address
 			.get(&(network, local_id))
@@ -81,54 +70,12 @@ fn editor_metadata_round_trip_against_demo() {
 		assert_eq!(entry.display_name, normalized_expected_display, "display_name mismatch for node {local_id:?} in network {network:?}");
 		assert_eq!(entry.locked, expected_locked, "locked mismatch for node {local_id:?} in network {network:?}");
 		assert_eq!(entry.pinned, expected_pinned, "pinned mismatch for node {local_id:?} in network {network:?}");
-		assert_eq!(entry.output_names, expected_output_names, "output_names mismatch for node {local_id:?} in network {network:?}");
-		assert_eq!(
-			entry.output_descriptions, expected_output_descriptions,
-			"output_descriptions mismatch for node {local_id:?} in network {network:?}"
-		);
-
-		// Per-input metadata: the entry's `input_metadata` has one slot per input, each matching the trait's
-		// per-field view (same "empty string ↔ None" normalization as `display_name`).
-		assert_eq!(
-			entry.input_metadata.len(),
-			input_count,
-			"input_metadata length mismatch for node {local_id:?} in network {network:?}: entry has {}, node has {input_count}",
-			entry.input_metadata.len(),
-		);
-		for (index, input_entry) in entry.input_metadata.iter().enumerate() {
-			let expected_name = source.input_name(network, local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
-			let expected_description = source.input_description(network, local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
-			let expected_widget = source.widget_override(network, local_id, index).map(str::to_owned);
-			let expected_data: std::collections::BTreeMap<_, _> = source.input_data(network, local_id, index).into_iter().collect();
-
-			assert_eq!(
-				input_entry.input_name, expected_name,
-				"input_name mismatch at slot {index} for node {local_id:?} in network {network:?}"
-			);
-			assert_eq!(
-				input_entry.input_description, expected_description,
-				"input_description mismatch at slot {index} for node {local_id:?} in network {network:?}"
-			);
-			assert_eq!(
-				input_entry.widget_override, expected_widget,
-				"widget_override mismatch at slot {index} for node {local_id:?} in network {network:?}"
-			);
-			assert_eq!(
-				input_entry.input_data, expected_data,
-				"input_data mismatch at slot {index} for node {local_id:?} in network {network:?}"
-			);
-		}
 
 		if entry.position.is_some() {
 			checked_any_position = true;
 		}
 		if entry.is_layer {
 			checked_any_layer = true;
-		}
-		// An instance's interface belongs to what implements it, so none should be stored on the node
-		assert!(!any_input_metadata_present, "node {local_id:?} in network {network:?} stores input metadata");
-		if !expected_output_descriptions.is_empty() {
-			checked_any_output_description = true;
 		}
 	}
 
@@ -173,7 +120,7 @@ fn editor_interface_rebuild_round_trip() {
 	let registry = conversion.registry;
 	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, &blobs).expect("to_runtime_with_full_metadata failed");
 
-	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries);
 	let rebuilt_view = StorageMetadataView::new(&rebuilt);
 
 	// Every node the original carried must also resolve identically through the rebuilt view.
@@ -209,46 +156,11 @@ fn editor_interface_rebuild_round_trip() {
 			"pinned mismatch for node {local_id:?} in network {network:?}"
 		);
 
-		// Per-input metadata: walk both interfaces' input slots in lockstep.
 		let original_inputs = located_node(original, &network, local_id).map(|n| n.inputs.len()).unwrap_or(0);
 		let rebuilt_inputs = located_node(&rebuilt, &network, local_id).map(|n| n.inputs.len()).unwrap_or(0);
 		assert_eq!(
 			rebuilt_inputs, original_inputs,
 			"input count mismatch for node {local_id:?} in network {network:?}: rebuilt={rebuilt_inputs} original={original_inputs}"
-		);
-
-		for index in 0..rebuilt_inputs {
-			assert_eq!(
-				rebuilt_view.input_name(network, local_id, index),
-				original_view.input_name(network, local_id, index),
-				"input_name mismatch at slot {index} for node {local_id:?} in network {network:?}"
-			);
-			assert_eq!(
-				rebuilt_view.input_description(network, local_id, index),
-				original_view.input_description(network, local_id, index),
-				"input_description mismatch at slot {index} for node {local_id:?} in network {network:?}"
-			);
-			assert_eq!(
-				rebuilt_view.widget_override(network, local_id, index),
-				original_view.widget_override(network, local_id, index),
-				"widget_override mismatch at slot {index} for node {local_id:?} in network {network:?}"
-			);
-			assert_eq!(
-				rebuilt_view.input_data(network, local_id, index),
-				original_view.input_data(network, local_id, index),
-				"input_data mismatch at slot {index} for node {local_id:?} in network {network:?}"
-			);
-		}
-
-		assert_eq!(
-			rebuilt_view.output_names(network, local_id),
-			original_view.output_names(network, local_id),
-			"output_names mismatch for node {local_id:?} in network {network:?}"
-		);
-		assert_eq!(
-			normalize_output_descriptions(rebuilt_view.output_descriptions(network, local_id)),
-			normalize_output_descriptions(original_view.output_descriptions(network, local_id)),
-			"output_descriptions mismatch for node {local_id:?} in network {network:?}"
 		);
 	}
 
@@ -290,7 +202,7 @@ fn rebuilt_interface_keeps_storage_identities() {
 	let registry = conversion.registry;
 	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, &blobs).expect("to_runtime_with_full_metadata failed");
 
-	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries);
 
 	let reconverted_network = rebuilt.document_network().clone();
 	let reconverted = Registry::convert_from_runtime(&reconverted_network, &StorageMetadataView::new(&rebuilt), &Default::default(), PeerId(9)).expect("re-convert from_runtime failed");
@@ -376,7 +288,7 @@ fn pinned_order_round_trips_through_the_registry() {
 	let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
 	let declarations = conversion.declarations;
 	let (rebuilt_network, node_entries, network_entries) = conversion.registry.to_runtime_with_full_metadata(&declarations, &conversion.blob_bytes).expect("to_runtime failed");
-	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries);
 
 	let rebuilt_metadata = rebuilt.network_metadata(&[]).expect("the rebuilt document network should resolve");
 	assert_eq!(

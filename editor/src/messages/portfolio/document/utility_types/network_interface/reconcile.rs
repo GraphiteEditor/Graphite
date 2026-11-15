@@ -9,7 +9,7 @@ use document_graph_storage::{Declarations, NetworkId as StorageNetworkId, NodeId
 use graph_craft::document::{DocumentNode, NetworkId, NetworkLocation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::runtime_delta::RuntimeDelta;
 
-use super::storage_metadata::{InterfaceRebuildError, input_metadata_entry_to_runtime, node_metadata_from_projection};
+use super::storage_metadata::{input_metadata_entry_to_runtime, node_metadata_from_projection};
 use super::{DocumentNodePersistentMetadata, EditorDelta, NetworkMetadataChange, NodeMetadataChange, NodeNetworkInterface};
 
 #[derive(Debug, thiserror::Error)]
@@ -24,8 +24,6 @@ pub enum ReconcileError {
 	ScopeInjectionsChanged(NetworkLocation),
 	#[error(transparent)]
 	Conversion(ConversionError),
-	#[error(transparent)]
-	Metadata(#[from] InterfaceRebuildError),
 }
 
 impl From<ConversionError> for ReconcileError {
@@ -185,7 +183,7 @@ impl NodeNetworkInterface {
 				if !self.holds_network(location) {
 					return Err(ReconcileError::NetworkMissing(location));
 				}
-				let (node, metadata) = node_metadata_from_projection(projection.node(id)?)?;
+				let (node, metadata) = node_metadata_from_projection(projection.node(id)?);
 				let deltas = vec![
 					EditorDelta::Graph(RuntimeDelta::AddNode {
 						network: location,
@@ -201,7 +199,7 @@ impl NodeNetworkInterface {
 				self.apply_reconciled(location, deltas, reconciled);
 			}
 			(true, true) => {
-				let (node, metadata) = node_metadata_from_projection(projection.node(id)?)?;
+				let (node, metadata) = node_metadata_from_projection(projection.node(id)?);
 				self.diff_node(location, local_id, node, metadata, reconciled);
 			}
 		}

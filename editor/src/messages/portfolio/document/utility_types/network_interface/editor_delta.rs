@@ -209,7 +209,6 @@ impl EditorDelta {
 			}
 
 			EditorDelta::Graph(RuntimeDelta::SetInputs { network: _, node_id, inputs }) => {
-				// The slots' `ui::*` attributes arrive with the paired input metadata delta
 				let inputs = inputs
 					.iter()
 					.map(|input| {
@@ -396,9 +395,7 @@ fn stage_conversion(
 		// wrote to its name, lock or pin.
 		match batch.node(id) {
 			Some(held) => {
-				// The swap did not write the slots' `ui::*` attributes, so they carry over to the slots that survive it with
-				// their stamps, tombstones and the held floor, losing to a concurrent write. The other attributes the new implementation
-				// lacks go by tombstone instead.
+				// The attributes the new implementation's slots lack go by tombstone, and the surviving slots keep the held floor
 				let inputs = node
 					.inputs()
 					.iter()
@@ -407,9 +404,7 @@ fn stage_conversion(
 						let mut slot = slot.clone();
 						if let Some(previous) = held.inputs().get(index) {
 							for (key, value) in previous.attributes.iter() {
-								if key.starts_with("ui::") {
-									slot.attributes.insert(key.clone(), value.clone());
-								} else if !value.deleted && !slot.attributes.contains_key(key) {
+								if !value.deleted && !slot.attributes.contains_key(key) {
 									slot.attributes.insert(key.clone(), AttributeValue::deleted(TimeStamp::ORIGIN));
 								}
 							}

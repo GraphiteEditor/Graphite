@@ -3,7 +3,7 @@
 //!
 //! `network` is the location of the network holding the queried node, or of the queried network itself.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::document::NetworkLocation;
@@ -21,11 +21,6 @@ pub struct NodeMetadataEntry {
 	pub display_name: Option<String>,
 	pub locked: bool,
 	pub pinned: bool,
-	/// Always sized to match the runtime node's `inputs.len()`; absent slots use `Default`. The rebuild
-	/// returns an error if this length does not match the node's input count.
-	pub input_metadata: Vec<InputMetadataEntry>,
-	pub output_names: Vec<String>,
-	pub output_descriptions: Vec<String>,
 }
 
 /// Per-network metadata. Separate from `NodeMetadataEntry` since these are
@@ -45,14 +40,13 @@ pub struct NetworkMetadataEntry {
 	pub export_descriptions: Vec<String>,
 }
 
-/// Per-input editor metadata. Mirrors `InputPersistentMetadata` but wraps strings in `Option` so
+/// Editor metadata for one import of a subgraph. Mirrors `InputPersistentMetadata` but wraps strings in `Option` so
 /// unset (`""` on the runtime side) is distinguishable from an explicit empty string.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InputMetadataEntry {
 	pub input_name: Option<String>,
 	pub input_description: Option<String>,
 	pub widget_override: Option<String>,
-	/// Reassembled from `ui::input_data::<sub_key>` attributes.
 	pub input_data: BTreeMap<String, Value>,
 }
 
@@ -74,29 +68,6 @@ pub trait NodeMetadataSource {
 	fn pinned(&self, _network: NetworkLocation, _local_id: RuntimeNodeId) -> bool {
 		false
 	}
-	/// Empty vec = no overrides. Stored as a single `ui::output_names` attribute (whole-vec LWW).
-	fn output_names(&self, _network: NetworkLocation, _local_id: RuntimeNodeId) -> Vec<String> {
-		Vec::new()
-	}
-	/// Indexed like `output_names`, where a missing or empty entry is no description. Stored as one `ui::output_descriptions` attribute.
-	fn output_descriptions(&self, _network: NetworkLocation, _local_id: RuntimeNodeId) -> Vec<String> {
-		Vec::new()
-	}
-
-	fn input_name(&self, _network: NetworkLocation, _local_id: RuntimeNodeId, _input_index: usize) -> Option<&str> {
-		None
-	}
-	fn input_description(&self, _network: NetworkLocation, _local_id: RuntimeNodeId, _input_index: usize) -> Option<&str> {
-		None
-	}
-	fn widget_override(&self, _network: NetworkLocation, _local_id: RuntimeNodeId, _input_index: usize) -> Option<&str> {
-		None
-	}
-	/// Returns owned to stay object-safe. Each entry is stored as `ui::input_data::<key>` for per-key LWW.
-	fn input_data(&self, _network: NetworkLocation, _local_id: RuntimeNodeId, _input_index: usize) -> HashMap<String, Value> {
-		HashMap::new()
-	}
-
 	/// The definition the network was instantiated from, if it still names one.
 	fn reference(&self, _network: NetworkLocation) -> Option<NetworkReference> {
 		None

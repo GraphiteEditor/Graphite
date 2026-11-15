@@ -311,7 +311,7 @@ impl DocumentHistory {
 			.registry()
 			.to_runtime_with_full_metadata(&self.declarations, storage.blobs())
 			.map_err(|error| error.to_string())
-			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()))
+			.map(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries))
 			.inspect_err(|error| log::error!("Storage interface rebuild failed: {error}"))
 			.ok()
 	}
