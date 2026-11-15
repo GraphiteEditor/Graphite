@@ -1,6 +1,7 @@
 mod blobs;
 mod compiler;
 mod examples;
+mod networks;
 mod registration;
 mod rewrite;
 

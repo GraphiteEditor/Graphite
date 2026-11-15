@@ -1,4 +1,4 @@
-use super::storage_metadata::{input_metadata_entry_from_runtime, position_from_runtime};
+use super::storage_metadata::{input_metadata_entry_from_runtime, position_from_runtime, versioned_reference};
 use super::{DocumentNodePersistentMetadata, LayerPosition, NodePosition, NodeTypePersistentMetadata};
 use super::{InputMetadata, InputPersistentMetadata};
 use document_graph_storage::attr::network as network_attr;
@@ -280,7 +280,7 @@ impl EditorDelta {
 				let delta = match change {
 					NetworkMetadataChange::Reference(reference) => AttributeDelta {
 						key: node_attr::ui::REFERENCE.to_string(),
-						value: reference.clone().map(Value::Str),
+						value: reference.clone().map(|identifier| versioned_reference(identifier).to_value()),
 					},
 					NetworkMetadataChange::PinnedOrder(order) => {
 						let stored: Vec<_> = order.iter().map(|node_id| storage_node_id(*node_id)).collect();

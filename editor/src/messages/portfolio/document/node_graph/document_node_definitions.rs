@@ -124,6 +124,10 @@ pub struct DocumentNodeDefinition {
 	/// Used to create the [`DefinitionIdentifier::Network`] identifier.
 	pub identifier: &'static str,
 
+	/// The definition's position in its lineage. Bump it, with a `network` migration, when a change would load existing instances wrongly.
+	/// Instances store it next to their reference. Proto-node definitions take theirs from the node macro.
+	pub version: u32,
+
 	/// The default [`NodeTemplate`] this definition instantiates.
 	pub node_template: NodeTemplate,
 
@@ -154,6 +158,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 	let custom = vec![
 		DocumentNodeDefinition {
 			identifier: "Custom Node",
+			version: 1,
 			category: "Routing",
 			icon: Some("NodeCustomNode"),
 			node_template: NodeTemplate {
@@ -165,6 +170,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
+			version: 1,
 			category: "Graphic",
 			icon: Some("NodeMerge"),
 			node_template: NodeTemplate {
@@ -233,6 +239,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Artboard",
+			version: 1,
 			category: "Graphic",
 			icon: Some("NodeArtboard"),
 			node_template: NodeTemplate {
@@ -333,6 +340,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Blend",
+			version: 1,
 			category: "Vector: Deform",
 			icon: Some("NodeBlend"),
 			node_template: NodeTemplate {
@@ -517,6 +525,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Origins to Polyline",
+			version: 1,
 			category: "Vector: Path",
 			icon: Some("NodeOriginsToPolyline"),
 			node_template: NodeTemplate {
@@ -598,6 +607,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Load Image",
+			version: 1,
 			category: "Data: I/O",
 			icon: Some("NodeLoadImage"),
 			node_template: NodeTemplate {
@@ -638,6 +648,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
+			version: 1,
 			category: "Raster",
 			icon: Some("NodeRasterize"),
 			node_template: NodeTemplate {
@@ -666,6 +677,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract",
+			version: 1,
 			category: "",
 			icon: None,
 			node_template: NodeTemplate {
@@ -681,6 +693,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Regex Find",
+			version: 1,
 			category: "String: Regex",
 			icon: Some("NodeRegexFind"),
 			node_template: NodeTemplate {
@@ -758,6 +771,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Path",
+			version: 1,
 			category: "Vector: Geometry",
 			icon: Some("NodePath"),
 			node_template: NodeTemplate {
@@ -1470,6 +1484,11 @@ pub fn resolve_document_node_type(identifier: &DefinitionIdentifier) -> Option<&
 	DOCUMENT_NODE_TYPES.get(identifier)
 }
 
+/// The current version of the network definition `identifier`, or 1 for a reference that names no definition.
+pub fn network_definition_version(identifier: &str) -> u32 {
+	resolve_network_node_type(identifier).map_or(1, |definition| definition.version)
+}
+
 impl InputTypeConstraint {
 	#[must_use]
 	fn type_name(ty: &Type) -> String {
@@ -1679,7 +1698,7 @@ impl DocumentNodeDefinition {
 
 #[cfg(test)]
 mod test {
-	use super::resolve_network_node_type;
+	use super::{DOCUMENT_NODE_TYPES, DefinitionIdentifier, resolve_network_node_type};
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::document::NodeId;
 
@@ -1754,6 +1773,20 @@ mod test {
 
 		let empty: Vec<_> = CATEGORY_ORDER.iter().filter(|category| !categories.contains(*category)).collect();
 		assert!(empty.is_empty(), "`CATEGORY_ORDER` lists categories with no nodes: {empty:?}");
+	}
+
+	#[test]
+	fn every_bumped_network_definition_has_a_migration_leading_to_it() {
+		let targets: Vec<_> = migration_core::registered_migrations().iter().map(|migration| migration.target()).collect();
+
+		for (identifier, definition) in DOCUMENT_NODE_TYPES.iter() {
+			if !matches!(identifier, DefinitionIdentifier::Network(_)) || definition.version == 1 {
+				continue;
+			}
+
+			let declaration = migration_core::Declaration::network(definition.identifier, definition.version);
+			assert!(targets.contains(&declaration), "{declaration} has no migration leading to it");
+		}
 	}
 }
 

@@ -491,7 +491,7 @@ fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 	timestamp: TimeStamp,
 ) -> Result<(), ConversionError> {
 	if let Some(reference) = metadata.reference(location) {
-		attributes.set(node::ui::REFERENCE, Value::Str(reference.to_string()), timestamp);
+		attributes.set(node::ui::REFERENCE, reference.to_value(), timestamp);
 	}
 	write_network_interface_attributes(attributes, metadata, location, timestamp)?;
 
