@@ -8,18 +8,16 @@ use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::{CompileError, CompiledNetwork, Compiler};
-use graph_craft::proto::{ConstructionArgs, GraphErrors};
+use graph_craft::proto::GraphErrors;
 use graphene_hash::CacheHash;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, Texture};
-use graphene_std::list::{Item, List};
 use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::vector::{Vector, VectorGeometry, path, paths_from_list_row_attributes};
-use graphene_std::{Context, NodeError, NodeParameter, Poll};
+use graphene_std::{Context, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use observer::Observer;
@@ -56,17 +54,12 @@ pub struct NodeRuntime {
 	resources: ResourceRegistry,
 	node_graph_errors: GraphErrors,
 	node_graph_warnings: GraphErrors,
-	/// Each Path node with the proto node feeding its content, which gives the geometry the node's edits apply to.
-	path_nodes: Vec<(NodeId, NodeId)>,
 	thumbnails: Thumbnails,
 	observer: Observer<ObservationKey>,
 	/// Whether an observation changed since its results were last sent.
 	observations_changed: bool,
 
 	preprocessor: preprocessor::Preprocessor,
-
-	vector_modify: HashMap<NodeId, VectorGeometry>,
-	vector_evaluations: HashMap<NodeId, (NodeId, u64)>,
 
 	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
@@ -155,15 +148,12 @@ impl NodeRuntime {
 
 			node_graph_errors: Vec::new(),
 			node_graph_warnings: Vec::new(),
-			path_nodes: Vec::new(),
 			thumbnails: Thumbnails::new(),
 			observer: Observer::default(),
 			observations_changed: false,
 
 			preprocessor: preprocessor::Preprocessor::new(),
 
-			vector_modify: Default::default(),
-			vector_evaluations: Default::default(),
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			wasm_canvas_cache: CanvasSurfaceHandle::new(),
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
@@ -376,7 +366,6 @@ impl NodeRuntime {
 					result: ExecutionResult::Panic(payload),
 					responses: VecDeque::new(),
 					dropped_thumbnails: Vec::new(),
-					vector_modify: HashMap::new(),
 					observations: HashMap::new(),
 				};
 				self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
@@ -388,7 +377,7 @@ impl NodeRuntime {
 
 	async fn respond(&mut self, execution_id: u64, result: ExecutionResult) {
 		let mut responses = VecDeque::new();
-		let dropped_thumbnails = self.process_path_nodes_and_thumbnails(&mut responses).await;
+		let dropped_thumbnails = self.update_thumbnails(&mut responses).await;
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 
 		let response = ExecutionResponse {
@@ -396,7 +385,6 @@ impl NodeRuntime {
 			result,
 			responses,
 			dropped_thumbnails,
-			vector_modify: self.vector_modify.clone(),
 			observations,
 		};
 		self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
@@ -429,17 +417,6 @@ impl NodeRuntime {
 			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
 		};
 		self.node_graph_warnings = warnings;
-		self.path_nodes = proto_network
-			.nodes
-			.iter()
-			.filter(|(_, node)| node.identifier == path::IDENTIFIER)
-			.filter_map(|(_, node)| {
-				let path_node = *node.original_location.path.as_ref()?.last()?;
-				let ConstructionArgs::Nodes(inputs) = &node.construction_args else { return None };
-
-				Some((path_node, *inputs.get(path::ContentInput::INDEX)?))
-			})
-			.collect();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
@@ -470,32 +447,9 @@ impl NodeRuntime {
 		EvaluationErrors(errors.into())
 	}
 
-	/// Updates state data, giving back the layers whose thumbnails were dropped because they no longer have content to show.
-	async fn process_path_nodes_and_thumbnails(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
+	/// Renders the stale thumbnails, giving back the layers whose thumbnails were dropped because they no longer have content to show.
+	async fn update_thumbnails(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
 		let dropped_thumbnails = self.thumbnails.drop_sourceless();
-
-		for &(path_node, content_node) in &self.path_nodes {
-			let tree = self.executor.tree();
-			let Ok(Some(context)) = tree.last_context(content_node) else { continue };
-			let context_hash = context_hash(&context);
-			if self.vector_evaluations.get(&path_node) == Some(&(content_node, context_hash)) {
-				continue;
-			}
-
-			let Some(output) = tree.evaluate(content_node, &context).ok().and_then(evaluated_output) else {
-				continue;
-			};
-			let geometry = if let Some(list) = output.downcast_ref::<List<Vector>>() {
-				VectorGeometry::new(list.element(0).cloned().unwrap_or_default(), paths_from_list_row_attributes(list, 0).cloned().unwrap_or_default())
-			} else if let Some(item) = output.downcast_ref::<Item<Vector>>() {
-				VectorGeometry::from_item(item)
-			} else {
-				continue;
-			};
-			self.vector_modify.insert(path_node, geometry);
-			self.vector_evaluations.insert(path_node, (content_node, context_hash));
-		}
-
 		self.thumbnails.render_stale(&self.executor, &self.editor_api, responses).await;
 
 		dropped_thumbnails
