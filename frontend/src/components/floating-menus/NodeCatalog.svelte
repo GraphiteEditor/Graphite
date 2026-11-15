@@ -21,8 +21,36 @@
 
 	$: nodeCategories = buildNodeCategories(searchTerm);
 
+	type TextSegment = {
+		text: string;
+		highlighted: boolean;
+	};
+
+	type NodeCatalogEntry = {
+		nodeType: FrontendNodeType;
+		matchedAliasSegments: TextSegment[] | undefined;
+	};
+
+	// Splits `text` into runs that are highlighted where one of the lowercase `terms` occurs
+	function highlightTerms(text: string, terms: string[]): TextSegment[] {
+		const lowercaseText = text.toLowerCase();
+		const highlighted = new Array<boolean>(text.length).fill(false);
+		terms.forEach((term) => {
+			const start = lowercaseText.indexOf(term);
+			if (term.length > 0 && start !== -1) highlighted.fill(true, start, start + term.length);
+		});
+
+		const segments: TextSegment[] = [];
+		highlighted.forEach((isHighlighted, index) => {
+			const last = segments.at(-1);
+			if (last?.highlighted === isHighlighted) last.text += text[index];
+			else segments.push({ text: text[index], highlighted: isHighlighted });
+		});
+		return segments;
+	}
+
 	type NodeCategoryDetails = {
-		nodes: FrontendNodeType[];
+		nodes: NodeCatalogEntry[];
 		open: boolean;
 	};
 
@@ -43,24 +71,24 @@
 
 		nodeTypes.forEach((node) => {
 			let matchesTypeSearch = true;
-			let matchesRemainingTerms = true;
 
 			if (isTypeSearch && typeSearchTerm) {
 				matchesTypeSearch = node.inputTypes?.some((constraint) => constraint === "All" || constraint.Limited.some((inputType) => inputType.toLowerCase().includes(typeSearchTerm))) || false;
 			}
 
-			if (remainingSearchTerms.length > 0) {
-				matchesRemainingTerms = remainingSearchTerms.every((term) => {
-					const nameMatch = node.name.toLowerCase().includes(term);
-					const categoryMatch = node.category.toLowerCase().includes(term);
-					const aliasMatch = node.searchAliases.some((alias) => alias.toLowerCase().includes(term));
+			const termsUnmatchedByName = remainingSearchTerms.filter((term) => {
+				const nameMatch = node.name.toLowerCase().includes(term);
+				const categoryMatch = node.category.toLowerCase().includes(term);
 
-					// Quick and dirty hack to alias "Layer" to "Merge" in the search
-					const layerAliasMatch = node.name === "Merge" && "layer".includes(term);
+				// Quick and dirty hack to alias "Layer" to "Merge" in the search
+				const layerAliasMatch = node.name === "Merge" && "layer".includes(term);
 
-					return nameMatch || categoryMatch || aliasMatch || layerAliasMatch;
-				});
-			}
+				return !nameMatch && !categoryMatch && !layerAliasMatch;
+			});
+
+			const matchedAlias = termsUnmatchedByName.length > 0 ? node.searchAliases.find((alias) => termsUnmatchedByName.every((term) => alias.toLowerCase().includes(term))) : undefined;
+			const matchesRemainingTerms = termsUnmatchedByName.length === 0 || matchedAlias !== undefined;
+			const matchedAliasSegments = matchedAlias !== undefined ? highlightTerms(matchedAlias, termsUnmatchedByName) : undefined;
 
 			// Node matches if it passes both type search and remaining terms filters
 			const includesSearchTerm = matchesTypeSearch && matchesRemainingTerms;
@@ -77,11 +105,11 @@
 
 			if (category) {
 				category.open = category.open || open;
-				category.nodes.push(node);
+				category.nodes.push({ nodeType: node, matchedAliasSegments });
 			} else {
 				categories.set(node.category, {
 					open,
-					nodes: [node],
+					nodes: [{ nodeType: node, matchedAliasSegments }],
 				});
 			}
 		});
@@ -103,14 +131,20 @@
 				<summary>
 					<TextLabel>{nodeCategory[0]}</TextLabel>
 				</summary>
-				{#each nodeCategory[1].nodes as nodeType}
+				{#each nodeCategory[1].nodes as { nodeType, matchedAliasSegments }}
 					<TextButton
 						{disabled}
 						label={nodeType.name}
 						tooltipLabel={nodeType.name}
 						tooltipDescription={nodeType.identifier ? $nodeGraph.nodeDescriptions.get(nodeType.identifier) : undefined}
 						action={() => dispatch("selectNodeType", nodeType.identifier)}
-					/>
+					>
+						{#if matchedAliasSegments}
+							<span class="matched-alias"
+								>{#each matchedAliasSegments as segment}<span class:highlighted={segment.highlighted}>{segment.text}</span>{/each}</span
+							>
+						{/if}
+					</TextButton>
 				{/each}
 			</details>
 		{:else}
@@ -172,6 +206,17 @@
 
 				&:last-child .text-button {
 					margin-bottom: 0;
+				}
+
+				.matched-alias {
+					margin-left: 8px;
+					overflow: hidden;
+					text-overflow: ellipsis;
+					color: var(--color-8-uppergray);
+
+					.highlighted {
+						color: var(--button-text-color);
+					}
 				}
 			}
 		}

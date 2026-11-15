@@ -88,6 +88,7 @@
 		{#if label}
 			<TextLabel>{label}</TextLabel>
 		{/if}
+		<slot />
 	</button>
 	{#if menuListChildrenExists}
 		<MenuList
