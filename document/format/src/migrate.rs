@@ -104,7 +104,7 @@ impl<L: Layout> Gdd<L> {
 			Ok(rewritten) => rewritten,
 			Err(error) => {
 				log::warn!("Migrating this document's history failed, so undo can't reach before this point: {error}");
-				(self.session_with_truncated_history(migrated)?, remap_metadata(&self.metadata, |_| None))
+				(session_with_truncated_history(&self.session, migrated)?, remap_metadata(&self.metadata, |_| None))
 			}
 		};
 		self.keep_blobs_durably(blobs.into_added()).await?;
@@ -189,19 +189,24 @@ impl<L: Layout> Gdd<L> {
 		session.absorb_retired_marks(previous.retired_marks());
 		Ok((session, remap_metadata(&self.metadata, remap)))
 	}
+}
 
-	/// A session whose history restarts from `migrated`.
-	fn session_with_truncated_history(&self, migrated: Registry) -> Result<Session, Error> {
-		let previous = &self.session;
-		let restarted = Session::bootstrap_from_registry(previous.peer(), previous.user(), migrated.clone())?;
+/// A session continuing `previous` whose history restarts from `migrated`.
+fn session_with_truncated_history(previous: &Session, migrated: Registry) -> Result<Session, Error> {
+	let peer_users = migrated.peer_users.clone();
+	let restarted = Session::bootstrap_from_registry(previous.peer(), previous.user(), migrated)?;
 
-		let history: Vec<Delta> = restarted.history().cloned().collect();
-		let mut session = Session::load(previous.peer(), previous.user(), migrated, history, restarted.head_rev(), Vec::new(), previous.next_node_counter());
-		session.restore_hot_sequence(previous.last_hot_sequence());
-		session.restore_clock_counter(previous.clock_counter().max(restarted.clock_counter()));
-		session.absorb_retired_marks(previous.retired_marks());
-		Ok(session)
-	}
+	// The bootstrap re-stamps every value, so its registry is the one matching its history. Its deltas leave out
+	// which user each device belongs to, so those registrations carry over directly.
+	let mut registry = restarted.retired_registry().clone();
+	registry.peer_users = peer_users;
+	let history: Vec<Delta> = restarted.history().cloned().collect();
+
+	let mut session = Session::load(previous.peer(), previous.user(), registry, history, restarted.head_rev(), Vec::new(), previous.next_node_counter());
+	session.restore_hot_sequence(previous.last_hot_sequence());
+	session.restore_clock_counter(previous.clock_counter().max(restarted.clock_counter()));
+	session.absorb_retired_marks(previous.retired_marks());
+	Ok(session)
 }
 
 /// Resolves declaration resources to the declarations migrations name. A declaration's resource derives from its identifier and version
@@ -267,5 +272,43 @@ impl DeclarationResolver for DocumentDeclarations {
 			return Some(proto.clone());
 		}
 		Some(self.encoded.get(self.known.get(&resource)?)?.proto.clone())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use document_graph_storage::{AttributeDelta, RegistryDelta, Value};
+
+	#[test]
+	fn a_truncated_history_matches_its_registry_and_keeps_device_registrations() {
+		let other_device = PeerId(2);
+		let mut previous = Session::with_peer(PeerId(1));
+		previous
+			.stage_computed_ops(vec![RegistryDelta::RegisterPeer {
+				peer: other_device,
+				user: previous.user(),
+			}])
+			.unwrap();
+		previous.retire_all().unwrap();
+
+		// Each edit stamps the value later than a fresh bootstrap would
+		for edit in 0..10 {
+			let delta = AttributeDelta {
+				key: "edit".to_string(),
+				value: Some(Value::Str(edit.to_string())),
+			};
+			previous.stage_computed_ops(vec![RegistryDelta::ChangeDocumentAttribute { delta }]).unwrap();
+			previous.retire_all().unwrap();
+		}
+
+		let session = session_with_truncated_history(&previous, previous.retired_registry().clone()).unwrap();
+		assert_eq!(session.user_of(other_device), Some(previous.user()));
+
+		// Device registrations carry over apart from the history, so everything else must match its replay
+		let replayed = Session::replay_from_history(session.peer(), session.user(), session.history().cloned(), session.next_node_counter()).unwrap();
+		let mut registry = session.retired_registry().clone();
+		registry.peer_users = replayed.retired_registry().peer_users.clone();
+		assert_eq!(&registry, replayed.retired_registry());
 	}
 }
