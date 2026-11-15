@@ -35,6 +35,20 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				self.registry.resolve(&resource_id, hash);
 				responses.add(ResourceStorageMessage::Store { data });
 			}
+			ResourceMessage::StoreFont { resource_id, font, data } => {
+				let hash = ResourceHash::from(data.as_ref());
+				self.registry.push_source_back(&resource_id, DataSource::Embedded);
+				self.registry.push_source_back(
+					&resource_id,
+					DataSource::Font {
+						family: font.font_family.clone(),
+						style: Some(font.font_style.clone()),
+					},
+				);
+				self.registry.resolve(&resource_id, hash);
+				responses.add(ResourceStorageMessage::Store { data });
+				responses.add(FontsMessage::ResourceResolved { font, hash });
+			}
 			ResourceMessage::AddFont { resource_id, font } => {
 				let style = fonts.font_catalog.find_font_style_in_catalog(&font);
 				let style_name = style.map(|style| style.to_named_style()).unwrap_or_else(|| font.font_style.clone());

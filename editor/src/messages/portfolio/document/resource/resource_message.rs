@@ -7,6 +7,7 @@ use std::sync::Arc;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ResourceMessage {
 	StoreEmbedded { resource_id: ResourceId, data: Arc<[u8]> },
+	StoreFont { resource_id: ResourceId, font: Font, data: Arc<[u8]> },
 	AddFont { resource_id: ResourceId, font: Font },
 	ResolveAll,
 	Resolve { resource_id: ResourceId },
