@@ -1,6 +1,6 @@
 //! The history properties of `migration_runner::testing` on the examples.
 
-use crate::examples::{AngleBetweenDegrees, Axis, ExtractXyToSplit, OpacityToggles, Tagged, TransformDegrees};
+use crate::examples::{AngleBetweenDegrees, Axis, BoundingBoxOwnPath, ExtractXyToSplit, OpacityToggles, Tagged, TransformDegrees};
 use migration_core::{decl, literal};
 use migration_runner::testing::{Random, SourceContract, check_commutation, check_undo, registered};
 
@@ -16,6 +16,11 @@ fn rename_commutes() {
 #[test]
 fn opacity_toggles_commute() {
 	check_commutation(&OpacityToggles, &numbers(2));
+}
+
+#[test]
+fn bounding_box_own_path_commutes() {
+	check_commutation(&BoundingBoxOwnPath, &numbers(1));
 }
 
 #[test]
