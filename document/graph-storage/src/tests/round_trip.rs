@@ -260,8 +260,7 @@ fn test_metadata_preservation() {
 					inputs: vec![NodeInput::import(concrete!(f64), 0), NodeInput::import(Type::Generic(Cow::Borrowed("T")), 1)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("test::NodeWithMetadata")),
 					call_argument: concrete!(String),
-					visible: false,           // Non-default value
-					skip_deduplication: true, // Non-default value
+					visible: false, // Non-default value
 					..Default::default()
 				},
 			),
@@ -295,9 +294,6 @@ fn test_metadata_preservation() {
 
 	// Verify visible is preserved
 	assert_eq!(orig_node_0.visible, conv_node_0.visible, "visible should be preserved");
-
-	// Verify skip_deduplication is preserved
-	assert_eq!(orig_node_0.skip_deduplication, conv_node_0.skip_deduplication, "skip_deduplication should be preserved");
 
 	// Verify import_type is preserved for Import inputs
 	match (&orig_node_0.inputs[0], &conv_node_0.inputs[0]) {
@@ -354,11 +350,6 @@ fn test_demo_artwork_round_trip() {
 				artwork_name, node_id
 			);
 			assert_eq!(orig_node.visible, conv_node.visible, "{}: visible should be preserved for node {:?}", artwork_name, node_id);
-			assert_eq!(
-				orig_node.skip_deduplication, conv_node.skip_deduplication,
-				"{}: skip_deduplication should be preserved for node {:?}",
-				artwork_name, node_id
-			);
 
 			// Check input count
 			assert_eq!(

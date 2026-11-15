@@ -1,7 +1,6 @@
 use core_types::graphene_hash::CacheHash;
-use core_types::memo::*;
 use core_types::registry::{DowncastBothNode, DynAnyNode, NODE_REGISTRY, NodeConstructor, PanicNode, TypeErasedBox};
-use core_types::{Context, Interrupt, NodeIO, NodeIOTypes, Poll, WasmNotSend, concrete, fn_type};
+use core_types::{Context, NodeIO, NodeIOTypes, Poll, WasmNotSend, concrete, fn_type};
 use dyn_any::StaticType;
 use std::hash::DefaultHasher;
 use std::hash::Hasher;
@@ -36,36 +35,10 @@ fn memoize<I: CacheHash + Clone + Send, T: Clone + WasmNotSend>(input: I, conten
 	state
 }
 
-type MonitorValue<I, T> = Arc<Mutex<Option<Arc<IORecord<I, T>>>>>;
-
-/// The Monitor node is used by the editor to access the data flowing through it.
-#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), inspector("monitor_inspector"), skip_impl, forwards_input)]
-fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
-	input: I,
-	content: impl Node<I, Output = T>,
-	#[allow(clippy::type_complexity)]
-	#[data]
-	io: MonitorValue<I, T>,
-) -> Result<T, Interrupt> {
-	let output = content.eval(input.clone())?;
-	*io.lock().unwrap() = Some(Arc::new(IORecord { input, output: output.clone() }));
-	Ok(output)
-}
-
-fn serialize_monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(io: &MonitorValue<I, T>) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
-	let io = io.lock().unwrap();
-	io.as_ref().map(|output| output.clone() as Arc<dyn std::any::Any + Send + Sync>)
-}
-
-/// Registers the Memoize and Monitor implementations for `T`, as `#[derive(node_macro::Destructure)]` does for each multi-output node struct.
-pub fn register_memoize_and_monitor<T: Clone + Send + Sync + StaticType<Static: Sized> + 'static>() {
+/// Registers the Memoize implementation for `T`, as `#[derive(node_macro::Destructure)]` does for each multi-output node struct.
+pub fn register_memoize<T: Clone + Send + Sync + StaticType<Static: Sized> + 'static>() {
 	let memoize_constructor: NodeConstructor = |mut arguments| {
 		let node = MemoizeNode::new(DowncastBothNode::<Context, T>::new(arguments.pop().expect("Not enough arguments provided to construct node")));
-		let any: DynAnyNode<Context, _, _> = DynAnyNode::new(node);
-		Box::new(any) as TypeErasedBox
-	};
-	let monitor_constructor: NodeConstructor = |mut arguments| {
-		let node = MonitorNode::new(DowncastBothNode::<Context, T>::new(arguments.pop().expect("Not enough arguments provided to construct node")));
 		let any: DynAnyNode<Context, _, _> = DynAnyNode::new(node);
 		Box::new(any) as TypeErasedBox
 	};
@@ -76,16 +49,9 @@ pub fn register_memoize_and_monitor<T: Clone + Send + Sync + StaticType<Static: 
 		node_io.call_argument = concrete!(<Context as StaticType>::Static);
 		node_io
 	};
-	let monitor_types: NodeIOTypes = {
-		let node = MonitorNode::new(PanicNode::<Context, T>::new());
-		let mut node_io = NodeIO::<Context>::to_node_io(&node, vec![fn_type!(Context, T)]);
-		node_io.call_argument = concrete!(<Context as StaticType>::Static);
-		node_io
-	};
 
 	let mut registry = NODE_REGISTRY.lock().unwrap();
 	registry.entry(memoize::IDENTIFIER).or_default().push((memoize_constructor, memoize_types));
-	registry.entry(monitor::IDENTIFIER).or_default().push((monitor_constructor, monitor_types));
 }
 
 #[cfg(test)]

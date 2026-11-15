@@ -1,7 +1,6 @@
 pub mod node {
 	pub const CALL_ARGUMENT: &str = "call_argument";
 	pub const VISIBLE: &str = "visible";
-	pub const SKIP_DEDUPLICATION: &str = "skip_deduplication";
 	pub const REFLECTION_METADATA: &str = "reflection_metadata";
 
 	pub mod input {

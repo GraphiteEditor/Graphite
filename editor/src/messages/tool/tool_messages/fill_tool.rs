@@ -280,18 +280,25 @@ fn whole_expanse_rect(layer: LayerNodeIdentifier, document: &DocumentMessageHand
 #[cfg(test)]
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
+	use graphene_std::Graphic;
 	use graphene_std::color::SRGBA8;
 	use graphene_std::list::Item;
 	use graphene_std::vector::fill;
 
-	// The Fill tool writes solid colors, whose stored values the input monitor records as `Item<Color>` wires
+	// The Fill tool writes solid colors, which reach the paint input embedded as `Graphic` items
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Item<Color>> {
 		let instrumented = match editor.eval_graph_until_finished().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
-		instrumented.grab_all_input::<fill::PaintInput, Item<Color>>(&editor.runtime).collect()
+		instrumented
+			.grab_all_input::<fill::PaintInput, Item<Graphic>>(&editor.runtime)
+			.filter_map(|paint| match paint.into_element() {
+				Graphic::Color(color) => Some(color),
+				_ => None,
+			})
+			.collect()
 	}
 
 	#[tokio::test]

@@ -802,10 +802,6 @@ fn static_node_inspector() -> NodeInspector {
 	map.insert("grid_inspector".to_string(), Box::new(node_inspector::grid_inspector));
 	map.insert("spiral_inspector".to_string(), Box::new(node_inspector::spiral_inspector));
 	map.insert("sample_polyline_inspector".to_string(), Box::new(node_inspector::sample_polyline_inspector));
-	map.insert(
-		"monitor_inspector".to_string(),
-		Box::new(|_node_id, _context| node_inspector::string_inspector("Used internally by the editor to read the data passing through it.")),
-	);
 	map
 }
 

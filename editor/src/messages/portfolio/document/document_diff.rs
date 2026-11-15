@@ -262,9 +262,6 @@ fn diff_document_node(out: &mut String, expected: &graph_craft::document::Docume
 	if expected.visible != actual.visible {
 		let _ = writeln!(out, "      visible: expected={} actual={}", expected.visible, actual.visible);
 	}
-	if expected.skip_deduplication != actual.skip_deduplication {
-		let _ = writeln!(out, "      skip_deduplication: expected={} actual={}", expected.skip_deduplication, actual.skip_deduplication);
-	}
 	if expected.compile_metadata != actual.compile_metadata {
 		let _ = writeln!(out, "      compile_metadata: expected={:?} actual={:?}", expected.compile_metadata, actual.compile_metadata);
 	}

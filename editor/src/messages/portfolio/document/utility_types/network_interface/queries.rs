@@ -1222,7 +1222,6 @@ impl NodeNetworkInterface {
 				node.inputs = old_node.inputs;
 				node.call_argument = old_node.manual_composition.unwrap_or_default();
 				node.visible = old_node.visible;
-				node.skip_deduplication = old_node.skip_deduplication;
 				node.original_location = old_node.original_location;
 				node_metadata.persistent_metadata.display_name = old_node.alias;
 				node_metadata.persistent_metadata.locked = old_node.locked;

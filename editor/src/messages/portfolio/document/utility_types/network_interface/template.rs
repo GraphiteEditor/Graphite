@@ -21,8 +21,6 @@ pub struct NodeTemplate {
 	pub implementation: NodeTemplateImplementation,
 	/// Represents the eye icon for hiding/showing the node in the graph UI.
 	pub visible: bool,
-	/// Prevents identical proto nodes from being deduplicated during compilation, e.g. for monitor nodes.
-	pub skip_deduplication: bool,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed in italics.
 	pub display_name: String,
 	/// Metadata to override the Inspector widgets for each input. Kept the same length as `inputs`.
@@ -57,7 +55,6 @@ impl Default for NodeTemplate {
 			call_argument: concrete!(Context),
 			implementation: NodeTemplateImplementation::default(),
 			visible: true,
-			skip_deduplication: false,
 			display_name: String::new(),
 			input_metadata: Vec::new(),
 			output_names: Vec::new(),
@@ -110,7 +107,6 @@ impl NodeTemplate {
 			call_argument,
 			implementation,
 			visible,
-			skip_deduplication,
 			compile_metadata: _,
 			original_location: _,
 		} = document_node;
@@ -161,7 +157,6 @@ impl NodeTemplate {
 			call_argument,
 			implementation,
 			visible,
-			skip_deduplication,
 			display_name,
 			input_metadata,
 			output_names,
@@ -179,7 +174,6 @@ impl NodeTemplate {
 			call_argument,
 			implementation,
 			visible,
-			skip_deduplication,
 			display_name,
 			mut input_metadata,
 			mut output_names,
@@ -211,7 +205,6 @@ impl NodeTemplate {
 			call_argument,
 			implementation,
 			visible,
-			skip_deduplication,
 			compile_metadata: None,
 			original_location: Default::default(),
 		};

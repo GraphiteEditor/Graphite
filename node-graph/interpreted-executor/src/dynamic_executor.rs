@@ -113,11 +113,6 @@ impl DynamicExecutor {
 		Ok(ResolvedDocumentNodeTypesDelta { add, remove })
 	}
 
-	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
-		self.tree.introspect(node_path)
-	}
-
 	pub fn input_type(&self) -> Option<Type> {
 		self.typing_context.type_of(self.output).map(|node_io| node_io.call_argument.clone())
 	}
@@ -309,13 +304,6 @@ impl BorrowTree {
 
 	fn store_node(&mut self, node: SharedObservedNode, id: NodeId, path: Path, inputs: Box<[NodeId]>) {
 		self.nodes.insert(id, (node, path, inputs));
-	}
-
-	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
-		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
-		let (node, _path, _) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
-		node.node().serialize().ok_or(IntrospectError::NoData)
 	}
 
 	pub fn get(&self, id: NodeId) -> Option<SharedNodeContainer> {

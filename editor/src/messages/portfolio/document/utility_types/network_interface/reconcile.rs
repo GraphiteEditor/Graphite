@@ -221,7 +221,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let deltas = if current.implementation == target.implementation && current.skip_deduplication == target.skip_deduplication {
+		let deltas = if current.implementation == target.implementation {
 			field_deltas(location, local_id, (current, current_metadata), (&target, &target_metadata))
 		} else {
 			vec![

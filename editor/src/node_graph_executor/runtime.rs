@@ -390,6 +390,14 @@ impl NodeRuntime {
 		self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
 	}
 
+	/// Reads one observation from the last evaluation, apart from the observations the runtime keeps.
+	#[cfg(test)]
+	pub(crate) fn observe(&self, observation: Observation) -> Option<ObservedValue> {
+		let mut observer = Observer::default();
+		observer.set((), Some(observation));
+		observer.evaluate(&self.executor, self.old_graph.as_ref()).remove(&())?.data
+	}
+
 	async fn read_back(&self, texture: Texture) -> Raster<CPU> {
 		let application_io = self.editor_api.application_io.as_ref().unwrap();
 		let executor = application_io.gpu_executor().expect("GPU executor should be available when we receive a texture");

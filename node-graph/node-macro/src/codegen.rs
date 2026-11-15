@@ -524,18 +524,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote!(#[derive(Debug, Clone)])
 	};
 
-	// Generate serialize method if serialize attribute is specified
-	let serialize_impl = if let Some(serialize_fn) = &parsed.attributes.serialize {
-		let data_field_refs = data_field_names.iter().map(|name| quote!(&self.#name));
-		quote! {
-			fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-				#serialize_fn(#(#data_field_refs),*)
-			}
-		}
-	} else {
-		quote!()
-	};
-
 	let eval_prelude = quote! {
 		use #core_types::misc::Clampable;
 
@@ -647,8 +635,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let __state = self.slots.resolve(__key, &__runtime, __source, __placeholder, move || async move { #landed_call });
 				__cell.merge(__state)
 			}
-
-			#serialize_impl
 		}
 	} else {
 		quote! {
@@ -662,8 +648,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				};
 				#fold
 			}
-
-			#serialize_impl
 		}
 	};
 
@@ -757,8 +741,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				};
 				__cell.run(__kernel)
 			}
-
-			#serialize_impl
 		}
 	});
 
@@ -832,8 +814,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				};
 				__cell.run(__kernel)
 			}
-
-			#serialize_impl
 		}
 	});
 

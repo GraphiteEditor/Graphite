@@ -29,7 +29,7 @@ impl DocumentNode {
 }
 
 impl NodeNetwork {
-	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting proto nodes to the document node for the purposes of typing and finding monitor nodes.
+	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting proto nodes to the document node for the purposes of typing and observing node values.
 	///
 	/// Table entries are not visited, since each instance gets its paths when [`Self::flatten`] copies the entry.
 	pub fn generate_node_paths(&mut self, prefix: &[NodeId]) {
