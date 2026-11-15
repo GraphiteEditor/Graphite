@@ -17,10 +17,6 @@ where
 	fn eval(&self, input: &I) -> Poll<O> {
 		self.0.eval(input)
 	}
-
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.0.serialize()
-	}
 }
 impl<N: Node<I>, I> TypeNode<N, I, <N as Node<I>>::Output> {
 	pub fn new(node: N) -> Self {

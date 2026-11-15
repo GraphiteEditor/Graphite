@@ -382,9 +382,6 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	attributes
 		.set_if_not_default(node::VISIBLE, &doc_node.visible, &true, timestamp)
 		.map_err(map_serialization_error(node::VISIBLE))?;
-	attributes
-		.set_if_not_default(node::SKIP_DEDUPLICATION, &doc_node.skip_deduplication, &false, timestamp)
-		.map_err(map_serialization_error(node::SKIP_DEDUPLICATION))?;
 
 	write_ui_attributes(&mut attributes, ctx.metadata, network, runtime_node_id, timestamp)?;
 

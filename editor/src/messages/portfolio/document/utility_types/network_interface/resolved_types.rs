@@ -61,7 +61,7 @@ static INPUT_CONVERSIONS: Lazy<HashMap<ProtoNodeIdentifier, Vec<Option<&'static 
 		.collect()
 });
 
-/// Proto nodes whose every implementation returns its one input's type unchanged (like Monitor and Memoize), so a wire through one is constrained by what it feeds.
+/// Proto nodes whose every implementation returns its one input's type unchanged (like Memoize), so a wire through one is constrained by what it feeds.
 static TYPE_PRESERVING_NODES: Lazy<HashSet<ProtoNodeIdentifier>> = Lazy::new(|| {
 	NODE_REGISTRY
 		.iter()
@@ -420,7 +420,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// A check of which wire types an input accepts, built once so testing many types searches the node's matching implementations only once.
-	/// Unlike [`Self::input_accepts_type`], a node passing its input's type through unchanged (like Monitor) also needs the inputs it feeds to accept the type.
+	/// Unlike [`Self::input_accepts_type`], a node passing its input's type through unchanged (like Memoize) also needs the inputs it feeds to accept the type.
 	fn type_acceptor(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Box<dyn Fn(&Type) -> bool> {
 		let accepts_here: Box<dyn Fn(&Type) -> bool> = match input_connector {
 			InputConnector::Export(export_index) => match network_path.split_last() {

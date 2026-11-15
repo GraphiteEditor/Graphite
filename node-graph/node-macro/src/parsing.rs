@@ -65,8 +65,6 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) inspector_string: Option<LitStr>,
 	/// whether to `#[cfg]` gate the node implementation, defaults to None
 	pub(crate) cfg: Option<TokenStream2>,
-	/// Custom serialization function path (e.g., "my_module::custom_serialize")
-	pub(crate) serialize: Option<Path>,
 	pub(crate) flags: NodeFlags,
 	/// Fn producing an placeholder value used while node evaluation is pending
 	pub(crate) placeholder: Option<Path>,
@@ -441,7 +439,6 @@ impl Parse for NodeFnAttributes {
 		let mut path = None;
 		let mut inspector_string = None;
 		let mut cfg = None;
-		let mut serialize = None;
 		let mut flags = NodeFlags::default();
 		let mut placeholder = None;
 		let mut version = None;
@@ -544,20 +541,6 @@ impl Parse for NodeFnAttributes {
 					let meta = meta.require_list()?;
 					cfg = Some(meta.tokens.clone());
 				}
-				// Function name for custom serialization of this node's data. This is only used by the Monitor node.
-				//
-				// Example usage:
-				// #[node_macro::node(..., serialize(my_module::custom_serialize), ...)]
-				"serialize" => {
-					let meta = meta.require_list()?;
-					if serialize.is_some() {
-						return Err(Error::new_spanned(meta, "Multiple 'serialize' attributes are not allowed"));
-					}
-					let parsed_path: Path = meta
-						.parse_args()
-						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'serialize', e.g., serialize(my_module::custom_serialize)"))?;
-					serialize = Some(parsed_path);
-				}
 				// Instructs the preprocessor to insert a Memoize node after this node in the generated subnetwork,
 				// caching its output across evaluations with identical inputs.
 				//
@@ -621,7 +604,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'serialize', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', 'no_partial', and 'version'.
+							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', 'no_partial', and 'version'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -651,7 +634,6 @@ impl Parse for NodeFnAttributes {
 			path,
 			inspector_string,
 			cfg,
-			serialize,
 			flags,
 			placeholder,
 			version,

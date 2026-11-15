@@ -4894,7 +4894,7 @@ mod document_message_handler_tests {
 	}
 
 	// Merging nodes whose output isn't wired downstream produces an encapsulating subnetwork with no exports.
-	// Inspecting it via the Data panel (which splices in a monitor node) must not leave a dangling reference that crashes compilation.
+	// Inspecting it via the Data panel must not leave a dangling reference that crashes compilation.
 	#[tokio::test]
 	async fn merge_selected_nodes_while_inspecting_does_not_crash() {
 		let mut editor = EditorTestUtils::create();
@@ -4909,7 +4909,7 @@ mod document_message_handler_tests {
 		let merged = editor.active_document().network_interface.selected_nodes_in_nested_network(&[]).unwrap().0.clone();
 		assert_eq!(merged.len(), 1, "merge should leave one encapsulating node selected");
 
-		// Simulate the Data panel inspecting the merged node, which compiles the graph with a monitor node spliced in
+		// Simulate the Data panel inspecting the merged node
 		let portfolio = &mut editor.editor.dispatcher.message_handlers.portfolio_message_handler;
 		let document_id = portfolio.active_document_id.unwrap();
 		let document = portfolio.documents.get_mut(&document_id).unwrap();

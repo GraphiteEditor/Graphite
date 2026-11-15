@@ -124,7 +124,6 @@ pub struct ProtoNode {
 	pub call_argument: Type,
 	pub identifier: ProtoNodeIdentifier,
 	pub original_location: OriginalLocation,
-	pub skip_deduplication: bool,
 	pub(crate) compile_metadata: NodeCompileMetadata,
 	/// The context features read by this node and everything upstream of it.
 	pub upstream_context_features: ContextFeatures,
@@ -137,7 +136,6 @@ impl Default for ProtoNode {
 			construction_args: ConstructionArgs::Value(value::TaggedValue::Integer(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
-			skip_deduplication: false,
 			compile_metadata: Default::default(),
 			upstream_context_features: ContextFeatures::empty(),
 		}
@@ -146,16 +144,12 @@ impl Default for ProtoNode {
 
 impl ProtoNode {
 	/// A stable node ID is a hash of a node that should stay constant. This is used in order to remove duplicates from the graph.
-	/// In the case of `skip_deduplication`, the `document_node_path` is also hashed in order to avoid duplicate monitor nodes from being removed (which would make it impossible to load thumbnails).
 	pub fn stable_node_id(&self) -> Option<NodeId> {
 		use std::hash::Hasher;
 		let mut hasher = rustc_hash::FxHasher::default();
 
 		self.identifier.as_str().hash(&mut hasher);
 		self.construction_args.cache_hash(&mut hasher);
-		if self.skip_deduplication {
-			self.original_location.path.hash(&mut hasher);
-		}
 
 		std::mem::discriminant(&self.call_argument).hash(&mut hasher);
 		self.call_argument.hash(&mut hasher);
@@ -173,7 +167,6 @@ impl ProtoNode {
 				path: Some(path),
 				..Default::default()
 			},
-			skip_deduplication: false,
 			compile_metadata: Default::default(),
 			upstream_context_features: ContextFeatures::empty(),
 		}
@@ -355,7 +348,6 @@ impl ProtoNetwork {
 				},
 				compile_metadata: forwarding,
 				upstream_context_features: features,
-				..Default::default()
 			},
 		));
 
@@ -387,7 +379,6 @@ impl ProtoNetwork {
 				},
 				compile_metadata: forwarding,
 				upstream_context_features: features,
-				..Default::default()
 			},
 		));
 		nullification_node_id

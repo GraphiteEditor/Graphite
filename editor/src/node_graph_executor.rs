@@ -243,14 +243,14 @@ impl NodeGraphExecutor {
 			.expect("Failed to send the thumbnails in view");
 	}
 
-	/// Updates the network to monitor all inputs. Useful for the testing.
+	/// Updates the network, giving back the paths of its proto nodes so tests can read what their inputs received.
 	#[cfg(test)]
 	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
 		// We should always invalidate the cache.
 		self.node_graph_hash = crate::application::generate_uuid();
 		let mut network = document.network_interface.document_network().clone();
 		network.inline_definitions().map_err(|error| error.to_string())?;
-		let instrumented = Instrumented::new(&mut network);
+		let instrumented = Instrumented::new(&network);
 
 		let resources = document.resources.registry.clone();
 
@@ -1218,120 +1218,73 @@ pub use test::Instrumented;
 
 #[cfg(test)]
 mod test {
-	use std::sync::Arc;
-
 	use super::*;
 	use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 	use crate::test_utils::test_prelude::{self, NodeGraphLayer};
 	use graph_craft::ProtoNodeIdentifier;
-	use graph_craft::document::{DocumentNode, NodeNetwork};
-	use graphene_std::Context;
+	use graph_craft::document::NodeNetwork;
 	use graphene_std::NodeParameter;
 	use graphene_std::list::Item;
-	use graphene_std::memo::IORecord;
 	use test_prelude::LayerNodeIdentifier;
 
-	/// Stores all of the monitor nodes that have been attached to a graph
+	/// The path of each proto node in an evaluated graph, by which tests read the values its inputs received.
 	#[derive(Default)]
 	pub struct Instrumented {
-		protonodes_by_name: HashMap<ProtoNodeIdentifier, Vec<Vec<Vec<NodeId>>>>,
-		protonodes_by_path: HashMap<Vec<NodeId>, Vec<Vec<NodeId>>>,
+		protonodes_by_name: HashMap<ProtoNodeIdentifier, Vec<Vec<NodeId>>>,
 	}
 
 	impl Instrumented {
-		/// Adds montior nodes to the network
-		fn add(&mut self, network: &mut NodeNetwork, path: &mut Vec<NodeId>) {
-			// Required to do seperately to satiate the borrow checker.
-			let mut monitor_nodes = Vec::new();
-			for (id, node) in network.nodes.iter_mut() {
-				// Recursively instrument
-				if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-					path.push(*id);
-					self.add(nested, path);
-					path.pop();
+		/// Records the path of each proto node in the network and the networks nested in it.
+		fn add(&mut self, network: &NodeNetwork, path: &mut Vec<NodeId>) {
+			for (id, node) in &network.nodes {
+				path.push(*id);
+				match &node.implementation {
+					DocumentNodeImplementation::Network(nested) => self.add(nested, path),
+					DocumentNodeImplementation::ProtoNode(identifier) => self.protonodes_by_name.entry(identifier.clone()).or_default().push(path.clone()),
+					_ => {}
 				}
-				let mut monitor_node_ids = Vec::with_capacity(node.inputs.len());
-				for input in &mut node.inputs {
-					let node_id = NodeId::new();
-					path.push(node_id);
-					monitor_node_ids.push(path.clone());
-					path.pop();
-
-					// A None value has nothing to record and a reflection must stay on the node it describes, so such a slot stays a dead path that introspects as absent
-					let is_none = matches!(input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, graph_craft::document::value::TaggedValue::None));
-					if is_none || matches!(input, NodeInput::Reflection(_)) {
-						continue;
-					}
-
-					let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
-					monitor_nodes.push((old_input, node_id));
-				}
-				if let DocumentNodeImplementation::ProtoNode(identifier) = &mut node.implementation {
-					path.push(*id);
-					self.protonodes_by_name.entry(identifier.clone()).or_default().push(monitor_node_ids.clone());
-					self.protonodes_by_path.insert(path.clone(), monitor_node_ids);
-					path.pop();
-				}
-			}
-			for (input, monitor_id) in monitor_nodes {
-				let monitor_node = DocumentNode {
-					inputs: vec![input],
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
-					call_argument: graph_craft::generic!(T),
-					skip_deduplication: true,
-					..Default::default()
-				};
-				network.nodes.insert(monitor_id, monitor_node);
+				path.pop();
 			}
 		}
 
-		/// Instrument a graph and return a new [Instrumented] state.
-		pub fn new(network: &mut NodeNetwork) -> Self {
+		pub fn new(network: &NodeNetwork) -> Self {
 			let mut instrumented = Self::default();
 			instrumented.add(network, &mut Vec::new());
 			instrumented
 		}
 
-		/// Pulls a concrete output type out of a monitor record, tolerating the three context shapes the executor records against.
-		fn downcast_record<Output: Send + Sync + Clone + 'static>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Output> {
-			if let Some(x) = dynamic.downcast_ref::<IORecord<(), Output>>() {
-				Some(x.output.clone())
-			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Output>>() {
-				Some(x.output.clone())
-			} else {
-				dynamic.downcast_ref::<IORecord<Context, Output>>().map(|x| x.output.clone())
-			}
+		/// Reads the value an input of the proto node at this path received, if it has the `Output` type.
+		/// Only the value types the Data panel can show come through.
+		fn grab_input<Output: Clone + 'static>(path: &[NodeId], input_index: usize, runtime: &NodeRuntime) -> Option<Output> {
+			let observation = Observation {
+				node_path: path.to_vec(),
+				connector: ObservedConnector::Input(input_index),
+				overrides: ContextOverrides::default(),
+			};
+			runtime.observe(observation)?.downcast_ref::<Output>().cloned()
 		}
 
-		/// Grab all of the values of the input every time it occurs in the graph, downcast to the recorded `Output` type.
-		/// A record whose type does not match `Output` is skipped, so a wrong `Output` yields an empty iterator rather than an error.
-		pub fn grab_all_input<'a, Input: NodeParameter + 'a, Output: Send + Sync + Clone + 'static>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Output> + 'a {
+		/// Grab all of the values of the input every time it occurs in the graph, downcast to the received `Output` type.
+		/// A value whose type does not match `Output` is skipped, so a wrong `Output` yields an empty iterator rather than an error.
+		pub fn grab_all_input<'a, Input: NodeParameter + 'a, Output: Clone + 'static>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Output> + 'a {
 			self.protonodes_by_name
 				.get(&Input::NODE_IDENTIFIER)
-				.map_or([].as_slice(), |x| x.as_slice())
+				.map_or([].as_slice(), |paths| paths.as_slice())
 				.iter()
-				.filter_map(|inputs| inputs.get(Input::INDEX))
-				.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
-				.filter_map(Instrumented::downcast_record::<Output>)
+				.filter_map(|path| Self::grab_input::<Output>(path, Input::INDEX, runtime))
 		}
 
-		pub fn grab_protonode_input<Input: NodeParameter, Output: Send + Sync + Clone + 'static>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Output> {
-			let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
-
-			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
-
-			Self::downcast_record::<Output>(dynamic)
+		pub fn grab_protonode_input<Input: NodeParameter, Output: Clone + 'static>(&self, path: &[NodeId], runtime: &NodeRuntime) -> Option<Output> {
+			Self::grab_input::<Output>(path, Input::INDEX, runtime)
 		}
 
-		/// Grabs a ranked input's recorded value as its bare element `Element`.
-		/// A stored value materializes as an `Item<Element>` wire, so the monitor records the whole cell and this unwraps its element.
-		pub fn grab_ranked_input<Input: NodeParameter, Element: Send + Sync + Clone + 'static>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Element> {
-			let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
-			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
-			Self::downcast_record::<Item<Element>>(dynamic).map(|item| item.into_element())
+		/// Grabs a ranked input's received value as its bare element `Element`.
+		/// A stored value materializes as an `Item<Element>` wire, so the input receives the whole cell and this unwraps its element.
+		pub fn grab_ranked_input<Input: NodeParameter, Element: Clone + 'static>(&self, path: &[NodeId], runtime: &NodeRuntime) -> Option<Element> {
+			Self::grab_input::<Item<Element>>(path, Input::INDEX, runtime).map(Item::into_element)
 		}
 
-		pub fn grab_input_from_layer<Input: NodeParameter, Output: Send + Sync + Clone + 'static>(
+		pub fn grab_input_from_layer<Input: NodeParameter, Output: Clone + 'static>(
 			&self,
 			layer: LayerNodeIdentifier,
 			network_interface: &NodeNetworkInterface,
@@ -1339,7 +1292,7 @@ mod test {
 		) -> Option<Output> {
 			let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
 			let node = node_graph_layer.upstream_node_id_from_protonode(Input::NODE_IDENTIFIER)?;
-			self.grab_protonode_input::<Input, Output>(&vec![node], runtime)
+			self.grab_protonode_input::<Input, Output>(&[node], runtime)
 		}
 	}
 }

@@ -457,7 +457,6 @@ fn convert_node(context: &ConversionContext, node: &crate::Node) -> Result<Docum
 		call_argument: node.attributes.get_or(node::CALL_ARGUMENT, concrete!(core_types::Context)),
 		implementation: convert_implementation(context, &node.implementation)?,
 		visible: node.attributes.get_or(node::VISIBLE, true),
-		skip_deduplication: node.attributes.get_or(node::SKIP_DEDUPLICATION, false),
 		// Regenerated during compilation; not stored.
 		compile_metadata: None,
 		original_location: Default::default(),

@@ -23,7 +23,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 
 	// Add the rest of the protonodes from the macro.
 	// Typed nodes are registered in `core_types::NODE_REGISTRY` via the macro's auto-generated `register_node` codegen.
-	// `skip_impl` nodes (e.g. Cache, Monitor) bypass that registration but are wired up manually in
+	// `skip_impl` nodes (e.g. Cache) bypass that registration but are wired up manually in
 	// `interpreted_executor::node_registry::NODE_REGISTRY` via `async_node!`. We consult that extended registry as a
 	// fallback when deriving `call_argument` so it reflects the impls actually registered, which will usually be `Context`.
 	let extended_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
