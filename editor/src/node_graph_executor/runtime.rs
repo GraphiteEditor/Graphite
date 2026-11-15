@@ -2,7 +2,7 @@ use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
 use crate::task::{Spawn, Spawner, Task};
-use glam::{DVec2, UVec2};
+use glam::UVec2;
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
@@ -20,14 +20,17 @@ use graphene_std::raster_types::Raster;
 use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::style::RenderMode;
 use graphene_std::vector::{Vector, VectorGeometry, paths_from_list_row_attributes};
-use graphene_std::{Context, ContextFeatures, ContextOverrides, NodeError, OwnedContextImpl, Poll};
+use graphene_std::{Context, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
+use observer::Observer;
+pub use observer::{InspectResult, InspectedContext, Observation, ObservedConnector, ObservedValue};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use thumbnails::Thumbnails;
 
+mod observer;
 mod thumbnails;
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
@@ -56,9 +59,9 @@ pub struct NodeRuntime {
 	node_graph_warnings: GraphErrors,
 	monitor_nodes: Vec<(Vec<NodeId>, NodeId)>,
 	thumbnails: Thumbnails,
-
-	/// The node the Data panel inspects.
-	inspect_state: Option<InspectState>,
+	observer: Observer<ObservationKey>,
+	/// Whether an observation changed since its results were last sent.
+	observations_changed: bool,
 
 	preprocessor: preprocessor::Preprocessor,
 
@@ -78,22 +81,31 @@ pub struct NodeRuntime {
 pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
-	ThumbnailsInView { layers: HashSet<NodeId>, document_id: DocumentId },
-	Inspect(Vec<NodeId>),
-	InspectContextOverrides(ContextOverrides),
-	ClipboardSvg { id: u64, layers: Vec<NodeId> },
+	ThumbnailsInView {
+		layers: HashSet<NodeId>,
+		document_id: DocumentId,
+	},
+	/// Starts, changes, or with `None` stops one observation without a graph update.
+	Observe {
+		key: ObservationKey,
+		observation: Option<Observation>,
+	},
+	ClipboardSvg {
+		id: u64,
+		layers: Vec<NodeId>,
+	},
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
 	pub(super) resources: ResourceRegistry,
-	/// Full path from the root network to the node the Data panel inspects.
-	pub(super) node_to_inspect: Vec<NodeId>,
 	/// The node each network renders in place of its export, paired with that network's path.
 	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
 	/// Full path from the root network to every layer, which are the nodes with thumbnails.
 	pub(super) layers: Vec<Vec<NodeId>>,
+	/// The connectors whose values are sent back after each evaluation, replacing those observed before.
+	pub(super) observations: HashMap<ObservationKey, Observation>,
 }
 
 /// Replaces each network's primary export with its previewed node.
@@ -145,12 +157,13 @@ impl NodeRuntime {
 			node_graph_warnings: Vec::new(),
 			monitor_nodes: Vec::new(),
 			thumbnails: Thumbnails::new(),
+			observer: Observer::default(),
+			observations_changed: false,
 
 			preprocessor: preprocessor::Preprocessor::new(),
 
 			vector_modify: Default::default(),
 			vector_evaluations: Default::default(),
-			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			wasm_canvas_cache: CanvasSurfaceHandle::new(),
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
@@ -181,17 +194,15 @@ impl NodeRuntime {
 					self.thumbnails.set_in_view(layers);
 					self.pending_thumbnails = Some(document_id);
 				}
-				// A graph update applied after this loop would otherwise inspect what was selected before
-				GraphRuntimeRequest::Inspect(node_to_inspect) => match &mut graph {
-					Some(update) => update.node_to_inspect = node_to_inspect,
-					None => self.inspect_state = InspectState::new(node_to_inspect),
-				},
-				GraphRuntimeRequest::InspectContextOverrides(overrides) => {
-					if let Some(inspect_state) = &mut self.inspect_state {
-						inspect_state.overrides = overrides;
-						inspect_state.overrides_changed = true;
+				// A graph update applied after this loop would otherwise replace this with what it observed before
+				GraphRuntimeRequest::Observe { key, observation } => match (&mut graph, observation) {
+					(Some(update), Some(observation)) => _ = update.observations.insert(key, observation),
+					(Some(update), None) => _ = update.observations.remove(&key),
+					(None, observation) => {
+						self.observer.set(key, observation);
+						self.observations_changed = true;
 					}
-				}
+				},
 				GraphRuntimeRequest::ClipboardSvg { id, layers } => {
 					let svg = self.old_graph.as_ref().and_then(|network| thumbnails::layers_svg(&layers, network, &self.executor));
 					self.sender.send(NodeGraphUpdate::ClipboardSvg { id, svg }).expect("Failed to send response");
@@ -202,21 +213,16 @@ impl NodeRuntime {
 		let Some(GraphUpdate {
 			mut network,
 			resources,
-			node_to_inspect,
 			previewed,
 			layers,
+			observations,
 		}) = graph
 		else {
 			return;
 		};
 
 		apply_previews(&mut network, &previewed);
-
-		match &mut self.inspect_state {
-			Some(inspect_state) if inspect_state.inspect_node_path == node_to_inspect => inspect_state.last_evaluation = None,
-			_ => self.inspect_state = InspectState::new(node_to_inspect),
-		}
-
+		self.observer.replace_all(observations);
 		self.resources = resources;
 
 		self.node_graph_errors.clear();
@@ -259,12 +265,9 @@ impl NodeRuntime {
 				}
 			}
 
-			if let Some(inspect_state) = &mut self.inspect_state
-				&& std::mem::take(&mut inspect_state.overrides_changed)
-				&& viewport.is_none()
-			{
-				let inspect_result = inspect_state.access(&self.executor, self.old_graph.as_ref());
-				self.sender.send(NodeGraphUpdate::InspectResult(Box::new(inspect_result))).expect("Failed to send response");
+			if std::mem::take(&mut self.observations_changed) && viewport.is_none() {
+				let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
+				self.sender.send(NodeGraphUpdate::Observations(observations)).expect("Failed to send response");
 			}
 
 			if let Some(eyedropper) = self.pending_eyedropper.take() {
@@ -374,7 +377,7 @@ impl NodeRuntime {
 					responses: VecDeque::new(),
 					dropped_thumbnails: Vec::new(),
 					vector_modify: HashMap::new(),
-					inspect_result: None,
+					observations: HashMap::new(),
 				};
 				self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
 				return None;
@@ -386,7 +389,7 @@ impl NodeRuntime {
 	async fn respond(&mut self, execution_id: u64, result: ExecutionResult) {
 		let mut responses = VecDeque::new();
 		let dropped_thumbnails = self.process_monitor_nodes(&mut responses).await;
-		let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor, self.old_graph.as_ref()));
+		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 
 		let response = ExecutionResponse {
 			execution_id,
@@ -394,7 +397,7 @@ impl NodeRuntime {
 			responses,
 			dropped_thumbnails,
 			vector_modify: self.vector_modify.clone(),
-			inspect_result,
+			observations,
 		};
 		self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
 	}
@@ -523,23 +526,6 @@ fn records_vector(executor: &DynamicExecutor, monitor_node_path: &[NodeId]) -> b
 		.is_ok_and(|data| data.is::<IORecord<Context, List<Vector>>>() || data.is::<IORecord<Context, Item<Vector>>>())
 }
 
-fn context_features(context: &OwnedContextImpl) -> InspectedContext {
-	use graphene_std::{ExtractAnimationTime, ExtractFootprint, ExtractIndex, ExtractPointerPosition, ExtractPosition, ExtractRealTime, ExtractVarArgs};
-
-	InspectedContext {
-		features: ContextOverrides {
-			footprint: context.try_footprint().copied(),
-			real_time: context.try_real_time(),
-			animation_time: context.try_animation_time(),
-			pointer_position: context.try_pointer_position(),
-			index: context.try_index().map(|index| index.collect()),
-		},
-		positions: context.try_position().map(|positions| positions.collect()).unwrap_or_default(),
-		variables: context.varargs_len().unwrap_or_default(),
-		..Default::default()
-	}
-}
-
 fn evaluated_output(poll: Poll<graphene_std::registry::Any>) -> Option<graphene_std::registry::Any> {
 	match poll {
 		Poll::Final(output) | Poll::Partial(output) => Some(output),
@@ -594,112 +580,11 @@ impl Spawn for NodeTaskExecutor {
 	}
 }
 
-/// The node the Data panel inspects, which is evaluated again from the context it was last evaluated with.
-struct InspectState {
-	inspect_node_path: Vec<NodeId>,
-	overrides: ContextOverrides,
-	last_evaluation: Option<(NodeId, u64, Option<InspectedData>)>,
-	overrides_changed: bool,
-}
-
-type InspectedData = Arc<dyn std::any::Any + Send + Sync + 'static>;
-
-/// The resulting value from the temporary inspected during execution
-#[derive(Clone, Debug, Default)]
-pub struct InspectResult {
-	introspected_data: Option<Arc<dyn std::any::Any + Send + Sync + 'static>>,
-	/// Full path from the root network to the inspected node, with the node itself as the last element.
-	/// The parent slice (`split_last().1`) is the network the node lives in, which downstream consumers
-	/// (e.g. the Data panel) need when looking the node up via `network_interface.is_layer(...)` etc.
-	pub inspect_node_path: Vec<NodeId>,
-	pub context: InspectedContext,
-}
-
-/// The features of the context an inspected node was evaluated with, after the overrides replaced some of them.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct InspectedContext {
-	pub features: ContextOverrides,
-	/// The positions the context carries, from the outermost level in.
-	pub positions: Vec<DVec2>,
-	pub variables: usize,
-	pub overrides: ContextOverrides,
-	pub dependencies: ContextFeatures,
-}
-
-impl InspectResult {
-	pub fn take_data(&mut self) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
-		self.introspected_data.clone()
-	}
-}
-
-// This is very ugly but is required to be inside a message
-impl PartialEq for InspectResult {
-	fn eq(&self, other: &Self) -> bool {
-		self.inspect_node_path == other.inspect_node_path
-	}
-}
-
-impl InspectState {
-	fn new(inspect_node_path: Vec<NodeId>) -> Option<Self> {
-		(!inspect_node_path.is_empty()).then_some(Self {
-			inspect_node_path,
-			overrides: ContextOverrides::default(),
-			last_evaluation: None,
-			overrides_changed: false,
-		})
-	}
-
-	fn access(&mut self, executor: &DynamicExecutor, network: Option<&NodeNetwork>) -> InspectResult {
-		let node = network.and_then(|network| executor.tree().output_node(network, &self.inspect_node_path));
-		let context = node.and_then(|node| executor.tree().last_context(node).ok().flatten()).map(|context| self.with_overrides(context));
-
-		let introspected_data = node.zip(context.clone()).and_then(|(node, context)| self.evaluate(executor, node, context));
-		let features = context.as_ref().and_then(|context| context.as_deref()).map(context_features).unwrap_or_default();
-		let context = InspectedContext {
-			overrides: self.overrides.clone(),
-			dependencies: node.map(|node| executor.tree().context_features(node)).unwrap_or_default(),
-			..features
-		};
-
-		InspectResult {
-			introspected_data,
-			inspect_node_path: self.inspect_node_path.clone(),
-			context,
-		}
-	}
-
-	fn with_overrides(&self, context: Context<'static>) -> Context<'static> {
-		if self.overrides.is_empty() {
-			return context;
-		}
-		let context = context
-			.as_deref()
-			.map(|context| context.with_overrides(&self.overrides))
-			.unwrap_or_else(|| OwnedContextImpl::empty().with_overrides(&self.overrides));
-		Some(Arc::new(context))
-	}
-
-	/// Evaluates the node with the context, reusing the last result if neither changed.
-	fn evaluate(&mut self, executor: &DynamicExecutor, node: NodeId, context: Context<'static>) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
-		let context_hash = context_hash(&context);
-		if let Some((last_node, last_context_hash, data)) = &self.last_evaluation
-			&& (*last_node, *last_context_hash) == (node, context_hash)
-		{
-			return data.clone();
-		}
-
-		let output = evaluated_output(executor.tree().evaluate(node, &context).ok()?)?;
-		// Output the Data panel can't show is remembered too, so it isn't evaluated again for nothing
-		let data = crate::messages::portfolio::document::data_panel::shareable_inspect_output(output);
-		self.last_evaluation = Some((node, context_hash, data.clone()));
-		data
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::test_utils::EditorTestUtils;
+	use glam::DVec2;
 	use graph_craft::document::DocumentNode;
 	use graphene_std::SourceId;
 	use graphene_std::runtime::Runtime;

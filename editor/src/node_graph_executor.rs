@@ -15,7 +15,7 @@ use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{Vector, VectorGeometry, graphic_types, no_paths, paths_from_list_row_attributes};
-use graphene_std::{ATTR_TRANSFORM, Graphic};
+use graphene_std::{ATTR_TRANSFORM, ContextOverrides, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
@@ -39,8 +39,18 @@ pub struct ExecutionResponse {
 	/// The layers whose thumbnails the runtime let go of, which it renders anew if they have content to show again.
 	dropped_thumbnails: Vec<NodeId>,
 	vector_modify: HashMap<NodeId, VectorGeometry>,
-	/// The resulting value from the temporary inspected during execution
-	inspect_result: Option<InspectResult>,
+	/// The latest result of each observation.
+	observations: HashMap<ObservationKey, InspectResult>,
+}
+
+/// Names an observation so it can be changed or stopped without touching the others.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ObservationKey {
+	/// The node the Data panel inspects.
+	DataPanel,
+	// TODO: Eventually remove this document upgrade code
+	/// The "Fill" node whose geometry a gradient migration measures.
+	FillMeasurement,
 }
 
 #[derive(Debug)]
@@ -81,9 +91,16 @@ pub enum NodeGraphUpdate {
 	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
-	Thumbnails { responses: VecDeque<FrontendMessage>, document_id: DocumentId },
-	InspectResult(Box<InspectResult>),
-	ClipboardSvg { id: u64, svg: Option<String> },
+	Thumbnails {
+		responses: VecDeque<FrontendMessage>,
+		document_id: DocumentId,
+	},
+	/// The latest result of each observation, sent outside an execution after one of them changed.
+	Observations(HashMap<ObservationKey, InspectResult>),
+	ClipboardSvg {
+		id: u64,
+		svg: Option<String>,
+	},
 }
 
 #[derive(Debug)]
@@ -98,6 +115,8 @@ pub struct NodeGraphExecutor {
 	node_graph_document: Option<DocumentId>,
 	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
 	previous_node_to_inspect: Vec<NodeId>,
+	/// The context overrides the Data panel evaluates its inspected node with, reset when another node is inspected.
+	inspect_context_overrides: ContextOverrides,
 	/// The canvas images the frontend holds, so a render sends only those it lacks.
 	canvas_images_sent: HashSet<u64>,
 	/// Evaluation errors of the last evaluation, used in tests
@@ -152,6 +171,7 @@ impl NodeGraphExecutor {
 			node_graph_hash: 0,
 			node_graph_document: None,
 			previous_node_to_inspect: Vec::new(),
+			inspect_context_overrides: ContextOverrides::default(),
 			canvas_images_sent: HashSet::new(),
 			#[cfg(test)]
 			evaluation_errors: None,
@@ -188,8 +208,16 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	pub fn submit_inspect_context_overrides(&self, overrides: graphene_std::ContextOverrides) {
-		self.sender.send(GraphRuntimeRequest::InspectContextOverrides(overrides)).expect("Failed to send the context overrides");
+	pub fn submit_inspect_context_overrides(&mut self, overrides: ContextOverrides) {
+		self.inspect_context_overrides = overrides;
+		let Some(observation) = self.data_panel_observation() else { return };
+
+		self.sender
+			.send(GraphRuntimeRequest::Observe {
+				key: ObservationKey::DataPanel,
+				observation: Some(observation),
+			})
+			.expect("Failed to send the context overrides");
 	}
 
 	pub fn submit_clipboard_svg(&self, document_id: Option<DocumentId>, id: u64, layers: Vec<NodeId>) -> Message {
@@ -228,9 +256,9 @@ impl NodeGraphExecutor {
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
 				network,
 				resources,
-				node_to_inspect: Vec::new(),
 				previewed: Vec::new(),
 				layers: document.network_interface.layer_paths(),
+				observations: HashMap::new(),
 			}))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
@@ -238,12 +266,17 @@ impl NodeGraphExecutor {
 
 	/// Update the cached network if necessary.
 	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, node_to_inspect: Vec<NodeId>, ignore_hash: bool) -> Result<(), String> {
+		let inspected_node_changed = self.previous_node_to_inspect != node_to_inspect;
+		if inspected_node_changed {
+			self.previous_node_to_inspect = node_to_inspect;
+			self.inspect_context_overrides = ContextOverrides::default();
+		}
+
 		let network_hash = document.network_interface.network_hash();
 		if network_hash != self.node_graph_hash || self.node_graph_document != Some(document_id) || ignore_hash {
 			let network = document.network_interface.document_network().clone();
 			let previewed = document.network_interface.previewed_nodes();
 			let layers = document.network_interface.layer_paths();
-			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
 			self.node_graph_document = Some(document_id);
 
@@ -253,17 +286,36 @@ impl NodeGraphExecutor {
 				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
 					network,
 					resources,
-					node_to_inspect,
 					previewed,
 					layers,
+					observations: self.observations(),
 				}))
 				.map_err(|e| e.to_string())?;
-		} else if self.previous_node_to_inspect != node_to_inspect {
-			self.previous_node_to_inspect.clone_from(&node_to_inspect);
-			self.sender.send(GraphRuntimeRequest::Inspect(node_to_inspect)).map_err(|e| e.to_string())?;
+		} else if inspected_node_changed {
+			let observation = self.data_panel_observation();
+			self.sender
+				.send(GraphRuntimeRequest::Observe {
+					key: ObservationKey::DataPanel,
+					observation,
+				})
+				.map_err(|e| e.to_string())?;
 		}
 
 		Ok(())
+	}
+
+	/// What the Data panel reads back, if it inspects a node.
+	fn data_panel_observation(&self) -> Option<Observation> {
+		(!self.previous_node_to_inspect.is_empty()).then(|| Observation {
+			node_path: self.previous_node_to_inspect.clone(),
+			connector: ObservedConnector::Output,
+			overrides: self.inspect_context_overrides.clone(),
+		})
+	}
+
+	/// Every observation a graph update of the document starts with.
+	fn observations(&self) -> HashMap<ObservationKey, Observation> {
+		self.data_panel_observation().map(|observation| (ObservationKey::DataPanel, observation)).into_iter().collect()
 	}
 
 	/// Adds an evaluate request for whatever current network is cached.
@@ -429,9 +481,9 @@ impl NodeGraphExecutor {
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
 				network,
 				resources,
-				node_to_inspect: Vec::new(),
 				previewed,
 				layers: document.network_interface.layer_paths(),
+				observations: self.observations(),
 			}))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
@@ -467,7 +519,7 @@ impl NodeGraphExecutor {
 						responses: existing_responses,
 						dropped_thumbnails,
 						vector_modify,
-						inspect_result,
+						mut observations,
 					} = *execution_response;
 					all_dropped_thumbnails.extend(dropped_thumbnails.iter().copied());
 
@@ -503,7 +555,8 @@ impl NodeGraphExecutor {
 					// Apply only to the active document's in-progress migration, dropping responses left over from a document switch.
 					if let Some(bake_target) = execution_context.measure_fill {
 						if execution_context.document_id == document_id && self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id == document_id) {
-							let inspect_result = matches!(result, ExecutionResult::Value(_) | ExecutionResult::Fallback(..)).then_some(inspect_result).flatten();
+							let measured = observations.remove(&ObservationKey::FillMeasurement);
+							let inspect_result = matches!(result, ExecutionResult::Value(_) | ExecutionResult::Fallback(..)).then_some(measured).flatten();
 							self.handle_gradient_measurement(document, document_id, bake_target, inspect_result, responses);
 						}
 						continue;
@@ -605,6 +658,7 @@ impl NodeGraphExecutor {
 					});
 
 					// Update the Data panel on the frontend using the value of the inspect result.
+					let inspect_result = observations.remove(&ObservationKey::DataPanel);
 					if let Some(inspect_result) = (!self.previous_node_to_inspect.is_empty()).then_some(inspect_result).flatten() {
 						responses.add(DataPanelMessage::UpdateLayout {
 							inspect_result: Box::new(inspect_result),
@@ -661,9 +715,13 @@ impl NodeGraphExecutor {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 				}
-				NodeGraphUpdate::InspectResult(inspect_result) => {
-					if inspect_result.inspect_node_path == self.previous_node_to_inspect {
-						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
+				NodeGraphUpdate::Observations(mut observations) => {
+					if let Some(inspect_result) = observations.remove(&ObservationKey::DataPanel)
+						&& inspect_result.node_path == self.previous_node_to_inspect
+					{
+						responses.add(DataPanelMessage::UpdateLayout {
+							inspect_result: Box::new(inspect_result),
+						});
 					}
 				}
 				NodeGraphUpdate::Thumbnails {
@@ -789,14 +847,19 @@ impl NodeGraphExecutor {
 		}
 
 		let resources = document.resources.registry.clone();
+		let fill_measurement = Observation {
+			node_path: full_path,
+			connector: ObservedConnector::Output,
+			overrides: ContextOverrides::default(),
+		};
 		if self
 			.sender
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
 				network,
 				resources,
-				node_to_inspect: full_path.clone(),
 				previewed: Vec::new(),
 				layers: document.network_interface.layer_paths(),
+				observations: HashMap::from([(ObservationKey::FillMeasurement, fill_measurement)]),
 			}))
 			.is_err()
 		{
@@ -807,7 +870,6 @@ impl NodeGraphExecutor {
 
 		// Force the next normal render to recompile and re-send the real, non-redirected network
 		self.node_graph_hash = 0;
-		self.previous_node_to_inspect = full_path;
 
 		let viewport = Footprint {
 			transform: document.metadata().document_to_viewport,
@@ -858,7 +920,7 @@ impl NodeGraphExecutor {
 			return;
 		}
 
-		match inspect_result.and_then(|mut result| result.take_data()).and_then(|data| measure_fill_geometry(&data)) {
+		match inspect_result.and_then(|result| result.data).and_then(|data| measure_fill_geometry(&data)) {
 			Some((bounding_box, item_transform)) => {
 				// Skip the bake if the user already placed this gradient themselves, but drop the now-superseded entry either way
 				if fill_transform_unbaked(document, &network_path, fill_node_id) {
@@ -904,10 +966,9 @@ impl NodeGraphExecutor {
 	}
 
 	// TODO: Eventually remove this document upgrade code
-	/// Tear down the in-progress migration and clear the stale inspect target and hash so the next normal render recompiles the real network.
+	/// Tear down the in-progress migration and clear the hash so the next normal render recompiles the real network.
 	fn cancel_gradient_migration(&mut self) {
 		self.gradient_migration = None;
-		self.previous_node_to_inspect = Vec::new();
 		self.node_graph_hash = 0;
 	}
 
