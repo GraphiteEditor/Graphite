@@ -2993,17 +2993,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		reset_default_display_name(document, node_id, network_path, "Merge by Distance");
 	}
 
-	// A Merge by Distance node saved with its "Algorithm" input takes Weld's input names and descriptions, keeping its inputs
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::weld::IDENTIFIER)
-		&& inputs_count == 3
-		&& document
-			.network_interface
-			.stored_input_metadata(node_id, 2, network_path)
-			.is_some_and(|metadata| metadata.input_name == "Algorithm")
-	{
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		node_template.inputs = node.inputs.clone();
-		document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+	// A Merge by Distance node saved with its "Algorithm" input takes Weld's title
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::weld::IDENTIFIER) && inputs_count == 3 {
 		reset_default_display_name(document, node_id, network_path, "Merge by Distance");
 	}
 
@@ -3035,26 +3026,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		reset_default_display_name(document, node_id, network_path, "Split Segments");
 	}
 
-	// Separate Subpaths and Close Path became Separate Paths and Close Paths, whose inputs take their current names and descriptions
+	// Separate Subpaths and Close Path became Separate Paths and Close Paths, which take their new titles
 	let pluralized = [
 		(graphene_std::vector::separate_paths::IDENTIFIER, "Separate Subpaths"),
 		(graphene_std::vector::close_paths::IDENTIFIER, "Close Path"),
 	];
 	if let Some((_, old_default_name)) = pluralized.iter().find(|(identifier, _)| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		let stored = document
-			.network_interface
-			.stored_input_metadata(node_id, 0, network_path)
-			.map(|metadata| (metadata.input_name.clone(), metadata.input_description.clone()));
-		let current = node_template
-			.input_metadata
-			.first()
-			.map(|metadata| (metadata.persistent_metadata.input_name.clone(), metadata.persistent_metadata.input_description.clone()));
-		if stored != current {
-			node_template.inputs = node.inputs.clone();
-			document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-		}
-
 		reset_default_display_name(document, node_id, network_path, old_default_name);
 	}
 

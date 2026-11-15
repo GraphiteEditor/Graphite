@@ -125,9 +125,8 @@ fn editor_metadata_round_trip_against_demo() {
 		if entry.is_layer {
 			checked_any_layer = true;
 		}
-		if any_input_metadata_present {
-			checked_any_input_metadata = true;
-		}
+		// An instance's interface belongs to what implements it, so none should be stored on the node
+		assert!(!any_input_metadata_present, "node {local_id:?} in network {network:?} stores input metadata");
 		if !expected_output_descriptions.is_empty() {
 			checked_any_output_description = true;
 		}
@@ -137,6 +136,9 @@ fn editor_metadata_round_trip_against_demo() {
 		let network = &entry.network;
 		let location = network;
 		assert_eq!(entry.import_metadata, source.import_metadata(*location), "import_metadata mismatch for network {network:?}");
+		if entry.import_metadata.iter().any(|input| input.input_name.is_some()) {
+			checked_any_input_metadata = true;
+		}
 		assert_eq!(entry.export_names, source.export_names(*location), "export_names mismatch for network {network:?}");
 
 		let expected_export_descriptions = normalize_output_descriptions(source.export_descriptions(*location));
@@ -150,9 +152,8 @@ fn editor_metadata_round_trip_against_demo() {
 	// just iterating empty metadata and proving nothing.
 	assert!(checked_any_position, "demo artwork produced no positioned nodes: fixture is wrong or extraction is broken");
 	assert!(checked_any_layer, "demo artwork produced no layer nodes: fixture is wrong or extraction is broken");
-	// Demo artworks always have some custom widget overrides / input names; if not, the
-	// per-input round-trip isn't actually being exercised here.
-	assert!(checked_any_input_metadata, "demo artwork produced no per-input metadata: fixture is wrong or extraction is broken");
+	// Demo artworks always have subgraphs with named imports; if not, the per-input round-trip isn't actually being exercised here.
+	assert!(checked_any_input_metadata, "demo artwork produced no named imports: fixture is wrong or extraction is broken");
 	assert!(checked_any_output_description, "no output descriptions were round-tripped: fixture is wrong or extraction is broken");
 }
 

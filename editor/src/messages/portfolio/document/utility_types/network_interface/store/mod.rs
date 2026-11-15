@@ -410,15 +410,18 @@ impl NodeNetworkInterface {
 		};
 
 		if matches!(implementation, DocumentNodeImplementation::Network(_)) {
-			let Some(mut node) = self.node_mut_at(location, node_id) else {
-				log::error!("Could not get node {node_id} in replace_node_implementation");
+			// The network takes the interface the node had, whether its definition's or the one its table entry stored
+			let Ok(view) = self.view(locator.network_path) else {
+				log::error!("Could not view network {:?} in replace_node_implementation", locator.network_path);
 				return;
 			};
-			let previous = node.interface();
+			let previous = (
+				view.input_metadata(&node_id).map(<[_]>::to_vec).unwrap_or_default(),
+				view.output_names(&node_id).map(<[_]>::to_vec).unwrap_or_default(),
+				view.output_descriptions(&node_id).map(<[_]>::to_vec).unwrap_or_default(),
+			);
 			let interface = &mut network_metadata.get_or_insert_default().persistent_metadata;
-			interface.import_metadata = previous.input_metadata.clone();
-			interface.export_names = previous.output_names.clone();
-			interface.export_descriptions = previous.output_descriptions.clone();
+			(interface.import_metadata, interface.export_names, interface.export_descriptions) = previous;
 
 			self.lift_into_table(&mut implementation, &mut network_metadata);
 		}

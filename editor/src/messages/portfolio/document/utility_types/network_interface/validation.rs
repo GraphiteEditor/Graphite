@@ -183,30 +183,30 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 			DocumentNodeImplementation::Definition(id) => document_metadata.persistent_metadata.definitions.get(id),
 			_ => None,
 		};
-		let (input_metadata, output_names) = match implementation_metadata {
-			Some(network_metadata) => (&network_metadata.persistent_metadata.import_metadata, &network_metadata.persistent_metadata.export_names),
-			None => (&persistent.input_metadata, &persistent.output_names),
-		};
-
 		if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
 			violations.push(format!("Node {node_id} in network {path:?} implements an inline network, which belongs in the definitions table"));
 		}
 
+		// A node's interface belongs to what implements it: a proto node's definition, or the network it names
 		let stores_interface = !persistent.input_metadata.is_empty() || !persistent.output_names.is_empty() || !persistent.output_descriptions.is_empty();
-		if implementation_metadata.is_some() && stores_interface {
-			violations.push(format!("Node {node_id} in network {path:?} stores interface metadata that belongs to the network implementing it"));
+		if stores_interface {
+			violations.push(format!("Node {node_id} in network {path:?} stores interface metadata that belongs to what implements it"));
 		}
 
 		// Input metadata is a parallel array to the node's inputs and the lengths must stay in sync
-		if input_metadata.len() != node.inputs.len() {
-			violations.push(format!(
-				"Node {node_id} in network {path:?} has {} inputs but {} input metadata entries",
-				node.inputs.len(),
-				input_metadata.len()
-			));
+		if let Some(network_metadata) = implementation_metadata {
+			let import_metadata = &network_metadata.persistent_metadata.import_metadata;
+			if import_metadata.len() != node.inputs.len() {
+				violations.push(format!(
+					"Node {node_id} in network {path:?} has {} inputs but {} input metadata entries",
+					node.inputs.len(),
+					import_metadata.len()
+				));
+			}
 		}
 
 		let validate_output_names = |export_count: usize, violations: &mut Vec<String>| {
+			let output_names = implementation_metadata.map_or(&[][..], |network_metadata| &network_metadata.persistent_metadata.export_names);
 			if output_names.len() != export_count {
 				violations.push(format!("Node {node_id} in network {path:?} has {export_count} exports but {} output names", output_names.len()));
 			}

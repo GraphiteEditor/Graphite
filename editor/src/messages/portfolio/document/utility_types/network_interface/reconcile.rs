@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashMap};
 use document_graph_storage::blob::BlobBytes;
 use document_graph_storage::to_runtime::ConversionError;
 use document_graph_storage::{Declarations, NetworkId as StorageNetworkId, NodeId as StorageNodeId, Registry, RuntimeProjection, Touched};
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId, NetworkLocation, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, NetworkId, NetworkLocation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::runtime_delta::RuntimeDelta;
 
 use super::storage_metadata::{InterfaceRebuildError, input_metadata_entry_to_runtime, node_metadata_from_projection};
@@ -293,25 +293,13 @@ fn field_deltas(
 		node_id: local_id,
 		change,
 	};
-	let input_metadata = || EditorDelta::NodeInputMetadata {
-		network: location,
-		node_id: local_id,
-		input_metadata: target_metadata.input_metadata.clone(),
-	};
-
-	// An instance's input metadata belongs to its implementing network
-	let instance = matches!(target.implementation, DocumentNodeImplementation::Definition(_));
-
-	// Slots first, so the metadata indexing them finds the right length
+	// A node's input metadata belongs to what implements it, so only the slots themselves are reconciled here
 	if current.inputs.len() != target.inputs.len() {
 		deltas.push(EditorDelta::Graph(RuntimeDelta::SetInputs {
 			network: location,
 			node_id: local_id,
 			inputs: target.inputs.clone(),
 		}));
-		if !instance {
-			deltas.push(input_metadata());
-		}
 	} else {
 		for (input_index, (held, wanted)) in current.inputs.iter().zip(&target.inputs).enumerate() {
 			if held != wanted {
@@ -322,9 +310,6 @@ fn field_deltas(
 					input: wanted.clone(),
 				}));
 			}
-		}
-		if !instance && current_metadata.input_metadata != target_metadata.input_metadata {
-			deltas.push(input_metadata());
 		}
 	}
 

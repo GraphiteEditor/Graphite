@@ -653,7 +653,8 @@ fn move_interface_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 				move_interface_metadata(nested, nested_metadata, instance_interfaces);
 			}
 			DocumentNodeImplementation::Definition(id) => instance_interfaces.push((*id, take_interface())),
-			DocumentNodeImplementation::ProtoNode(_) | DocumentNodeImplementation::Extract => {}
+			// A proto node's interface is its definition's, so an older document's copy of it is dropped
+			DocumentNodeImplementation::ProtoNode(_) | DocumentNodeImplementation::Extract => drop(take_interface()),
 		}
 	}
 }

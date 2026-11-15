@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use document_graph_storage::attr::session;
 use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NetworkReference, NodeMetadataEntry, NodeMetadataSource, Position, Value, from_value, to_value};
 use glam::IVec2;
-use graph_craft::document::{DocumentNodeImplementation, NetworkLocation, NodeId, NodeNetwork};
+use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
 
 use super::{
@@ -229,11 +229,9 @@ pub(super) fn node_metadata_from_projection(projected: document_graph_storage::P
 
 	let mut persistent = metadata.persistent_metadata.node_metadata.remove(&local_id).map(|node| node.persistent_metadata).unwrap_or_default();
 	let node = scratch.nodes.remove(&local_id).expect("inserted above");
-	if matches!(node.implementation, DocumentNodeImplementation::Definition(_)) {
-		persistent.input_metadata.clear();
-		persistent.output_names.clear();
-		persistent.output_descriptions.clear();
-	}
+	persistent.input_metadata.clear();
+	persistent.output_names.clear();
+	persistent.output_descriptions.clear();
 	Ok((node, persistent))
 }
 

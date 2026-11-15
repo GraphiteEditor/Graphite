@@ -640,24 +640,17 @@ async fn swapping_an_implementation_leaves_the_node_in_place() {
 		"the node's own metadata should not be restated by a swap that did not write it"
 	);
 
-	// The slots that survive the swap keep the names and descriptions the registry holds for them.
-	let Some((id, inputs)) = ops.iter().find_map(|op| match op {
-		RegistryDelta::SetNodeInputs { id, inputs } => Some((id, inputs)),
+	// The restated slots store no names or descriptions, which belong to the swapped-in definition
+	let Some(inputs) = ops.iter().find_map(|op| match op {
+		RegistryDelta::SetNodeInputs { inputs, .. } => Some(inputs),
 		_ => None,
 	}) else {
 		panic!("the swap should restate the slots")
 	};
-	let held: Vec<_> = working.node_instances[id]
-		.inputs()
-		.iter()
-		.take(inputs.len())
-		.flat_map(|slot| slot.attributes.live().filter(|(key, _)| key.starts_with("ui::")))
-		.collect();
-	assert!(!held.is_empty(), "the surviving slots should hold ui attributes for this to check anything");
+	assert!(!inputs.is_empty(), "some slots should survive the swap for this to check anything");
 	for (index, slot) in inputs.iter().enumerate() {
-		for (key, value) in working.node_instances[id].inputs()[index].attributes.live().filter(|(key, _)| key.starts_with("ui::")) {
-			assert_eq!(slot.attributes.get(key), Some(value), "slot {index} lost {key}");
-		}
+		let stored: Vec<_> = slot.attributes.live().map(|(key, _)| key).filter(|key| key.starts_with("ui::")).collect();
+		assert!(stored.is_empty(), "slot {index} stores {stored:?}");
 	}
 }
 

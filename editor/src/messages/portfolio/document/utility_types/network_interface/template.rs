@@ -185,20 +185,19 @@ impl NodeTemplate {
 
 		let (implementation, mut network_metadata) = implementation.into_parts();
 
-		// The stored metadata invariant requires exactly one input metadata entry per input
-		input_metadata.resize_with(inputs.len(), InputMetadata::default);
-
+		// An inline network takes the template's interface, while any other node's belongs to its definition or the table entry it names
 		if let Some(network_metadata) = &mut network_metadata {
+			// The stored metadata invariant requires exactly one input metadata entry per input
+			input_metadata.resize_with(inputs.len(), InputMetadata::default);
+
 			let persistent_metadata = &mut network_metadata.persistent_metadata;
 			persistent_metadata.import_metadata = std::mem::take(&mut input_metadata);
 			persistent_metadata.export_names = std::mem::take(&mut output_names);
 			persistent_metadata.export_descriptions = std::mem::take(&mut output_descriptions);
 		}
-		if matches!(implementation, DocumentNodeImplementation::Definition(_)) {
-			input_metadata.clear();
-			output_names.clear();
-			output_descriptions.clear();
-		}
+		input_metadata.clear();
+		output_names.clear();
+		output_descriptions.clear();
 
 		let document_node = DocumentNode {
 			inputs,
