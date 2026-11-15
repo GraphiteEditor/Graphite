@@ -2011,7 +2011,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	if reference == DefinitionIdentifier::Network("Artboard".into())
 		&& document
 			.network_interface
-			.persistent_input_metadata(node_id, 1, network_path)
+			.stored_input_metadata(node_id, 1, network_path)
 			.and_then(|metadata| metadata.widget_override.as_deref())
 			== Some("hidden")
 	{
@@ -2022,7 +2022,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	for input_index in 0..node.inputs.len() {
 		let renamed_override = document
 			.network_interface
-			.persistent_input_metadata(node_id, input_index, network_path)
+			.stored_input_metadata(node_id, input_index, network_path)
 			.and_then(|metadata| metadata.widget_override.as_deref())
 			.and_then(|widget_override| widget_override.strip_prefix("noise_properties_"))
 			.map(|suffix| format!("noise_inspector_{suffix}"));
@@ -2998,7 +2998,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		&& inputs_count == 3
 		&& document
 			.network_interface
-			.persistent_input_metadata(node_id, 2, network_path)
+			.stored_input_metadata(node_id, 2, network_path)
 			.is_some_and(|metadata| metadata.input_name == "Algorithm")
 	{
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
@@ -3044,7 +3044,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let stored = document
 			.network_interface
-			.persistent_input_metadata(node_id, 0, network_path)
+			.stored_input_metadata(node_id, 0, network_path)
 			.map(|metadata| (metadata.input_name.clone(), metadata.input_description.clone()));
 		let current = node_template
 			.input_metadata

@@ -48,7 +48,7 @@ use crate::consts::{
 	EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, HALF_GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH,
 	STACK_VERTICAL_GAP,
 };
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_proto_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_proto_node_definition, resolve_proto_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
 use crate::messages::portfolio::document::utility_types::text_metrics::text_width;
@@ -460,6 +460,31 @@ mod network_interface_tests {
 		let view = interface.view(&[]).unwrap();
 		assert_eq!(view.persistent_input_metadata(&NodeId(11), 0).unwrap().input_name, "Shared");
 		assert_eq!(view.output_names(&NodeId(11)).unwrap(), ["Result".to_string()]);
+	}
+
+	#[test]
+	fn a_proto_node_shows_its_definition_signature_over_a_stored_copy() {
+		use super::*;
+
+		let definition = resolve_proto_node_type(graphene_std::vector_nodes::fill::IDENTIFIER).expect("Fill should have a definition");
+		let mut template = definition.default_node_template();
+		for input_metadata in &mut template.input_metadata {
+			input_metadata.persistent_metadata.input_name = "Stale name".into();
+			input_metadata.persistent_metadata.input_description = "Stale description".into();
+		}
+
+		let mut interface = NodeNetworkInterface::default();
+		interface.insert_node(NodeId(1), template, &[]);
+
+		for (index, expected) in definition.node_template.input_metadata.iter().enumerate() {
+			let expected = &expected.persistent_metadata;
+			let (name, description) = interface.displayed_input_name_and_description(&NodeId(1), index, &[]);
+
+			assert_eq!(description, expected.input_description, "input {index}");
+			if !expected.input_name.is_empty() {
+				assert_eq!(name, expected.input_name, "input {index}");
+			}
+		}
 	}
 
 	#[test]

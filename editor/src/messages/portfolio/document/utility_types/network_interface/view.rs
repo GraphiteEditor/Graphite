@@ -107,7 +107,23 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		Ok(network_metadata.persistent_metadata.reference.clone().map(DefinitionIdentifier::Network))
 	}
 
+	/// The definition of the proto node `node_id`, which owns its signature rather than the node itself.
+	fn proto_node_template(&self, node_id: &NodeId) -> Result<Option<&'static NodeTemplate>, NetworkError> {
+		let DocumentNodeImplementation::ProtoNode(identifier) = self.implementation(node_id)? else {
+			return Ok(None);
+		};
+		Ok(resolve_proto_node_definition(identifier).map(|definition| &definition.node_template))
+	}
+
 	pub fn input_metadata(&self, node_id: &NodeId) -> Result<&'a [InputMetadata], NetworkError> {
+		if let Some(template) = self.proto_node_template(node_id)? {
+			return Ok(&template.input_metadata);
+		}
+		self.stored_input_metadata(node_id)
+	}
+
+	/// The input metadata the document stores for the node, which for a proto node is a copy its definition may have outgrown.
+	pub fn stored_input_metadata(&self, node_id: &NodeId) -> Result<&'a [InputMetadata], NetworkError> {
 		Ok(match self.implementation_metadata(node_id)? {
 			Some(network_metadata) => &network_metadata.persistent_metadata.import_metadata,
 			None => &self.node_metadata(node_id)?.persistent_metadata.input_metadata,
@@ -115,6 +131,9 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn output_names(&self, node_id: &NodeId) -> Result<&'a [String], NetworkError> {
+		if let Some(template) = self.proto_node_template(node_id)? {
+			return Ok(&template.output_names);
+		}
 		Ok(match self.implementation_metadata(node_id)? {
 			Some(network_metadata) => &network_metadata.persistent_metadata.export_names,
 			None => &self.node_metadata(node_id)?.persistent_metadata.output_names,
@@ -122,6 +141,9 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn output_descriptions(&self, node_id: &NodeId) -> Result<&'a [String], NetworkError> {
+		if let Some(template) = self.proto_node_template(node_id)? {
+			return Ok(&template.output_descriptions);
+		}
 		Ok(match self.implementation_metadata(node_id)? {
 			Some(network_metadata) => &network_metadata.persistent_metadata.export_descriptions,
 			None => &self.node_metadata(node_id)?.persistent_metadata.output_descriptions,

@@ -1385,7 +1385,23 @@ pub fn resolve_network_node_type(identifier: &str) -> Option<&'static DocumentNo
 }
 
 pub fn resolve_proto_node_type(identifier: ProtoNodeIdentifier) -> Option<&'static DocumentNodeDefinition> {
-	resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier))
+	resolve_proto_node_definition(&identifier)
+}
+
+/// The proto node definitions keyed by their identifier, so a lookup can borrow it.
+static PROTO_NODE_DEFINITIONS: once_cell::sync::Lazy<HashMap<ProtoNodeIdentifier, &'static DocumentNodeDefinition>> = once_cell::sync::Lazy::new(|| {
+	DOCUMENT_NODE_TYPES
+		.iter()
+		.filter_map(|(identifier, definition)| match identifier {
+			DefinitionIdentifier::ProtoNode(identifier) => Some((identifier.clone(), definition)),
+			_ => None,
+		})
+		.collect()
+});
+
+/// Looks up a proto node's definition without taking its identifier, for reads frequent enough that a clone per call would show.
+pub fn resolve_proto_node_definition(identifier: &ProtoNodeIdentifier) -> Option<&'static DocumentNodeDefinition> {
+	PROTO_NODE_DEFINITIONS.get(identifier).copied()
 }
 
 pub fn resolve_document_node_type(identifier: &DefinitionIdentifier) -> Option<&'static DocumentNodeDefinition> {
