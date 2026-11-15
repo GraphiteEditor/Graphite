@@ -252,16 +252,19 @@ impl<L: Layout> Gdd<L> {
 		let mut entries: std::collections::BTreeMap<String, Option<Resource>> = std::collections::BTreeMap::new();
 		let directories = self.working.list_dirs("").await?;
 		let has_directory = |directory: &str| directories.iter().any(|name| name == directory);
-		if has_directory(self.layout.resources_dir()) {
+		if flat.is_none() && has_directory(self.layout.resources_dir()) {
 			entries.extend(self.working.list(self.layout.resources_dir()).await?.into_iter().map(|path| (path, None)));
 		}
 		for (hash, resource) in embedded_bytes {
 			entries.entry(self.layout.resource_path(&hash)).or_insert(Some(resource));
 		}
 
-		// A copy without history has no older blobs to use as bases, so each blob is written in full
 		match &flat {
 			Some(flat) => {
+				let named = flat.registry().resources.values().filter_map(|entry| entry.hash);
+				for hash in named.filter(|hash| working_copy_hashes.contains(hash)) {
+					entries.insert(self.layout.resource_path(&hash), None);
+				}
 				for hash in flat.registry().blob_hashes() {
 					let record = self.blobs.full_record(&hash).ok_or(Error::MissingResource(hash.into()))?;
 					entries.insert(self.layout.blob_path(&hash), Some(Resource::new_unchecked(record, hash.into())));

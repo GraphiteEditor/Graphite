@@ -578,6 +578,50 @@ fn export_with_history_carries_history_only_resources() {
 	});
 }
 
+/// An export without history leaves behind the working copy's bytes of a resource only history still names.
+#[test]
+fn export_without_history_drops_history_only_resources() {
+	use document_format::{ExportFormat, ExportOptions};
+	use document_graph_storage::NoMetadata;
+	use graphene_resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
+
+	futures::executor::block_on(async {
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(9), UserId(9), 0xBEEF, "ed".into(), "std".into()).unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
+		let byte_store = empty_byte_store();
+
+		let removed_payload = b"bytes of a removed resource";
+		let removed_hash = ResourceHash::from(&removed_payload[..]);
+		gdd.add_resource(ResourceId::new(), removed_payload).unwrap_or_else(|error| panic!("add_resource failed: {error:?}"));
+
+		let kept_payload = b"bytes of a kept resource";
+		let kept_hash = ResourceHash::from(&kept_payload[..]);
+		let kept_id = ResourceId::new();
+		gdd.add_resource(kept_id, kept_payload).unwrap_or_else(|error| panic!("add_resource failed: {error:?}"));
+
+		let mut resources = ResourceRegistry::new();
+		resources.push_source_back(&kept_id, DataSource::Embedded);
+		resources.resolve(&kept_id, kept_hash);
+		gdd.commit_from_runtime(&network_referencing_resource(kept_id), &NoMetadata, &resources, &byte_store)
+			.unwrap_or_else(|error| panic!("commit_from_runtime failed: {error:?}"));
+
+		assert!(gdd.has_resource(&removed_hash).await, "the working copy should still hold the removed resource's bytes");
+
+		let options = ExportOptions {
+			include_history: false,
+			..Default::default()
+		};
+		let archive = gdd
+			.export_to_bytes(ExportFormat::Zip, options, &byte_store, None)
+			.await
+			.unwrap_or_else(|error| panic!("export failed: {error:?}"));
+		let reopened = GddV1::open_from_archive(&archive, empty_container(), GddV1Layout)
+			.await
+			.unwrap_or_else(|error| panic!("reopen failed: {error:?}"));
+		assert!(reopened.has_resource(&kept_hash).await, "bytes the registry names should travel with the export");
+		assert!(!reopened.has_resource(&removed_hash).await, "history-only bytes should stay behind");
+	});
+}
+
 /// A document with un-retired hot ops (e.g. a freshly converted document saved without an interaction
 /// boundary, or a save mid-drag) must export losslessly: the hot log travels alongside history and the
 /// reopened document reflects the staged edits. Regression for the converted-artwork "no history"
