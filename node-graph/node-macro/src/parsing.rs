@@ -175,7 +175,7 @@ impl ParsedField {
 		}
 	}
 
-	/// Whether the field is environment rather than an argument: `#[data]` state or a `#[scope]`-injected wire.
+	/// Whether the field is environment rather than an argument: `#[data]` state, a `#[scope]`-injected wire, or a `#[source_id]` or `#[node_path]` value the compiler fills in.
 	/// Environment fields never classify the node, never supply the element-wise frame, and broadcast by clone.
 	pub(crate) fn is_environment(&self) -> bool {
 		self.is_data_field || matches!(self.ty.value_source(), ParsedValueSource::Scope(_) | ParsedValueSource::SourceId | ParsedValueSource::NodePath)
@@ -915,6 +915,12 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	}
 	if source_id && node_path {
 		return Err(Error::new_spanned(&pat_ident, "Cannot have both `source_id` and `node_path` attributes"));
+	}
+	if exposed && (source_id || node_path) {
+		return Err(Error::new_spanned(
+			&pat_ident,
+			"Inputs the compiler fills in (#[source_id] or #[node_path]) cannot be exposed (#[expose]). They aren't set in the graph",
+		));
 	}
 	if exposed && ident.to_string().starts_with('_') {
 		return Err(Error::new_spanned(
@@ -1887,6 +1893,24 @@ mod tests {
 				cache: i32,
 			) -> i32 {
 				input
+			}
+		);
+		parse_node_fn(attr, input).unwrap();
+	}
+
+	#[test]
+	#[should_panic(expected = "Inputs the compiler fills in (#[source_id] or #[node_path]) cannot be exposed (#[expose])")]
+	fn test_exposed_node_path() {
+		let attr = quote!(category("Invalid"));
+		let input = quote!(
+			fn invalid_node(
+				_: impl Ctx,
+				content: Item<f64>,
+				#[expose]
+				#[node_path]
+				node_path: Item<NodeIdPath>,
+			) -> Item<f64> {
+				content
 			}
 		);
 		parse_node_fn(attr, input).unwrap();

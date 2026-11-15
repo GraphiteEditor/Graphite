@@ -765,11 +765,52 @@ mod tests {
 		assert!(!type_feeds_input(&list!(f64), &item!(f64), None), "a list has no promotion down to an item");
 	}
 
-	#[test]
-	fn monitor_and_memoize_preserve_their_input_type() {
-		for identifier in [graphene_std::memo::monitor::IDENTIFIER, graphene_std::memo::memoize::IDENTIFIER] {
-			assert!(super::TYPE_PRESERVING_NODES.contains(&identifier), "{identifier:?} should pass its input's type through unchanged");
-		}
+	#[tokio::test]
+	async fn subgraph_inputs_look_through_type_preserving_nodes() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let merge = editor.create_node_by_name_at(DefinitionIdentifier::Network("Merge".into()), 0, 0).await;
+
+		// A new import feeding a Memoize, which accepts most types, before a Path that needs a vector
+		editor.enter_editable_network(merge).await;
+		let memoize = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::memo::memoize::IDENTIFIER), -20, 10).await;
+		let path = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER), -10, 10).await;
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::node(memoize, 0),
+				input_connector: InputConnector::node_at_index(path, 0),
+			})
+			.await;
+		let import_index = editor.active_document().network_interface.number_of_imports(&[merge]);
+		editor
+			.handle_message(NodeGraphMessage::AddImportAndConnect {
+				import_index,
+				input_connector: InputConnector::node_at_index(memoize, 0),
+			})
+			.await;
+
+		let network_interface = &editor.active_document().network_interface;
+		let type_names = |input_connector: &InputConnector, network_path: &[super::NodeId]| {
+			network_interface
+				.potential_valid_input_types(input_connector, network_path)
+				.iter()
+				.map(ToString::to_string)
+				.collect::<Vec<_>>()
+		};
+
+		let memoize_types = type_names(&InputConnector::node_at_index(memoize, 0), &[merge]);
+		assert!(memoize_types.iter().any(|ty| ty == "Color"), "Memoize itself should accept a color, found {memoize_types:?}");
+
+		let content_types = type_names(&InputConnector::node_at_index(merge, import_index), &[]);
+		assert!(content_types.iter().any(|ty| ty == "Vector"), "the input should accept a vector, found {content_types:?}");
+		assert!(
+			!content_types.iter().any(|ty| ty == "Color"),
+			"the input should not accept a color just because its Memoize does, found {content_types:?}"
+		);
 	}
 
 	#[tokio::test]
