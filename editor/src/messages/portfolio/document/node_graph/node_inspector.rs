@@ -1001,15 +1001,6 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		}
 	}
 
-	pub fn assign_resource_message(node_id: NodeId, input_index: usize, resource_id: ResourceId) -> Message {
-		NodeGraphMessage::SetInputValue {
-			node_id,
-			input_index,
-			value: TaggedValue::Resource(resource_id).into(),
-		}
-		.into()
-	}
-
 	let parameter_widgets_info = ParameterWidgetsInfo {
 		blank_assist: false,
 		..parameter_widgets_info
@@ -1034,30 +1025,13 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 	};
 
 	// A freshly added node carries the empty-resource `TypeDefault` placeholder until a font is chosen
-	let selected = match input.as_non_exposed_value() {
-		Some(TaggedValue::Resource(resource_id)) => Some(*resource_id),
-		Some(TaggedValue::TypeDefault(_)) => None,
+	let font = match input.as_non_exposed_value() {
+		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
+		Some(TaggedValue::TypeDefault(_)) => Font::default(),
 		_ => return (first_widgets, second_widgets),
 	};
-	let font = selected.and_then(|resource_id| fonts.id_font(resources, resource_id)).unwrap_or_default();
-
-	let mut file_fonts: Vec<(Font, ResourceId)> = resources
-		.registry
-		.resolved()
-		.filter_map(|info| Some((fonts.id_font(resources, info.id)?, info.id)))
-		.filter(|(file_font, _)| !fonts.font_catalog.iter().any(|family| family.name == file_font.font_family))
-		.collect();
-	file_fonts.sort_by(|(a, a_id), (b, b_id)| (&a.font_family, &a.font_style, Some(*a_id) != selected, a_id).cmp(&(&b.font_family, &b.font_style, Some(*b_id) != selected, b_id)));
-	file_fonts.dedup_by(|(a, _), (b, _)| a == b);
-
-	let file_families: Vec<&(Font, ResourceId)> = file_fonts
-		.chunk_by(|(a, _), (b, _)| a.font_family == b.font_family)
-		.map(|styles| styles.iter().find(|(file_font, _)| file_font.font_style == font.font_style).unwrap_or(&styles[0]))
-		.collect();
-	let catalog_family = fonts.font_catalog.iter().find(|family| family.name == font.font_family);
 
 	let filters = vec![TypeFilter::font()];
-	let file_drop_action = IngestAction::resource_input(document_id, node_id, index, &filters);
 	let load_button = IconButton::new("FileImport", 24)
 		.tooltip_label("Load Font File")
 		.tooltip_description("Use a font that isn't in the list by loading its .ttf or .otf file. The font is saved with the document.")
@@ -1073,112 +1047,80 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		.widget_instance();
 
 	{
-		let file_family_entries = file_families
-			.iter()
-			.map(|(file_font, resource_id)| {
-				let resource_id = *resource_id;
-				MenuListEntry::new(file_font.font_family.clone())
-					.label(file_font.font_family.clone())
-					.tooltip_description("Loaded from a font file and saved with the document.")
-					.on_update(move |_| assign_resource_message(node_id, index, resource_id))
-					.on_commit(move |_| {
-						DeferMessage::AfterGraphRun {
-							messages: vec![assign_resource_message(node_id, index, resource_id), commit_value(&())],
-						}
-						.into()
-					})
-			})
-			.collect::<Vec<_>>();
-		let catalog_family_entries = fonts
-			.font_catalog
-			.iter()
-			.map(|family| {
-				let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&font.font_style, "");
-				let new_font = Font::new(family.name.clone(), family.closest_style(weight, italic).to_named_style());
-				let commit_font = new_font.clone();
-				MenuListEntry::new(family.name.clone())
-					.label(family.name.clone())
-					.font(family.closest_style(400, false).preview_url(&family.name))
-					.on_update(move |_| assign_font_message(node_id, new_font.clone()))
-					.on_commit(move |_| {
-						DeferMessage::AfterGraphRun {
-							messages: vec![assign_font_message(node_id, commit_font.clone()), commit_value(&())],
-						}
-						.into()
-					})
-			})
-			.collect::<Vec<_>>();
-		let selected_family = file_families
-			.iter()
-			.position(|(file_font, _)| file_font.font_family == font.font_family)
-			.or_else(|| fonts.font_catalog.iter().position(|family| family.name == font.font_family).map(|i| i + file_families.len()));
-		let family_entries = if file_family_entries.is_empty() {
-			vec![catalog_family_entries]
-		} else {
-			vec![file_family_entries, catalog_family_entries]
-		};
-
 		first_widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			load_button,
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			DropdownInput::new(family_entries)
-				.selected_index(selected_family.map(|i| i as u32))
-				.virtual_scrolling(true)
-				.on_file_drop(move |file| {
-					IngestMessage::Ingest {
-						content: DataTransferItem::from_file(PathBuf::from(&file.name), Some(file.mime_type.as_str()).filter(|mime| !mime.is_empty()), file.data.clone()).into(),
-						action: file_drop_action.clone(),
-					}
-					.into()
-				})
-				.widget_instance(),
-		]);
-
-		let (style_entries, selected_style) = match catalog_family {
-			Some(family) => {
-				let build_entry = |style: &FontCatalogStyle| {
-					let font_style = style.to_named_style();
-					let font_family = font.font_family.clone();
-					let new_font = Font::new(font_family, font_style.clone());
-					MenuListEntry::new(font_style.clone())
-						.label(font_style)
-						.on_update(move |_| assign_font_message(node_id, new_font.clone()))
-						.on_commit(commit_value)
-				};
-				let not_italic = family.styles.iter().filter(|style| !style.italic);
-				let italic = family.styles.iter().filter(|style| style.italic);
-
-				(
-					vec![not_italic.clone().map(build_entry).collect::<Vec<_>>(), italic.clone().map(build_entry).collect::<Vec<_>>()],
-					not_italic.chain(italic).position(|style| style.to_named_style() == font.font_style),
-				)
-			}
-			None => {
-				let file_styles = file_fonts.iter().filter(|(file_font, _)| file_font.font_family == font.font_family);
-				let entries = file_styles
-					.clone()
-					.map(|(file_font, resource_id)| {
-						let resource_id = *resource_id;
-						MenuListEntry::new(file_font.font_style.clone())
-							.label(file_font.font_style.clone())
-							.on_update(move |_| assign_resource_message(node_id, index, resource_id))
-							.on_commit(commit_value)
+			DropdownInput::new(vec![
+				fonts
+					.font_catalog
+					.iter()
+					.map(|family| {
+						let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&font.font_style, "");
+						let new_font = Font::new(family.name.clone(), family.closest_style(weight, italic).to_named_style());
+						let commit_font = new_font.clone();
+						MenuListEntry::new(family.name.clone())
+							.label(family.name.clone())
+							.font(family.closest_style(400, false).preview_url(&family.name))
+							.on_update(move |_| assign_font_message(node_id, new_font.clone()))
+							.on_commit(move |_| {
+								DeferMessage::AfterGraphRun {
+									messages: vec![assign_font_message(node_id, commit_font.clone()), commit_value(&())],
+								}
+								.into()
+							})
 					})
-					.collect::<Vec<_>>();
-
-				(
-					if entries.is_empty() { Vec::new() } else { vec![entries] },
-					file_styles.clone().position(|(file_font, _)| file_font.font_style == font.font_style),
-				)
-			}
-		};
+					.collect::<Vec<_>>(),
+			])
+			.selected_index(fonts.font_catalog.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
+			// A font loaded from a file is in no catalog family, so it's only named until a catalog font is picked in its place
+			.placeholder(font.font_family.clone())
+			.virtual_scrolling(true)
+			.widget_instance(),
+		]);
 
 		let mut second_row = vec![TextLabel::new("").widget_instance()];
 		add_blank_assist(&mut second_row);
 		second_row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			DropdownInput::new(style_entries).selected_index(selected_style.map(|i| i as u32)).widget_instance(),
+			DropdownInput::new({
+				fonts
+					.font_catalog
+					.iter()
+					.find(|family| family.name == font.font_family)
+					.map(|family| {
+						let build_entry = |style: &FontCatalogStyle| {
+							let font_style = style.to_named_style();
+							let font_family = font.font_family.clone();
+							let new_font = Font::new(font_family, font_style.clone());
+							MenuListEntry::new(font_style.clone())
+								.label(font_style)
+								.on_update(move |_| assign_font_message(node_id, new_font.clone()))
+								.on_commit(commit_value)
+						};
+
+						vec![
+							family.styles.iter().filter(|style| !style.italic).map(build_entry).collect::<Vec<_>>(),
+							family.styles.iter().filter(|style| style.italic).map(build_entry).collect::<Vec<_>>(),
+						]
+					})
+					.filter(|styles| !styles.is_empty())
+					.unwrap_or_default()
+			})
+			.selected_index(
+				fonts
+					.font_catalog
+					.iter()
+					.find(|family| family.name == font.font_family)
+					.and_then(|family| {
+						let not_italic = family.styles.iter().filter(|style| !style.italic);
+						let italic = family.styles.iter().filter(|style| style.italic);
+						not_italic.chain(italic).position(|style| style.to_named_style() == font.font_style)
+					})
+					.map(|i| i as u32),
+			)
+			.placeholder(font.font_style.clone())
+			.widget_instance(),
 		]);
 		second_widgets = Some(second_row);
 	}
