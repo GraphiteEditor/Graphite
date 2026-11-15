@@ -13,7 +13,7 @@ pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_animation::AnimationCurve;
 use graphene_application_io::resource::ResourceHash;
 use graphene_application_io::resource::ResourceId;
-use graphic_types::raster_types::{CPU, Image, Raster};
+use graphic_types::raster_types::{CPU, GPU, Image, Raster};
 use graphic_types::vector_types::vector::misc::BoxCorners;
 use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::{Gradient, GradientRamp};
@@ -36,6 +36,7 @@ macro_rules! for_each_item_type_default {
 		$action!(Vector);
 		$action!(f64);
 		$action!(Raster<CPU>);
+		$action!(Raster<GPU>);
 		$action!(Graphic);
 		$action!(Color);
 		$action!(Gradient);
@@ -52,6 +53,7 @@ macro_rules! for_each_list_type_default {
 		$action!(Graphic);
 		$action!(Artboard);
 		$action!(Raster<CPU>);
+		$action!(Raster<GPU>);
 		$action!(Vector);
 		$action!(String);
 		$action!(Color);

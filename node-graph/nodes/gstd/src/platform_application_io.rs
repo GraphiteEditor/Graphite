@@ -301,6 +301,13 @@ fn wgpu_executor(_: impl Ctx, #[scope(application_io::IDENTIFIER)] application_i
 	application_io.element().gpu_executor().cloned().map(Item::new_from_element).ok_or(::wgpu_executor::NoGpuError)
 }
 
+/// The GPU executor if there is one, for nodes that also work without it.
+#[node_macro::node(category(""), inject_scope)]
+fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<Option<::wgpu_executor::WgpuExecutor>> {
+	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor()).cloned();
+	Item::new_from_element(executor)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

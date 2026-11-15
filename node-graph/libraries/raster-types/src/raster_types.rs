@@ -285,6 +285,7 @@ pub use gpu::{Texture, TextureWeakRef};
 mod gpu {
 	use super::*;
 	use crate::raster_types::__private::Sealed;
+	use glam::UVec2;
 	use std::sync::Arc;
 
 	#[derive(Clone, Debug, PartialEq, Eq, Hash, DynAny)]
@@ -349,9 +350,9 @@ mod gpu {
 		}
 	}
 
-	#[derive(Clone, Debug, PartialEq, Hash)]
+	#[derive(Clone, Debug, Default, PartialEq, Hash)]
 	pub struct GPU {
-		pub texture: Texture,
+		texture: Option<Texture>,
 	}
 
 	impl core_types::CacheHash for GPU {
@@ -365,17 +366,22 @@ mod gpu {
 
 	impl Storage for Raster<GPU> {
 		fn is_empty(&self) -> bool {
-			self.texture.width() == 0 || self.texture.height() == 0
+			let size = self.size();
+			size.x == 0 || size.y == 0
 		}
 	}
 
 	impl Raster<GPU> {
 		pub fn new_gpu(texture: impl Into<Texture>) -> Self {
-			Self::new(GPU { texture: texture.into() })
+			Self::new(GPU { texture: Some(texture.into()) })
 		}
 
-		pub fn data(&self) -> &wgpu::Texture {
-			&self.texture
+		pub fn texture(&self) -> Option<&Texture> {
+			self.texture.as_ref()
+		}
+
+		pub fn size(&self) -> UVec2 {
+			self.texture.as_ref().map_or(UVec2::ZERO, |texture| UVec2::new(texture.width(), texture.height()))
 		}
 	}
 }
@@ -385,7 +391,7 @@ mod gpu {
 	use super::*;
 	use crate::raster_types::__private::Sealed;
 
-	#[derive(Clone, Debug, PartialEq, Hash, core_types::CacheHash)]
+	#[derive(Clone, Debug, Default, PartialEq, Hash, core_types::CacheHash)]
 	pub struct GPU;
 
 	impl Sealed for Raster<GPU> {}

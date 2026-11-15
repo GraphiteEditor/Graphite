@@ -4,3 +4,8 @@
 mod graphene_core;
 mod math_nodes;
 mod raster_nodes;
+
+/// The scope input of nodes that came to take the GPU pipeline, the identifier frozen as it was when they did.
+fn raster_kernel_pipeline() -> migration_core::NodeInput {
+	migration_core::NodeInput::Scope("raster_nodes::raster_kernel::RasterKernelPipelineNode".into())
+}

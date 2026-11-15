@@ -1,4 +1,31 @@
 //! Migrations of the nodes in `raster_nodes`.
 
+mod black_and_white_v1;
+mod blur_v1;
+mod brightness_contrast_v1;
+mod channel_mixer_v1;
+mod channels_to_image_v1;
+mod color_balance_v1;
+mod color_lookup_v1;
+mod color_overlay_v1;
+mod curves_v1;
+mod dehaze_v1;
+mod desaturate_v1;
+mod exposure_v1;
+mod extend_image_to_bounds_v1;
+mod gamma_correction_v1;
+mod gradient_map_v1;
+mod hue_saturation_v1;
+mod image_color_palette_v1;
+mod invert_v1;
+mod levels_v1;
+mod make_opaque_v1;
+mod mask_v1;
+mod median_filter_v1;
 mod mix_colors_from_mix_node;
+mod photo_filter_v1;
+mod posterize_v1;
 mod renames;
+mod selective_color_v1;
+mod threshold_v1;
+mod vibrance_v1;

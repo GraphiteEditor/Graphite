@@ -694,7 +694,7 @@ impl Color {
 		Color::blend_hardlight(c_s, c_b)
 	}
 
-	/// Per-channel "Vivid Light" blend.
+	/// Per-channel "Vivid Light" blend: "Color Burn" of the backdrop by the doubled source in its darker half, and "Color Dodge" in its lighter half.
 	pub fn blend_vivid_light(c_b: f32, c_s: f32) -> f32 {
 		if c_s <= 0.5 {
 			Color::blend_color_burn(c_b, 2. * c_s)

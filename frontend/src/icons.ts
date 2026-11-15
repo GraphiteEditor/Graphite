@@ -379,6 +379,7 @@ import NodeTriangulate from "/../branding/assets/16x16-nodes/node-triangulate.sv
 import NodeTurtlePath from "/../branding/assets/16x16-nodes/node-turtle-path.svg";
 import NodeUngroup from "/../branding/assets/16x16-nodes/node-ungroup.svg";
 import NodeUnweld from "/../branding/assets/16x16-nodes/node-unweld.svg";
+import NodeUploadTexture from "/../branding/assets/16x16-nodes/node-upload-texture.svg";
 import NodeVaryFillColors from "/../branding/assets/16x16-nodes/node-vary-fill-colors.svg";
 import NodeVaryStrokeColors from "/../branding/assets/16x16-nodes/node-vary-stroke-colors.svg";
 import NodeVec2ToNumbers from "/../branding/assets/16x16-nodes/node-vec2-to-numbers.svg";
@@ -663,6 +664,7 @@ export const ICON_16X16_NODES = {
 	NodeTurtlePath: { svg: NodeTurtlePath, size: 16 },
 	NodeUngroup: { svg: NodeUngroup, size: 16 },
 	NodeUnweld: { svg: NodeUnweld, size: 16 },
+	NodeUploadTexture: { svg: NodeUploadTexture, size: 16 },
 	NodeVaryFillColors: { svg: NodeVaryFillColors, size: 16 },
 	NodeVaryRotations: { svg: NodeVaryRotations, size: 16 },
 	NodeVaryScales: { svg: NodeVaryScales, size: 16 },
