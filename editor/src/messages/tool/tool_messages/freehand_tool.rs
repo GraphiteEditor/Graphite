@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::SNAP_POINT_TOLERANCE;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::open_path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -312,7 +312,7 @@ impl Fsm for FreehandToolFsmState {
 
 				let parent = document.new_layer_bounding_artboard(input, viewport);
 
-				let node_type = resolve_network_node_type("Path").expect("Path node does not exist");
+				let node_type = resolve_proto_node_type(graphene_std::vector::path::IDENTIFIER).expect("Path node does not exist");
 				let node = node_type.default_node_template();
 				let nodes = vec![(NodeId(0), node)];
 
@@ -454,7 +454,7 @@ mod test_freehand {
 			.filter_map(|layer| {
 				let graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
 				// Only get layers with path nodes
-				let _ = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
+				let _ = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER))?;
 
 				let vector = document.network_interface.compute_modified_vector(layer)?;
 				let transform = document.metadata().transform_to_viewport(layer);

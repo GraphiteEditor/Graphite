@@ -872,7 +872,7 @@ async fn demo_artwork_vector_modifications_still_apply() {
 
 		let document = editor.active_document();
 		let network = &document.network_interface;
-		let path_definition = DefinitionIdentifier::Network("Path".into());
+		let path_definition = DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER);
 		let mut path_layers = 0;
 		let mut any_curve = false;
 

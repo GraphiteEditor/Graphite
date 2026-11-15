@@ -1,5 +1,7 @@
-use crate::{Compiler, Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector};
+use crate::{Compiler, Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector, encode};
+use document_graph_storage::attributes::attr::node::REFLECTION_METADATA;
 use document_graph_storage::{Implementation, InputSlot, NetworkId, NodeId, NodeInput, Registry, TimeStamp};
+use serde::Serialize;
 use std::ops::Deref;
 
 /// Which part of the registry around an anchor a view reads or edits. A migration's footprint is the union of its views' regions.
@@ -326,6 +328,16 @@ impl Inputs {
 	pub fn push(&mut self, input: NodeInput) {
 		self.edited = true;
 		self.slots.push(new_slot(input));
+		self.origins.push(None);
+	}
+
+	/// Add a slot the compiler fills in with what `metadata` names, a frozen mirror value such as the node's path.
+	pub fn push_reflection<T: Serialize>(&mut self, metadata: T) {
+		let mut slot = new_slot(NodeInput::Reflection);
+		slot.attributes.set(REFLECTION_METADATA, encode(&metadata), TimeStamp::ORIGIN);
+
+		self.edited = true;
+		self.slots.push(slot);
 		self.origins.push(None);
 	}
 

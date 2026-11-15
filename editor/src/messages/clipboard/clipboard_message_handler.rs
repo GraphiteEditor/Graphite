@@ -1,7 +1,7 @@
 use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::portfolio::document::SelectionParts;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -429,7 +429,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					let mut layers = Vec::new();
 
 					for (_, new_vector, transform) in paths {
-						let Some(node_type) = resolve_network_node_type("Path") else {
+						let Some(node_type) = resolve_proto_node_type(graphene_std::vector::path::IDENTIFIER) else {
 							error!("Path node does not exist");
 							continue;
 						};

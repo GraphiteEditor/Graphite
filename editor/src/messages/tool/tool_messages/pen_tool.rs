@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, HIDE_HANDLE_DISTANCE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -1434,7 +1434,7 @@ impl PenToolData {
 		}
 
 		// New path layer
-		let node_type = resolve_network_node_type("Path").expect("Path node does not exist");
+		let node_type = resolve_proto_node_type(graphene_std::vector::path::IDENTIFIER).expect("Path node does not exist");
 		let nodes = vec![(NodeId(0), node_type.default_node_template())];
 
 		let parent = document.new_layer_bounding_artboard(input, viewport);
@@ -2526,7 +2526,7 @@ mod test_pen_tool {
 	/// The single Pen-drawn path layer and its vector, or `None` once the layer has been undone away.
 	fn drawn_path(editor: &EditorTestUtils) -> Option<(LayerNodeIdentifier, VectorGeometry)> {
 		let document = editor.active_document();
-		let path_identifier = DefinitionIdentifier::Network("Path".into());
+		let path_identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER);
 		let mut path_layers = document
 			.metadata()
 			.all_layers()

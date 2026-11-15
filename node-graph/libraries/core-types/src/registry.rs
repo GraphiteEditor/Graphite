@@ -76,6 +76,7 @@ pub enum RegistryValueSource {
 	Default(&'static str),
 	Scope(&'static str),
 	SourceId,
+	NodePath,
 }
 
 #[derive(Clone, Debug)]

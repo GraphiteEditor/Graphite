@@ -1,7 +1,8 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage, RenderStatus};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::NodeEvaluationError;
 use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
@@ -10,12 +11,12 @@ use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::color::SRGBA8;
-use graphene_std::list::List;
+use graphene_std::list::{Item, List};
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
-use graphene_std::vector::{Vector, VectorGeometry, graphic_types, no_paths, paths_from_list_row_attributes};
-use graphene_std::{ATTR_TRANSFORM, ContextOverrides, Graphic};
+use graphene_std::vector::{Vector, VectorGeometry, graphic_types, no_paths, path, paths_from_list_row_attributes};
+use graphene_std::{ATTR_TRANSFORM, ContextOverrides, Graphic, NodeParameter};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
@@ -38,7 +39,6 @@ pub struct ExecutionResponse {
 	responses: VecDeque<FrontendMessage>,
 	/// The layers whose thumbnails the runtime let go of, which it renders anew if they have content to show again.
 	dropped_thumbnails: Vec<NodeId>,
-	vector_modify: HashMap<NodeId, VectorGeometry>,
 	/// The latest result of each observation.
 	observations: HashMap<ObservationKey, InspectResult>,
 }
@@ -48,6 +48,8 @@ pub struct ExecutionResponse {
 pub enum ObservationKey {
 	/// The node the Data panel inspects.
 	DataPanel,
+	/// The content of a 'Path' node, which is the geometry the Pen and Path tools edit.
+	PathContent(NodeId),
 	// TODO: Eventually remove this document upgrade code
 	/// The "Fill" node whose geometry a gradient migration measures.
 	FillMeasurement,
@@ -258,7 +260,7 @@ impl NodeGraphExecutor {
 				resources,
 				previewed: Vec::new(),
 				layers: document.network_interface.layer_paths(),
-				observations: HashMap::new(),
+				observations: self.observations(&document.network_interface),
 			}))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
@@ -288,7 +290,7 @@ impl NodeGraphExecutor {
 					resources,
 					previewed,
 					layers,
-					observations: self.observations(),
+					observations: self.observations(&document.network_interface),
 				}))
 				.map_err(|e| e.to_string())?;
 		} else if inspected_node_changed {
@@ -314,8 +316,9 @@ impl NodeGraphExecutor {
 	}
 
 	/// Every observation a graph update of the document starts with.
-	fn observations(&self) -> HashMap<ObservationKey, Observation> {
-		self.data_panel_observation().map(|observation| (ObservationKey::DataPanel, observation)).into_iter().collect()
+	fn observations(&self, network_interface: &NodeNetworkInterface) -> HashMap<ObservationKey, Observation> {
+		let data_panel = self.data_panel_observation().map(|observation| (ObservationKey::DataPanel, observation));
+		data_panel.into_iter().chain(path_content_observations(network_interface)).collect()
 	}
 
 	/// Adds an evaluate request for whatever current network is cached.
@@ -483,7 +486,7 @@ impl NodeGraphExecutor {
 				resources,
 				previewed,
 				layers: document.network_interface.layer_paths(),
-				observations: self.observations(),
+				observations: self.observations(&document.network_interface),
 			}))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
@@ -518,7 +521,6 @@ impl NodeGraphExecutor {
 						result,
 						responses: existing_responses,
 						dropped_thumbnails,
-						vector_modify,
 						mut observations,
 					} = *execution_response;
 					all_dropped_thumbnails.extend(dropped_thumbnails.iter().copied());
@@ -645,7 +647,7 @@ impl NodeGraphExecutor {
 							None => responses.add(response),
 						}
 					}
-					document.network_interface.update_vector_modify(vector_modify);
+					document.network_interface.update_vector_modify(path_contents(&observations));
 
 					match (node_graph_output, execution_context.export_config) {
 						(Some(node_graph_output), Some(export_config)) => self.process_export(node_graph_output, export_config, document, responses),
@@ -1179,6 +1181,37 @@ fn measure_fill_geometry(data: &Arc<dyn Any + Send + Sync>) -> Option<(DAffine2,
 	None
 }
 
+fn path_content_observations(network_interface: &NodeNetworkInterface) -> impl Iterator<Item = (ObservationKey, Observation)> {
+	let path_nodes = network_interface.node_paths_with_reference(&DefinitionIdentifier::ProtoNode(path::IDENTIFIER));
+
+	path_nodes.into_iter().filter_map(|node_path| {
+		let key = ObservationKey::PathContent(*node_path.last()?);
+		let observation = Observation {
+			node_path,
+			connector: ObservedConnector::Input(path::ContentInput::INDEX),
+			overrides: ContextOverrides::default(),
+		};
+		Some((key, observation))
+	})
+}
+
+/// The incoming geometry of each 'Path' node, read from its observed content.
+fn path_contents(observations: &HashMap<ObservationKey, InspectResult>) -> HashMap<NodeId, VectorGeometry> {
+	observations
+		.iter()
+		.filter_map(|(key, result)| {
+			let ObservationKey::PathContent(path_node) = *key else { return None };
+			let value = result.data.as_ref()?;
+
+			let geometry = match value.downcast_ref::<List<Vector>>() {
+				Some(list) => VectorGeometry::new(list.element(0).cloned().unwrap_or_default(), paths_from_list_row_attributes(list, 0).cloned().unwrap_or_default()),
+				None => VectorGeometry::from_item(value.downcast_ref::<Item<Vector>>()?),
+			};
+			Some((path_node, geometry))
+		})
+		.collect()
+}
+
 // Re-export for usage by tests in other modules
 #[cfg(test)]
 pub use test::Instrumented;
@@ -1224,8 +1257,9 @@ mod test {
 					monitor_node_ids.push(path.clone());
 					path.pop();
 
-					// A None value is a unit wire with nothing to record and no Monitor row, so its slot stays a dead path that introspects as absent
-					if matches!(input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, graph_craft::document::value::TaggedValue::None)) {
+					// A None value has nothing to record and a reflection must stay on the node it describes, so such a slot stays a dead path that introspects as absent
+					let is_none = matches!(input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, graph_craft::document::value::TaggedValue::None));
+					if is_none || matches!(input, NodeInput::Reflection(_)) {
 						continue;
 					}
 

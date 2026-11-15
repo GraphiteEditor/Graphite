@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_network_node_type, resolve_proto_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::open_path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -442,7 +442,7 @@ impl Fsm for SplineToolFsmState {
 
 				let parent = document.new_layer_bounding_artboard(input, viewport);
 
-				let path_node_type = resolve_network_node_type("Path").expect("Path node does not exist");
+				let path_node_type = resolve_proto_node_type(graphene_std::vector::path::IDENTIFIER).expect("Path node does not exist");
 				let path_node = path_node_type.default_node_template();
 				let spline_node_type = resolve_proto_node_type(graphene_std::vector::spline::IDENTIFIER).expect("Spline node does not exist");
 				let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);

@@ -769,56 +769,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			),
 			inspector: None,
 		},
-		DocumentNodeDefinition {
-			identifier: "Path",
-			version: 1,
-			category: "Vector: Geometry",
-			icon: Some("NodePath"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(1), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![NodeInput::import(generic!(T), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-							call_argument: generic!(T),
-							skip_deduplication: true,
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::node(NodeId(0), 0),
-								NodeInput::import(concrete!(graphene_std::vector::VectorModification), 1),
-								NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
-							],
-							call_argument: generic!(T),
-							implementation: NodeTemplateImplementation::ProtoNode(vector::path_modify::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![
-					NodeInput::type_default(item!(Vector), true),
-					NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
-				],
-				input_metadata: vec![
-					("Content", "The original shape that edits made with the Pen and Path tools are applied to.").into(),
-					("Modification", "The edits made with the Pen and Path tools, stored as changes to points and segments.").into(),
-				],
-				output_names: vec!["Modified".to_string()],
-				output_descriptions: vec!["The shape with the Pen and Path tool edits applied.".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("Holds the edits made with the Pen and Path tools, applying them to the incoming shape."),
-			inspector: None,
-		},
 	];
 
 	document_node_derive::post_process_nodes(custom)

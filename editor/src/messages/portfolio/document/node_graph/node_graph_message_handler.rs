@@ -183,7 +183,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::AddPathNode => {
 				if let Some(layer) = make_path_editable_is_allowed(network_interface) {
 					responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
-						node_type: DefinitionIdentifier::Network("Path".into()),
+						node_type: DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER),
 						layer,
 					});
 					responses.add(EventMessage::SelectionChanged);

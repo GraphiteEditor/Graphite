@@ -62,6 +62,19 @@ impl NodeNetworkInterface {
 		layer_paths
 	}
 
+	/// The path of every node in the document's networks made from the definition.
+	pub fn node_paths_with_reference(&self, reference: &DefinitionIdentifier) -> Vec<Vec<NodeId>> {
+		let mut node_paths = Vec::new();
+		self.for_each_network(&mut |network_path, network_metadata| {
+			for node_id in network_metadata.persistent_metadata.node_metadata.keys() {
+				if self.reference(node_id, network_path).as_ref() == Some(reference) {
+					node_paths.push([network_path, &[*node_id]].concat());
+				}
+			}
+		});
+		node_paths
+	}
+
 	fn for_each_layer(&self, visit: &mut impl FnMut(&[NodeId], NodeId)) {
 		self.for_each_network(&mut |network_path, network_metadata| {
 			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {

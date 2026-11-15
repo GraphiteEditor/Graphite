@@ -84,12 +84,14 @@ You ask for what you need through the function's parameters, in any order. The f
 | `&Node` | The anchor before migration | `id()`, `inputs()`, and the stored node's other accessors |
 | `&Graph` | The anchor's network before migration | `node(id)`, `declaration(id)`, `consumers(output)` |
 | `Option<&dyn Compiler>` | What only the compiler can tell about the state before migration, see [Asking the compiler](#asking-the-compiler) | `input_type(node, slot)` |
-| `&mut Inputs` | The anchor's input slots | `set`, `insert`, `push`, `remove`, `truncate`, `len` |
+| `&mut Inputs` | The anchor's input slots | `set`, `insert`, `push`, `push_reflection`, `remove`, `truncate`, `len` |
 | `&mut Upstream` | Nodes feeding the anchor | `add_node`, `add_node_keyed`, `remove_node` |
 | `&mut Downstream` | Whatever reads the anchor's outputs | `consumers`, `add_node`, `add_node_keyed`, `connect` |
 | `&mut Target` | Which declaration the anchor becomes, see [Choosing a target](#choosing-a-target) | `set` |
 
 Reads always see the old document. `node.inputs()` returns the old layout however many edits you've made, and nodes you add never show up in `consumers`. `Inputs` edits apply in order to the layout being built. After `inputs.insert(1, ...)`, later `Inputs` calls see the old slot 1 as slot 2. `node.inputs()[1]` is still the old slot 1.
+
+An input the compiler fills in, like a node's own path, is added with `inputs.push_reflection(...)`, which takes a frozen mirror of the `DocumentNodeMetadata` variant it reflects.
 
 ### Values
 

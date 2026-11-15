@@ -81,6 +81,7 @@ pub enum ParsedValueSource {
 	Default(TokenStream2),
 	Scope(Box<Expr>),
 	SourceId,
+	NodePath,
 }
 
 // #[widget(ParsedWidgetOverride::Hidden)]
@@ -174,10 +175,10 @@ impl ParsedField {
 		}
 	}
 
-	/// Whether the field is environment rather than an argument: `#[data]` state or a `#[scope]`-injected wire.
+	/// Whether the field is environment rather than an argument: `#[data]` state, a `#[scope]`-injected wire, or a `#[source_id]` or `#[node_path]` value the compiler fills in.
 	/// Environment fields never classify the node, never supply the element-wise frame, and broadcast by clone.
 	pub(crate) fn is_environment(&self) -> bool {
-		self.is_data_field || matches!(self.ty.value_source(), ParsedValueSource::Scope(_) | ParsedValueSource::SourceId)
+		self.is_data_field || matches!(self.ty.value_source(), ParsedValueSource::Scope(_) | ParsedValueSource::SourceId | ParsedValueSource::NodePath)
 	}
 }
 
@@ -879,6 +880,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	// Gives a synchronous node its `SourceId`, as async nodes get it, so it can bump its own generation
 	let source_id = extract_attribute(attrs, "source_id").is_some();
 
+	// Gives a node the path of the document node it was placed as
+	let node_path = extract_attribute(attrs, "node_path").is_some();
+
 	// Validate data field attributes
 	if is_data_field {
 		if default_value.is_some() {
@@ -905,6 +909,18 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		if source_id {
 			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[source_id] attribute"));
 		}
+		if node_path {
+			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[node_path] attribute"));
+		}
+	}
+	if source_id && node_path {
+		return Err(Error::new_spanned(&pat_ident, "Cannot have both `source_id` and `node_path` attributes"));
+	}
+	if exposed && (source_id || node_path) {
+		return Err(Error::new_spanned(
+			&pat_ident,
+			"Inputs the compiler fills in (#[source_id] or #[node_path]) cannot be exposed (#[expose]). They aren't set in the graph",
+		));
 	}
 	if exposed && ident.to_string().starts_with('_') {
 		return Err(Error::new_spanned(
@@ -916,9 +932,11 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
 		(Some(_), _) | (_, Some(_)) if source_id => return Err(Error::new_spanned(&pat_ident, "`source_id` cannot have a `default` or `scope` attribute")),
+		(Some(_), _) | (_, Some(_)) if node_path => return Err(Error::new_spanned(&pat_ident, "`node_path` cannot have a `default` or `scope` attribute")),
 		(Some(default_value), _) => ParsedValueSource::Default(default_value),
 		(_, Some(scope)) => ParsedValueSource::Scope(Box::new(scope)),
 		_ if source_id => ParsedValueSource::SourceId,
+		_ if node_path => ParsedValueSource::NodePath,
 		_ => ParsedValueSource::None,
 	};
 
@@ -1875,6 +1893,24 @@ mod tests {
 				cache: i32,
 			) -> i32 {
 				input
+			}
+		);
+		parse_node_fn(attr, input).unwrap();
+	}
+
+	#[test]
+	#[should_panic(expected = "Inputs the compiler fills in (#[source_id] or #[node_path]) cannot be exposed (#[expose])")]
+	fn test_exposed_node_path() {
+		let attr = quote!(category("Invalid"));
+		let input = quote!(
+			fn invalid_node(
+				_: impl Ctx,
+				content: Item<f64>,
+				#[expose]
+				#[node_path]
+				node_path: Item<NodeIdPath>,
+			) -> Item<f64> {
+				content
 			}
 		);
 		parse_node_fn(attr, input).unwrap();
