@@ -65,9 +65,9 @@ const DEFAULT_ROWS_IN_VIEW: Range<usize> = 0..100;
 impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanelMessageHandler {
 	fn process_message(&mut self, message: DataPanelMessage, responses: &mut VecDeque<Message>, context: DataPanelMessageContext) {
 		match message {
-			DataPanelMessage::UpdateLayout { mut inspect_result } => {
-				self.introspected_data = inspect_result.take_data();
-				self.introspected_node_path = inspect_result.inspect_node_path;
+			DataPanelMessage::UpdateLayout { inspect_result } => {
+				self.introspected_data = inspect_result.data;
+				self.introspected_node_path = inspect_result.node_path;
 				self.context = inspect_result.context;
 				self.update_layout(responses, context);
 			}

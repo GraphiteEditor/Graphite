@@ -333,10 +333,19 @@ impl BorrowTree {
 		self.context_features.get(&id).copied().unwrap_or_default()
 	}
 
+	/// The node feeding an input of the proto node at this path, looking past the nodes wrapping it under the same path such as 'Memoize'.
 	pub fn input_node(&self, node_path: &[NodeId], input_index: usize) -> Result<NodeId, IntrospectError> {
-		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
-		let (_, _, inputs) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
-		inputs.get(input_index).copied().ok_or(IntrospectError::NoData)
+		let (mut id, _) = *self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
+
+		loop {
+			let (_, _, inputs) = self.nodes.get(&id).ok_or(IntrospectError::ProtoNodeNotFound(id))?;
+			let wrapped = inputs.first().filter(|first| self.nodes.get(first).is_some_and(|(_, path, _)| **path == *node_path));
+
+			match wrapped {
+				Some(&wrapped) => id = wrapped,
+				None => return inputs.get(input_index).copied().ok_or(IntrospectError::NoData),
+			}
+		}
 	}
 
 	/// The context this node was last evaluated with in the graph.
