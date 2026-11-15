@@ -627,6 +627,27 @@ impl NodeNetworkMetadata {
 	}
 }
 
+/// Serializes the definitions table without each catalog entry's interface, which the catalog owns rather than the document.
+fn serialize_definitions<S: serde::Serializer>(definitions: &HashMap<NetworkId, NodeNetworkMetadata>, serializer: S) -> Result<S::Ok, S::Error> {
+	use serde::ser::SerializeMap;
+
+	let mut map = serializer.serialize_map(Some(definitions.len()))?;
+	for (id, metadata) in definitions {
+		if !super::catalog::is_protected(*id) {
+			map.serialize_entry(id, metadata)?;
+			continue;
+		}
+
+		let mut metadata = metadata.clone();
+		let persistent = &mut metadata.persistent_metadata;
+		persistent.import_metadata.clear();
+		persistent.export_names.clear();
+		persistent.export_descriptions.clear();
+		map.serialize_entry(id, &metadata)?;
+	}
+	map.end()
+}
+
 pub(super) type InterfaceMetadata = (Vec<InputMetadata>, Vec<String>, Vec<String>);
 
 pub(super) fn fill_empty_interface(network_metadata: &mut NodeNetworkPersistentMetadata, (import_metadata, export_names, export_descriptions): InterfaceMetadata) {
@@ -664,7 +685,7 @@ pub struct NodeNetworkPersistentMetadata {
 	/// Stack of selection snapshots for future history states.
 	#[serde(skip)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
-	#[serde(default, skip_serializing_if = "HashMap::is_empty")]
+	#[serde(default, skip_serializing_if = "HashMap::is_empty", serialize_with = "serialize_definitions")]
 	pub definitions: HashMap<NetworkId, NodeNetworkMetadata>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub import_metadata: Vec<InputMetadata>,

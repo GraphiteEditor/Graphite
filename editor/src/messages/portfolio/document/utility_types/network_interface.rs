@@ -189,16 +189,25 @@ impl NodeNetworkInterface {
 
 	/// Gives each catalog entry the shipped interface, which the catalog owns rather than the document.
 	pub fn adopt_catalog_interfaces(&mut self) {
-		self.migrate_metadata(|metadata, _| {
-			for (id, definition_metadata) in &mut metadata.persistent_metadata.definitions {
-				let Some(shipped) = catalog::entry(*id) else { continue };
-				let shipped = shipped.metadata.persistent_metadata;
+		let ids: Vec<NetworkId> = self.document_network().definitions.keys().copied().collect();
+		for id in ids {
+			self.adopt_catalog_interface(id);
+		}
+	}
 
-				let persistent = &mut definition_metadata.persistent_metadata;
-				persistent.import_metadata = shipped.import_metadata;
-				persistent.export_names = shipped.export_names;
-				persistent.export_descriptions = shipped.export_descriptions;
-			}
+	/// Gives the table entry `id` the shipped interface if it is a catalog entry, which storage keeps none of.
+	pub(crate) fn adopt_catalog_interface(&mut self, id: NetworkId) {
+		let Some(shipped) = catalog::entry(id) else { return };
+		let shipped = shipped.metadata.persistent_metadata;
+
+		self.migrate_metadata(|metadata, _| {
+			let Some(definition_metadata) = metadata.persistent_metadata.definitions.get_mut(&id) else {
+				return;
+			};
+			let persistent = &mut definition_metadata.persistent_metadata;
+			persistent.import_metadata = shipped.import_metadata;
+			persistent.export_names = shipped.export_names;
+			persistent.export_descriptions = shipped.export_descriptions;
 		});
 	}
 

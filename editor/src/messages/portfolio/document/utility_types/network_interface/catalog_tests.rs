@@ -198,12 +198,24 @@ async fn a_saved_document_leaves_the_catalog_interface_to_the_catalog() {
 	assert!(view.export_names(Some(shipped)).is_empty());
 	assert!(view.export_descriptions(Some(shipped)).is_empty());
 
-	let mut reopened = round_trip_through_gdd(editor.active_document()).await.rebuilt;
-	reopened.give_diverged_catalog_entries_new_ids();
-	reopened.adopt_catalog_interfaces();
+	// The rebuild from storage, which undo and collaboration also go through, gives the interface back from the catalog
+	let reopened = round_trip_through_gdd(editor.active_document()).await.rebuilt;
 	let expected = editor.active_document().network_interface.displayed_input_name_and_description(&blends[0], 0, &[]);
 	assert_eq!(reopened.displayed_input_name_and_description(&blends[0], 0, &[]), expected);
 	assert!(reopened.validate_invariants().is_empty());
+}
+
+#[tokio::test]
+async fn the_document_json_leaves_the_catalog_interface_to_the_catalog() {
+	let (editor, blends) = editor_with_blends(1).await;
+	let shipped = entry_of(&editor, blends[0]);
+
+	let metadata = &editor.active_document().network_interface.document_network_metadata().persistent_metadata;
+	let json = serde_json::to_value(metadata).expect("the metadata should serialize");
+	let reloaded: super::NodeNetworkPersistentMetadata = serde_json::from_value(json).expect("the metadata should deserialize");
+
+	let entry = &reloaded.definitions[&shipped].persistent_metadata;
+	assert!(entry.import_metadata.is_empty() && entry.export_names.is_empty() && entry.export_descriptions.is_empty());
 }
 
 #[tokio::test]
@@ -305,4 +317,35 @@ async fn undoing_and_redoing_the_unlock_of_a_layer_keeps_its_nodes() {
 	assert_eq!(node_count(&editor), shipped, "redoing the unlock should bring back the copy");
 	assert!(!editor.active_document().network_interface.is_read_only(&path));
 	assert!(editor.active_document().network_interface.validate_invariants().is_empty());
+}
+
+/// A copied subgraph holding a built-in subgraph pastes into a document without that built-in, which the paste takes from the catalog.
+#[tokio::test]
+async fn a_subgraph_holding_a_catalog_node_pastes_into_a_document_without_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let custom = NodeId::new();
+	let blend = NodeId::new();
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.insert_node(custom, resolve_network_node_type("Custom Node").expect("Custom Node").default_node_template(), &[]);
+	interface.insert_node(blend, resolve_network_node_type("Blend").expect("Blend").default_node_template(), &[custom]);
+	let DocumentNodeImplementation::Definition(shipped) = interface.document_node(&blend, &[custom]).expect("the Blend").implementation else {
+		panic!("the Blend should name a table entry")
+	};
+	assert!(catalog::is_protected(shipped));
+
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![custom] }).await;
+	let clipboard = editor.copy_to_clipboard(NodeGraphMessage::Copy).await.expect("copying should write the clipboard");
+
+	editor.new_document().await;
+	editor.paste_from_clipboard(clipboard).await;
+
+	let interface = &editor.active_document().network_interface;
+	assert_eq!(interface.document_network().nodes.len(), 1, "the subgraph should be pasted");
+	assert!(
+		interface.document_network().definitions.contains_key(&shipped),
+		"the paste should bring in the built-in subgraph from the catalog"
+	);
+	assert!(interface.validate_invariants().is_empty());
 }

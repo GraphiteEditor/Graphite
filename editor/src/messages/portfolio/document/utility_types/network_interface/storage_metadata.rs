@@ -183,7 +183,9 @@ pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<Node
 	apply_entries_into_tree(&mut network_metadata, node_entries);
 	apply_network_entries_into_tree(&mut network_metadata, network_entries);
 
-	NodeNetworkInterface::from_trees(network, network_metadata)
+	let mut interface = NodeNetworkInterface::from_trees(network, network_metadata);
+	interface.adopt_catalog_interfaces();
+	interface
 }
 
 /// The node and its metadata from a single-node projection, patched like a whole rebuild's entry.

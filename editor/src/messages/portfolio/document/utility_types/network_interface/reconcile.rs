@@ -99,6 +99,7 @@ impl NodeNetworkInterface {
 				..Default::default()
 			};
 			self.apply_reconciled(location, vec![EditorDelta::Graph(RuntimeDelta::AddNetwork { id, network: Box::new(added) })], reconciled);
+			self.adopt_catalog_interface(id);
 
 			networks.insert(network);
 			for node in projection.network_nodes(network) {
@@ -142,7 +143,7 @@ impl NodeNetworkInterface {
 		if current_metadata.pinned_node_order != target.metadata.pinned_order {
 			deltas.push(change(NetworkMetadataChange::PinnedOrder(target.metadata.pinned_order.clone())));
 		}
-		// An empty list states nothing, since an older document keeps its interface on the instances
+		// An empty list states nothing, since a catalog entry's interface comes from the catalog rather than storage
 		let import_metadata: Vec<_> = target.metadata.import_metadata.iter().cloned().map(input_metadata_entry_to_runtime).collect();
 		if !import_metadata.is_empty() && current_metadata.import_metadata != import_metadata {
 			deltas.push(change(NetworkMetadataChange::ImportMetadata(import_metadata)));

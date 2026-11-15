@@ -235,6 +235,15 @@ impl EditorDelta {
 			}
 
 			EditorDelta::NetworkMetadata { network, change } => {
+				// A catalog entry's interface is the catalog's, so storage keeps none of it
+				let interface_change = matches!(
+					change,
+					NetworkMetadataChange::ImportMetadata(_) | NetworkMetadataChange::ExportNames(_) | NetworkMetadataChange::ExportDescriptions(_)
+				);
+				if interface_change && network.is_some_and(super::catalog::is_protected) {
+					return Ok(());
+				}
+
 				let delta = match change {
 					NetworkMetadataChange::Reference(reference) => AttributeDelta {
 						key: node_attr::ui::REFERENCE.to_string(),

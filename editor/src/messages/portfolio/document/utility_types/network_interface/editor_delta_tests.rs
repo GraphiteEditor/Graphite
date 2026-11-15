@@ -720,6 +720,22 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 		json_diff(&edited_metadata, &reconciled_metadata, "")
 	);
 
+	// The JSON leaves out each catalog entry's interface, which reconciling has to restore from the catalog
+	let catalog_interfaces = |interface: &super::NodeNetworkInterface| {
+		let definitions = &interface.document_network_metadata().persistent_metadata.definitions;
+		let mut interfaces: Vec<_> = definitions
+			.iter()
+			.filter(|(id, _)| super::catalog::is_protected(**id))
+			.map(|(id, metadata)| {
+				let persistent = &metadata.persistent_metadata;
+				(*id, persistent.import_metadata.clone(), persistent.export_names.clone(), persistent.export_descriptions.clone())
+			})
+			.collect();
+		interfaces.sort_by_key(|(id, ..)| *id);
+		interfaces
+	};
+	assert_eq!(catalog_interfaces(&mirror), catalog_interfaces(edited), "reconciling did not restore the catalog interfaces");
+
 	let converted = Registry::convert_from_runtime(mirror.document_network(), &StorageMetadataView::new(&mirror), &editor.active_document().resources.registry, PEER)
 		.expect("the reconciled interface converts")
 		.registry;
@@ -1435,4 +1451,29 @@ async fn making_an_instance_unique_modifies_the_transaction() {
 	interface.start_transaction();
 	assert!(interface.make_unique(&copy, &[]));
 	assert_eq!(interface.transaction_status(), super::TransactionStatus::Modified);
+}
+
+/// A built-in subgraph's interface comes from the catalog, so inserting the first one writes none of it to storage.
+#[tokio::test]
+async fn inserting_a_catalog_node_stores_none_of_its_interface() {
+	use document_graph_storage::attr::network as network_attr;
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.discard_deltas();
+
+	let merge = editor.create_node_by_name(merge_definition()).await;
+	let emitted = committed_deltas(&mut editor);
+	let constructed = construct(&editor, &emitted, &working);
+
+	let interface_keys = [network_attr::IMPORT_METADATA, network_attr::EXPORT_NAMES, network_attr::EXPORT_DESCRIPTIONS];
+	let interface_writes: Vec<_> = constructed
+		.iter()
+		.filter(|op| matches!(op, RegistryDelta::ChangeNetworkAttribute { delta, .. } if interface_keys.contains(&delta.key.as_str())))
+		.collect();
+	assert!(interface_writes.is_empty(), "the catalog interface should not be stored: {interface_writes:#?}");
+
+	let (name, _) = editor.active_document().network_interface.displayed_input_name_and_description(&merge, 0, &[]);
+	assert!(!name.is_empty());
 }
