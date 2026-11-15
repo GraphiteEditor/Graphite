@@ -160,7 +160,7 @@ impl NodeNetworkInterface {
 				.filter(|(id, network)| {
 					let Some(shipped) = catalog::entry(**id) else { return false };
 					let metadata = metadata_definitions.get(id).map(|metadata| &metadata.persistent_metadata);
-					shipped.network != **network || !metadata.is_some_and(|metadata| same_content(&shipped.metadata.persistent_metadata, metadata))
+					shipped.network != **network || !metadata.is_some_and(|metadata| same_content_as_shipped(&shipped.metadata.persistent_metadata, metadata))
 				})
 				.map(|(id, _)| (*id, NetworkId::new()))
 				.collect();
@@ -191,6 +191,21 @@ impl NodeNetworkInterface {
 				}
 			});
 		}
+	}
+
+	/// Gives each catalog entry the shipped interface, which the catalog owns rather than the document.
+	pub fn adopt_catalog_interfaces(&mut self) {
+		self.migrate_metadata(|metadata, _| {
+			for (id, definition_metadata) in &mut metadata.persistent_metadata.definitions {
+				let Some(shipped) = catalog::entry(*id) else { continue };
+				let shipped = shipped.metadata.persistent_metadata;
+
+				let persistent = &mut definition_metadata.persistent_metadata;
+				persistent.import_metadata = shipped.import_metadata;
+				persistent.export_names = shipped.export_names;
+				persistent.export_descriptions = shipped.export_descriptions;
+			}
+		});
 	}
 
 	// TODO: Eventually remove this document upgrade code

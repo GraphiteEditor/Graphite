@@ -374,6 +374,7 @@ async fn build_document_from_storage(gdd: GddV1, byte_store: &ResourcesHandle, d
 	};
 	apply_network_view_settings(&mut interface, &network_ids, gdd.network_view_settings());
 	interface.give_diverged_catalog_entries_new_ids();
+	interface.adopt_catalog_interfaces();
 	// TODO: Run document upgrades here once this format has a versioned migration
 
 	let mut document = DocumentMessageHandler::from_storage(interface, gdd, declarations, byte_store.storage(), String::new(), None);
@@ -451,6 +452,7 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 	}
 
 	document.network_interface.give_diverged_catalog_entries_new_ids();
+	document.network_interface.adopt_catalog_interfaces();
 	document.network_interface.give_reused_node_ids_new_ids();
 	document.network_interface.discard_deltas();
 	document.require_whole_document_stage();

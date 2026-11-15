@@ -69,6 +69,14 @@ impl StorageMetadataView<'_> {
 	fn subnetwork_persistent(&self, network: NetworkLocation) -> Option<&NodeNetworkPersistentMetadata> {
 		self.network_persistent(Some(network?))
 	}
+
+	/// The metadata holding the subnetwork's interface, unless it is a catalog entry, whose interface the catalog owns.
+	fn owned_interface(&self, network: NetworkLocation) -> Option<&NodeNetworkPersistentMetadata> {
+		if network.is_some_and(super::catalog::is_protected) {
+			return None;
+		}
+		self.subnetwork_persistent(network)
+	}
 }
 
 impl NodeMetadataSource for StorageMetadataView<'_> {
@@ -119,17 +127,17 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 	}
 
 	fn import_metadata(&self, network: NetworkLocation) -> Vec<InputMetadataEntry> {
-		self.subnetwork_persistent(network)
+		self.owned_interface(network)
 			.map(|persistent| persistent.import_metadata.iter().map(input_metadata_entry_from_runtime).collect())
 			.unwrap_or_default()
 	}
 
 	fn export_names(&self, network: NetworkLocation) -> Vec<String> {
-		self.subnetwork_persistent(network).map(|persistent| persistent.export_names.clone()).unwrap_or_default()
+		self.owned_interface(network).map(|persistent| persistent.export_names.clone()).unwrap_or_default()
 	}
 
 	fn export_descriptions(&self, network: NetworkLocation) -> Vec<String> {
-		self.subnetwork_persistent(network).map(|persistent| persistent.export_descriptions.clone()).unwrap_or_default()
+		self.owned_interface(network).map(|persistent| persistent.export_descriptions.clone()).unwrap_or_default()
 	}
 
 	fn reference(&self, network: NetworkLocation) -> Option<NetworkReference> {

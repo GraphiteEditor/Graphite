@@ -522,11 +522,12 @@ impl NodeNetworkInterface {
 	/// Nothing is added yet: each entry goes in once a node names it, so it lands in the same transaction as that node.
 	///
 	/// Returns `None` for a list that names an entry before listing it, which no copy produces and which a cycle always does.
+	/// A catalog entry is never listed, since a paste takes it from the catalog.
 	pub(crate) fn carry_definitions(&mut self, definitions: Vec<CopiedDefinition>) -> Option<HashMap<NetworkId, NetworkId>> {
 		let mut listed = HashSet::new();
 		for definition in &definitions {
 			let names_unlisted = definition.network.nodes.values().any(|node| match node.implementation {
-				DocumentNodeImplementation::Definition(named) => !listed.contains(&named) && !self.document_network().definitions.contains_key(&named),
+				DocumentNodeImplementation::Definition(named) => !listed.contains(&named) && !self.document_network().definitions.contains_key(&named) && !catalog::is_protected(named),
 				_ => false,
 			});
 			if names_unlisted {
@@ -546,14 +547,17 @@ impl NodeNetworkInterface {
 				}
 			}
 
-			// A catalog ID always means the shipped network
-			let shipped = catalog::entry(id).map(|shipped| (shipped.network, shipped.metadata));
-			let held = shipped.or_else(|| {
-				let network = self.document_network().definitions.get(&id)?.clone();
-				let metadata = self.network_metadata.persistent_metadata.definitions.get(&id)?.clone();
-				Some((network, metadata))
-			});
-			let diverged = held.is_some_and(|(held_network, held_metadata)| held_network != network || !same_content(&held_metadata.persistent_metadata, &metadata.persistent_metadata));
+			// A catalog ID always means the shipped network, whose interface is the catalog's whatever the copy carries
+			let diverged = match catalog::entry(id) {
+				Some(shipped) => shipped.network != network || !same_content_as_shipped(&shipped.metadata.persistent_metadata, &metadata.persistent_metadata),
+				None => {
+					let held_network = self.document_network().definitions.get(&id);
+					let held_metadata = self.network_metadata.persistent_metadata.definitions.get(&id);
+					held_network
+						.zip(held_metadata)
+						.is_some_and(|(held_network, held_metadata)| *held_network != network || !same_content(&held_metadata.persistent_metadata, &metadata.persistent_metadata))
+				}
+			};
 			let id = if diverged {
 				let new_id = NetworkId::new();
 				rekey_nodes(new_id, &mut network, &mut metadata.persistent_metadata);
@@ -592,12 +596,12 @@ impl NodeNetworkInterface {
 		Some(unique)
 	}
 
-	/// Adds `id` from the last paste or the catalog if the document lacks it.
+	/// Adds `id` from the catalog, or else the last paste, if the document lacks it.
 	fn insert_missing_definition(&mut self, id: NetworkId) {
 		if self.document_network().definitions.contains_key(&id) {
 			return;
 		}
-		let Some(CopiedDefinition { network, metadata, .. }) = self.carried_definitions.get(&id).cloned().or_else(|| catalog::entry(id)) else {
+		let Some(CopiedDefinition { network, metadata, .. }) = catalog::entry(id).or_else(|| self.carried_definitions.get(&id).cloned()) else {
 			return;
 		};
 		self.insert_definition(id, network, metadata);

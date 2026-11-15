@@ -489,8 +489,10 @@ impl NodeNetworkInterface {
 			self.order_definitions_named_by(id, &mut visited, &mut ordered);
 		}
 
+		// A catalog entry is the shipped network, which the paste takes from the catalog
 		ordered
 			.into_iter()
+			.filter(|id| !catalog::is_protected(*id))
 			.filter_map(|id| {
 				Some(CopiedDefinition {
 					id,

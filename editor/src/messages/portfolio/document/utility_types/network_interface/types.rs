@@ -514,6 +514,19 @@ pub(crate) fn same_content(first: &NodeNetworkPersistentMetadata, second: &NodeN
 	content(first) == content(second)
 }
 
+/// Whether a network's metadata matches the shipped catalog network's, ignoring view state and the interface, which a catalog entry takes from the catalog.
+pub(crate) fn same_content_as_shipped(shipped: &NodeNetworkPersistentMetadata, metadata: &NodeNetworkPersistentMetadata) -> bool {
+	let content = |metadata: &NodeNetworkPersistentMetadata| {
+		let mut content = metadata.clone();
+		clear_view_state(&mut content);
+		content.import_metadata.clear();
+		content.export_names.clear();
+		content.export_descriptions.clear();
+		content
+	};
+	content(shipped) == content(metadata)
+}
+
 fn clear_view_state(metadata: &mut NodeNetworkPersistentMetadata) {
 	metadata.previewing = Previewing::No;
 	metadata.navigation_metadata = NavigationMetadata::default();

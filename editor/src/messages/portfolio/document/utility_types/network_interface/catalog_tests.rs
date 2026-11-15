@@ -163,6 +163,59 @@ async fn an_entry_that_diverged_under_a_catalog_id_gets_a_fresh_id_on_open() {
 }
 
 #[tokio::test]
+async fn a_catalog_entry_saved_with_an_outdated_interface_stays_shared_and_shows_the_shipped_one() {
+	let (mut editor, blends) = editor_with_blends(1).await;
+	let shipped = entry_of(&editor, blends[0]);
+	let shipped_name = catalog::entry(shipped).expect("shipped").metadata.persistent_metadata.import_metadata[0]
+		.persistent_metadata
+		.input_name
+		.clone();
+	assert!(!shipped_name.is_empty(), "the shipped import should have a name for this to check anything");
+
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.migrate_metadata(|metadata, _| {
+		let entry = metadata.persistent_metadata.definitions.get_mut(&shipped).expect("the shipped entry");
+		entry.persistent_metadata.import_metadata[0].persistent_metadata.input_name = "Outdated name".into();
+	});
+	interface.give_diverged_catalog_entries_new_ids();
+	interface.adopt_catalog_interfaces();
+
+	assert_eq!(entry_of(&editor, blends[0]), shipped);
+	let (name, _) = editor.active_document().network_interface.displayed_input_name_and_description(&blends[0], 0, &[]);
+	assert_eq!(name, shipped_name);
+}
+
+#[tokio::test]
+async fn a_saved_document_leaves_the_catalog_interface_to_the_catalog() {
+	use super::storage_metadata::StorageMetadataView;
+	use document_graph_storage::NodeMetadataSource;
+
+	let (editor, blends) = editor_with_blends(1).await;
+	let shipped = entry_of(&editor, blends[0]);
+
+	let view = StorageMetadataView::new(&editor.active_document().network_interface);
+	assert!(view.import_metadata(Some(shipped)).is_empty());
+	assert!(view.export_names(Some(shipped)).is_empty());
+	assert!(view.export_descriptions(Some(shipped)).is_empty());
+
+	let mut reopened = round_trip_through_gdd(editor.active_document()).await.rebuilt;
+	reopened.give_diverged_catalog_entries_new_ids();
+	reopened.adopt_catalog_interfaces();
+	let expected = editor.active_document().network_interface.displayed_input_name_and_description(&blends[0], 0, &[]);
+	assert_eq!(reopened.displayed_input_name_and_description(&blends[0], 0, &[]), expected);
+	assert!(reopened.validate_invariants().is_empty());
+}
+
+#[tokio::test]
+async fn a_copy_leaves_catalog_entries_to_the_catalog() {
+	let (editor, blends) = editor_with_blends(1).await;
+	let interface = &editor.active_document().network_interface;
+
+	let template = interface.create_node_template(&blends[0], &[]).expect("the node should make a template");
+	assert!(interface.copied_definitions([&template]).is_empty());
+}
+
+#[tokio::test]
 async fn a_reopened_document_keeps_its_catalog_entries() {
 	let (editor, blends) = editor_with_blends(1).await;
 	let shipped = entry_of(&editor, blends[0]);
