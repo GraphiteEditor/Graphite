@@ -63,10 +63,13 @@ pub fn stamp_layer_paths(network: &mut NodeNetwork, layer_paths: &[Vec<NodeId>])
 		}
 
 		match content {
-			// The stamp goes inside the layer, between the Extend node and what it's given to add
+			// The stamp goes between the Extend node and what it's given to add, inside the layer or beside it if the layer is that node
 			LayerContent::Added { network_path, extend } => {
 				let stamp = stamp_id(extend);
-				let levels_up = network_path.len() - layer_path.len() + 1;
+				let (levels_up, layer_beside) = match network_path.len().checked_sub(layer_path.len()) {
+					Some(depth_inside_layer) => (depth_inside_layer + 1, Vec::new()),
+					None => (1, vec![*layer]),
+				};
 				let Some(holder) = network_mut(network, &network_path) else { continue };
 				let Some(added) = holder.nodes.get_mut(&extend).and_then(|node| node.inputs.get_mut(extend::NewInput::INDEX)) else {
 					continue;
@@ -78,7 +81,7 @@ pub fn stamp_layer_paths(network: &mut NodeNetwork, layer_paths: &[Vec<NodeId>])
 				}
 
 				let content = std::mem::replace(added, NodeInput::node(stamp, 0));
-				holder.nodes.insert(stamp, stamp_node(content, levels_up, Vec::new()));
+				holder.nodes.insert(stamp, stamp_node(content, levels_up, layer_beside));
 			}
 			// The stamp goes beside the layer, taking over everything its output feeds
 			LayerContent::Output(_) => {
@@ -228,6 +231,40 @@ mod tests {
 		assert!(
 			click_targets.is_some_and(|click_targets| !click_targets.is_empty()),
 			"A node shown as a layer should have click targets"
+		);
+	}
+
+	// A layer that is itself an Extend node has what it's given to add stamped beside it
+	#[tokio::test]
+	async fn an_extend_node_shown_as_a_layer_is_traced_back_to() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let extend = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(extend::IDENTIFIER), 0, 0).await;
+		let rectangle = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER);
+		let (below, added) = (editor.create_node_by_name_at(rectangle.clone(), -10, 0).await, editor.create_node_by_name_at(rectangle, -10, 4).await);
+		for (rectangle, input) in [(below, InputConnector::node(extend, extend::BaseInput)), (added, InputConnector::node(extend, extend::NewInput))] {
+			editor
+				.handle_message(NodeGraphMessage::CreateWire {
+					output_connector: OutputConnector::node(rectangle, 0),
+					input_connector: input,
+				})
+				.await;
+		}
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::node(extend, 0),
+				input_connector: InputConnector::Export(0),
+			})
+			.await;
+
+		editor.handle_message(NodeGraphMessage::SetToNodeOrLayer { node_id: extend, is_layer: true }).await;
+
+		let document = editor.active_document();
+		let layer = LayerNodeIdentifier::new(extend, &document.network_interface);
+		let click_targets = document.metadata().click_targets(layer);
+		assert!(
+			click_targets.is_some_and(|click_targets| !click_targets.is_empty()),
+			"An Extend node shown as a layer should have click targets for what it adds"
 		);
 	}
 

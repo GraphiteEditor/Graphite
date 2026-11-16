@@ -872,7 +872,7 @@ async fn reconciling_an_input_value_edit_reproduces_the_interface() {
 			.iter()
 			.find_map(|(id, node)| (node.implementation == extend).then_some(*id))
 			.expect("an Extend node inside the group");
-		interface.set_input(&InputConnector::node_at_index(inner, 0), NodeInput::value(TaggedValue::Number(42.), false), &[group]);
+		interface.set_input(&InputConnector::node_at_index(inner, 0), NodeInput::value(TaggedValue::None, false), &[group]);
 	})
 	.await;
 }
