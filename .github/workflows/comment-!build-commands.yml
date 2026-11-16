@@ -1,16 +1,20 @@
 # USAGE:
 # After reviewing the code, core team members may comment on a PR with `!build` followed by optional `<target>` and `<profile>` arguments.
-# This matches the syntax of the `cargo run build` CLI command, but allows platforms to be specified.
+# This extends the syntax of the `cargo run build` CLI command, allowing several targets and specific platforms to be built at once.
 #
-# `<target>`: `web` (default), `desktop` (all platforms), or `desktop:<platforms>` (subset of `windows+mac+linux`)
+# `<target>`: any of `web`, `desktop` (all platforms), `desktop:<platforms>`, or a bare platform (`windows`, `mac`, `linux`), joined by spaces or `+` (default: `web`)
 # `<profile>`: `release` (default) or `debug`
+#
+# Only the comment's first line is parsed, so notes may follow on the lines below it.
 #
 # Examples:
 # - !build
 # - !build debug
 # - !build desktop
+# - !build web desktop
+# - !build linux
 # - !build desktop:windows+mac
-# - !build desktop:linux debug
+# - !build web+desktop:linux debug
 name: "!build PR Command"
 
 on:
@@ -46,8 +50,8 @@ jobs:
           # Passed through the environment so the comment text can't inject shell syntax
           COMMENT: ${{ github.event.comment.body }}
         run: |
-          # Split into space-separated words
-          read -ra WORDS <<< "$COMMENT"
+          # Split the first line into space-separated words (comments posted from the web UI have CRLF line endings)
+          read -ra WORDS <<< "${COMMENT%%$'\r'*}"
 
           # First word must be "!build"
           if [[ "${WORDS[0]}" != "!build" ]]; then
@@ -55,49 +59,45 @@ jobs:
             exit 1
           fi
 
-          # Initialize build flags (web defaults to true, matching the CLI default target)
-          WEB="true"
+          # Initialize build flags
+          WEB="false"
           WINDOWS="false"
           MAC="false"
           LINUX="false"
           DEBUG="false"
+          PROFILE=""
 
-          # Parse target (optional, defaults to `web` if omitted)
-          IDX=1
-          case "${WORDS[$IDX]:-}" in
-            # Target: `web` enables just the web build (already the default, but accepted explicitly)
-            "web")
-              ((IDX++)) ;;
-            # Target: `desktop` enables all three desktop platforms
-            "desktop")
-              WEB="false"; WINDOWS="true"; MAC="true"; LINUX="true"; ((IDX++)) ;;
-            # Target: `desktop:<platforms>` enables a subset of desktop platforms, split by `+`
-            desktop:*)
-              WEB="false"
-              PLATFORMS="${WORDS[$IDX]#desktop:}"
-              IFS='+' read -ra PARTS <<< "$PLATFORMS"
-              for PART in "${PARTS[@]}"; do
-                case "$PART" in
-                  "windows") WINDOWS="true" ;;
-                  "mac")     MAC="true" ;;
-                  "linux")   LINUX="true" ;;
-                  *) echo "::error::Unrecognized platform: $PART"; exit 1 ;;
-                esac
-              done
-              ((IDX++))
-              ;;
-          esac
+          # Every remaining word is either the profile or a `+`-separated list of targets
+          for WORD in "${WORDS[@]:1}"; do
+            case "$WORD" in
+              "debug" | "release")
+                if [[ -n "$PROFILE" ]]; then
+                  echo "::error::Profile given more than once: $WORD"
+                  exit 1
+                fi
+                PROFILE="$WORD"
+                if [[ "$WORD" == "debug" ]]; then DEBUG="true"; fi
+                continue
+                ;;
+            esac
 
-          # Parse profile (optional, defaults to `release` if omitted)
-          case "${WORDS[$IDX]:-}" in
-            "debug")   DEBUG="true"; ((IDX++)) ;;
-            "release") ((IDX++)) ;;
-          esac
+            IFS='+' read -ra PARTS <<< "$WORD"
+            for PART in "${PARTS[@]}"; do
+              # In `desktop:<platforms>`, the prefix only matters on the first platform since the others are split off as bare platforms
+              case "$PART" in
+                "web")                         WEB="true" ;;
+                "desktop")                     WINDOWS="true"; MAC="true"; LINUX="true" ;;
+                "windows" | "desktop:windows") WINDOWS="true" ;;
+                "mac" | "desktop:mac")         MAC="true" ;;
+                "linux" | "desktop:linux")     LINUX="true" ;;
+                *) echo "::error::Unrecognized argument: $PART"; exit 1 ;;
+              esac
+            done
+          done
 
-          # Reject any unexpected trailing words
-          if [[ $IDX -lt ${#WORDS[@]} ]]; then
-            echo "::error::Unexpected argument: ${WORDS[$IDX]}"
-            exit 1
+          # Without any target, build for web to match the CLI default target
+          if [[ "$WEB$WINDOWS$MAC$LINUX" != *true* ]]; then
+            WEB="true"
           fi
 
           # Write parsed build flags to job outputs
