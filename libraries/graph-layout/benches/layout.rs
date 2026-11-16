@@ -1,6 +1,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use glam::DVec2;
 use glam::IVec2;
-use graph_layout::{Graph, Node, Placement, Wire, layout};
+use graph_layout::{Graph, Node, Placement, Wire, click_targets, layout, target_at};
 use std::hint::black_box;
 
 const SIZES: [usize; 3] = [1_000, 10_000, 100_000];
@@ -29,6 +30,8 @@ fn node(placement: Placement, is_layer: bool) -> Node {
 		inputs: 3,
 		outputs: 1,
 		chainable: true,
+		name_width: 60.,
+		locked: false,
 	}
 }
 
@@ -138,5 +141,28 @@ fn bench_hit_test(criterion: &mut Criterion) {
 	group.finish();
 }
 
-criterion_group!(benches, bench_layout, bench_hit_test);
+fn bench_click_targets(criterion: &mut Criterion) {
+	let mut building = criterion.benchmark_group("click_targets");
+	for size in SIZES {
+		let graph = stacked_layers(size);
+		let graph_layout = layout(&graph);
+		building.bench_with_input(BenchmarkId::from_parameter(size), &(graph, graph_layout), |bencher, (graph, graph_layout)| {
+			bencher.iter(|| click_targets(black_box(graph), black_box(graph_layout)))
+		});
+	}
+	building.finish();
+
+	let mut hitting = criterion.benchmark_group("target_at");
+	for size in SIZES {
+		let graph = stacked_layers(size);
+		let targets = click_targets(&graph, &layout(&graph));
+		let point = DVec2::new(-100., 1_000.);
+		hitting.bench_with_input(BenchmarkId::from_parameter(size), &targets, |bencher, targets| {
+			bencher.iter(|| target_at(black_box(targets), black_box(point)))
+		});
+	}
+	hitting.finish();
+}
+
+criterion_group!(benches, bench_layout, bench_hit_test, bench_click_targets);
 criterion_main!(benches);

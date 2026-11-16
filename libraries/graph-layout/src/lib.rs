@@ -1,5 +1,8 @@
 //! Lays out a node graph in one pass: every node is placed after all the nodes reading it, then its bounds, ports, and wires follow from its position.
 
+mod click_targets;
+
+pub use click_targets::{ClickTarget, GRID_SIZE, Part, click_targets, target_at};
 use glam::IVec2;
 
 /// How many grid cells a chain steps left for each node.
@@ -31,6 +34,9 @@ pub struct Node {
 	pub outputs: u32,
 	/// Whether the node can be drawn in a layer's chain, which redirect dots and nodes with a hidden primary output can't.
 	pub chainable: bool,
+	/// The width of a layer's name in pixels, measured by the caller.
+	pub name_width: f64,
+	pub locked: bool,
 }
 
 impl Node {
@@ -257,6 +263,8 @@ mod tests {
 			inputs: 2,
 			outputs: 1,
 			chainable: true,
+			name_width: 60.,
+			locked: false,
 		}
 	}
 
@@ -331,5 +339,20 @@ mod tests {
 		assert_eq!(layout.node_at(IVec2::new(3, 1)), Some(1));
 		assert_eq!(layout.node_at(IVec2::new(1, 1)), Some(0));
 		assert_eq!(layout.node_at(IVec2::new(20, 20)), None);
+	}
+
+	#[test]
+	fn a_port_takes_precedence_over_its_node_body() {
+		let graph = Graph {
+			nodes: vec![node(Placement::Absolute(IVec2::ZERO), false)],
+			wires: Vec::new(),
+		};
+
+		let targets = click_targets(&graph, &layout(&graph));
+		let at = |x: f64, y: f64| target_at(&targets, glam::DVec2::new(x, y)).map(|target| target.part);
+
+		assert_eq!(at(2., GRID_SIZE), Some(Part::Input(0)));
+		assert_eq!(at(60., GRID_SIZE), Some(Part::Body));
+		assert_eq!(at(60., 200.), None);
 	}
 }
