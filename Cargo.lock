@@ -2526,6 +2526,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-layout"
+version = "0.0.0"
+dependencies = [
+ "criterion",
+ "glam",
+]
+
+[[package]]
 name = "graphene-animation"
 version = "0.0.0"
 dependencies = [
@@ -2859,6 +2867,7 @@ dependencies = [
  "futures",
  "glam",
  "graph-craft",
+ "graph-layout",
  "graphene-hash",
  "graphene-std",
  "graphite-proc-macros",
