@@ -2,10 +2,12 @@
 
 use crate::{MigrationBlobs, RunnerError};
 use document_graph_storage::TimeStamp;
-use document_graph_storage::attributes::attr::node::ui::REFERENCE;
+use document_graph_storage::attributes::attr::node::ui::{IS_LAYER, POSITION, REFERENCE};
 use document_graph_storage::delta::compute_deltas;
-use document_graph_storage::{Delta, Implementation, NetworkId, Node, NodeId, NodeInput, ProtoNode, Registry, RegistryDelta, ResourceHash, ResourceId, Rev, apply_retired_op};
-use migration_core::{AnchorContext, Compiler, Declaration, DeclarationResolver, Edits, InputConnector, InputsEdit, MigrationHost, NodeMigration, OutputConnector, implements};
+use document_graph_storage::{Delta, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, Registry, RegistryDelta, ResourceHash, ResourceId, Rev, apply_retired_op};
+use migration_core::{
+	AnchorContext, CHAIN_WIDTH, Compiler, Declaration, DeclarationResolver, Edits, FEEDER_ROW_HEIGHT, InputConnector, InputsEdit, MigrationHost, NodeMigration, OutputConnector, encode, implements,
+};
 use std::collections::{HashMap, HashSet};
 
 /// A [`DeclarationResolver`] over a fixed set of declarations for tests, whose resource IDs derive from `identifier@version` rather than the encoded declarations documents store.
@@ -174,6 +176,7 @@ fn apply_runs(migration: &dyn NodeMigration, source: &Registry, anchors: &[NodeI
 
 	add_nodes(&mut target, &runs, resolver)?;
 	for (anchor, edits) in &runs {
+		place_added_nodes(&mut target, *anchor, edits);
 		write_attributes(&mut target, *anchor, edits)?;
 	}
 
@@ -329,6 +332,72 @@ fn add_nodes(target: &mut Registry, runs: &[(NodeId, Edits)], resolver: &dyn Dec
 	}
 
 	Ok(())
+}
+
+/// Default positions for the nodes one run adds, read from the anchor's own position only. The nodes leading up to the anchor's
+/// chain input form a row, or join the chain of a chained or layer anchor. Each other node sits below the first one reading it,
+/// or on the anchor when none does. Without absolute coordinates for the anchor, only the chain is placed.
+fn place_added_nodes(target: &mut Registry, anchor: NodeId, edits: &Edits) {
+	let Some(anchor_node) = target.node_instances.get(&anchor) else { return };
+	let stored = anchor_node.attributes().get_typed::<Position>(POSITION);
+	let is_layer = anchor_node.attributes().get_or(IS_LAYER, false);
+	let anchor_inputs: Vec<NodeInput> = match &edits.inputs {
+		Some(inputs) => inputs.slots.iter().map(|slot| slot.input.clone()).collect(),
+		None => anchor_node.inputs().iter().map(|slot| slot.input.clone()).collect(),
+	};
+
+	let added_inputs: HashMap<NodeId, &[NodeInput]> = edits.added_nodes.iter().map(|added| (added.id, added.node.inputs.as_slice())).collect();
+	let reads = |inputs: &[NodeInput], node: NodeId| inputs.iter().any(|input| matches!(input, NodeInput::Node { id, .. } if *id == node));
+
+	let chain_input = if is_layer { 1 } else { 0 };
+	let mut chain = Vec::new();
+	let mut next = anchor_inputs.get(chain_input);
+	while let Some(NodeInput::Node { id, .. }) = next
+		&& let Some(inputs) = added_inputs.get(id)
+		&& !chain.contains(id)
+	{
+		chain.push(*id);
+		next = inputs.first();
+	}
+
+	let joins_chain = is_layer || stored == Some(Position::Chain);
+	let coordinates = match stored {
+		Some(Position::Absolute(coordinates)) => Some(coordinates),
+		_ => None,
+	};
+
+	let mut positions = Vec::new();
+	for (step, id) in chain.iter().enumerate() {
+		match coordinates {
+			_ if joins_chain => positions.push((*id, Position::Chain)),
+			Some([x, y]) => positions.push((*id, Position::Absolute([x - CHAIN_WIDTH * (step as i32 + 1), y]))),
+			None => {}
+		}
+	}
+
+	if let Some([x, y]) = coordinates {
+		let readers: Vec<(&[NodeInput], i32)> = std::iter::once((anchor_inputs.as_slice(), x))
+			.chain(chain.iter().enumerate().map(|(step, id)| (added_inputs[id], x - CHAIN_WIDTH * (step as i32 + 1))))
+			.collect();
+		let mut feeders_below = vec![0; readers.len()];
+
+		for added in edits.added_nodes.iter().filter(|added| !chain.contains(&added.id)) {
+			let position = match readers.iter().position(|(inputs, _)| reads(inputs, added.id)) {
+				Some(reader) => {
+					feeders_below[reader] += 1;
+					[readers[reader].1 - CHAIN_WIDTH, y + FEEDER_ROW_HEIGHT * feeders_below[reader]]
+				}
+				None => [x, y],
+			};
+			positions.push((added.id, Position::Absolute(position)));
+		}
+	}
+
+	for (id, position) in positions {
+		if let Some(node) = target.node_instances.get_mut(&id) {
+			node.attributes_mut().set(POSITION, encode(&position), TimeStamp::ORIGIN);
+		}
+	}
 }
 
 /// Apply one run's attribute writes, which may only name its anchor and the nodes it adds.

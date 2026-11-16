@@ -44,7 +44,7 @@ pub use registry::{register_migration, registered_migrations};
 #[cfg(feature = "typed")]
 pub use value::{encode, literal, literal_of};
 #[cfg(feature = "typed")]
-pub use view::{AddedNode, AnchorContext, AttributeWrite, Attributes, Downstream, Edits, Graph, Inputs, InputsEdit, Node, Region, Target, Upstream, View, implements};
+pub use view::{AddedNode, AnchorContext, AttributeWrite, Attributes, CHAIN_WIDTH, Downstream, Edits, FEEDER_ROW_HEIGHT, Graph, Inputs, InputsEdit, Node, Region, Target, Upstream, View, implements};
 
 // For the registration `#[migration]`, `rename!`, and `format_migration!` generate
 #[doc(hidden)]

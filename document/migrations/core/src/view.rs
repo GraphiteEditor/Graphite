@@ -4,6 +4,11 @@ use document_graph_storage::{Implementation, InputSlot, NetworkId, NodeId, NodeI
 use serde::Serialize;
 use std::ops::Deref;
 
+/// How many grid cells the editor's layout steps left for each node of a layer's chain.
+pub const CHAIN_WIDTH: i32 = 7;
+/// How many grid cells apart the rows of nodes feeding a node from below are.
+pub const FEEDER_ROW_HEIGHT: i32 = 3;
+
 /// Which part of the registry around an anchor a view reads or edits. A migration's footprint is the union of its views' regions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Region(u8);
