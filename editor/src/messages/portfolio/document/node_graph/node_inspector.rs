@@ -1032,6 +1032,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 	};
 
 	let filters = vec![TypeFilter::font()];
+	let file_drop_action = IngestAction::resource_input(document_id, node_id, index, &filters);
 	let load_button = IconButton::new("FileImport", 24)
 		.tooltip_label("Load Font File")
 		.tooltip_description("Use a font that isn't in the list by loading its .ttf or .otf file. The font is saved with the document.")
@@ -1073,9 +1074,15 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					.collect::<Vec<_>>(),
 			])
 			.selected_index(fonts.font_catalog.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
-			// A font loaded from a file is in no catalog family, so it's only named until a catalog font is picked in its place
 			.placeholder(font.font_family.clone())
 			.virtual_scrolling(true)
+			.on_file_drop(move |file| {
+				IngestMessage::Ingest {
+					content: DataTransferItem::from_file(PathBuf::from(&file.name), Some(file.mime_type.as_str()).filter(|mime| !mime.is_empty()), file.data.clone()).into(),
+					action: file_drop_action.clone(),
+				}
+				.into()
+			})
 			.widget_instance(),
 		]);
 
