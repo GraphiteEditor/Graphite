@@ -185,7 +185,7 @@ mod tests {
 	use crate::CompilerHost;
 	use document_graph_storage::attr::node::ui::POSITION;
 	use document_graph_storage::{NodeId, Position, TimeStamp, Value, to_value};
-	use migration_core::Declaration;
+	use migration_core::{CHAIN_WIDTH, Declaration, FEEDER_ROW_HEIGHT};
 	use migration_runner::testing::{Fixture, Random, SourceContract, check_commutation_with, check_undo_with};
 
 	const COPY_TO_POINTS: Declaration = decl!("core_types::vector::CopyToPointsNode"@1);
@@ -319,7 +319,7 @@ mod tests {
 		};
 
 		assert_eq!(stages, [-1, 6, 13].map(|x| Some(Position::Absolute([x, 10]))));
-		assert_eq!(position_of(group), Some(Position::Absolute([-8, 13])));
+		assert_eq!(position_of(group), Some(Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT])));
 	}
 
 	#[test]

@@ -1,6 +1,6 @@
 use super::{
-	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata,
-	OutputConnector, Previewing, RootNode, TransactionStatus,
+	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeLocator, NodeNetworkInterface, NodeNetworkTemplate, NodePersistentMetadata, NodePosition, NodeTemplate,
+	NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionStatus,
 };
 use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
@@ -313,6 +313,37 @@ async fn chain_membership_follows_wiring() {
 
 fn fill_definition() -> DefinitionIdentifier {
 	DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER)
+}
+
+#[tokio::test]
+async fn a_relative_node_follows_its_readers_until_it_loses_the_last_one() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let lower_reader = editor.create_node_by_name_at(fill_definition(), 20, 10).await;
+	let upper_reader = editor.create_node_by_name_at(fill_definition(), 30, 4).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	for reader in [lower_reader, upper_reader] {
+		network_interface.create_wire(&OutputConnector::primary_output(node), &InputConnector::primary_input(reader), &[]);
+	}
+	let relative = NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(IVec2::new(-7, 3))));
+	network_interface.node_mut(NodeLocator::new(node, &[])).expect("the node exists").set_node_type(relative);
+	network_interface.invalidate_position(&node, &[]);
+
+	// The offset applies to the top left corner of the box around both readers
+	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(13, 7)));
+
+	network_interface.disconnect_input(&InputConnector::primary_input(upper_reader), &[]);
+	assert!(network_interface.is_relative(&node, &[]), "A node still read by another node should stay relative");
+	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(13, 13)));
+
+	network_interface.disconnect_input(&InputConnector::primary_input(lower_reader), &[]);
+	assert!(network_interface.is_absolute(&node, &[]), "A node losing its last reader should be pinned where it was drawn");
+	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(13, 13)));
+
+	assert_invariants(&editor, "after a relative node loses its readers");
 }
 
 /// Builds a layer fed by the chain `near <- far <- source` (a generator fixed at the upstream end), with an outside node also wired into the near node's second input.

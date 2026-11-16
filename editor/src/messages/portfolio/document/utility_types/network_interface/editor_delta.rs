@@ -893,6 +893,7 @@ impl document_graph_storage::NodeMetadataSource for MetadataCopySource<'_> {
 			NodeTypePersistentMetadata::Node(node) => Some(match *node.position() {
 				NodePosition::Absolute(offset) => Position::Absolute([offset.x, offset.y]),
 				NodePosition::Chain => Position::Chain,
+				NodePosition::Relative(offset) => Position::Relative([offset.x, offset.y]),
 			}),
 		}
 	}

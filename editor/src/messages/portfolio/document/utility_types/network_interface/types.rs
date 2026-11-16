@@ -1123,7 +1123,7 @@ impl PartialEq for LayerPersistentMetadata {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodePersistentMetadata {
-	/// Stores the position of a non layer node, which can either be Absolute or Chain
+	/// Stores the position of a non layer node, which can be Absolute, Chain, or Relative
 	pub(crate) position: NodePosition,
 }
 
@@ -1145,13 +1145,15 @@ pub enum LayerPosition {
 	Stack(u32),
 }
 
-/// A node can either be position as Absolute or in a Chain
+/// A node can be positioned as Absolute, in a Chain, or Relative to the nodes reading it
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum NodePosition {
 	// Position of the node in grid spaces
 	Absolute(IVec2),
 	// In a chain the position is based on the number of nodes to the first layer node
 	Chain,
+	// Offset from the top left corner of the bounding box of the positions of the nodes reading this one
+	Relative(IVec2),
 }
 
 /// Cached metadata that should be calculated when creating a node, and should be recalculated when modifying a node property that affects one of the cached fields.

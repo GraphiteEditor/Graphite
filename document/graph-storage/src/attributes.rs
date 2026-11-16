@@ -8,12 +8,14 @@ use std::collections::{BTreeMap, btree_map};
 pub mod attr;
 
 /// Unified storage-side position. The valid variants depend on `attr::node::ui::IS_LAYER`:
-/// layers use `Absolute` or `Stack`; non-layer nodes use `Absolute` or `Chain`.
+/// layers use `Absolute` or `Stack`; non-layer nodes use `Absolute`, `Chain`, or `Relative`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Position {
 	Absolute([i32; 2]),
 	Chain,
 	Stack(u32),
+	/// An offset from the top left corner of the bounding box of the positions of the nodes reading this one.
+	Relative([i32; 2]),
 }
 
 impl AttributeValue {

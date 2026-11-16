@@ -954,6 +954,10 @@ impl NodeNetworkInterface {
 		self.query(network_path, "is_chain", |view| view.is_chain(node_id)).unwrap_or_default()
 	}
 
+	pub fn is_relative(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		self.query(network_path, "is_relative", |view| view.is_relative(node_id)).unwrap_or_default()
+	}
+
 	pub fn is_stack(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		self.query(network_path, "is_stack", |view| view.is_stack(node_id)).unwrap_or_default()
 	}
