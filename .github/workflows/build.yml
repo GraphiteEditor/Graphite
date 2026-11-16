@@ -20,6 +20,9 @@ on:
       linux:
         description: "Linux"
         type: boolean
+      flatpak:
+        description: "Flatpak (with the Linux build)"
+        type: boolean
       debug:
         description: "Debug build"
         type: boolean
@@ -32,6 +35,8 @@ on:
       mac:
         type: boolean
       linux:
+        type: boolean
+      flatpak:
         type: boolean
       debug:
         type: boolean
@@ -815,7 +820,7 @@ jobs:
           path: target/artifacts
 
   linux:
-    if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.linux
+    if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.linux || inputs.flatpak
     runs-on: ${{ (github.event.pull_request.head.repo.fork || (inputs.checkout_repo && inputs.checkout_repo != github.repository)) && 'ubuntu-latest' || vars.LINUX_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
@@ -892,12 +897,14 @@ jobs:
           fi
 
       - name: 🔧 Install Flatpak tooling
+        if: github.event_name == 'push' || inputs.flatpak
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
           flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
       - name: 🏗 Build Flatpak
+        if: github.event_name == 'push' || inputs.flatpak
         run: |
           nix build .#graphite-flatpak-manifest${{ inputs.debug && '-dev' || '' }}
 
@@ -914,6 +921,7 @@ jobs:
           flatpak build-bundle repo Graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: 📦 Upload Flatpak package
+        if: github.event_name == 'push' || inputs.flatpak
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: graphite-flatpak
@@ -921,7 +929,7 @@ jobs:
           compression-level: 0
 
       - name: 💬 Update PR comment with Flatpak artifact link
-        if: github.event_name != 'push' && steps.linux-comment.outputs.comment_id
+        if: inputs.flatpak && steps.linux-comment.outputs.comment_id
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

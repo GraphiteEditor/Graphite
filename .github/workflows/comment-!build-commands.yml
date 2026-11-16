@@ -3,6 +3,7 @@
 # This extends the syntax of the `cargo run build` CLI command, allowing several targets and specific platforms to be built at once.
 #
 # `<target>`: any of `web`, `desktop` (all platforms), `desktop:<platforms>`, or a bare platform (`windows`, `mac`, `linux`), joined by spaces or `+` (default: `web`)
+#             `flatpak` additionally packages the Linux build as a Flatpak, which `desktop` and `linux` leave out
 # `<profile>`: `release` (default) or `debug`
 #
 # Only the comment's first line is parsed, so notes may follow on the lines below it.
@@ -13,6 +14,7 @@
 # - !build desktop
 # - !build web desktop
 # - !build linux
+# - !build linux+flatpak
 # - !build desktop:windows+mac
 # - !build web+desktop:linux debug
 name: "!build PR Command"
@@ -41,6 +43,7 @@ jobs:
       windows: ${{ steps.pr_info.outputs.windows }}
       mac: ${{ steps.pr_info.outputs.mac }}
       linux: ${{ steps.pr_info.outputs.linux }}
+      flatpak: ${{ steps.pr_info.outputs.flatpak }}
       debug: ${{ steps.pr_info.outputs.debug }}
 
     steps:
@@ -64,6 +67,7 @@ jobs:
           WINDOWS="false"
           MAC="false"
           LINUX="false"
+          FLATPAK="false"
           DEBUG="false"
           PROFILE=""
 
@@ -90,6 +94,7 @@ jobs:
                 "windows" | "desktop:windows") WINDOWS="true" ;;
                 "mac" | "desktop:mac")         MAC="true" ;;
                 "linux" | "desktop:linux")     LINUX="true" ;;
+                "flatpak" | "desktop:flatpak") LINUX="true"; FLATPAK="true" ;;
                 *) echo "::error::Unrecognized argument: $PART"; exit 1 ;;
               esac
             done
@@ -105,6 +110,7 @@ jobs:
           echo "windows=$WINDOWS" >> $GITHUB_OUTPUT
           echo "mac=$MAC" >> $GITHUB_OUTPUT
           echo "linux=$LINUX" >> $GITHUB_OUTPUT
+          echo "flatpak=$FLATPAK" >> $GITHUB_OUTPUT
           echo "debug=$DEBUG" >> $GITHUB_OUTPUT
 
           # Fetch the PR's head branch and repo (needed for forked PRs where the code lives in another repo)
@@ -139,6 +145,7 @@ jobs:
       windows: ${{ needs.setup.outputs.windows == 'true' }}
       mac: ${{ needs.setup.outputs.mac == 'true' }}
       linux: ${{ needs.setup.outputs.linux == 'true' }}
+      flatpak: ${{ needs.setup.outputs.flatpak == 'true' }}
       debug: ${{ needs.setup.outputs.debug == 'true' }}
       checkout_repo: ${{ needs.setup.outputs.repo }}
       checkout_ref: ${{ needs.setup.outputs.ref }}
