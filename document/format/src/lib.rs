@@ -158,7 +158,7 @@ pub(crate) struct PendingPersist {
 #[derive(Default)]
 struct MigrationInputs<'a> {
 	#[cfg(feature = "migrations")]
-	byte_store: Option<&'a dyn graphene_resource::LoadResource>,
+	byte_store: Option<&'a dyn ResourceStorage>,
 	#[cfg(feature = "migrations")]
 	host: Option<&'a dyn migration_core::MigrationHost>,
 	#[cfg(not(feature = "migrations"))]
@@ -253,7 +253,7 @@ impl<L: Layout> Gdd<L> {
 		bytes: &[u8],
 		mut working: AnyContainer,
 		layout: L,
-		byte_store: Option<&dyn graphene_resource::LoadResource>,
+		byte_store: Option<&dyn ResourceStorage>,
 		host: Option<&dyn migration_core::MigrationHost>,
 	) -> Result<Self, Error> {
 		document_container::archive::open_auto(bytes, &mut working)?;
@@ -276,9 +276,10 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// [`open_in`](Self::open_in), offering migrations what only the caller has. `host` gives them the compiler, and without one, those asking for it
-	/// settle on their fallback for good. `byte_store` holds declarations the container doesn't, such as the editor's global cache.
+	/// settle on their fallback for good. `byte_store` holds declarations the container doesn't, such as the editor's global cache,
+	/// and takes the ones migrations introduce in the container's place.
 	#[cfg(feature = "migrations")]
-	pub async fn open_in_with(working: AnyContainer, layout: L, byte_store: Option<&dyn graphene_resource::LoadResource>, host: Option<&dyn migration_core::MigrationHost>) -> Result<Self, Error> {
+	pub async fn open_in_with(working: AnyContainer, layout: L, byte_store: Option<&dyn ResourceStorage>, host: Option<&dyn migration_core::MigrationHost>) -> Result<Self, Error> {
 		Self::open_stored(working, layout, MigrationInputs { byte_store, host }).await
 	}
 

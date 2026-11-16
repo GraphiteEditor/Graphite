@@ -7,7 +7,7 @@ use document_container::AsyncContainer;
 use document_graph_storage::BlobHash;
 use document_graph_storage::blob::NewBlobs;
 use document_graph_storage::{Declarations, Delta, EncodedDeclaration, HistoryMetadata, PeerId, Registry, ResourceEntry, ResourceId, Rev, Session, Subject, TimeStamp};
-use graphene_resource::LoadResource;
+use graphene_resource::ResourceStorage;
 use migration_core::{Declaration, DeclarationResolver, MigrationHost, NodeMigration, Payload, PayloadCodec};
 use migration_runner::{DocumentPayloads, HistoryOutcome, MigrationBlobs, RunnerError, holds, migrate_history, migrate_registry, references, registry_at, run_format_migrations};
 
@@ -70,7 +70,7 @@ fn payload_codec(codec: Codec) -> PayloadCodec {
 
 impl<L: Layout> Gdd<L> {
 	/// Rewrite history through every registered node migration whose source declaration it references, in dependency order. Returns whether any ran.
-	pub(crate) async fn migrate_nodes(&mut self, byte_store: Option<&dyn LoadResource>, host: Option<&dyn MigrationHost>) -> Result<bool, Error> {
+	pub(crate) async fn migrate_nodes(&mut self, byte_store: Option<&dyn ResourceStorage>, host: Option<&dyn MigrationHost>) -> Result<bool, Error> {
 		let migrations = migration_core::registered_migrations();
 		if migrations.is_empty() {
 			return Ok(false);
@@ -112,6 +112,10 @@ impl<L: Layout> Gdd<L> {
 		// Declarations the migrations introduced need their bytes next to the other resources
 		let referenced = self.session.all_declaration_resources();
 		for declaration in resolver.encoded.values().filter(|declaration| referenced.contains_key(&declaration.id)) {
+			if let Some(byte_store) = byte_store {
+				byte_store.store(&declaration.bytes);
+				continue;
+			}
 			let path = self.layout.resource_path(&declaration.hash);
 			if !self.working.exists(&path).await {
 				self.working.write_non_blocking(&path, &declaration.bytes)?;
@@ -124,7 +128,7 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Every declaration this document's nodes and history reference, from `byte_store` where it has them and otherwise from the container.
-	async fn load_stored_declarations(&self, byte_store: Option<&dyn LoadResource>) -> Declarations {
+	async fn load_stored_declarations(&self, byte_store: Option<&dyn ResourceStorage>) -> Declarations {
 		let mut declarations = Declarations::new();
 
 		for (id, hash) in self.session.all_declaration_resources() {
