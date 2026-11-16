@@ -183,7 +183,8 @@ fn bias_keeping_average_scale(bias: f64) -> f64 {
 mod tests {
 	use super::*;
 	use crate::CompilerHost;
-	use document_graph_storage::{TimeStamp, Value};
+	use document_graph_storage::attr::node::ui::POSITION;
+	use document_graph_storage::{NodeId, Position, TimeStamp, Value, to_value};
 	use migration_core::Declaration;
 	use migration_runner::testing::{Fixture, Random, SourceContract, check_commutation_with, check_undo_with};
 
@@ -290,6 +291,35 @@ mod tests {
 		let migrated = fixture.migrate_with(&VaryNodesFromCopyToPoints, Some(&host())).unwrap();
 
 		assert!(migrated.node_instances[&copies].attributes().get_typed::<String>(DISPLAY_NAME).is_none());
+	}
+
+	/// Matches the layout the legacy migration gives a star copied at a scale of 2 with random rotations spanning 90°.
+	#[test]
+	fn stages_lead_up_to_a_placed_node_in_a_row() {
+		let mut fixture = Fixture::new(&VaryNodesFromCopyToPoints);
+		let star = fixture.add(STAR, star_inputs());
+		let copies = fixture.add(COPY_TO_POINTS, inputs(NodeInput::Node { id: star, index: 0 }, 2., 90.));
+		let position = to_value(&Position::Absolute([20, 10])).unwrap();
+		fixture.registry.node_instances.get_mut(&copies).unwrap().attributes_mut().set(POSITION, position, TimeStamp::ORIGIN);
+
+		let migrated = fixture.migrate_with(&VaryNodesFromCopyToPoints, Some(&host())).unwrap();
+		let position_of = |node: NodeId| migrated.node_instances[&node].attributes().get_typed::<Position>(POSITION);
+
+		// Walk back from the anchor through each stage's points
+		let mut stages = Vec::new();
+		let mut stage = copies;
+		while let NodeInput::Node { id, .. } = fixture.inputs(&migrated, stage)[0]
+			&& id != star
+		{
+			stages.insert(0, position_of(id));
+			stage = id;
+		}
+		let NodeInput::Node { id: group, .. } = fixture.inputs(&migrated, stage)[1] else {
+			panic!("the repeat reads the group")
+		};
+
+		assert_eq!(stages, [-1, 6, 13].map(|x| Some(Position::Absolute([x, 10]))));
+		assert_eq!(position_of(group), Some(Position::Absolute([-8, 13])));
 	}
 
 	#[test]
