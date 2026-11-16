@@ -44,7 +44,7 @@ pub use from_runtime::{
 	encode_node_ui_attributes, node_value_resource_refs, storage_location_id, storage_node_id, value_resource_ref,
 };
 #[cfg(any(feature = "conversion", test))]
-pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};
+pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource};
 #[cfg(any(feature = "conversion", test))]
 pub use to_runtime::{Declarations, ProjectedNetwork, ProjectedNode, RuntimeProjection};
 

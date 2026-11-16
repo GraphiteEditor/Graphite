@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::document::NetworkLocation;
 
-use crate::{NetworkReference, Value};
+use crate::{NetworkReference, Position, Value};
 
 /// One node's editor-side metadata, produced by `Registry::to_runtime_with_metadata`. One entry per
 /// node, since every node carries an identity to restore even when it carries no `ui::*` attribute.
@@ -124,12 +124,3 @@ pub trait NodeMetadataSource {
 pub struct NoMetadata;
 
 impl NodeMetadataSource for NoMetadata {}
-
-/// Unified storage-side position. The valid variants depend on `attr::node::ui::IS_LAYER`:
-/// layers use `Absolute` or `Stack`; non-layer nodes use `Absolute` or `Chain`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum Position {
-	Absolute([i32; 2]),
-	Chain,
-	Stack(u32),
-}

@@ -16,7 +16,7 @@ use syn::{Error, FnArg, Ident, ItemFn, ReturnType, Type, parse_macro_input};
 /// A `network` prefix names a built-in network definition, as in `#[migration(network "Merge"@1 => "module::merge"@2)]`.
 ///
 /// Parameters state what the migration reads and writes: `&Node` and `&Graph` read the source state, `Option<&dyn Compiler>` asks what only the
-/// compiler can tell about it, and each `&mut` parameter is a view (`Inputs`, `Upstream`, `Downstream`, `Target`) recording edits to its region. The function may return `()` or `Result<(), MigrationError>`.
+/// compiler can tell about it, and each `&mut` parameter is a view (`Inputs`, `Upstream`, `Downstream`, `Target`, `Attributes`) recording edits to its region. The function may return `()` or `Result<(), MigrationError>`.
 ///
 /// Generates a unit struct named after the function in Pascal case implementing `NodeMigration`, and registers it.
 #[proc_macro_attribute]

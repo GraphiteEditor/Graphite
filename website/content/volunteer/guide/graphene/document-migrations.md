@@ -88,6 +88,7 @@ You ask for what you need through the function's parameters, in any order. The f
 | `&mut Upstream` | Nodes feeding the anchor | `add_node`, `add_node_keyed`, `remove_node` |
 | `&mut Downstream` | Whatever reads the anchor's outputs | `consumers`, `add_node`, `add_node_keyed`, `connect` |
 | `&mut Target` | Which declaration the anchor becomes, see [Choosing a target](#choosing-a-target) | `set` |
+| `&mut Attributes` | Attributes of the anchor and of the nodes you add, see [Placing and naming nodes](#placing-and-naming-nodes) | `set`, `remove` |
 
 Reads always see the old document. `node.inputs()` returns the old layout however many edits you've made, and nodes you add never show up in `consumers`. `Inputs` edits apply in order to the layout being built. After `inputs.insert(1, ...)`, later `Inputs` calls see the old slot 1 as slot 2. `node.inputs()[1]` is still the old slot 1.
 
@@ -203,6 +204,18 @@ pub fn vary_from_style(node: &Node, target: &mut Target) {
 ```
 
 A wire written to a removed node brings that node back, so avoid switching a wire on and off depending on state. Keep the slot reading the same thing, and add nodes downstream of the anchor instead.
+
+### Placing and naming nodes
+
+Nodes you add start without attributes, so they sit at the graph's origin until you place them. `Attributes::set` writes an attribute of the anchor or of a node this run adds, named by the ID `add_node` returned, and `remove` deletes one. A display name stored as the old node's default would misname the new one, so clear it:
+
+```rust
+if node.attributes().get_typed::<String>(DISPLAY_NAME).as_deref() == Some("Copy to Points") {
+	attributes.remove(node.id(), DISPLAY_NAME);
+}
+```
+
+Writing to any other node fails, since another anchor's run may be editing it.
 
 ### Network definitions
 
