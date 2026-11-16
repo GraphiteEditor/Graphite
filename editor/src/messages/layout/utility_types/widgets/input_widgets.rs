@@ -64,6 +64,9 @@ pub struct DropdownInput {
 	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (we can replace this with `usize` if we switch to a Rust-based GUI)
 	#[serde(rename = "selectedIndex")]
 	pub selected_index: Option<u32>,
+	// Shown while no entry is selected
+	#[derivative(Default(value = "\"-\".to_string()"))]
+	pub placeholder: String,
 	#[serde(rename = "drawIcon")]
 	pub draw_icon: bool,
 	pub disabled: bool,

@@ -41,6 +41,26 @@ impl Font {
 		Self::new(font_family, core_types::consts::DEFAULT_FONT_STYLE.into())
 	}
 
+	pub fn from_data(data: &[u8]) -> Option<Self> {
+		use skrifa::string::StringId;
+		use skrifa::{FontRef, MetadataProvider};
+
+		let font = FontRef::from_index(data, 0).ok()?;
+		let name = |preferred: StringId, fallback: StringId| {
+			[preferred, fallback]
+				.into_iter()
+				.find_map(|id| font.localized_strings(id).english_or_first())
+				.map(|name| name.to_string())
+				.filter(|name| !name.is_empty())
+		};
+
+		let font_family = name(StringId::TYPOGRAPHIC_FAMILY_NAME, StringId::FAMILY_NAME)?;
+		let subfamily = name(StringId::TYPOGRAPHIC_SUBFAMILY_NAME, StringId::SUBFAMILY_NAME).unwrap_or_else(|| "Regular".to_string());
+		let weight = font.attributes().weight.value().round() as u32;
+
+		Some(Self::new(font_family, format!("{subfamily} ({weight})")))
+	}
+
 	pub fn named_weight(weight: u32) -> &'static str {
 		// From https://developer.mozilla.org/en-US/docs/Web/CSS/font-weight#common_weight_name_mapping
 		match weight {

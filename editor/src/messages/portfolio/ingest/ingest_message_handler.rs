@@ -6,6 +6,7 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::raster::Image;
 use graphene_std::raster_nodes::color_lookup_table::{Lut, LutParseError};
+use graphene_std::text::Font;
 
 #[derive(ExtractField)]
 pub struct IngestMessageContext {
@@ -66,7 +67,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 				let preferred = items.into_iter().min_by_key(|item| match item.data {
 					TransferData::Svg(_) => 0,
 					TransferData::Raster { .. } => 1,
-					TransferData::Document(_) | TransferData::LegacyDocument(_) | TransferData::Lut(_) | TransferData::Other(_) => 2,
+					TransferData::Document(_) | TransferData::LegacyDocument(_) | TransferData::Lut(_) | TransferData::Font(_) | TransferData::Other(_) => 2,
 					TransferData::Text(_) => 3,
 					TransferData::ApplicationData(_) => 4,
 				});
@@ -103,11 +104,17 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 							return;
 						}
 
-						// The file goes to the document that asked for it, which may no longer be active or open once the dialog closes
 						let resource_id = ResourceId::new();
+
+						let font = if data_type == DataType::Font { Font::from_data(&data) } else { None };
+						let resource_store_message = match font {
+							Some(font) => ResourceMessage::StoreFont { resource_id, font, data: data.into() },
+							None => ResourceMessage::StoreEmbedded { resource_id, data: data.into() },
+						};
+
 						let messages = [
 							DocumentMessage::AddTransaction,
-							DocumentMessage::Resource(ResourceMessage::StoreEmbedded { resource_id, data: data.into() }),
+							resource_store_message.into(),
 							DocumentMessage::NodeGraph(NodeGraphMessage::SetInputValue {
 								node_id,
 								input_index: input_index as usize,
@@ -172,7 +179,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						};
 						(insert, None)
 					}
-					TransferData::Lut(_) | TransferData::Other(_) | TransferData::Text(_) | TransferData::ApplicationData(_) => return unsupported(responses),
+					TransferData::Lut(_) | TransferData::Font(_) | TransferData::Other(_) | TransferData::Text(_) | TransferData::ApplicationData(_) => return unsupported(responses),
 				};
 
 				if !place_at_origin {
@@ -209,7 +216,7 @@ fn unsupported(responses: &mut VecDeque<Message>) {
 	});
 }
 
-/// The reason a node input refuses the file, or `None` if it accepts it. An input that lists its accepted types takes an image or LUT only if it fully parses.
+/// The reason a node input refuses the file, or `None` if it accepts it. An input that lists its accepted types takes an image, LUT, or font only if it parses.
 fn rejection(data: &[u8], data_type: DataType, accepted_types: &[DataType]) -> Option<&'static str> {
 	const WRONG_TYPE: &str = "This input does not accept the format of the chosen file.";
 
@@ -233,6 +240,7 @@ fn rejection(data: &[u8], data_type: DataType, accepted_types: &[DataType]) -> O
 			}
 			LutParseError::Unreadable => "This file could not be read as a LUT. It may be corrupted or an unsupported format variant.",
 		}),
+		DataType::Font => Font::from_data(data).is_none().then_some("This file could not be read as a font."),
 		_ => None,
 	}
 }
@@ -440,6 +448,27 @@ mod tests {
 		assert!(!stores(&IDENTITY_CUBE[..30], TypeFilter::lut()));
 		assert!(!stores(&png, TypeFilter::lut()));
 		assert!(!stores(IDENTITY_CUBE, TypeFilter::raster()));
+	}
+
+	#[test]
+	fn resource_input_stores_a_font_file_under_the_name_it_carries() {
+		let font_file: &[u8] = crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE.as_ref();
+		let stored_font = |data: &[u8]| {
+			let responses = ingest_named(data, Some("custom.ttf"), resource_input(TypeFilter::font().types), true);
+			responses.into_iter().find_map(|message| match message {
+				Message::Portfolio(PortfolioMessage::DocumentPassMessage {
+					document_id: REQUESTING_DOCUMENT,
+					message: DocumentMessage::Resource(ResourceMessage::StoreFont { font, .. }),
+				}) => Some(font),
+				_ => None,
+			})
+		};
+
+		assert_eq!(stored_font(font_file), Some(Font::new("Source Sans Pro".to_string(), "Regular (400)".to_string())));
+
+		// A file cut off after its intact signature, and an image named as a font
+		assert_eq!(stored_font(&font_file[..40]), None);
+		assert_eq!(stored_font(&Image::new(8, 8, Color::WHITE).to_png()), None);
 	}
 
 	#[test]

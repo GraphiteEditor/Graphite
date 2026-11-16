@@ -1001,7 +1001,12 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		}
 	}
 
+	let parameter_widgets_info = ParameterWidgetsInfo {
+		blank_assist: false,
+		..parameter_widgets_info
+	};
 	let ParameterWidgetsInfo {
+		document_id,
 		document_node,
 		node_id,
 		index,
@@ -1025,8 +1030,27 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		Some(TaggedValue::TypeDefault(_)) => Font::default(),
 		_ => return (first_widgets, second_widgets),
 	};
+
+	let filters = vec![TypeFilter::font()];
+	let file_drop_action = IngestAction::resource_input(document_id, node_id, index, &filters);
+	let load_button = IconButton::new("FileImport", 24)
+		.tooltip_label("Load Font File")
+		.tooltip_description("Use a font that isn't in the list by loading its .ttf or .otf file. The font is saved with the document.")
+		.on_update(move |_| {
+			IngestMessage::SetResourceInput {
+				document_id,
+				node_id,
+				input_index: index,
+				filters: filters.clone(),
+			}
+			.into()
+		})
+		.widget_instance();
+
 	{
 		first_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			load_button,
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(vec![
 				fonts
@@ -1050,7 +1074,15 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					.collect::<Vec<_>>(),
 			])
 			.selected_index(fonts.font_catalog.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
+			.placeholder(font.font_family.clone())
 			.virtual_scrolling(true)
+			.on_file_drop(move |file| {
+				IngestMessage::Ingest {
+					content: DataTransferItem::from_file(PathBuf::from(&file.name), Some(file.mime_type.as_str()).filter(|mime| !mime.is_empty()), file.data.clone()).into(),
+					action: file_drop_action.clone(),
+				}
+				.into()
+			})
 			.widget_instance(),
 		]);
 
@@ -1094,6 +1126,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					})
 					.map(|i| i as u32),
 			)
+			.placeholder(font.font_style.clone())
 			.widget_instance(),
 		]);
 		second_widgets = Some(second_row);

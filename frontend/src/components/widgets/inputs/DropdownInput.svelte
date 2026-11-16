@@ -8,27 +8,13 @@
 	import { widgetSizingStyles } from "/src/utility-functions/widgets";
 	import type { MenuListEntry, ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	const DASH_ENTRY: MenuListEntry = {
-		value: "",
-		label: "-",
-		icon: undefined,
-		annotation: "",
-		disabled: false,
-		children: [],
-		childrenHash: 0n,
-		font: undefined,
-		tooltipLabel: "",
-		tooltipDescription: "",
-		tooltipShortcut: undefined,
-		tooltipCode: "",
-	};
-
 	const dispatch = createEventDispatcher<{ selectedIndex: number; previewIndex: number; fileDrop: File }>();
 
 	let self: LayoutRow | undefined;
 
 	// Content
-	export let selectedIndex: number | undefined = undefined; // When not provided, a dash is displayed
+	export let selectedIndex: number | undefined = undefined; // When not provided, the placeholder is displayed
+	export let placeholder = "-";
 	export let drawIcon = false;
 	export let disabled = false;
 	// Children
@@ -132,13 +118,13 @@
 		return undefined;
 	}
 
-	function makeActiveEntry(): MenuListEntry {
+	function makeActiveEntry(): MenuListEntry | undefined {
 		const allEntries = entries.flat();
 
 		if (selectedIndex !== undefined && selectedIndex >= 0 && selectedIndex < allEntries.length) {
 			return allEntries[selectedIndex];
 		}
-		return DASH_ENTRY;
+		return undefined;
 	}
 
 	function takesDraggedFile(e: DragEvent): boolean {
@@ -187,10 +173,10 @@
 	data-dropdown-input
 >
 	<LayoutRow class="dropdown-box" classes={{ disabled, open }} {tooltipLabel} {tooltipDescription} {tooltipShortcut} on:click={() => !disabled && (open = true)} data-floating-menu-spawner>
-		{#if activeEntry.icon}
+		{#if activeEntry?.icon}
 			<IconLabel class="dropdown-icon" icon={activeEntry.icon} />
 		{/if}
-		<TextLabel class="dropdown-label">{activeEntry.label}</TextLabel>
+		<TextLabel class="dropdown-label">{activeEntry?.label ?? placeholder}</TextLabel>
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
 	<MenuList
@@ -200,7 +186,7 @@
 		on:activeEntry={({ detail }) => commitEntry(detail)}
 		on:open={({ detail }) => (open = detail)}
 		{open}
-		activeEntry={activeEntry === DASH_ENTRY ? undefined : activeEntry}
+		{activeEntry}
 		{entries}
 		entriesHash={entriesHash || 0n}
 		{drawIcon}

@@ -23,6 +23,9 @@ const TEXT_MIME: &str = "text/plain";
 const GRAPHITE_PREFIX: &str = "graphite: ";
 const SNIFFED_TEXT_LENGTH: usize = 4096;
 
+const FONT_FILE_EXTENSIONS: &[&str] = &["ttf", "otf"];
+const FONT_FILE_SIGNATURES: [&[u8]; 3] = [&[0, 1, 0, 0], b"OTTO", b"true"];
+
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum IngestAction {
@@ -65,6 +68,7 @@ pub enum DataType {
 	Gdd,
 	Svg,
 	Raster(ImageFormat),
+	Font,
 	Lut,
 	Text,
 	#[default]
@@ -98,6 +102,7 @@ impl DataType {
 			GDD_FILE_EXTENSION => Self::Gdd,
 			"svg" => Self::Svg,
 			extension if LUT_FILE_EXTENSIONS.contains(&extension) => Self::Lut,
+			extension if FONT_FILE_EXTENSIONS.contains(&extension) => Self::Font,
 			extension => ImageFormat::from_extension(extension).map_or(Self::Unknown, Self::Raster),
 		}
 	}
@@ -112,6 +117,9 @@ impl DataType {
 		}
 		if let Ok(format) = image::guess_format(data) {
 			return Self::Raster(format);
+		}
+		if FONT_FILE_SIGNATURES.iter().any(|signature| data.starts_with(signature)) {
+			return Self::Font;
 		}
 
 		// Only the head is read as text, where a character split by the cut is the one invalid sequence tolerated
@@ -139,8 +147,7 @@ impl DataType {
 			Self::Svg => SVG_MIME,
 			Self::Raster(format) => format.to_mime_type(),
 			Self::Text => TEXT_MIME,
-			// The LUT formats share no MIME type
-			Self::Lut | Self::Unknown => return None,
+			Self::Lut | Self::Font | Self::Unknown => return None,
 		})
 	}
 
@@ -151,6 +158,7 @@ impl DataType {
 			Self::Svg => &["svg"],
 			Self::Raster(format) => format.extensions_str(),
 			Self::Lut => LUT_FILE_EXTENSIONS,
+			Self::Font => FONT_FILE_EXTENSIONS,
 			Self::Text | Self::Unknown => &[],
 		}
 	}
@@ -189,6 +197,13 @@ impl TypeFilter {
 			types: vec![DataType::Lut],
 		}
 	}
+
+	pub fn font() -> Self {
+		Self {
+			name: "Font".into(),
+			types: vec![DataType::Font],
+		}
+	}
 }
 
 impl From<TypeFilter> for FileFilter {
@@ -221,6 +236,7 @@ pub enum TransferData {
 	Document(Vec<u8>),
 	LegacyDocument(String),
 	Lut(Vec<u8>),
+	Font(Vec<u8>),
 	Other(Vec<u8>),
 }
 
@@ -232,6 +248,7 @@ impl TransferData {
 			Self::Document(_) => DataType::Gdd,
 			Self::LegacyDocument(_) => DataType::GraphiteLegacy,
 			Self::Lut(_) => DataType::Lut,
+			Self::Font(_) => DataType::Font,
 			Self::Text(_) | Self::ApplicationData(_) => DataType::Text,
 			Self::Other(_) => DataType::Unknown,
 		}
@@ -240,7 +257,7 @@ impl TransferData {
 	pub fn into_bytes(self) -> Vec<u8> {
 		match self {
 			Self::Text(text) | Self::Svg(text) | Self::LegacyDocument(text) => text.into_bytes(),
-			Self::Raster { data, .. } | Self::Document(data) | Self::Lut(data) | Self::Other(data) => data,
+			Self::Raster { data, .. } | Self::Document(data) | Self::Lut(data) | Self::Font(data) | Self::Other(data) => data,
 			Self::ApplicationData(_) => DataTransferItem::from(self).into_raw().map(|(_, data)| data.into_bytes()).unwrap_or_default(),
 		}
 	}
@@ -295,6 +312,7 @@ impl DataTransferItem {
 			DataType::Svg => text(data, TransferData::Svg),
 			DataType::Raster(format) => TransferData::Raster { format, data },
 			DataType::Lut => TransferData::Lut(data),
+			DataType::Font => TransferData::Font(data),
 			DataType::Text | DataType::Unknown => TransferData::Other(data),
 		};
 		Self { data, path: Some(path) }
@@ -312,7 +330,7 @@ impl DataTransferItem {
 			},
 			TransferData::Svg(svg) => Some((DataType::Svg, RawData::Text(svg))),
 			TransferData::Raster { format, data } => Some((DataType::Raster(format), RawData::Bytes(data))),
-			TransferData::Document(_) | TransferData::LegacyDocument(_) | TransferData::Lut(_) | TransferData::Other(_) => None,
+			TransferData::Document(_) | TransferData::LegacyDocument(_) | TransferData::Lut(_) | TransferData::Font(_) | TransferData::Other(_) => None,
 		}
 	}
 }
@@ -404,6 +422,7 @@ mod tests {
 			DataType::from_content("\u{feff}<?xml version=\"1.0\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"/>".as_bytes()),
 			DataType::Svg
 		);
+		assert_eq!(DataType::from_content(b"OTTO\0\x0c"), DataType::Font);
 		assert_eq!(DataType::from_content(b"just text"), DataType::Unknown);
 		assert_eq!(DataType::from_content(&[0xff, 0xfe, 0x00]), DataType::Unknown);
 	}
@@ -426,6 +445,7 @@ mod tests {
 		assert_eq!(detect(Some("application/graphite+json"), ""), DataType::GraphiteLegacy);
 		assert_eq!(detect(Some("image/png"), "document.gdd"), DataType::Raster(ImageFormat::Png));
 		assert_eq!(detect(None, "grade.CUBE"), DataType::Lut);
+		assert_eq!(detect(None, "Custom.TTF"), DataType::Font);
 		assert_eq!(detect(Some("application/vnd.iccprofile"), "profile.icm"), DataType::Lut);
 		assert_eq!(detect(Some("text/csv"), "table.csv"), DataType::Unknown);
 		assert_eq!(DataType::detect(&[], None, None), DataType::Unknown);
