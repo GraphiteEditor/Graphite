@@ -207,7 +207,7 @@ A wire written to a removed node brings that node back, so avoid switching a wir
 
 ### Placing and naming nodes
 
-Nodes you add start without attributes, so they sit at the graph's origin until you place them. `Attributes::set` writes an attribute of the anchor or of a node this run adds, named by the ID `add_node` returned, and `remove` deletes one. A display name stored as the old node's default would misname the new one, so clear it:
+Nodes you add are placed beside the anchor for you. Those leading up to the anchor's primary input form a row to its left, or join its layer's chain, and the others sit below the node they feed. Only the anchor's own position is used, so under a chained anchor the nodes off the chain aren't placed. `Attributes::set` writes an attribute of the anchor or of a node this run adds, named by the ID `add_node` returned, and `remove` deletes one. A display name stored as the old node's default would misname the new one, so clear it:
 
 ```rust
 if node.attributes().get_typed::<String>(DISPLAY_NAME).as_deref() == Some("Copy to Points") {
