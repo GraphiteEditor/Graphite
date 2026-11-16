@@ -213,7 +213,7 @@ impl NodeRuntime {
 		};
 
 		apply_previews(&mut network, &previewed);
-		layer_content::stamp_layer_paths(&mut network, &layers);
+		layer_content::write_layer_paths(&mut network, &layers);
 		self.observer.replace_all(observations);
 		self.resources = resources;
 

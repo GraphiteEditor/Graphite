@@ -2,13 +2,13 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
 use graphene_std::NodeParameter;
-use graphene_std::graphic::{extend, stamp_layer_path};
+use graphene_std::graphic::{extend, write_layer_path};
 use graphene_std::list::NodeIdPath;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-/// What a layer adds to the document, which is what its thumbnail shows and what its path is stamped on.
+/// What a layer adds to the document, which is what its thumbnail shows and what its path is written onto.
 pub enum LayerContent {
 	/// What the Extend node the layer ends in is given to add, with the path of the network the node is in.
 	Added { network_path: Vec<NodeId>, extend: NodeId },
@@ -48,24 +48,24 @@ impl LayerContent {
 	}
 }
 
-/// Puts a node after each layer's content that stamps it with the layer's path, which is how the editor traces what's rendered back to its layer.
-/// A layer has none if its content may be of a type that can't be stamped.
-pub fn stamp_layer_paths(network: &mut NodeNetwork, layer_paths: &[Vec<NodeId>]) {
-	let mut stampable = HashMap::new();
+/// Puts a node after each layer's content that writes the layer's path onto it, which is how the editor traces what's rendered back to its layer.
+/// A layer has none if its content may be of a type that can't carry the path.
+pub fn write_layer_paths(network: &mut NodeNetwork, layer_paths: &[Vec<NodeId>]) {
+	let mut carries_layer_path = HashMap::new();
 
 	// O(layers * depth)
 	for layer_path in layer_paths {
 		let Some((layer, parent_path)) = layer_path.split_last() else { continue };
 		let Some(content) = layer_content(layer_path, network) else { continue };
 		let Some(source) = content.source(network) else { continue };
-		if !source_is_stampable(source, network, &mut stampable) {
+		if !source_can_carry_layer_path(source, network, &mut carries_layer_path) {
 			continue;
 		}
 
 		match content {
-			// The stamp goes between the Extend node and what it's given to add, inside the layer or beside it if the layer is that node
+			// The writer goes between the Extend node and what it's given to add, inside the layer or beside it if the layer is that node
 			LayerContent::Added { network_path, extend } => {
-				let stamp = stamp_id(extend);
+				let writer = layer_path_writer_id(extend);
 				let (levels_up, layer_beside) = match network_path.len().checked_sub(layer_path.len()) {
 					Some(depth_inside_layer) => (depth_inside_layer + 1, Vec::new()),
 					None => (1, vec![*layer]),
@@ -75,43 +75,43 @@ pub fn stamp_layer_paths(network: &mut NodeNetwork, layer_paths: &[Vec<NodeId>])
 					continue;
 				};
 
-				// Every layer made from the same network shares the stamp
-				if *added == NodeInput::node(stamp, 0) {
+				// Every layer made from the same network shares the writer
+				if *added == NodeInput::node(writer, 0) {
 					continue;
 				}
 
-				let content = std::mem::replace(added, NodeInput::node(stamp, 0));
-				holder.nodes.insert(stamp, stamp_node(content, levels_up, layer_beside));
+				let content = std::mem::replace(added, NodeInput::node(writer, 0));
+				holder.nodes.insert(writer, layer_path_writer(content, levels_up, layer_beside));
 			}
-			// The stamp goes beside the layer, taking over everything its output feeds
+			// The writer goes beside the layer, taking over everything its output feeds
 			LayerContent::Output(_) => {
-				let stamp = stamp_id(*layer);
+				let writer = layer_path_writer_id(*layer);
 				let Some(holder) = network_mut(network, parent_path) else { continue };
-				if holder.nodes.contains_key(&stamp) {
+				if holder.nodes.contains_key(&writer) {
 					continue;
 				}
 
-				let (output, stamped) = (NodeInput::node(*layer, 0), NodeInput::node(stamp, 0));
+				let (output, written) = (NodeInput::node(*layer, 0), NodeInput::node(writer, 0));
 				let inputs = holder.nodes.values_mut().flat_map(|node| &mut node.inputs).chain(&mut holder.exports);
-				inputs.filter(|input| **input == output).for_each(|input| *input = stamped.clone());
+				inputs.filter(|input| **input == output).for_each(|input| *input = written.clone());
 
-				holder.nodes.insert(stamp, stamp_node(output, 1, vec![*layer]));
+				holder.nodes.insert(writer, layer_path_writer(output, 1, vec![*layer]));
 			}
 		}
 	}
 }
 
-/// How the stamp node fares with what a proto node outputs.
+/// How the layer path writer fares with what a proto node outputs.
 #[derive(Clone, Copy)]
-enum Stampable {
+enum CarriesLayerPath {
 	Always,
 	/// The node outputs the type its one input is given, so that decides it.
 	AsItsInput,
 	Never,
 }
 
-/// Whether the stamp node can take everything the proto node at this path may output.
-fn source_is_stampable(mut source: Vec<NodeId>, network: &NodeNetwork, stampable: &mut HashMap<ProtoNodeIdentifier, Stampable>) -> bool {
+/// Whether the layer path writer can take everything the proto node at this path may output.
+fn source_can_carry_layer_path(mut source: Vec<NodeId>, network: &NodeNetwork, carries_layer_path: &mut HashMap<ProtoNodeIdentifier, CarriesLayerPath>) -> bool {
 	loop {
 		let Some((node_id, network_path)) = source.split_last() else { return false };
 		let Some(node) = network.nested_network(network_path).and_then(|network| network.nodes.get(node_id)) else {
@@ -119,10 +119,10 @@ fn source_is_stampable(mut source: Vec<NodeId>, network: &NodeNetwork, stampable
 		};
 		let DocumentNodeImplementation::ProtoNode(identifier) = &node.implementation else { return false };
 
-		match *stampable.entry(identifier.clone()).or_insert_with(|| output_is_stampable(identifier)) {
-			Stampable::Always => return true,
-			Stampable::Never => return false,
-			Stampable::AsItsInput => {
+		match *carries_layer_path.entry(identifier.clone()).or_insert_with(|| output_can_carry_layer_path(identifier)) {
+			CarriesLayerPath::Always => return true,
+			CarriesLayerPath::Never => return false,
+			CarriesLayerPath::AsItsInput => {
 				let Some(input_source) = node.inputs.first().and_then(|input| network.input_source(network_path, input)) else {
 					return false;
 				};
@@ -132,21 +132,25 @@ fn source_is_stampable(mut source: Vec<NodeId>, network: &NodeNetwork, stampable
 	}
 }
 
-fn output_is_stampable(identifier: &ProtoNodeIdentifier) -> Stampable {
-	let (Some(outputs), Some(stamps)) = (NODE_REGISTRY.get(identifier), NODE_REGISTRY.get(&stamp_layer_path::IDENTIFIER)) else {
-		return Stampable::Never;
+fn output_can_carry_layer_path(identifier: &ProtoNodeIdentifier) -> CarriesLayerPath {
+	let (Some(outputs), Some(writers)) = (NODE_REGISTRY.get(identifier), NODE_REGISTRY.get(&write_layer_path::IDENTIFIER)) else {
+		return CarriesLayerPath::Never;
 	};
 
-	let stamps_type = |output: &graph_craft::Type| {
-		let content = |stamp: &graphene_std::NodeIOTypes| stamp.inputs.get(stamp_layer_path::ContentInput::INDEX).is_some_and(|content| content.nested_type() == output);
-		stamps.keys().any(content)
+	let writes_type = |output: &graph_craft::Type| {
+		let content = |writer: &graphene_std::NodeIOTypes| writer.inputs.get(write_layer_path::ContentInput::INDEX).is_some_and(|content| content.nested_type() == output);
+		writers.keys().any(content)
 	};
-	if outputs.keys().all(|output| stamps_type(output.return_value.nested_type())) {
-		return Stampable::Always;
+	if outputs.keys().all(|output| writes_type(output.return_value.nested_type())) {
+		return CarriesLayerPath::Always;
 	}
 
 	let as_its_input = |output: &graphene_std::NodeIOTypes| matches!(output.inputs.as_slice(), [input] if input.nested_type() == output.return_value.nested_type());
-	if outputs.keys().all(as_its_input) { Stampable::AsItsInput } else { Stampable::Never }
+	if outputs.keys().all(as_its_input) {
+		CarriesLayerPath::AsItsInput
+	} else {
+		CarriesLayerPath::Never
+	}
 }
 
 /// The network at this path, which is either an entry of the definitions table or held by its node.
@@ -179,15 +183,15 @@ fn network_mut<'a>(network: &'a mut NodeNetwork, path: &[NodeId]) -> Option<&'a 
 	Some(current)
 }
 
-/// The ID of the node stamping what the node with this ID outputs or is given, which stays the same between compilations.
-pub fn stamp_id(stamped: NodeId) -> NodeId {
+/// The ID of the node writing the layer path onto what the node with this ID outputs or is given, which stays the same between compilations.
+pub fn layer_path_writer_id(node_id: NodeId) -> NodeId {
 	let mut hasher = DefaultHasher::new();
-	"layer path stamp".hash(&mut hasher);
-	stamped.hash(&mut hasher);
+	"layer path writer".hash(&mut hasher);
+	node_id.hash(&mut hasher);
 	NodeId(hasher.finish())
 }
 
-fn stamp_node(content: NodeInput, levels_up: usize, layer_beside: Vec<NodeId>) -> DocumentNode {
+fn layer_path_writer(content: NodeInput, levels_up: usize, layer_beside: Vec<NodeId>) -> DocumentNode {
 	DocumentNode {
 		inputs: vec![
 			content,
@@ -195,7 +199,7 @@ fn stamp_node(content: NodeInput, levels_up: usize, layer_beside: Vec<NodeId>) -
 			NodeInput::value(TaggedValue::NodeIdPath(NodeIdPath::from(layer_beside)), false),
 			NodeInput::Reflection(DocumentNodeMetadata::DocumentNodePath),
 		],
-		implementation: DocumentNodeImplementation::ProtoNode(stamp_layer_path::IDENTIFIER),
+		implementation: DocumentNodeImplementation::ProtoNode(write_layer_path::IDENTIFIER),
 		..Default::default()
 	}
 }
@@ -208,7 +212,7 @@ mod tests {
 	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 	use crate::test_utils::test_prelude::*;
 
-	// A layer that ends in no Extend node has its whole output stamped, which gives the editor its click targets
+	// A layer that ends in no Extend node has its path written onto its whole output, which gives the editor its click targets
 	#[tokio::test]
 	async fn a_node_shown_as_a_layer_is_traced_back_to() {
 		let mut editor = EditorTestUtils::create();
@@ -234,7 +238,7 @@ mod tests {
 		);
 	}
 
-	// A layer that is itself an Extend node has what it's given to add stamped beside it
+	// A layer that is itself an Extend node has its path written, from beside it, onto what it's given to add
 	#[tokio::test]
 	async fn an_extend_node_shown_as_a_layer_is_traced_back_to() {
 		let mut editor = EditorTestUtils::create();
@@ -269,7 +273,7 @@ mod tests {
 	}
 
 	#[test]
-	fn content_of_a_type_without_a_stamp_is_left_alone() {
+	fn content_that_cannot_carry_a_layer_path_is_left_alone() {
 		let path_node = DocumentNode {
 			inputs: vec![NodeInput::Reflection(DocumentNodeMetadata::DocumentNodePath)],
 			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::graphic::path_of_subgraph::IDENTIFIER),
@@ -280,10 +284,10 @@ mod tests {
 			nodes: [(NodeId(1), path_node)].into_iter().collect(),
 			..Default::default()
 		};
-		let unstamped = network.clone();
+		let unchanged = network.clone();
 
-		stamp_layer_paths(&mut network, &[vec![NodeId(1)]]);
+		write_layer_paths(&mut network, &[vec![NodeId(1)]]);
 
-		assert_eq!(network, unstamped);
+		assert_eq!(network, unchanged);
 	}
 }

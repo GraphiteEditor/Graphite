@@ -1397,7 +1397,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
-	// The Merge and Artboard networks no longer hold a Monitor node or stamp their content with the layer's path, since the editor finds thumbnails and adds the stamps itself.
+	// The Merge and Artboard networks no longer hold a Monitor node or write the layer's path onto their content, since the editor finds thumbnails and writes the paths itself.
 	// Pre-pass for the same reason as the Brush, Transform, and Image migrations above: rebuilding the network orphans its child paths.
 	let outdated_layers: Vec<(NodeId, Vec<NodeId>, DefinitionIdentifier)> = document
 		.network_interface
