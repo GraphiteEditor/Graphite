@@ -1,7 +1,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use glam::DVec2;
 use glam::IVec2;
-use graph_layout::{Graph, Node, Placement, Wire, click_targets, layout, target_at};
+use graph_layout::{GRID_SIZE, Graph, Node, Placement, Wire, layout, target_at};
 use std::hint::black_box;
 
 const SIZES: [usize; 3] = [1_000, 10_000, 100_000];
@@ -142,26 +142,22 @@ fn bench_hit_test(criterion: &mut Criterion) {
 }
 
 fn bench_click_targets(criterion: &mut Criterion) {
-	let mut building = criterion.benchmark_group("click_targets");
+	let mut group = criterion.benchmark_group("target_at");
 	for size in SIZES {
 		let graph = stacked_layers(size);
 		let graph_layout = layout(&graph);
-		building.bench_with_input(BenchmarkId::from_parameter(size), &(graph, graph_layout), |bencher, (graph, graph_layout)| {
-			bencher.iter(|| click_targets(black_box(graph), black_box(graph_layout)))
-		});
-	}
-	building.finish();
 
-	let mut hitting = criterion.benchmark_group("target_at");
-	for size in SIZES {
-		let graph = stacked_layers(size);
-		let targets = click_targets(&graph, &layout(&graph));
-		let point = DVec2::new(-100., 1_000.);
-		hitting.bench_with_input(BenchmarkId::from_parameter(size), &targets, |bencher, targets| {
-			bencher.iter(|| target_at(black_box(targets), black_box(point)))
-		});
+		// The middle of a chained node halfway down the stack, and a point beside the whole graph that every node's reach misses
+		let middle_node = graph_layout.positions[size / 2 + 1].as_dvec2() * GRID_SIZE + DVec2::new(60., 30.);
+		let beside = DVec2::new(1e6, 0.);
+
+		for (name, point) in [("hit", middle_node), ("miss", beside)] {
+			group.bench_with_input(BenchmarkId::new(name, size), &(&graph, &graph_layout), |bencher, (graph, graph_layout)| {
+				bencher.iter(|| target_at(black_box(graph), black_box(graph_layout), black_box(point)))
+			});
+		}
 	}
-	hitting.finish();
+	group.finish();
 }
 
 criterion_group!(benches, bench_layout, bench_hit_test, bench_click_targets);

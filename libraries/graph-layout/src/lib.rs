@@ -2,7 +2,7 @@
 
 mod click_targets;
 
-pub use click_targets::{ClickTarget, GRID_SIZE, Part, click_targets, target_at};
+pub use click_targets::{ClickTarget, GRID_SIZE, Part, node_parts, reach, target_at};
 use glam::IVec2;
 
 /// How many grid cells a chain steps left for each node.
@@ -107,6 +107,8 @@ pub struct Layout {
 	pub wire_ends: Vec<[IVec2; 2]>,
 	/// The layer whose chain each node is drawn in, if any.
 	pub chain_layers: Vec<Option<u32>>,
+	/// How many nodes each layer's chain holds, and zero for any other node.
+	pub chain_lengths: Vec<u32>,
 	/// Nodes on a cycle, placed only from the readers placed before them.
 	pub cyclic: Vec<u32>,
 }
@@ -174,12 +176,17 @@ pub fn layout(graph: &Graph) -> Layout {
 		})
 		.collect();
 	let chain_layers = chain_layers(graph, &inputs, &readers, &positions);
+	let mut chain_lengths = vec![0; node_count];
+	for layer in chain_layers.iter().flatten() {
+		chain_lengths[*layer as usize] += 1;
+	}
 
 	Layout {
 		positions,
 		bounds,
 		wire_ends,
 		chain_layers,
+		chain_lengths,
 		cyclic,
 	}
 }
@@ -348,11 +355,56 @@ mod tests {
 			wires: Vec::new(),
 		};
 
-		let targets = click_targets(&graph, &layout(&graph));
-		let at = |x: f64, y: f64| target_at(&targets, glam::DVec2::new(x, y)).map(|target| target.part);
+		let layout = layout(&graph);
+		let at = |x: f64, y: f64| target_at(&graph, &layout, glam::DVec2::new(x, y)).map(|target| target.part);
 
 		assert_eq!(at(2., GRID_SIZE), Some(Part::Input(0)));
 		assert_eq!(at(60., GRID_SIZE), Some(Part::Body));
 		assert_eq!(at(60., 200.), None);
+	}
+
+	#[test]
+	fn a_rounded_corner_is_not_hit() {
+		let graph = Graph {
+			nodes: vec![Node {
+				rows: 3,
+				..node(Placement::Absolute(IVec2::ZERO), false)
+			}],
+			wires: Vec::new(),
+		};
+		let layout = layout(&graph);
+		let body_bottom = GRID_SIZE / 2. + 3. * GRID_SIZE;
+		let at = |x: f64, y: f64| target_at(&graph, &layout, glam::DVec2::new(x, y)).map(|target| target.part);
+
+		assert_eq!(at(0.1, body_bottom - 0.1), None);
+		assert_eq!(at(3., body_bottom - 3.), Some(Part::Body));
+	}
+
+	#[test]
+	fn every_part_lies_within_its_nodes_reach() {
+		let locked_layer = Node {
+			locked: true,
+			inputs: 2,
+			width: 9,
+			..node(Placement::Absolute(IVec2::new(30, 10)), true)
+		};
+		let tall_node = Node {
+			rows: 1,
+			inputs: 6,
+			outputs: 3,
+			..node(Placement::Chain, false)
+		};
+		let graph = Graph {
+			nodes: vec![locked_layer, tall_node, node(Placement::Stack(0), true)],
+			wires: vec![wire(1, 0, 1), wire(2, 0, 0)],
+		};
+		let layout = layout(&graph);
+
+		for index in 0..graph.nodes.len() {
+			let [min, max] = reach(&graph, &layout, index);
+			node_parts(&graph, &layout, index, |target| {
+				assert!(target.min.cmpge(min).all() && target.max.cmple(max).all(), "{target:?} leaves the reach {min} to {max}");
+			});
+		}
 	}
 }

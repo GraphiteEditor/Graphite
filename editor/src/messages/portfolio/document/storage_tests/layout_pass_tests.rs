@@ -170,17 +170,21 @@ fn layout_pass_matches_and_times_the_editor_resolver() {
 		}
 		let looking_up_names = start.elapsed() / REPETITIONS;
 
+		let node_centers: Vec<glam::DVec2> = pass.bounds.iter().map(|[min, max]| (min + max).as_dvec2() / 2. * graph_layout::GRID_SIZE).collect();
 		let start = Instant::now();
 		for _ in 0..REPETITIONS {
-			std::hint::black_box(graph_layout::click_targets(&graph, std::hint::black_box(&pass)));
+			for center in &node_centers {
+				std::hint::black_box(graph_layout::target_at(&graph, &pass, std::hint::black_box(*center)));
+			}
 		}
-		let new_click_targets = start.elapsed() / REPETITIONS;
-		let target_count = graph_layout::click_targets(&graph, &pass).len();
+		let hit_test = start.elapsed() / (REPETITIONS * node_centers.len().max(1) as u32);
+		let hits = node_centers.iter().filter(|center| graph_layout::target_at(&graph, &pass, **center).is_some()).count();
 
 		println!(
-			"{demo:34} {:4} nodes {:3} layers | resolver {resolver:>9.1?} | editor click targets {click_targets:>9.1?} | measuring names {measuring_names:>9.1?} | memo {looking_up_names:>8.1?} | pass {one_pass:>8.1?} | new click targets {new_click_targets:>8.1?} ({target_count} targets) | conversion {conversion:>8.1?} | {} position, {} chain mismatches ({chained} chained)",
+			"{demo:34} {:4} nodes {:3} layers | resolver {resolver:>9.1?} | editor click targets {click_targets:>9.1?} | measuring names {measuring_names:>9.1?} | memo {looking_up_names:>8.1?} | pass {one_pass:>8.1?} | hit test {hit_test:>8.1?} per query ({hits} of {} centers hit) | conversion {conversion:>8.1?} | {} position, {} chain mismatches ({chained} chained)",
 			graph.nodes.len(),
 			layer_names.len(),
+			node_centers.len(),
 			mismatches.len(),
 			chain_mismatches.len(),
 		);
