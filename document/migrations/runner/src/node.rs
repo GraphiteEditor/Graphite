@@ -173,6 +173,9 @@ fn apply_runs(migration: &dyn NodeMigration, source: &Registry, anchors: &[NodeI
 	}
 
 	add_nodes(&mut target, &runs, resolver)?;
+	for (anchor, edits) in &runs {
+		write_attributes(&mut target, *anchor, edits)?;
+	}
 
 	let input_edits: HashMap<NodeId, &InputsEdit> = runs.iter().filter_map(|(anchor, edits)| Some((*anchor, edits.inputs.as_ref()?))).collect();
 	for (anchor, inputs) in &input_edits {
@@ -322,6 +325,24 @@ fn add_nodes(target: &mut Registry, runs: &[(NodeId, Edits)], resolver: &dyn Dec
 				slot.input = input.clone();
 			}
 			target.node_instances.insert(added.id, node);
+		}
+	}
+
+	Ok(())
+}
+
+/// Apply one run's attribute writes, which may only name its anchor and the nodes it adds.
+fn write_attributes(target: &mut Registry, anchor: NodeId, edits: &Edits) -> Result<(), RunnerError> {
+	for write in &edits.attributes {
+		let in_region = write.node == anchor || edits.added_nodes.iter().any(|added| added.id == write.node);
+		let node = target.node_instances.get_mut(&write.node).filter(|_| in_region);
+		let node = node.ok_or(RunnerError::AttributesOutsideRegion { anchor, node: write.node })?;
+
+		match &write.value {
+			Some(value) => node.attributes_mut().set(&write.key, value.clone(), TimeStamp::ORIGIN),
+			None => {
+				node.attributes_mut().remove(&write.key);
+			}
 		}
 	}
 
