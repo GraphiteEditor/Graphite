@@ -638,6 +638,9 @@ impl ApplicationHandler for App {
 						Err(RenderError::SurfaceLost) => {
 							tracing::warn!("lost surface");
 						}
+						Err(RenderError::SurfaceOutdated) => {
+							tracing::warn!("outdated surface");
+						}
 						Err(other) => tracing::error!("Render error: {:?}", other),
 					}
 					let _ = self.runtime_command_sender.send(RuntimeCommand::Update);
