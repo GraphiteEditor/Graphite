@@ -582,17 +582,33 @@ fn mirror<T: BoundingBox + HasText + Send + Clone>(
 	Ok(result_list)
 }
 
-/// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
-/// with its own trailing entry dropped. The terminating element of the returned path is the document node whose
-/// encapsulated network we live in, so the path doubles as a unique reference to that node at any nesting depth.
-/// Used as the value source for stamping the `editor:layer_path` attribute on each item of a layer's output, which lets
-/// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
-/// the layer is at the root document network or nested inside a custom subgraph.
+/// Returns this node's `node_path` without its own trailing entry, identifying the document node that holds its network at any nesting depth.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
 fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath> {
 	let node_path = node_path.into_element().0;
 	let len = node_path.len();
 	Item::new_from_element(NodeIdPath(node_path.into_iter().take(len.saturating_sub(1)).collect()))
+}
+
+/// Writes the path of the layer the content belongs to onto it, which is how the editor traces what it renders back to that layer.
+#[node_macro::node(category(""))]
+fn write_layer_path<T: 'static + Send>(
+	_: impl Ctx,
+	#[implementations(String, bool, f64, i64, DVec2, DAffine2, Vector, Graphic, Raster<CPU>, Raster<GPU>, Color, Gradient, Artboard, Stroke)] content: Item<T>,
+	/// How many entries to drop from the end of this node's path, itself included, to reach the layer or else the network holding it.
+	levels_up: Item<i64>,
+	/// The layer's ID if the network holding it was reached, which is empty if the layer itself was.
+	layer_beside: Item<NodeIdPath>,
+	#[node_path] node_path: Item<NodeIdPath>,
+) -> Item<T> {
+	let node_path = node_path.into_element().0;
+	let kept = node_path.len().saturating_sub(levels_up.into_element().max(0) as usize);
+	let layer_path = node_path.into_iter().take(kept).chain(layer_beside.into_element().0).collect();
+
+	let mut content = content;
+	content.set_attribute(ATTR_EDITOR_LAYER_PATH, NodeIdPath(layer_path));
+
+	content
 }
 
 /// Sets a named attribute on the input list, computing one value per item via the value-producing input. That input
@@ -963,7 +979,7 @@ fn legacy_layer_extend<T: Send + Clone>(
 	new: List<T>,
 	nested_node_path: Item<NodeIdPath>,
 ) -> List<T> {
-	// Drop this internal node's own trailing entry so the stamped path ends at the user-facing parent layer-style node (which encapsulates it)
+	// Drop this internal node's own trailing entry so the written path ends at the user-facing parent layer-style node (which encapsulates it)
 	let nested_node_path = nested_node_path.into_element().0;
 	let layer_path = {
 		let len = nested_node_path.len();

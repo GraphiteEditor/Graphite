@@ -27,6 +27,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use thumbnails::Thumbnails;
 
+mod layer_content;
 mod observer;
 mod thumbnails;
 
@@ -212,6 +213,7 @@ impl NodeRuntime {
 		};
 
 		apply_previews(&mut network, &previewed);
+		layer_content::write_layer_paths(&mut network, &layers);
 		self.observer.replace_all(observations);
 		self.resources = resources;
 

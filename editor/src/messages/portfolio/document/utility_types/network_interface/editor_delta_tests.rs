@@ -864,14 +864,15 @@ async fn reconciling_an_input_value_edit_reproduces_the_interface() {
 		let group = only_group(editor);
 		editor.active_document_mut().network_interface.make_editable(&[group]);
 		let interface = &mut editor.active_document_mut().network_interface;
-		let (inner, index) = interface
+		let extend = graph_craft::document::DocumentNodeImplementation::ProtoNode(graphene_std::graphic::extend::IDENTIFIER);
+		let inner = interface
 			.nested_network(&[group])
 			.expect("the group's network")
 			.nodes
 			.iter()
-			.find_map(|(id, node)| Some((*id, node.inputs.iter().position(|input| input.as_value().is_some())?)))
-			.expect("a node with a value input inside the group");
-		interface.set_input(&InputConnector::node_at_index(inner, index), NodeInput::value(TaggedValue::Number(42.), false), &[group]);
+			.find_map(|(id, node)| (node.implementation == extend).then_some(*id))
+			.expect("an Extend node inside the group");
+		interface.set_input(&InputConnector::node_at_index(inner, 0), NodeInput::value(TaggedValue::None, false), &[group]);
 	})
 	.await;
 }
@@ -1064,13 +1065,14 @@ fn table_layer(editor: &EditorTestUtils) -> (NodeId, graph_craft::document::Netw
 		.expect("a committed layer should name a table entry")
 }
 
-/// A node inside the table entry `definition`, and the index of one of its value inputs.
-fn value_input_inside(editor: &EditorTestUtils, definition: graph_craft::document::NetworkId) -> (NodeId, usize) {
+/// The Extend node inside the layer's table entry `definition`, and the index of its base input.
+fn input_inside(editor: &EditorTestUtils, definition: graph_craft::document::NetworkId) -> (NodeId, usize) {
+	let extend = graph_craft::document::DocumentNodeImplementation::ProtoNode(graphene_std::graphic::extend::IDENTIFIER);
 	editor.active_document().network_interface.document_network().definitions[&definition]
 		.nodes
 		.iter()
-		.find_map(|(id, node)| node.inputs.iter().position(|input| matches!(input, NodeInput::Value { .. })).map(|index| (*id, index)))
-		.expect("the layer's network should have a node with a value input")
+		.find_map(|(id, node)| (node.implementation == extend).then_some((*id, 0)))
+		.expect("the layer's network should have an Extend node")
 }
 
 /// The network location `deltas` recorded for a write to an input of `node_id`.
@@ -1119,7 +1121,7 @@ async fn an_edit_inside_a_table_entry_constructs_the_diff() {
 	let (layer, _) = table_layer(&editor);
 	editor.active_document_mut().network_interface.make_editable(&[layer]);
 	let (layer, definition) = table_layer(&editor);
-	let (inner, input_index) = value_input_inside(&editor, definition);
+	let (inner, input_index) = input_inside(&editor, definition);
 
 	let working = convert(&editor);
 	editor.active_document_mut().network_interface.discard_deltas();
@@ -1174,7 +1176,7 @@ async fn a_write_keeps_its_network_when_the_instance_changes_implementation() {
 	let (layer, _) = table_layer(&editor);
 	editor.active_document_mut().network_interface.make_editable(&[layer]);
 	let (layer, definition) = table_layer(&editor);
-	let (inner, input_index) = value_input_inside(&editor, definition);
+	let (inner, input_index) = input_inside(&editor, definition);
 	let interface = &mut editor.active_document_mut().network_interface;
 	interface.discard_deltas();
 
@@ -1387,14 +1389,10 @@ async fn making_an_instance_unique_forks_its_network() {
 	assert_ne!(forked, definition);
 	assert!(!interface.is_shared(&copy, &[]) && !interface.is_shared(&layer, &[]));
 
-	let (inner, input_index) = value_input_inside(&editor, forked);
+	let (inner, input_index) = input_inside(&editor, forked);
 	let original = editor.active_document().network_interface.document_network().definitions[&definition].clone();
 	let interface = &mut editor.active_document_mut().network_interface;
-	let NodeInput::Value { tagged_value, exposed } = &interface.document_network().definitions[&forked].nodes[&inner].inputs[input_index] else {
-		unreachable!("the input was found as a value")
-	};
-	let flipped = NodeInput::value((**tagged_value).clone(), !exposed);
-	interface.set_input(&InputConnector::node_at_index(inner, input_index), flipped, &[copy]);
+	interface.set_input(&InputConnector::node_at_index(inner, input_index), NodeInput::value(TaggedValue::None, false), &[copy]);
 
 	assert_ne!(interface.document_network().definitions[&forked], original, "the edit should change the copy's network");
 	assert_eq!(interface.document_network().definitions[&definition], original, "the original's network should be untouched");
