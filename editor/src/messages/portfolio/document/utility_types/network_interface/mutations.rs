@@ -600,6 +600,10 @@ impl NodeNetworkInterface {
 			return;
 		}
 
+		if let NodeInput::Node { node_id: upstream_node_id, .. } = &previous_input {
+			self.pin_relative_node_losing_its_readers(upstream_node_id, input_connector, network_path);
+		}
+
 		// A chain positions its nodes relative to the layer they feed, so either end of the rewire
 		// leaving that layer breaks the chain it belonged to
 		for chain_input in [&previous_input, &new_input] {

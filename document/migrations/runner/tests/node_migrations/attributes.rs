@@ -114,7 +114,7 @@ fn added_nodes_lead_up_to_a_placed_anchor() {
 
 	assert_eq!(far, Some(Position::Absolute([20 - 2 * CHAIN_WIDTH, 10])));
 	assert_eq!(near, Some(Position::Absolute([20 - CHAIN_WIDTH, 10])));
-	assert_eq!(below, Some(Position::Absolute([20 - 2 * CHAIN_WIDTH, 10 + FEEDER_ROW_HEIGHT])));
+	assert_eq!(below, Some(Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT])));
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn added_nodes_join_a_chained_anchors_chain() {
 	let [far, near, below] = placed_around(Position::Chain);
 
 	assert_eq!([far, near], [Some(Position::Chain); 2]);
-	assert_eq!(below, None);
+	assert_eq!(below, Some(Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT])));
 }
 
 #[test]

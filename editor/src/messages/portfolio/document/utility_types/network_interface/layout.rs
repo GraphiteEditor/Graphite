@@ -91,6 +91,16 @@ impl NodeNetworkInterface {
 			},
 			NodeTypePersistentMetadata::Node(node_metadata) => match node_metadata.position {
 				NodePosition::Absolute(position) => Some(position),
+				NodePosition::Relative(offset) => {
+					let reader_positions = self.reading_nodes(node_id, network_path);
+					let reader_positions = reader_positions.iter().filter_map(|reader| self.position_from_downstream(reader, network_path, visited, resolved));
+
+					let Some(top_left) = reader_positions.reduce(IVec2::min) else {
+						log::error!("Could not get the position of any node reading relative node {node_id}");
+						return None;
+					};
+					Some(top_left + offset)
+				}
 				NodePosition::Chain => {
 					// A chain node is placed by its distance from the layer it feeds, so walk downstream to that layer
 					let mut current_node_id = *node_id;
@@ -132,6 +142,43 @@ impl NodeNetworkInterface {
 				}
 			},
 		}
+	}
+
+	/// The nodes reading any output of `node_id`.
+	fn reading_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
+		let output_count = self.number_of_outputs(node_id, network_path);
+		self.with_outward_wires(network_path, |outward_wires| {
+			(0..output_count)
+				.filter_map(|output_index| outward_wires.get(&OutputConnector::node(*node_id, output_index)))
+				.flatten()
+				.filter_map(InputConnector::node_id)
+				.collect()
+		})
+		.unwrap_or_default()
+	}
+
+	/// Pins a relative node at its drawn position before `leaving_reader` stops reading it, if no other node reads it.
+	pub(crate) fn pin_relative_node_losing_its_readers(&mut self, node_id: &NodeId, leaving_reader: &InputConnector, network_path: &[NodeId]) {
+		if !self.is_relative(node_id, network_path) {
+			return;
+		}
+
+		let output_count = self.number_of_outputs(node_id, network_path);
+		let still_read = self.with_outward_wires(network_path, |outward_wires| {
+			(0..output_count)
+				.filter_map(|output_index| outward_wires.get(&OutputConnector::node(*node_id, output_index)))
+				.flatten()
+				.any(|reader| reader != leaving_reader && reader.node_id().is_some())
+		});
+		if still_read != Some(false) {
+			return;
+		}
+
+		let Some(position) = self.position(node_id, network_path) else {
+			log::error!("Could not get the position of relative node {node_id} before it loses its readers");
+			return;
+		};
+		self.set_absolute_position(node_id, position, network_path);
 	}
 
 	/// Sets the position of a node to an absolute position
@@ -507,6 +554,15 @@ impl NodeNetworkInterface {
 					.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer))
 			{
 				node_ids.remove(&selected_node);
+			}
+		}
+
+		// A relative node already follows its readers, so shifting it with all of them would move it twice
+		let shifting_nodes = node_ids.clone();
+		for selected_node in &shifting_nodes {
+			let readers = self.reading_nodes(selected_node, network_path);
+			if self.is_relative(selected_node, network_path) && !readers.is_empty() && readers.iter().all(|reader| shifting_nodes.contains(reader)) {
+				node_ids.remove(selected_node);
 			}
 		}
 
