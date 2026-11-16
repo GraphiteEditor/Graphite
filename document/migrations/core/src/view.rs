@@ -1,5 +1,6 @@
-use crate::{Compiler, Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector};
-use document_graph_storage::{Implementation, InputSlot, NetworkId, NodeId, NodeInput, Registry, TimeStamp};
+use crate::{Compiler, Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector, encode};
+use document_graph_storage::{Implementation, InputSlot, NetworkId, NodeId, NodeInput, Registry, TimeStamp, Value};
+use serde::Serialize;
 use std::ops::Deref;
 
 /// Which part of the registry around an anchor a view reads or edits. A migration's footprint is the union of its views' regions.
@@ -14,6 +15,8 @@ impl Region {
 	pub const DOWNSTREAM: Self = Self(1 << 3);
 	/// The anchor's whole network, as read through [`Graph`].
 	pub const NETWORK: Self = Self(1 << 4);
+	/// Attributes of the anchor and of the nodes the run adds, such as their positions and display names.
+	pub const ATTRIBUTES: Self = Self(1 << 5);
 
 	pub const fn union(self, other: Self) -> Self {
 		Self(self.0 | other.0)
@@ -223,6 +226,8 @@ pub struct Edits {
 	pub connections: Vec<(OutputConnector, InputConnector)>,
 	/// The declaration this anchor switches to, when not the migration's target.
 	pub target: Option<Declaration>,
+	/// Attribute writes to the anchor and the nodes this run adds.
+	pub attributes: Vec<AttributeWrite>,
 }
 
 impl Edits {
@@ -234,6 +239,57 @@ impl Edits {
 		self.removed_nodes.extend(other.removed_nodes);
 		self.connections.extend(other.connections);
 		self.target = other.target.or(self.target);
+		self.attributes.extend(other.attributes);
+	}
+}
+
+/// One attribute of the anchor or of a node the run adds. A run's writes apply in the order it recorded them.
+#[derive(Debug)]
+pub struct AttributeWrite {
+	pub node: NodeId,
+	pub key: String,
+	/// `None` deletes the key.
+	pub value: Option<Value>,
+}
+
+/// Attributes of the anchor and of the nodes this run adds, such as where they sit and what they're named.
+#[derive(Default)]
+pub struct Attributes {
+	writes: Vec<AttributeWrite>,
+}
+
+impl Attributes {
+	/// Write `value` under `key` on the anchor or on a node this run adds.
+	pub fn set<T: Serialize>(&mut self, node: NodeId, key: &str, value: &T) {
+		self.writes.push(AttributeWrite {
+			node,
+			key: key.to_string(),
+			value: Some(encode(value)),
+		});
+	}
+
+	/// Delete `key` from the anchor or from a node this run adds.
+	pub fn remove(&mut self, node: NodeId, key: &str) {
+		self.writes.push(AttributeWrite {
+			node,
+			key: key.to_string(),
+			value: None,
+		});
+	}
+}
+
+impl<'a> View<'a> for Attributes {
+	const REGION: Region = Region::ATTRIBUTES;
+
+	fn extract(_context: &AnchorContext<'a>) -> Self {
+		Self::default()
+	}
+
+	fn into_edits(self) -> Result<Edits, MigrationError> {
+		Ok(Edits {
+			attributes: self.writes,
+			..Default::default()
+		})
 	}
 }
 

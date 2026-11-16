@@ -168,7 +168,7 @@ fn write_step(migrations: &Path, node: &NodeSource, name: &str, step: &str, from
 		 /// Describe what changed from version {from}.\n\
 		 #[migration({step})]\n\
 		 pub fn {name}(inputs: &mut Inputs) {{\n\
-		 \tcompile_error!(\"Migrate from version {from} here. Read the source state with `&Node` or `&Graph`, and edit it through `&mut Inputs`, `&mut Upstream`, or `&mut Downstream`\");\n\
+		 \tcompile_error!(\"Migrate from version {from} here. Read the source state with `&Node` or `&Graph`, and edit it through `&mut Inputs`, `&mut Upstream`, `&mut Downstream`, or `&mut Attributes`\");\n\
 		 }}\n\n\
 		 #[cfg(test)]\n\
 		 mod tests {{\n\

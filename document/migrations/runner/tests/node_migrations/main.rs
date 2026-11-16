@@ -1,3 +1,4 @@
+mod attributes;
 mod blobs;
 mod compiler;
 mod examples;

@@ -22,6 +22,9 @@ impl Node {
 	pub fn inputs_mut(&mut self) -> &mut Vec<InputSlot> {
 		&mut self.inputs
 	}
+	pub fn attributes_mut(&mut self) -> &mut Attributes {
+		&mut self.attributes
+	}
 
 	/// True if both nodes agree on every value-bearing field, ignoring slot/attribute timestamps.
 	pub fn value_equal(&self, other: &Self) -> bool {

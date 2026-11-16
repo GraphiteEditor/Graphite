@@ -13,6 +13,8 @@ fn every_migration_registers_once() {
 	sources.sort();
 
 	let mut expected = vec![
+		decl!("attributes::outside"@1),
+		decl!("attributes::renamed"@1),
 		decl!("blending_nodes::opacity"@1),
 		decl!("blob_nodes::text"@1),
 		decl!("compiler::anchor"@1),
