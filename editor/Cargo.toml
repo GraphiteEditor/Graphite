@@ -81,3 +81,4 @@ futures = { workspace = true }
 node-macro = { workspace = true }
 core-types = { workspace = true }
 migration-core = { workspace = true, features = ["typed"] }
+graph-layout = { workspace = true }
