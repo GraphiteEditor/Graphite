@@ -20,6 +20,9 @@ fn every_migration_registers_once() {
 		decl!("choice::toggle"@1),
 		decl!("choice::unnamed"@1),
 		decl!("graphene_core::ops::AddNode"@1),
+		decl!(network "Artboard"@1),
+		decl!(network "Frame"@1),
+		decl!(network "Merge"@1),
 		decl!("math_nodes::multiply"@1),
 		decl!("order::asking"@1),
 		decl!("order::inspector"@1),
@@ -27,6 +30,7 @@ fn every_migration_registers_once() {
 		decl!("order::static_late"@1),
 		decl!("transform_nodes::transform"@1),
 		decl!("vector_nodes::angle_between"@1),
+		decl!("vector_nodes::bounding_box"@1),
 		decl!("vector_nodes::extract_xy"@1),
 		decl!("vector_nodes::split_vec2"@2),
 	];

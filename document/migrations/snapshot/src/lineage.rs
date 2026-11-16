@@ -4,8 +4,11 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use syn::parse::{Parse, ParseStream};
 
-/// `identifier@version`.
+/// `identifier@version`. A network definition's identifier starts with [`NETWORK`], which no node's identifier does.
 pub(crate) type Declaration = (String, u32);
+
+/// Starts the identifier of a network definition, which the editor's catalog declares instead of a node crate.
+const NETWORK: &str = "network ";
 
 /// The source and target of one migration in `migration-nodes`.
 pub(crate) struct MigrationStep {
@@ -13,23 +16,47 @@ pub(crate) struct MigrationStep {
 	pub target: Declaration,
 }
 
-/// `"id"@1 => @2` or `"id"@1 => "other"@2`, as `#[migration]` and `rename!` take it.
+/// `"id"@1 => @2` or `"id"@1 => "other"@2`, as `#[migration]` and `rename!` take it. Either side may be a `network` definition.
 impl Parse for MigrationStep {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
+		let source_network = parse_network_keyword(input)?;
 		let identifier: syn::LitStr = input.parse()?;
 		input.parse::<syn::Token![@]>()?;
 		let version: syn::LitInt = input.parse()?;
 		input.parse::<syn::Token![=>]>()?;
 
-		let target_identifier = if input.peek(syn::LitStr) { input.parse::<syn::LitStr>()?.value() } else { identifier.value() };
+		// A version step keeps the identifier and its kind
+		let (target_identifier, target_network) = if input.peek(syn::LitStr) || input.peek(syn::Ident) {
+			let network = parse_network_keyword(input)?;
+			(input.parse::<syn::LitStr>()?.value(), network)
+		} else {
+			(identifier.value(), source_network)
+		};
 		input.parse::<syn::Token![@]>()?;
 		let target_version: syn::LitInt = input.parse()?;
 
 		Ok(Self {
-			source: (identifier.value(), version.base10_parse()?),
-			target: (target_identifier, target_version.base10_parse()?),
+			source: (named(identifier.value(), source_network), version.base10_parse()?),
+			target: (named(target_identifier, target_network), target_version.base10_parse()?),
 		})
 	}
+}
+
+/// Consumes a leading `network` keyword, returning whether it was there.
+fn parse_network_keyword(input: ParseStream) -> syn::Result<bool> {
+	if !input.peek(syn::Ident) {
+		return Ok(false);
+	}
+
+	let keyword: syn::Ident = input.parse()?;
+	if keyword != "network" {
+		return Err(syn::Error::new(keyword.span(), "expected `network` or a declaration identifier string"));
+	}
+	Ok(true)
+}
+
+fn named(identifier: String, network: bool) -> String {
+	if network { format!("{NETWORK}{identifier}") } else { identifier }
 }
 
 /// Every migration step the crate at `directory` compiles, following its modules from `lib.rs` so a file no `mod` declares doesn't count.
@@ -110,8 +137,8 @@ pub(crate) fn lineage_problems(nodes: &[Declaration], migrations: &[MigrationSte
 		}
 	}
 
-	// A target is a current declaration, or a step on the way to one
-	for step in migrations {
+	// A target is a current declaration, or a step on the way to one. Network definitions aren't checked, since the editor declares them
+	for step in migrations.iter().filter(|step| !step.target.0.starts_with(NETWORK)) {
 		if !current.contains(&step.target) && !sources.contains(&step.target) {
 			let ((source, from), (target, to)) = (&step.source, &step.target);
 			problems.push(format!(
@@ -142,6 +169,27 @@ mod tests {
 
 		let replacement: MigrationStep = syn::parse_str(r#""a::B"@2 => "c::D"@3"#).unwrap();
 		assert_eq!((replacement.source, replacement.target), (declaration("a::B", 2), declaration("c::D", 3)));
+	}
+
+	#[test]
+	fn parses_network_definitions_on_either_side() {
+		let version_step: MigrationStep = syn::parse_str(r#"network "A"@1 => @2"#).unwrap();
+		assert_eq!((version_step.source, version_step.target), (declaration("network A", 1), declaration("network A", 2)));
+
+		let collapse: MigrationStep = syn::parse_str(r#"network "A"@1 => "c::D"@2"#).unwrap();
+		assert_eq!((collapse.source, collapse.target), (declaration("network A", 1), declaration("c::D", 2)));
+
+		assert!(syn::parse_str::<MigrationStep>(r#"subgraph "A"@1 => @2"#).is_err());
+	}
+
+	#[test]
+	fn network_steps_lead_to_nodes_and_to_definitions_this_check_cannot_see() {
+		let nodes = [declaration("c::D", 2)];
+		let migrations = [
+			step(declaration("network A", 1), declaration("c::D", 2)),
+			step(declaration("network B", 1), declaration("network B", 2)),
+		];
+		assert!(lineage_problems(&nodes, &migrations).is_empty());
 	}
 
 	#[test]

@@ -118,10 +118,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::memo::monitor::IDENTIFIER,
-		aliases: &["graphene_core::memo::MonitorNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::memo::memoize::IDENTIFIER,
 		aliases: &["graphene_core::memo::MemoNode", "graphene_core::memo::ImpureMemoNode"],
 	},
@@ -944,8 +940,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::PathLengthNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::path_modify::IDENTIFIER,
+		node: graphene_std::vector::path::IDENTIFIER,
 		aliases: &[
+			"vector_nodes::vector_modification_nodes::PathModifyNode",
 			"graphene_core::vector::vector_modification_nodes::PathModifyNode",
 			"graphene_core::vector::vector_data::modification::PathModifyNode",
 			"graphene_core::vector::vector_modification::PathModifyNode",
@@ -1162,6 +1159,14 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 	(out, hash_to_id)
 }
 
+/// The removed Monitor node, which old documents still hold.
+const MONITOR_IDENTIFIER: ProtoNodeIdentifier = ProtoNodeIdentifier::new("graphene_core::memo::MonitorNode");
+
+/// Whether the implementation is the removed Monitor node, with or without the type arguments it was once stored with.
+fn is_monitor(implementation: &DocumentNodeImplementation) -> bool {
+	matches!(implementation, DocumentNodeImplementation::ProtoNode(identifier) if identifier.as_str().split('<').next() == Some(MONITOR_IDENTIFIER.as_str()))
+}
+
 /// Whether the node is a subgraph that feeds its first input through a Monitor into a Transform proto node and forwards the other four inputs unchanged, making it equivalent to a bare Transform node.
 fn is_monitored_transform_subgraph(node: &DocumentNode, document_network: &graph_craft::document::NodeNetwork) -> bool {
 	let Some(network) = document_network.implementation_network(&node.implementation) else {
@@ -1177,7 +1182,7 @@ fn is_monitored_transform_subgraph(node: &DocumentNode, document_network: &graph
 			_ => false,
 		})
 	};
-	let Some((monitor_id, monitor)) = find_proto_node(&graphene_std::memo::monitor::IDENTIFIER) else {
+	let Some((monitor_id, monitor)) = find_proto_node(&MONITOR_IDENTIFIER) else {
 		return false;
 	};
 	let Some((transform_id, transform)) = find_proto_node(&graphene_std::transform_nodes::transform::IDENTIFIER) else {
@@ -1370,6 +1375,28 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
+	// The "Path" wrapper network was replaced with the `path` proto node directly. Convert old `Network("Path")` instances to the proto node, forwarding the Content and Modification inputs.
+	// Pre-pass for the same reason as the Brush, Transform, and Image migrations above: replacing the outer Path's network impl orphans its child paths.
+	let path_wrappers: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Path".into()))).then_some((*node_id, path)))
+		.collect();
+	for (node_id, network_path) in &path_wrappers {
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+
+		for (index, input) in old_inputs.into_iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+	}
+
 	// The Merge and Artboard networks no longer pass their content through a Monitor node, since thumbnails are found from the layers themselves.
 	// Pre-pass for the same reason as the Brush, Transform, and Image migrations above: rebuilding the network orphans its child paths.
 	let monitored_layers: Vec<(NodeId, Vec<NodeId>, DefinitionIdentifier)> = document
@@ -1381,8 +1408,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			let reference = document.network_interface.reference(node_id, &path)?;
 			let is_merge_or_artboard = [DefinitionIdentifier::Network("Merge".into()), DefinitionIdentifier::Network("Artboard".into())].contains(&reference);
 
-			let monitor = DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER);
-			let has_monitor = network.nodes.values().any(|inner_node| inner_node.implementation == monitor);
+			let has_monitor = network.nodes.values().any(|inner_node| is_monitor(&inner_node.implementation));
 
 			(is_merge_or_artboard && has_monitor).then_some((*node_id, path, reference))
 		})
@@ -1390,6 +1416,23 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	for (node_id, network_path, reference) in &monitored_layers {
 		let Some(definition) = resolve_document_node_type(reference) else { continue };
 		document.network_interface.replace_implementation(node_id, network_path, &mut definition.default_node_template());
+	}
+
+	// Any Monitor still left becomes a Passthrough of its content, once the passes above have used it to recognize old networks
+	let monitors: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter(|(_, node, _)| is_monitor(&node.implementation))
+		.map(|(node_id, _, path)| (*node_id, path))
+		.collect();
+	for (node_id, network_path) in &monitors {
+		let mut passthrough = NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER),
+			..Default::default()
+		};
+		document.network_interface.replace_implementation(node_id, network_path, &mut passthrough);
+		document.network_interface.set_call_argument(node_id, network_path, passthrough.call_argument);
 	}
 
 	// The old "Math" node evaluated an expression over "A" and "B". A lexable static expression not reading a wired `B` becomes "Math Function"
@@ -3463,7 +3506,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// SVG-import legacy Path nodes baked their geometry at non-exposed input 0; move it to input 1 (the modern slot for VectorModification).
 	// For exposed input 0, any baked value is unused at runtime, so just reset it.
-	if reference == DefinitionIdentifier::Network("Path".into()) {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER) {
 		let input_0 = node.inputs.first()?;
 		if let NodeInput::Value { tagged_value, exposed } = input_0
 			&& let TaggedValue::VectorModification(modification) = &**tagged_value
@@ -4209,6 +4252,7 @@ fn vary_scales_bias_from_copy_to_points(bias: f64) -> f64 {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::messages::portfolio::document::utility_types::network_interface::{derived_node_id, shipped_node_id};
 
 	/// Runs the upgrades with the root wire cache loaded, the state a migration meets after its first rewire, and asserts the interface they leave behind is consistent.
 	fn migrate(document: &mut DocumentMessageHandler) {
@@ -4864,7 +4908,7 @@ mod tests {
 			panic!("Blend should stay a network node")
 		};
 		assert_eq!(
-			inner.nodes[&NodeId(3)].implementation,
+			inner.nodes[&shipped_node_id("Blend", NodeId(3))].implementation,
 			DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::as_number::IDENTIFIER)
 		);
 	}
@@ -4887,14 +4931,12 @@ mod tests {
 
 		migrate(&mut document);
 
-		let Some(inner) = document
-			.network_interface
-			.document_network()
-			.implementation_network(&document.network_interface.document_network().nodes[&node_id].implementation)
-		else {
+		let implementation = &document.network_interface.document_network().nodes[&node_id].implementation;
+		let (DocumentNodeImplementation::Definition(definition), Some(inner)) = (implementation, document.network_interface.document_network().implementation_network(implementation)) else {
 			panic!("Blend should stay a network node")
 		};
-		assert_eq!(inner.nodes[&NodeId(5)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Number(42.)));
+		let edited_subtract = derived_node_id(*definition, NodeId(5));
+		assert_eq!(inner.nodes[&edited_subtract].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Number(42.)));
 	}
 
 	// Merge and Artboard networks once passed their content through a Monitor node for thumbnails, so their rebuilt networks drop it
@@ -4919,7 +4961,7 @@ mod tests {
 			let content = std::mem::replace(&mut extend.inputs[1], NodeInput::node(monitor_id, 0));
 			let monitor_template = NodeTemplate {
 				inputs: vec![content],
-				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
+				implementation: NodeTemplateImplementation::ProtoNode(MONITOR_IDENTIFIER),
 				..Default::default()
 			};
 			network_template.nodes.insert(monitor_id, monitor_template);
@@ -4934,12 +4976,32 @@ mod tests {
 			else {
 				panic!("{name} should stay a network node")
 			};
-			let monitor = DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER);
-			assert!(
-				network.nodes.values().all(|inner_node| inner_node.implementation != monitor),
-				"{name} should no longer have a Monitor node"
-			);
+			// A Monitor left in place would become a Passthrough, so only the rebuilt network has the definition's node count
+			let NodeTemplateImplementation::Network(shipped) = resolve_network_node_type(name).expect("The definition should exist").default_node_template().implementation else {
+				panic!("{name} should be a network node")
+			};
+			assert_eq!(network.nodes.len(), shipped.nodes.len(), "{name} should be rebuilt from its definition, without the Monitor node");
 		}
+	}
+
+	// The removed Monitor node keeps passing on its content wherever it's left
+	#[test]
+	fn a_monitor_node_becomes_a_passthrough() {
+		let node_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		let content = NodeInput::value(TaggedValue::Number(42.), false);
+		let monitor_template = NodeTemplate {
+			inputs: vec![content.clone()],
+			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MonitorNode<_, _, _>")),
+			..Default::default()
+		};
+		document.network_interface.insert_node(node_id, monitor_template, &[]);
+
+		migrate(&mut document);
+
+		let node = &document.network_interface.document_network().nodes[&node_id];
+		assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER));
+		assert_eq!(node.inputs, [content]);
 	}
 
 	// Regex Find's Match Index is now an integer, so an old instance rounds its stored F64 index and rebuilds the subgraph
@@ -4970,8 +5032,11 @@ mod tests {
 		let Some(inner) = document.network_interface.document_network().implementation_network(&node.implementation) else {
 			panic!("Regex Find should stay a network node")
 		};
-		assert_eq!(inner.nodes[&NodeId(0)].inputs.get(2), Some(&NodeInput::import(item!(i64), 2)));
-		assert_eq!(inner.nodes[&NodeId(1)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Integer(0)));
+		assert_eq!(inner.nodes[&shipped_node_id("Regex Find", NodeId(0))].inputs.get(2), Some(&NodeInput::import(item!(i64), 2)));
+		assert_eq!(
+			inner.nodes[&shipped_node_id("Regex Find", NodeId(1))].inputs.get(1).and_then(|input| input.as_value()).cloned(),
+			Some(TaggedValue::Integer(0))
+		);
 	}
 
 	#[test]
@@ -5789,7 +5854,13 @@ mod tests {
 
 		// The circle is one vector item, so it's repeated as it is rather than grouped and flattened back out as graphics
 		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
-		let migrated = opened.network_interface.document_node(&copy_to_points, &[subnetwork]).expect("the node should exist");
+		let DocumentNodeImplementation::Definition(definition) = opened.network_interface.document_network().nodes[&subnetwork].implementation else {
+			panic!("the subnetwork should name a definition")
+		};
+		let migrated = opened
+			.network_interface
+			.document_node(&derived_node_id(definition, copy_to_points), &[subnetwork])
+			.expect("the node should exist");
 		assert_eq!(migrated.implementation, DocumentNodeImplementation::ProtoNode(repeat_on_points::IDENTIFIER));
 	}
 

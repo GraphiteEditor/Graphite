@@ -87,7 +87,10 @@ fn projecting_a_node_matches_the_whole_conversion() {
 			"node {id} projected differently than the whole conversion converts it"
 		);
 
-		let own_entry = node_entries.iter().find(|entry| entry.storage_id == id).expect("the whole conversion emits an entry per node");
+		let own_entry = node_entries
+			.iter()
+			.find(|entry| crate::storage_node_id(entry.local_id) == id)
+			.expect("the whole conversion emits an entry per node");
 		assert_eq!(&projected.metadata, own_entry);
 	}
 }

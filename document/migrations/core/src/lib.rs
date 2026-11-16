@@ -27,7 +27,7 @@ pub use compiler::{Compiler, MigrationHost, ValueType};
 #[cfg(feature = "typed")]
 pub use connector::{InputConnector, NewNode, OutputConnector};
 #[cfg(feature = "typed")]
-pub use declaration::{Declaration, DeclarationResolver};
+pub use declaration::{Declaration, DeclarationKind, DeclarationResolver};
 #[cfg(feature = "typed")]
 pub use document_graph_storage::NodeInput;
 pub use error::MigrationError;
@@ -44,7 +44,7 @@ pub use registry::{register_migration, registered_migrations};
 #[cfg(feature = "typed")]
 pub use value::{encode, literal, literal_of};
 #[cfg(feature = "typed")]
-pub use view::{AddedNode, AnchorContext, Downstream, Edits, Graph, Inputs, InputsEdit, Node, Region, Target, Upstream, View};
+pub use view::{AddedNode, AnchorContext, Downstream, Edits, Graph, Inputs, InputsEdit, Node, Region, Target, Upstream, View, implements};
 
 // For the registration `#[migration]`, `rename!`, and `format_migration!` generate
 #[doc(hidden)]

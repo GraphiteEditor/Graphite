@@ -61,7 +61,7 @@ static INPUT_CONVERSIONS: Lazy<HashMap<ProtoNodeIdentifier, Vec<Option<&'static 
 		.collect()
 });
 
-/// Proto nodes whose every implementation returns its one input's type unchanged (like Monitor and Memoize), so a wire through one is constrained by what it feeds.
+/// Proto nodes whose every implementation returns its one input's type unchanged (like Memoize), so a wire through one is constrained by what it feeds.
 static TYPE_PRESERVING_NODES: Lazy<HashSet<ProtoNodeIdentifier>> = Lazy::new(|| {
 	NODE_REGISTRY
 		.iter()
@@ -420,7 +420,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// A check of which wire types an input accepts, built once so testing many types searches the node's matching implementations only once.
-	/// Unlike [`Self::input_accepts_type`], a node passing its input's type through unchanged (like Monitor) also needs the inputs it feeds to accept the type.
+	/// Unlike [`Self::input_accepts_type`], a node passing its input's type through unchanged (like Memoize) also needs the inputs it feeds to accept the type.
 	fn type_acceptor(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Box<dyn Fn(&Type) -> bool> {
 		let accepts_here: Box<dyn Fn(&Type) -> bool> = match input_connector {
 			InputConnector::Export(export_index) => match network_path.split_last() {
@@ -768,25 +768,48 @@ mod tests {
 	#[tokio::test]
 	async fn subgraph_inputs_look_through_type_preserving_nodes() {
 		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-		use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 		use crate::test_utils::test_prelude::*;
 
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		let path_node_id = editor.create_node_by_name(DefinitionIdentifier::Network("Path".into())).await;
+		let merge = editor.create_node_by_name_at(DefinitionIdentifier::Network("Merge".into()), 0, 0).await;
 
-		// The Path subgraph's content goes through a Monitor node, which accepts most types, before the node that needs a vector
-		let content_types = editor
-			.active_document()
-			.network_interface
-			.potential_valid_input_types(&InputConnector::node_at_index(path_node_id, 0), &[])
-			.iter()
-			.map(ToString::to_string)
-			.collect::<Vec<_>>();
-		assert!(content_types.iter().any(|ty| ty == "Vector"), "Path's content should accept a vector, found {content_types:?}");
+		// A new import feeding a Memoize, which accepts most types, before a Path that needs a vector
+		editor.enter_editable_network(merge).await;
+		let memoize = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::memo::memoize::IDENTIFIER), -20, 10).await;
+		let path = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER), -10, 10).await;
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::node(memoize, 0),
+				input_connector: InputConnector::node_at_index(path, 0),
+			})
+			.await;
+		let import_index = editor.active_document().network_interface.number_of_imports(&[merge]);
+		editor
+			.handle_message(NodeGraphMessage::AddImportAndConnect {
+				import_index,
+				input_connector: InputConnector::node_at_index(memoize, 0),
+			})
+			.await;
+
+		let network_interface = &editor.active_document().network_interface;
+		let type_names = |input_connector: &InputConnector, network_path: &[super::NodeId]| {
+			network_interface
+				.potential_valid_input_types(input_connector, network_path)
+				.iter()
+				.map(ToString::to_string)
+				.collect::<Vec<_>>()
+		};
+
+		let memoize_types = type_names(&InputConnector::node_at_index(memoize, 0), &[merge]);
+		assert!(memoize_types.iter().any(|ty| ty == "Color"), "Memoize itself should accept a color, found {memoize_types:?}");
+
+		let content_types = type_names(&InputConnector::node_at_index(merge, import_index), &[]);
+		assert!(content_types.iter().any(|ty| ty == "Vector"), "the input should accept a vector, found {content_types:?}");
 		assert!(
 			!content_types.iter().any(|ty| ty == "Color"),
-			"Path's content should not accept a color just because its Monitor does, found {content_types:?}"
+			"the input should not accept a color just because its Memoize does, found {content_types:?}"
 		);
 	}
 
@@ -811,7 +834,7 @@ mod tests {
 			.await;
 
 		// A new import passed straight through to Merge's export, which the editor bridges with a Passthrough node
-		editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+		editor.enter_editable_network(merge).await;
 		let import_index = editor.active_document().network_interface.number_of_imports(&[merge]);
 		editor
 			.handle_message(NodeGraphMessage::AddImportAndConnect {

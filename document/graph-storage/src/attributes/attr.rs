@@ -1,9 +1,7 @@
 pub mod node {
 	pub const CALL_ARGUMENT: &str = "call_argument";
 	pub const VISIBLE: &str = "visible";
-	pub const SKIP_DEDUPLICATION: &str = "skip_deduplication";
 	pub const REFLECTION_METADATA: &str = "reflection_metadata";
-	pub const ORIGINAL_NODE_ID: &str = "original_node_id";
 
 	pub mod input {
 		pub const IMPORT_TYPE: &str = "import_type";
@@ -25,7 +23,8 @@ pub mod node {
 		pub const PINNED: &str = "ui::pinned";
 		pub const OUTPUT_NAMES: &str = "ui::output_names";
 		pub const OUTPUT_DESCRIPTIONS: &str = "ui::output_descriptions";
-		pub const REFERENCE: &str = "ui::reference"; // TODO: Remove?
+		/// The built-in network definition a network was created from, stored on the network's attributes. See [`NetworkReference`](crate::NetworkReference).
+		pub const REFERENCE: &str = "ui::reference";
 	}
 }
 

@@ -315,7 +315,6 @@ impl Preprocessor {
 				call_argument: input_type.clone(),
 				implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 				visible: true,
-				skip_deduplication: false,
 				..Default::default()
 			};
 
@@ -371,7 +370,6 @@ impl Preprocessor {
 					generated: true,
 				}),
 				visible: true,
-				skip_deduplication: false,
 				..Default::default()
 			};
 
@@ -426,6 +424,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 				}
 				RegistryValueSource::Scope(data) => return NodeInput::scope(*data),
 				RegistryValueSource::SourceId => return NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::SourceId),
+				RegistryValueSource::NodePath => return NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 			};
 
 			// A ranked `Item<T>` type prefers a bare `T` value (promoted at resolution), since bare values drive the Inspector widgets
@@ -861,7 +860,7 @@ mod tests {
 			assert_eq!(info.constant_inputs.count_ones(), 1, "{identifier:?} should only require its name to be constant");
 		}
 
-		for identifier in [graphene_core::memo::memoize::IDENTIFIER, graphene_core::memo::monitor::IDENTIFIER, ops::passthrough::IDENTIFIER] {
+		for identifier in [graphene_core::memo::memoize::IDENTIFIER, ops::passthrough::IDENTIFIER] {
 			assert!(compile_metadata(&identifier).forwards_input, "{identifier:?} should forward its input");
 		}
 	}

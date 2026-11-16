@@ -6,7 +6,7 @@ use crate::consts::{
 };
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -2867,7 +2867,7 @@ impl Fsm for PathToolFsmState {
 					let layer = if shape_editor.selected_shape_state.contains_key(&layer) {
 						layer
 					} else {
-						let Some(node_type) = resolve_network_node_type("Path") else {
+						let Some(node_type) = resolve_proto_node_type(graphene_std::vector::path::IDENTIFIER) else {
 							error!("Could not resolve node type for Path");
 							continue;
 						};

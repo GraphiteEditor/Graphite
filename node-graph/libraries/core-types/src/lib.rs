@@ -55,11 +55,6 @@ pub trait Node<Input: ?Sized> {
 	fn node_name(&self) -> &'static str {
 		std::any::type_name::<Self>()
 	}
-	/// Serialize the node which is used for the `introspect` function which can retrieve values from monitor nodes.
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		log::warn!("Node::serialize not implemented for {}", std::any::type_name::<Self>());
-		None
-	}
 }
 
 mod types;
@@ -107,9 +102,6 @@ impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for &N {
 	fn node_name(&self) -> &'static str {
 		(**self).node_name()
 	}
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		(**self).serialize()
-	}
 }
 impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for Box<N> {
 	type Output = N::Output;
@@ -120,9 +112,6 @@ impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for Box<N> {
 	fn node_name(&self) -> &'static str {
 		(**self).node_name()
 	}
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		(**self).serialize()
-	}
 }
 impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for std::sync::Arc<N> {
 	type Output = N::Output;
@@ -132,9 +121,6 @@ impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for std::sync::Arc<N> {
 	}
 	fn node_name(&self) -> &'static str {
 		(**self).node_name()
-	}
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		(**self).serialize()
 	}
 }
 

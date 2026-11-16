@@ -28,7 +28,6 @@ impl DocumentNode {
 			call_argument: self.call_argument,
 			construction_args,
 			original_location: self.original_location,
-			skip_deduplication: self.skip_deduplication,
 			compile_metadata: self.compile_metadata.unwrap_or_default(),
 			upstream_context_features: Default::default(),
 		}

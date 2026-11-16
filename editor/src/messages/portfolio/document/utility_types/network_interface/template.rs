@@ -21,8 +21,6 @@ pub struct NodeTemplate {
 	pub implementation: NodeTemplateImplementation,
 	/// Represents the eye icon for hiding/showing the node in the graph UI.
 	pub visible: bool,
-	/// Prevents identical proto nodes from being deduplicated during compilation, e.g. for monitor nodes.
-	pub skip_deduplication: bool,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed in italics.
 	pub display_name: String,
 	/// Metadata to override the Inspector widgets for each input. Kept the same length as `inputs`.
@@ -57,7 +55,6 @@ impl Default for NodeTemplate {
 			call_argument: concrete!(Context),
 			implementation: NodeTemplateImplementation::default(),
 			visible: true,
-			skip_deduplication: false,
 			display_name: String::new(),
 			input_metadata: Vec::new(),
 			output_names: Vec::new(),
@@ -104,22 +101,16 @@ pub struct NodeNetworkTemplate {
 
 impl NodeTemplate {
 	/// Joins a [`DocumentNode`] and its persistent metadata into the unified template shape. Missing nested metadata is filled with defaults.
-	///
-	/// A template names no node, so the storage identity is dropped here and left unset by
-	/// [`Self::into_parts`]: a node inserted from a template is addressed by its location until storage
-	/// names it.
 	pub fn from_parts(document_node: DocumentNode, persistent_node_metadata: DocumentNodePersistentMetadata) -> Self {
 		let DocumentNode {
 			inputs,
 			call_argument,
 			implementation,
 			visible,
-			skip_deduplication,
 			compile_metadata: _,
 			original_location: _,
 		} = document_node;
 		let DocumentNodePersistentMetadata {
-			storage_id: _,
 			display_name,
 			mut input_metadata,
 			mut output_names,
@@ -166,7 +157,6 @@ impl NodeTemplate {
 			call_argument,
 			implementation,
 			visible,
-			skip_deduplication,
 			display_name,
 			input_metadata,
 			output_names,
@@ -184,7 +174,6 @@ impl NodeTemplate {
 			call_argument,
 			implementation,
 			visible,
-			skip_deduplication,
 			display_name,
 			mut input_metadata,
 			mut output_names,
@@ -216,12 +205,10 @@ impl NodeTemplate {
 			call_argument,
 			implementation,
 			visible,
-			skip_deduplication,
 			compile_metadata: None,
 			original_location: Default::default(),
 		};
 		let persistent_node_metadata = DocumentNodePersistentMetadata {
-			storage_id: None,
 			display_name,
 			input_metadata,
 			output_names,

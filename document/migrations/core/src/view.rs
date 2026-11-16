@@ -1,5 +1,7 @@
-use crate::{Compiler, Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector};
-use document_graph_storage::{InputSlot, NetworkId, NodeId, NodeInput, Registry, TimeStamp};
+use crate::{Compiler, Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector, encode};
+use document_graph_storage::attributes::attr::node::REFLECTION_METADATA;
+use document_graph_storage::{Implementation, InputSlot, NetworkId, NodeId, NodeInput, Registry, TimeStamp};
+use serde::Serialize;
 use std::ops::Deref;
 
 /// Which part of the registry around an anchor a view reads or edits. A migration's footprint is the union of its views' regions.
@@ -148,9 +150,9 @@ impl<'a> Graph<'a> {
 		self.registry.node_instances.get(&id).filter(|node| node.network() == self.network)
 	}
 
-	/// The declaration a node of this network implements, if it is one a migration knows.
+	/// The proto-node declaration a node of this network implements, if it is one a migration knows.
 	pub fn declaration(&self, id: NodeId) -> Option<Declaration> {
-		let document_graph_storage::Implementation::ProtoNode(resource) = self.node(id)?.implementation() else {
+		let Implementation::ProtoNode(resource) = self.node(id)?.implementation() else {
 			return None;
 		};
 		self.resolver.declaration(*resource)
@@ -193,6 +195,14 @@ impl<'a> Graph<'a> {
 		}
 
 		readers
+	}
+}
+
+/// Whether `node` implements `declaration`: a proto node through its declaration resource, a network instance through the definition its network names.
+pub fn implements(registry: &Registry, node: &document_graph_storage::Node, declaration: Declaration, resolver: &dyn DeclarationResolver) -> bool {
+	match node.implementation() {
+		Implementation::ProtoNode(resource) => !declaration.is_network() && resolver.declaration(*resource) == Some(declaration),
+		Implementation::Network(network) => registry.networks.get(network).is_some_and(|network| declaration.describes_network(&network.attributes)),
 	}
 }
 
@@ -318,6 +328,16 @@ impl Inputs {
 	pub fn push(&mut self, input: NodeInput) {
 		self.edited = true;
 		self.slots.push(new_slot(input));
+		self.origins.push(None);
+	}
+
+	/// Add a slot the compiler fills in with what `metadata` names, a frozen mirror value such as the node's path.
+	pub fn push_reflection<T: Serialize>(&mut self, metadata: T) {
+		let mut slot = new_slot(NodeInput::Reflection);
+		slot.attributes.set(REFLECTION_METADATA, encode(&metadata), TimeStamp::ORIGIN);
+
+		self.edited = true;
+		self.slots.push(slot);
 		self.origins.push(None);
 	}
 

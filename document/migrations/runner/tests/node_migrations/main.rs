@@ -1,11 +1,13 @@
 mod blobs;
 mod compiler;
 mod examples;
+mod networks;
 mod registration;
 mod rewrite;
 
+use document_graph_storage::attributes::attr::node::REFLECTION_METADATA;
 use document_graph_storage::{NodeId, NodeInput, ROOT_NETWORK, Registry};
-use examples::{AngleBetweenDegrees, Axis, ExtractXyToSplit, OpacityToggles, ROTATION, Tagged, TransformDegrees};
+use examples::{AngleBetweenDegrees, Axis, BoundingBoxOwnPath, ExtractXyToSplit, OpacityToggles, ROTATION, Tagged, TransformDegrees};
 use migration_core::{decl, literal, literal_of};
 use migration_runner::RunnerError;
 use migration_runner::testing::{Fixture, registered};
@@ -54,6 +56,19 @@ fn opacity_toggles_build_the_target_layout() {
 	];
 	assert_eq!(inputs(&migrated, opacity), expected);
 	assert_eq!(fixture.declaration_of(&migrated, opacity), Some(decl!("blending_nodes::opacity"@2)));
+}
+
+#[test]
+fn reflection_input_stores_what_it_reflects() {
+	let mut fixture = Fixture::new(&BoundingBoxOwnPath);
+	let bounding_box = fixture.add(decl!("vector_nodes::bounding_box"@1), vec![literal(Tagged::Number(1.))]);
+
+	let migrated = fixture.migrate(&BoundingBoxOwnPath).unwrap();
+
+	let slots = migrated.node_instances[&bounding_box].inputs();
+	assert_eq!(slots.len(), 2);
+	assert_eq!(slots[1].input, NodeInput::Reflection);
+	assert_eq!(slots[1].attributes.get_typed::<String>(REFLECTION_METADATA).as_deref(), Some("DocumentNodePath"));
 }
 
 #[test]

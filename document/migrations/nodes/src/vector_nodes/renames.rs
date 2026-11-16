@@ -1,0 +1,5 @@
+//! Nodes that only moved to a new identifier, or changed version with stored nodes staying as they are.
+
+use migration_core::rename;
+
+rename!("vector_nodes::vector_modification_nodes::PathModifyNode"@1 => "vector_nodes::vector_modification_nodes::PathNode"@2);

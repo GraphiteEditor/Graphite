@@ -1058,12 +1058,12 @@ fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool
 pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 	let mut output: List<Vector> = content.clone().into_flattened_list();
 
-	// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
+	// TODO: Replace this snapshot hack with per-layer metadata driven by observing each layer's content.
 	// TODO: Flattening here erases the upstream `List<Graphic>` hierarchy that editor metadata collection walks
 	// TODO: to populate `upstream_footprints` / `local_transforms` / `click_targets` per child layer. As a workaround
 	// TODO: we stash the pre-flattened list on the output so `List<Vector>::collect_metadata` can recurse into it,
 	// TODO: which conflates render output with editor metadata and forces the pre-compensation dance below.
-	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
+	// TODO: The cleaner fix is to drive each layer's metadata from an observation of its `List<Graphic>` content and context,
 	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Combine Paths,
 	// TODO: Morph, Rasterize) become unnecessary.
 	if !output.is_empty() && !is_lone_anonymous_leaf(&content) {

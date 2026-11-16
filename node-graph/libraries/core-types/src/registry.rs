@@ -76,6 +76,7 @@ pub enum RegistryValueSource {
 	Default(&'static str),
 	Scope(&'static str),
 	SourceId,
+	NodePath,
 }
 
 #[derive(Clone, Debug)]
@@ -350,10 +351,6 @@ where
 				.unwrap_or_else(|_| panic!("DowncastBothNode wrong output type: expected {} in: \n{}", std::any::type_name::<O>(), self.node.node().node_name()))
 		})
 	}
-
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.node().serialize()
-	}
 }
 impl<I, O> DowncastBothNode<I, O> {
 	pub const fn new(node: SharedNodeContainer) -> Self {
@@ -384,10 +381,6 @@ where
 			.downcast_ref::<I>()
 			.unwrap_or_else(|| panic!("DynAnyNode Input: expected {} in:\n{}", std::any::type_name::<I>(), std::any::type_name::<N>()));
 		self.node.eval(input).map(|output| Box::new(output) as Any)
-	}
-
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
 	}
 }
 impl<I, O, N> DynAnyNode<I, O, N> {

@@ -103,4 +103,3 @@ Since Graphene is fundamentally a programming language, throughout this document
 <!-- Guide for implementing a node -->
 <!-- The `Node` trait -->
 <!-- Generics, type inference, type erasure, and the node registry -->
-<!-- Monitor nodes -->

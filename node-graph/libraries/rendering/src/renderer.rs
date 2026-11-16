@@ -683,7 +683,7 @@ fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied
 	Some((brush, gradient_to_device))
 }
 
-// TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
+// TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data the editor observes on 'Path' nodes.
 // This will require that the transform for child layers into that layer space be calculated, or it could be returned from the RenderOutput instead of click targets.
 #[derive(Debug, Default, Clone, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

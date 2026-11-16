@@ -1,3 +1,4 @@
+use super::derived_ids::{derived_node_id, rekey_nodes};
 use super::*;
 use graph_craft::document::NetworkLocation;
 use graph_craft::runtime_delta::RuntimeDelta;
@@ -55,7 +56,9 @@ impl NodeNetworkInterface {
 
 	/// Inserts an import at `index` into the network at `network_path`: its metadata once, and `input` on every node the network implements.
 	pub(crate) fn insert_import_slot(&mut self, network_path: &[NodeId], index: usize, input: NodeInput, metadata: InputMetadata) -> bool {
-		self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "insert_import_slot") {
+			return false;
+		}
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		if encapsulating_nodes.is_empty() {
 			log::error!("Cannot insert an import into the document network");
@@ -79,7 +82,9 @@ impl NodeNetworkInterface {
 
 	/// Removes the import at `index` from the network at `network_path` and from every node the network implements, returning its metadata.
 	pub(crate) fn remove_import_slot(&mut self, network_path: &[NodeId], index: usize) -> Option<InputMetadata> {
-		self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "remove_import_slot") {
+			return None;
+		}
 		for (path, node_id) in self.encapsulating_nodes(network_path) {
 			let Some(mut node) = self.node_mut(NodeLocator::new(node_id, &path)) else {
 				log::error!("Could not get node {node_id} in remove_import_slot");
@@ -99,7 +104,9 @@ impl NodeNetworkInterface {
 
 	/// Moves the import at `from` to `to`, carrying its metadata and each node's input with it.
 	pub(crate) fn move_import_slot(&mut self, network_path: &[NodeId], from: usize, to: usize) -> bool {
-		self.fork_catalog_entries_along(network_path);
+		if self.rejects_write(network_path, "move_import_slot") {
+			return false;
+		}
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		if encapsulating_nodes.is_empty() {
 			return false;
@@ -396,14 +403,15 @@ impl NodeNetworkInterface {
 
 	/// Swaps in a new implementation for the node, first moving an inline network it brings into the definitions table with the node's interface.
 	pub(crate) fn replace_node_implementation(&mut self, locator: NodeLocator, mut implementation: DocumentNodeImplementation, mut network_metadata: Option<NodeNetworkMetadata>) {
+		let node_id = locator.node_id;
 		let Some(location) = self.locate_for_write(locator.network_path) else {
 			log::error!("Could not locate network {:?} in replace_node_implementation", locator.network_path);
 			return;
 		};
 
 		if matches!(implementation, DocumentNodeImplementation::Network(_)) {
-			let Some(mut node) = self.node_mut_at(location, locator.node_id) else {
-				log::error!("Could not get node {} in replace_node_implementation", locator.node_id);
+			let Some(mut node) = self.node_mut_at(location, node_id) else {
+				log::error!("Could not get node {node_id} in replace_node_implementation");
 				return;
 			};
 			let previous = node.interface();
@@ -418,14 +426,15 @@ impl NodeNetworkInterface {
 			self.insert_missing_definition(id);
 		}
 
-		let Some(mut node) = self.node_mut_at(location, locator.node_id) else {
-			log::error!("Could not get node {} in replace_node_implementation", locator.node_id);
+		let Some(mut node) = self.node_mut_at(location, node_id) else {
+			log::error!("Could not get node {node_id} in replace_node_implementation");
 			return;
 		};
 		node.replace_implementation(implementation);
 	}
 
-	/// Moves an inline network `implementation` brings, and every inline network nested in it, into the definitions table under fresh IDs.
+	/// Moves an inline network `implementation` brings, and every inline network nested in it, into the definitions table under fresh IDs,
+	/// giving their nodes IDs derived from them.
 	/// Each entry is recorded before the entries and nodes that name it.
 	fn lift_into_table(&mut self, implementation: &mut DocumentNodeImplementation, network_metadata: &mut Option<NodeNetworkMetadata>) {
 		let DocumentNodeImplementation::Network(network) = &*implementation else { return };
@@ -447,6 +456,7 @@ impl NodeNetworkInterface {
 		}
 
 		let id = NetworkId::new();
+		rekey_nodes(id, &mut network, &mut metadata.persistent_metadata);
 		self.insert_definition(id, network, metadata);
 		*implementation = DocumentNodeImplementation::Definition(id);
 	}
@@ -524,7 +534,7 @@ impl NodeNetworkInterface {
 
 		let mut renamed = HashMap::new();
 		let mut carried = HashMap::new();
-		for CopiedDefinition { id, mut network, metadata } in definitions {
+		for CopiedDefinition { id, mut network, mut metadata } in definitions {
 			for node in network.nodes.values_mut() {
 				if let DocumentNodeImplementation::Definition(named) = &mut node.implementation
 					&& let Some(new_id) = renamed.get(named)
@@ -540,13 +550,14 @@ impl NodeNetworkInterface {
 				let metadata = self.network_metadata.persistent_metadata.definitions.get(&id)?.clone();
 				Some((network, metadata))
 			});
-			let id = match held {
-				Some((held_network, held_metadata)) if held_network != network || !same_content(&held_metadata.persistent_metadata, &metadata.persistent_metadata) => {
-					let new_id = NetworkId::new();
-					renamed.insert(id, new_id);
-					new_id
-				}
-				_ => id,
+			let diverged = held.is_some_and(|(held_network, held_metadata)| held_network != network || !same_content(&held_metadata.persistent_metadata, &metadata.persistent_metadata));
+			let id = if diverged {
+				let new_id = NetworkId::new();
+				rekey_nodes(new_id, &mut network, &mut metadata.persistent_metadata);
+				renamed.insert(id, new_id);
+				new_id
+			} else {
+				id
 			};
 			carried.insert(id, CopiedDefinition { id, network, metadata });
 		}
@@ -555,29 +566,27 @@ impl NodeNetworkInterface {
 		Some(renamed)
 	}
 
-	/// Gives the node its own copy of the table entry it names, leaving the entries nested in it shared.
-	pub(crate) fn fork_definition(&mut self, locator: NodeLocator) -> bool {
-		let Some(location) = self.locate(locator.network_path) else { return false };
+	/// Gives the node its own copy of the table entry it names, leaving the entries nested in it shared, and returns the copy's ID.
+	/// The copy's nodes get IDs derived from it, so the document's node IDs stay unique.
+	pub(crate) fn fork_definition(&mut self, locator: NodeLocator) -> Option<NetworkId> {
+		let location = self.locate(locator.network_path)?;
 		let Some(DocumentNodeImplementation::Definition(id)) = self
 			.document_network()
 			.located_network(location)
 			.and_then(|network| network.nodes.get(&locator.node_id))
 			.map(|node| node.implementation.clone())
 		else {
-			return false;
+			return None;
 		};
-		let Some(network) = self.document_network().definitions.get(&id).cloned() else { return false };
-		let Some(mut metadata) = self.network_metadata.persistent_metadata.definitions.get(&id).cloned() else {
-			return false;
-		};
-		// The copy's nodes are new and can't keep the originals' storage identities
-		clear_storage_ids(&mut metadata.persistent_metadata);
+		let mut network = self.document_network().definitions.get(&id).cloned()?;
+		let mut metadata = self.network_metadata.persistent_metadata.definitions.get(&id).cloned()?;
 
 		let unique = NetworkId::new();
+		rekey_nodes(unique, &mut network, &mut metadata.persistent_metadata);
 		self.insert_definition(unique, network, metadata);
-		let Some(mut node) = self.node_mut_at(location, locator.node_id) else { return false };
+		let mut node = self.node_mut_at(location, locator.node_id)?;
 		node.replace_implementation(DocumentNodeImplementation::Definition(unique));
-		true
+		Some(unique)
 	}
 
 	/// Adds `id` from the last paste or the catalog if the document lacks it.
@@ -591,20 +600,54 @@ impl NodeNetworkInterface {
 		self.insert_definition(id, network, metadata);
 	}
 
-	/// Locates the network after forking the catalog entries along the path.
-	pub(super) fn locate_for_write(&mut self, network_path: &[NodeId]) -> Option<NetworkLocation> {
-		self.fork_catalog_entries_along(network_path);
+	/// Locates the network for a write, or `None` if it is read-only.
+	pub(super) fn locate_for_write(&self, network_path: &[NodeId]) -> Option<NetworkLocation> {
+		if self.rejects_write(network_path, "locate_for_write") {
+			return None;
+		}
 		self.locate(network_path)
 	}
 
-	/// Forks each catalog instance along the path, outermost first.
-	pub(super) fn fork_catalog_entries_along(&mut self, network_path: &[NodeId]) {
-		while let Some(depth) = self.first_catalog_instance(network_path) {
-			if !self.fork_definition(NodeLocator::new(network_path[depth], &network_path[..depth])) {
+	/// Whether the network at `network_path` is read-only, logging the write `caller` attempted there.
+	///
+	/// A write never forks the network it edits, since that would give its nodes new IDs while the caller still holds the old ones.
+	pub(super) fn rejects_write(&self, network_path: &[NodeId], caller: &str) -> bool {
+		let read_only = self.is_read_only(network_path);
+		if read_only {
+			log::error!("Cannot write to the read-only network {network_path:?} in {caller}, which has to be made editable first");
+		}
+		read_only
+	}
+
+	/// Forks each catalog instance along the path, outermost first, and returns the path with the IDs the forks gave its segments.
+	fn fork_catalog_entries_along(&mut self, network_path: &[NodeId]) -> Vec<NodeId> {
+		let mut network_path = network_path.to_vec();
+		while let Some(depth) = self.first_catalog_instance(&network_path) {
+			let Some(forked) = self.fork_definition(NodeLocator::new(network_path[depth], &network_path[..depth])) else {
 				log::error!("Could not fork the catalog entry at {:?}", &network_path[..=depth]);
-				return;
+				break;
+			};
+			if let Some(segment) = network_path.get_mut(depth + 1) {
+				*segment = derived_node_id(forked, *segment);
 			}
 		}
+		network_path
+	}
+
+	/// Whether the network at `network_path` lies inside a catalog instance, which the graph shows read-only until it is made editable.
+	pub fn is_read_only(&self, network_path: &[NodeId]) -> bool {
+		self.first_catalog_instance(network_path).is_some()
+	}
+
+	/// Gives the network at `network_path` its own copy of each catalog instance along the path, so it can be edited.
+	/// Returns the network's path afterward, whose segments inside the forked copies have new IDs.
+	pub fn make_editable(&mut self, network_path: &[NodeId]) -> Vec<NodeId> {
+		if !self.is_read_only(network_path) {
+			return network_path.to_vec();
+		}
+		let editable_path = self.fork_catalog_entries_along(network_path);
+		self.transaction_modified();
+		editable_path
 	}
 
 	fn first_catalog_instance(&self, network_path: &[NodeId]) -> Option<usize> {
@@ -660,40 +703,16 @@ impl NodeNetworkInterface {
 		self.dots_that_lost_a_wire.clear();
 	}
 
-	/// Pins each unpinned node to the identity a conversion derives from its location, and returns where each identity is held.
-	pub(crate) fn pin_storage_identities(&mut self, peer: document_graph_storage::PeerId) -> HashMap<document_graph_storage::NodeId, (NetworkLocation, NodeId)> {
-		let mut index = HashMap::new();
-		let mut unpinned = Vec::new();
-		{
-			let view = super::storage_metadata::StorageMetadataView::new(self);
-			let resolver = document_graph_storage::PathResolver::new(Some(&view), peer);
-			let definitions = self.network_metadata.persistent_metadata.definitions.iter().map(|(id, metadata)| (Some(*id), metadata));
-			for (location, metadata) in definitions.chain([(None, &*self.network_metadata)]) {
-				for (&local_id, node) in &metadata.persistent_metadata.node_metadata {
-					let storage_id = match node.persistent_metadata.storage_id {
-						Some(pinned) => document_graph_storage::NodeId(pinned),
-						None => {
-							let derived = resolver.node_id(location, local_id);
-							unpinned.push((location, local_id, derived));
-							derived
-						}
-					};
-					index.insert(storage_id, (location, local_id));
-				}
-			}
-		}
-
-		for (location, local_id, storage_id) in unpinned {
-			if let Some(node) = self
-				.network_metadata
-				.get_mut()
-				.nested_metadata_mut(location)
-				.and_then(|network| network.persistent_metadata.node_metadata.get_mut(&local_id))
-			{
-				node.persistent_metadata.storage_id = Some(storage_id.0);
-			}
-		}
-		index
+	/// Where each node sits, keyed by its storage ID.
+	pub(crate) fn node_locations(&self) -> HashMap<document_graph_storage::NodeId, (NetworkLocation, NodeId)> {
+		let definitions = self.network_metadata.persistent_metadata.definitions.iter().map(|(id, metadata)| (Some(*id), metadata));
+		definitions
+			.chain([(None, &*self.network_metadata)])
+			.flat_map(|(location, metadata)| {
+				let node_ids = metadata.persistent_metadata.node_metadata.keys();
+				node_ids.map(move |&node_id| (document_graph_storage::storage_node_id(node_id), (location, node_id)))
+			})
+			.collect()
 	}
 
 	/// Records the open transaction's bookkeeping, so writes that are undone before [`Self::restore_transaction_checkpoint`] don't count toward it.
@@ -760,15 +779,6 @@ impl NodeNetworkInterface {
 	pub(crate) fn clear_encapsulating_reference(&mut self, network_path: &[NodeId]) {
 		if let Some(mut network) = self.network_mut(network_path) {
 			network.set_reference(None);
-		}
-	}
-}
-
-fn clear_storage_ids(metadata: &mut NodeNetworkPersistentMetadata) {
-	for node in metadata.node_metadata.values_mut() {
-		node.persistent_metadata.storage_id = None;
-		if let Some(nested) = &mut node.persistent_metadata.network_metadata {
-			clear_storage_ids(&mut nested.persistent_metadata);
 		}
 	}
 }

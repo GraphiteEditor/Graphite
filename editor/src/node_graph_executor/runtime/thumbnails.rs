@@ -479,7 +479,7 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 
 #[cfg(test)]
 mod tests {
-	use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
+	use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, shipped_node_id};
 	use crate::test_utils::test_prelude::*;
 	use glam::UVec2;
 	use graph_craft::document::NodeId;
@@ -510,7 +510,7 @@ mod tests {
 		let layer = editor.get_selected_layer().await.expect("The drawn rectangle should be selected").to_node();
 
 		compile_and_run(&mut editor).await;
-		let merge_content = compiled_id(&editor, &[layer, NodeId(3)]);
+		let merge_content = compiled_id(&editor, &[layer, shipped_node_id("Merge", NodeId(3))]);
 		assert!(merge_content.is_some(), "The Merge layer's content should be compiled");
 		assert_eq!(
 			editor.runtime.thumbnails.sources.get(&layer).copied(),

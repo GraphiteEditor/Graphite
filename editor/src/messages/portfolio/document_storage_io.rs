@@ -451,6 +451,7 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 	}
 
 	document.network_interface.give_diverged_catalog_entries_new_ids();
+	document.network_interface.give_reused_node_ids_new_ids();
 	document.network_interface.discard_deltas();
 	document.require_whole_document_stage();
 

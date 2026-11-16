@@ -78,7 +78,7 @@ impl EditTarget {
 
 	/// The Path node, which vector edits insert beside a layer with vector content when it's missing.
 	pub fn path() -> Self {
-		Self::network_node("Path", Insertion::BesideVectorLayer)
+		Self::proto_node(graphene_std::vector::path::IDENTIFIER, Insertion::BesideVectorLayer)
 	}
 
 	/// The Fill node, which paint edits insert under any Stroke node beside a layer with vector content when it's missing.

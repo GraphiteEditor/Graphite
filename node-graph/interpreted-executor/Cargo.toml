@@ -42,6 +42,7 @@ criterion = { workspace = true }
 gungraun = { workspace = true }
 document-loader = { workspace = true }
 preprocessor = { workspace = true }
+wgpu = { workspace = true }
 
 # Benchmarks
 [[bench]]
@@ -67,3 +68,8 @@ harness = false
 [[bench]]
 name = "run_cached_gungraun"
 harness = false
+
+[[bench]]
+name = "brush_stroke_gungraun"
+harness = false
+required-features = ["gpu"]

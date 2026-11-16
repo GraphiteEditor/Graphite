@@ -44,11 +44,6 @@ pub struct DocumentNode {
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with a passthrough node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
-	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
-	/// See [`ProtoNetwork::generate_stable_node_ids`] for details.
-	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
-	#[serde(default)]
-	pub skip_deduplication: bool,
 	#[serde(skip)]
 	pub compile_metadata: Option<NodeCompileMetadata>,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
@@ -82,7 +77,6 @@ impl Default for DocumentNode {
 			call_argument: concrete!(Context),
 			implementation: Default::default(),
 			visible: true,
-			skip_deduplication: Default::default(),
 			original_location: OriginalLocation::default(),
 			compile_metadata: Default::default(),
 		}
@@ -817,7 +811,6 @@ impl core_types::graphene_hash::CacheHash for DocumentNode {
 		self.call_argument.cache_hash(state);
 		self.implementation.cache_hash(state);
 		self.visible.cache_hash(state);
-		self.skip_deduplication.cache_hash(state);
 		self.compile_metadata.cache_hash(state);
 	}
 }

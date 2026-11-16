@@ -137,7 +137,9 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&smooth_anchors_id, layer, &[], self.import);
 
 		// Add Path node to chain start (closest to the Merge node)
-		let path = resolve_network_node_type("Path").expect("Path node does not exist").default_node_template();
+		let path = resolve_proto_node_type(graphene_std::vector::path::IDENTIFIER)
+			.expect("Path node does not exist")
+			.default_node_template();
 		let path_id = NodeId::new();
 		self.network_interface.insert_node(path_id, path, &[]);
 		self.network_interface.move_node_to_chain_start(&path_id, layer, &[], self.import);
@@ -150,7 +152,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let (vector, paths) = Vector::from_bezpath(&bezpath);
 		let modification = Box::new(VectorModification::create_from_vector(&vector, &paths));
 
-		let shape = resolve_network_node_type("Path")
+		let shape = resolve_proto_node_type(graphene_std::vector::path::IDENTIFIER)
 			.expect("Path node does not exist")
 			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))]);
 		let shape_id = NodeId::new();
@@ -410,7 +412,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// If inserting a 'Path' node, insert a 'Combine Paths' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on `List` data by utilizing the reference (index or ID?) for each item.
-		if node_definition.identifier == "Path" {
+		if *reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER) {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::layer_secondary_input(output_layer.to_node()), &[]);
 			if layer_input_type.compiled_element_name().as_deref() == Some("Graphic") {
 				let Some(combine_paths_definition) = resolve_proto_node_type(graphene_std::vector_nodes::combine_paths::IDENTIFIER) else {
@@ -994,7 +996,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
-		let Some(path_node_id) = self.existing_network_node_id("Path", true) else {
+		let Some(path_node_id) = self.existing_proto_node_id(graphene_std::vector::path::IDENTIFIER, true) else {
 			return;
 		};
 		self.network_interface.vector_modify(&path_node_id, modification_type);

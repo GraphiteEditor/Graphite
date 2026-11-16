@@ -10,6 +10,7 @@ impl NodeNetworkInterface {
 	pub fn validate_invariants(&self) -> Vec<String> {
 		let mut violations = Vec::new();
 		self.validate_definition_tables(&mut violations);
+		self.validate_unique_node_ids(&mut violations);
 
 		let mut root = DocumentRoot {
 			network: self.document_network(),
@@ -44,6 +45,21 @@ impl NodeNetworkInterface {
 		}
 		for id in definition_metadata.keys().filter(|id| !definitions.contains_key(id)) {
 			violations.push(format!("Metadata entry for definition {id:?} has no corresponding definition"));
+		}
+	}
+
+	/// A node ID names one node in the whole document, since storage keys nodes by it.
+	fn validate_unique_node_ids(&self, violations: &mut Vec<String>) {
+		let document_network = self.document_network();
+		let networks = std::iter::once((None, document_network)).chain(document_network.definitions.iter().map(|(id, definition)| (Some(*id), definition)));
+
+		let mut seen: HashMap<NodeId, Option<NetworkId>> = HashMap::new();
+		for (location, network) in networks {
+			for node_id in network.nodes.keys() {
+				if let Some(first) = seen.insert(*node_id, location) {
+					violations.push(format!("Node ID {node_id} is used in both {first:?} and {location:?}"));
+				}
+			}
 		}
 	}
 

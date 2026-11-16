@@ -65,8 +65,6 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) inspector_string: Option<LitStr>,
 	/// whether to `#[cfg]` gate the node implementation, defaults to None
 	pub(crate) cfg: Option<TokenStream2>,
-	/// Custom serialization function path (e.g., "my_module::custom_serialize")
-	pub(crate) serialize: Option<Path>,
 	pub(crate) flags: NodeFlags,
 	/// Fn producing an placeholder value used while node evaluation is pending
 	pub(crate) placeholder: Option<Path>,
@@ -81,6 +79,7 @@ pub enum ParsedValueSource {
 	Default(TokenStream2),
 	Scope(Box<Expr>),
 	SourceId,
+	NodePath,
 }
 
 // #[widget(ParsedWidgetOverride::Hidden)]
@@ -174,10 +173,10 @@ impl ParsedField {
 		}
 	}
 
-	/// Whether the field is environment rather than an argument: `#[data]` state or a `#[scope]`-injected wire.
+	/// Whether the field is environment rather than an argument: `#[data]` state, a `#[scope]`-injected wire, or a `#[source_id]` or `#[node_path]` value the compiler fills in.
 	/// Environment fields never classify the node, never supply the element-wise frame, and broadcast by clone.
 	pub(crate) fn is_environment(&self) -> bool {
-		self.is_data_field || matches!(self.ty.value_source(), ParsedValueSource::Scope(_) | ParsedValueSource::SourceId)
+		self.is_data_field || matches!(self.ty.value_source(), ParsedValueSource::Scope(_) | ParsedValueSource::SourceId | ParsedValueSource::NodePath)
 	}
 }
 
@@ -440,7 +439,6 @@ impl Parse for NodeFnAttributes {
 		let mut path = None;
 		let mut inspector_string = None;
 		let mut cfg = None;
-		let mut serialize = None;
 		let mut flags = NodeFlags::default();
 		let mut placeholder = None;
 		let mut version = None;
@@ -543,20 +541,6 @@ impl Parse for NodeFnAttributes {
 					let meta = meta.require_list()?;
 					cfg = Some(meta.tokens.clone());
 				}
-				// Function name for custom serialization of this node's data. This is only used by the Monitor node.
-				//
-				// Example usage:
-				// #[node_macro::node(..., serialize(my_module::custom_serialize), ...)]
-				"serialize" => {
-					let meta = meta.require_list()?;
-					if serialize.is_some() {
-						return Err(Error::new_spanned(meta, "Multiple 'serialize' attributes are not allowed"));
-					}
-					let parsed_path: Path = meta
-						.parse_args()
-						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'serialize', e.g., serialize(my_module::custom_serialize)"))?;
-					serialize = Some(parsed_path);
-				}
 				// Instructs the preprocessor to insert a Memoize node after this node in the generated subnetwork,
 				// caching its output across evaluations with identical inputs.
 				//
@@ -620,7 +604,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'serialize', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', 'no_partial', and 'version'.
+							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', 'no_partial', and 'version'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -650,7 +634,6 @@ impl Parse for NodeFnAttributes {
 			path,
 			inspector_string,
 			cfg,
-			serialize,
 			flags,
 			placeholder,
 			version,
@@ -879,6 +862,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	// Gives a synchronous node its `SourceId`, as async nodes get it, so it can bump its own generation
 	let source_id = extract_attribute(attrs, "source_id").is_some();
 
+	// Gives a node the path of the document node it was placed as
+	let node_path = extract_attribute(attrs, "node_path").is_some();
+
 	// Validate data field attributes
 	if is_data_field {
 		if default_value.is_some() {
@@ -905,6 +891,18 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		if source_id {
 			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[source_id] attribute"));
 		}
+		if node_path {
+			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[node_path] attribute"));
+		}
+	}
+	if source_id && node_path {
+		return Err(Error::new_spanned(&pat_ident, "Cannot have both `source_id` and `node_path` attributes"));
+	}
+	if exposed && (source_id || node_path) {
+		return Err(Error::new_spanned(
+			&pat_ident,
+			"Inputs the compiler fills in (#[source_id] or #[node_path]) cannot be exposed (#[expose]). They aren't set in the graph",
+		));
 	}
 	if exposed && ident.to_string().starts_with('_') {
 		return Err(Error::new_spanned(
@@ -916,9 +914,11 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
 		(Some(_), _) | (_, Some(_)) if source_id => return Err(Error::new_spanned(&pat_ident, "`source_id` cannot have a `default` or `scope` attribute")),
+		(Some(_), _) | (_, Some(_)) if node_path => return Err(Error::new_spanned(&pat_ident, "`node_path` cannot have a `default` or `scope` attribute")),
 		(Some(default_value), _) => ParsedValueSource::Default(default_value),
 		(_, Some(scope)) => ParsedValueSource::Scope(Box::new(scope)),
 		_ if source_id => ParsedValueSource::SourceId,
+		_ if node_path => ParsedValueSource::NodePath,
 		_ => ParsedValueSource::None,
 	};
 
@@ -1875,6 +1875,24 @@ mod tests {
 				cache: i32,
 			) -> i32 {
 				input
+			}
+		);
+		parse_node_fn(attr, input).unwrap();
+	}
+
+	#[test]
+	#[should_panic(expected = "Inputs the compiler fills in (#[source_id] or #[node_path]) cannot be exposed (#[expose])")]
+	fn test_exposed_node_path() {
+		let attr = quote!(category("Invalid"));
+		let input = quote!(
+			fn invalid_node(
+				_: impl Ctx,
+				content: Item<f64>,
+				#[expose]
+				#[node_path]
+				node_path: Item<NodeIdPath>,
+			) -> Item<f64> {
+				content
 			}
 		);
 		parse_node_fn(attr, input).unwrap();
