@@ -52,10 +52,12 @@ fn graph_of(interface: &NodeNetworkInterface, name_widths: &mut NameWidths) -> (
 				NodeTypePersistentMetadata::Layer(layer) => match layer.position {
 					LayerPosition::Absolute(position) => (Placement::Absolute(position), true),
 					LayerPosition::Stack(gap) => (Placement::Stack(gap), true),
+					LayerPosition::Relative(offset) => (Placement::Relative(offset), true),
 				},
 				NodeTypePersistentMetadata::Node(node) => match *node.position() {
 					NodePosition::Absolute(position) => (Placement::Absolute(position), false),
 					NodePosition::Chain => (Placement::Chain, false),
+					NodePosition::Relative(offset) => (Placement::Relative(offset), false),
 				},
 			};
 			let height = interface.node_height(id, &[]);

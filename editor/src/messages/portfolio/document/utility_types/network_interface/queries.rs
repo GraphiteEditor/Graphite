@@ -264,8 +264,15 @@ impl NodeNetworkInterface {
 		layers
 	}
 
+	/// The distance in grid cells from the layer to the end of its chain, or zero for a layer with no chain.
 	pub fn chain_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
-		self.query(network_path, "chain_width", |view| Ok(view.chain_width(node_id))).unwrap_or_default()
+		// A layer with no secondary input has no chain
+		if self.number_of_displayed_inputs(node_id, network_path) <= 1 {
+			return 0;
+		}
+
+		let chain_length = self.with_layout(network_path, |layout| layout.chain_length(node_id)).unwrap_or_default();
+		chain_length * NODE_CHAIN_WIDTH as u32 + 1
 	}
 
 	/// Check if the specified node id is connected to the output
@@ -951,7 +958,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn is_chain(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		self.query(network_path, "is_chain", |view| view.is_chain(node_id)).unwrap_or_default()
+		self.with_layout(network_path, |layout| layout.chain_layer(node_id).is_some()).unwrap_or_default()
 	}
 
 	pub fn is_relative(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {

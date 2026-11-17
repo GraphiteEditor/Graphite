@@ -7,28 +7,14 @@ use graphene_std::{Color, Graphic};
 
 impl NodeNetworkInterface {
 	/// The top left corner of a node in node graph grid coordinates.
-	///
-	/// A relative node sits at an offset from the nodes reading it and a chain node to the left of the layer it feeds,
-	/// so both are resolved by walking downstream to the first absolute position.
 	pub fn position(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
-		self.position_from_downstream(node_id, network_path, &mut HashSet::new(), &mut HashMap::new())
+		self.with_layout(network_path, |layout| layout.position(node_id)).flatten()
 	}
 
-	/// The positions of many nodes at once, sharing one memo so a stack is walked once rather than once per node.
-	///
-	/// The memo is deliberately not kept between calls, since layout reads positions between a write and its invalidation.
+	/// The positions of many nodes at once.
 	pub(crate) fn positions(&self, node_ids: impl IntoIterator<Item = NodeId>, network_path: &[NodeId]) -> Vec<(NodeId, IVec2)> {
-		let mut resolved = HashMap::new();
-		node_ids
-			.into_iter()
-			.filter_map(|node_id| {
-				let Some(position) = self.position_from_downstream(&node_id, network_path, &mut HashSet::new(), &mut resolved) else {
-					log::error!("Could not get position for node {node_id}");
-					return None;
-				};
-				Some((node_id, position))
-			})
-			.collect()
+		self.with_layout(network_path, |layout| node_ids.into_iter().filter_map(|node_id| Some((node_id, layout.position(&node_id)?))).collect())
+			.unwrap_or_default()
 	}
 
 	/// The grid rows a node occupies vertically, which is the spacing the layers stacked above it are offset by.
@@ -39,116 +25,6 @@ impl NodeNetworkInterface {
 			// A node body starts half a grid cell down, so it reaches into one more row than it has
 			self.displayed_row_count(node_id, network_path) as u32 + 1
 		}
-	}
-
-	/// Walks downstream to the first stored position, accumulating the relative offsets along the way. `visited`
-	/// holds the nodes on the current walk, which stops it on a cyclic graph that concurrent edits can produce.
-	fn position_from_downstream(&self, node_id: &NodeId, network_path: &[NodeId], visited: &mut HashSet<NodeId>, resolved: &mut HashMap<NodeId, IVec2>) -> Option<IVec2> {
-		if let Some(position) = resolved.get(node_id) {
-			return Some(*position);
-		}
-		if !visited.insert(*node_id) {
-			log::error!("Cycle reached while resolving the position of node {node_id}");
-			return None;
-		}
-
-		let position = self.resolve_position(node_id, network_path, visited, resolved);
-		visited.remove(node_id);
-		if let Some(position) = position {
-			resolved.insert(*node_id, position);
-		}
-		position
-	}
-
-	/// Reads a node's stored position, resolving a stack or chain position against the node it is placed relative to.
-	fn resolve_position(&self, node_id: &NodeId, network_path: &[NodeId], visited: &mut HashSet<NodeId>, resolved: &mut HashMap<NodeId, IVec2>) -> Option<IVec2> {
-		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get nested node_metadata in resolve_position");
-			return None;
-		};
-
-		match &node_metadata.persistent_metadata.node_type_metadata {
-			NodeTypePersistentMetadata::Layer(layer_metadata) => match layer_metadata.position {
-				LayerPosition::Absolute(position) => Some(position),
-				LayerPosition::Relative(offset) => self.relative_position(node_id, offset, network_path, visited, resolved),
-				LayerPosition::Stack(y_offset) => {
-					let downstream_node_id = self
-						.with_outward_wires(network_path, |outward_wires| {
-							outward_wires
-								.get(&OutputConnector::primary_output(*node_id))
-								.and_then(|connectors| connectors.iter().find_map(|input_connector| input_connector.node_id()))
-						})
-						.flatten();
-
-					let Some(downstream_node_id) = downstream_node_id else {
-						log::error!("Could not get downstream node input connector for node {node_id}");
-						return None;
-					};
-
-					// Offset past the downstream node's own height so the two do not overlap
-					let downstream_node_height = self.node_height(&downstream_node_id, network_path);
-					self.position_from_downstream(&downstream_node_id, network_path, visited, resolved)
-						.map(|position| position + IVec2::new(0, 1 + downstream_node_height as i32 + y_offset as i32))
-				}
-			},
-			NodeTypePersistentMetadata::Node(node_metadata) => match node_metadata.position {
-				NodePosition::Absolute(position) => Some(position),
-				NodePosition::Relative(offset) => self.relative_position(node_id, offset, network_path, visited, resolved),
-				NodePosition::Chain => {
-					// A chain node is placed by its distance from the layer it feeds, so walk downstream to that layer
-					let mut current_node_id = *node_id;
-					let mut node_distance_from_layer = 1;
-					let mut chain_visited = HashSet::new();
-					loop {
-						// TODO: Use root node to restore if previewing
-						let downstream_node_id = self
-							.with_outward_wires(network_path, |outward_wires| {
-								outward_wires.get(&OutputConnector::primary_output(current_node_id)).and_then(|connectors| {
-									connectors.iter().find_map(|input_connector| match input_connector {
-										InputConnector::Node { node_id, input_index } => {
-											let downstream_input_index = if self.is_layer(node_id, network_path) { 1 } else { 0 };
-											(*input_index == downstream_input_index).then_some(*node_id)
-										}
-										InputConnector::Export(_) => None,
-									})
-								})
-							})
-							.flatten();
-
-						let Some(downstream_node_id) = downstream_node_id else {
-							log::error!("Could not get downstream node of chain node {node_id}");
-							return None;
-						};
-
-						if self.is_layer(&downstream_node_id, network_path) {
-							return self
-								.position_from_downstream(&downstream_node_id, network_path, visited, resolved)
-								.map(|layer_position| layer_position + IVec2::new(-node_distance_from_layer * NODE_CHAIN_WIDTH, 0));
-						}
-
-						if !chain_visited.insert(downstream_node_id) {
-							log::error!("Cycle reached while resolving the chain position of node {node_id}");
-							return None;
-						}
-						node_distance_from_layer += 1;
-						current_node_id = downstream_node_id;
-					}
-				}
-			},
-		}
-	}
-
-	fn relative_position(&self, node_id: &NodeId, offset: IVec2, network_path: &[NodeId], visited: &mut HashSet<NodeId>, resolved: &mut HashMap<NodeId, IVec2>) -> Option<IVec2> {
-		let readers = self.reading_nodes(node_id, network_path);
-		let Some(top_left) = readers
-			.iter()
-			.filter_map(|reader| self.position_from_downstream(reader, network_path, visited, resolved))
-			.reduce(IVec2::min)
-		else {
-			log::error!("Could not get the position of any node reading relative node {node_id}");
-			return None;
-		};
-		Some(top_left + offset)
 	}
 
 	/// The top left corner of the bounding box of the positions of the nodes reading `node_id`.
@@ -178,7 +54,7 @@ impl NodeNetworkInterface {
 		self.invalidate_position(node_id, network_path);
 	}
 
-	/// Converts every absolute node that another node reads, and every stacked layer, in all networks to a position relative to its readers.
+	/// Converts every node that another node reads in all networks, whether absolute, chained, or stacked, to a position relative to its readers.
 	pub fn convert_positions_to_relative(&mut self) {
 		let mut network_paths = Vec::new();
 		self.for_each_network(&mut |network_path, _| network_paths.push(network_path.to_vec()));
@@ -191,7 +67,7 @@ impl NodeNetworkInterface {
 
 			let offsets: Vec<(NodeId, IVec2)> = node_ids
 				.iter()
-				.filter(|node_id| self.is_absolute(node_id, &network_path) || matches!(self.stored_layer_position(node_id, &network_path), Some(LayerPosition::Stack(_))))
+				.filter(|node_id| !self.is_relative(node_id, &network_path))
 				.filter_map(|node_id| {
 					let top_left = self
 						.reading_nodes(node_id, &network_path)
@@ -205,13 +81,6 @@ impl NodeNetworkInterface {
 			for (node_id, offset) in offsets {
 				self.set_relative_position(&node_id, offset, &network_path);
 			}
-		}
-	}
-
-	fn stored_layer_position(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<LayerPosition> {
-		match &self.node_metadata(node_id, network_path)?.persistent_metadata.node_type_metadata {
-			NodeTypePersistentMetadata::Layer(layer_metadata) => Some(layer_metadata.position.clone()),
-			NodeTypePersistentMetadata::Node(_) => None,
 		}
 	}
 
@@ -302,24 +171,29 @@ impl NodeNetworkInterface {
 		self.set_stack_position(node_id, (node_position.y - downstream_position.y - STACK_VERTICAL_GAP).max(0) as u32, network_path);
 	}
 
-	/// Sets the position of a node to a chain position
+	/// Places a node one chain width left of the node reading it through its chain input, which draws it in that node's chain.
 	pub fn set_chain_position(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		// A redirect dot isn't chain-positioned, since that would absorb it into the layer's background area
-		if self.is_redirect_dot(node_id, network_path) {
+		if self.is_redirect_dot(node_id, network_path) || self.is_layer(node_id, network_path) {
 			return;
 		}
 
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
-			log::error!("Could not get node_metadata for node {node_id}");
+		let chain_reader = self
+			.with_outward_wires(network_path, |outward_wires| {
+				outward_wires.get(&OutputConnector::primary_output(*node_id)).and_then(|readers| {
+					readers.iter().find_map(|reader| match reader {
+						InputConnector::Node { node_id, input_index } => (*input_index == if self.is_layer(node_id, network_path) { 1 } else { 0 }).then_some(*node_id),
+						InputConnector::Export(_) => None,
+					})
+				})
+			})
+			.flatten();
+		let Some(reader_position) = chain_reader.and_then(|chain_reader| self.position(&chain_reader, network_path)) else {
+			log::error!("Could not get the node reading node {node_id} through its chain input");
 			return;
 		};
-		if node.is_layer() {
-			log::error!("Could not set chain position for layer node {node_id}");
-		} else if node.set_chain_position() {
-			self.transaction_modified();
-		}
 
-		self.invalidate_position(node_id, network_path);
+		self.place_at(node_id, reader_position - IVec2::new(NODE_CHAIN_WIDTH, 0), network_path);
 	}
 
 	pub(crate) fn valid_upstream_chain_nodes(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<NodeId> {
@@ -605,13 +479,6 @@ impl NodeNetworkInterface {
 		let mut restored = HashSet::new();
 		for follower in &followers {
 			self.restore_follower(follower, &followers, placements_before, &mut restored, network_path);
-		}
-
-		// Joining a chain needs a node to line up with its reader, which a follower only does again once restored
-		for follower in &followers {
-			if !self.is_layer(follower, network_path) {
-				self.try_set_node_to_chain(follower, network_path);
-			}
 		}
 	}
 

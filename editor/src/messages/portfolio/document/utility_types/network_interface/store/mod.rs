@@ -5,9 +5,11 @@ use graph_craft::runtime_delta::RuntimeDelta;
 
 mod accessors;
 mod cursor;
+mod delta_log;
 
 pub use cursor::NodeLocator;
 pub(crate) use cursor::{NetworkMut, NodeMut, SelectionHistoryMut};
+pub(crate) use delta_log::{DeltaLog, revision};
 
 /// Holds one of the two parallel trees so that only this module can write it.
 ///
@@ -690,7 +692,7 @@ impl NodeNetworkInterface {
 	pub(crate) fn take_deltas(&mut self) -> Vec<EditorDelta> {
 		self.scan_transaction_edited_nodes();
 		self.transaction_edited_nodes_scanned = 0;
-		std::mem::take(&mut self.deltas)
+		self.deltas.take()
 	}
 
 	/// Drops what the writes since the last drain changed, for writes that are not edits to the document,
