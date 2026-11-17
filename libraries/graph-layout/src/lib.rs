@@ -4,7 +4,7 @@ mod click_targets;
 mod contour;
 
 pub use click_targets::{ClickTarget, GRID_SIZE, Part, node_parts, reach, target_at};
-use contour::{Bounds, Contour, SpanPool};
+use contour::{Bounds, ColumnPool, Contour};
 use glam::IVec2;
 
 /// How many grid cells a chain steps left for each node.
@@ -20,7 +20,7 @@ pub enum Placement {
 	Chain,
 	/// Below the node reading it, past that node's height and a gap of this many cells.
 	Stack(u32),
-	/// An offset from the top left corner of the positions of the nodes reading it, or from the origin when none does.
+	/// An offset from the left of the nodes reading it, level with the highest of them, or from the origin when none does.
 	Relative(IVec2),
 }
 
@@ -115,15 +115,17 @@ pub struct Layout {
 	pub bounds: Vec<[IVec2; 2]>,
 	/// Each wire's output port and input port.
 	pub wire_ends: Vec<[IVec2; 2]>,
-	/// The node each node is placed relative to, which is the first reader to reach it from the roots.
+	/// The reader each node is fitted with and drawn level with, its highest reader as stored.
 	pub owners: Vec<Option<u32>>,
+	/// The point each node's stored offset is taken from: the left of its readers, level with its owner, or the origin without one.
+	pub anchors: Vec<IVec2>,
 	/// How far each node is drawn from its stored place so its upstream clears what its owner placed before it.
 	pub elongations: Vec<IVec2>,
 	/// The layer whose chain each node is drawn in, if any.
 	pub chain_layers: Vec<Option<u32>>,
 	/// How many nodes each layer's chain holds, and zero for any other node.
 	pub chain_lengths: Vec<u32>,
-	/// Nodes only reached through a cycle, placed as roots.
+	/// Nodes placed before some of their readers to break a cycle, anchored only to the readers placed before them.
 	pub cyclic: Vec<u32>,
 }
 
@@ -142,24 +144,26 @@ const LAYER_BOTTOM_GAP: i32 = 1;
 /// Empty columns kept between a node and the upstream feeding it from the left, which a chain's spacing leaves exactly.
 const HORIZONTAL_GAP: i32 = CHAIN_WIDTH - 5;
 
-/// Lays out the graph as a forest: a depth-first walk from the roots gives each node to the first reader reaching it,
-/// each node's upstream is then fitted together below and left of it, and finally every node is placed from its owner.
+/// Lays out the graph as a forest: each node goes to its highest reader as stored, each node's upstream is then fitted together
+/// below and left of it, and finally every node is placed from the left of its readers, level with its owner.
 pub fn layout(graph: &Graph) -> Layout {
 	let node_count = graph.nodes.len();
 	let readers = GroupedByNode::grouped(node_count, &graph.wires, |wire| wire.source);
 	let inputs = GroupedByNode::grouped(node_count, &graph.wires, |wire| wire.target);
 
-	let forest = Forest::walk(graph, &readers, &inputs);
-	let offsets: Vec<IVec2> = (0..node_count).map(|node| stored_offset(graph, node, forest.owners[node])).collect();
-	let elongations = elongations(graph, &forest, &offsets);
+	let forest = Forest::grow(graph, &readers, &inputs);
+	let elongations = elongations(graph, &forest);
 
 	let mut positions = vec![IVec2::ZERO; node_count];
-	for &node in &forest.preorder {
+	let mut anchors = vec![IVec2::ZERO; node_count];
+	for &node in &forest.order {
 		let node = node as usize;
-		positions[node] = match forest.owners[node] {
-			Some(owner) => positions[owner as usize] + offsets[node] + elongations[node],
-			None => root_position(&graph.nodes[node]),
+		let Some(owner) = forest.owners[node] else {
+			positions[node] = root_position(&graph.nodes[node]);
+			continue;
 		};
+		anchors[node] = forest.anchor(graph, &readers, node, &positions);
+		positions[node] = anchors[node] + stored_offset(graph, node, owner) + elongations[node];
 	}
 
 	let bounds = graph
@@ -188,6 +192,7 @@ pub fn layout(graph: &Graph) -> Layout {
 		bounds,
 		wire_ends,
 		owners: forest.owners,
+		anchors,
 		elongations,
 		chain_layers,
 		chain_lengths,
@@ -195,99 +200,121 @@ pub fn layout(graph: &Graph) -> Layout {
 	}
 }
 
-/// The graph as a forest of the wires along which a depth-first walk first reached each node.
+/// The graph as a forest giving each node to its highest reader as stored.
 struct Forest {
 	owners: Vec<Option<u32>>,
-	/// The input of its owner each node is reached through.
+	/// The input of its owner each node is read through.
 	owner_inputs: Vec<u32>,
-	/// Each node after its owner and before anything it owns.
-	preorder: Vec<u32>,
-	/// The nodes each node owns, grouped by owner, in the order the walk reached them.
+	/// Each node after the nodes reading it, except where it breaks a cycle, so always after its owner.
+	order: Vec<u32>,
+	/// The index of each node in `order`.
+	ranks: Vec<u32>,
+	/// Where each node sits from its owner as stored, before anything is fitted.
+	offsets: Vec<IVec2>,
+	/// The nodes each node owns, grouped by owner, in `order`.
 	children: GroupedByNode,
 	cyclic: Vec<u32>,
 }
 
 impl Forest {
-	fn walk(graph: &Graph, readers: &GroupedByNode, inputs: &GroupedByNode) -> Self {
+	fn grow(graph: &Graph, readers: &GroupedByNode, inputs: &GroupedByNode) -> Self {
 		let node_count = graph.nodes.len();
-		let mut owners = vec![None; node_count];
-		let mut owner_inputs = vec![0; node_count];
-		let mut preorder = Vec::with_capacity(node_count);
-		let mut cyclic = Vec::new();
-		let mut reached = vec![false; node_count];
-
-		// The wires into each node in the order they are drawn from the top: a node's inputs top to bottom, and a layer's stack input after the rest
-		let mut ordered_inputs = inputs.items.clone();
-		for node in 0..node_count {
-			let is_layer = graph.nodes[node].is_layer;
-			let range = inputs.starts[node] as usize..inputs.starts[node + 1] as usize;
-			ordered_inputs[range].sort_unstable_by_key(|wire| {
-				let input = graph.wires[*wire as usize].input;
-				if is_layer && input == 0 { u32::MAX } else { input }
-			});
-		}
-
-		// Placed nodes start their own trees, walked from the top of the graph down
 		let is_root = |node: usize| readers.of(node).is_empty() || matches!(graph.nodes[node].placement, Placement::Absolute(_));
-		let mut roots: Vec<usize> = (0..node_count).filter(|node| is_root(*node)).collect();
-		roots.sort_by_key(|node| {
-			let position = root_position(&graph.nodes[*node]);
-			(position.y, position.x, *node)
-		});
 
-		// Each entry is a node and the index in `ordered_inputs` of the next of its inputs to visit
-		let mut stack: Vec<(usize, usize)> = Vec::new();
-		let mut walk_from = |root: usize, reached: &mut [bool], preorder: &mut Vec<u32>| {
-			if reached[root] {
-				return;
-			}
-			reached[root] = true;
-			preorder.push(root as u32);
-
-			stack.push((root, inputs.starts[root] as usize));
-			while let Some((node, next)) = stack.last_mut() {
-				let node = *node;
-				if *next == inputs.starts[node + 1] as usize {
-					stack.pop();
-					continue;
-				}
-				let wire = graph.wires[ordered_inputs[*next] as usize];
-				*next += 1;
-
-				let source = wire.source as usize;
-				if reached[source] || is_root(source) {
-					continue;
-				}
-				reached[source] = true;
-				owners[source] = Some(node as u32);
-				owner_inputs[source] = wire.input;
-				preorder.push(source as u32);
-				stack.push((source, inputs.starts[source] as usize));
-			}
+		let mut forest = Self {
+			owners: vec![None; node_count],
+			owner_inputs: vec![0; node_count],
+			order: Vec::with_capacity(node_count),
+			ranks: vec![u32::MAX; node_count],
+			offsets: vec![IVec2::ZERO; node_count],
+			children: GroupedByNode::grouped_items(node_count, &[], |_| 0),
+			cyclic: Vec::new(),
 		};
+		let mut stored_positions = vec![IVec2::ZERO; node_count];
 
-		for root in roots {
-			walk_from(root, &mut reached, &mut preorder);
-		}
-		for node in 0..node_count {
-			if !reached[node] {
-				cyclic.push(node as u32);
-				walk_from(node, &mut reached, &mut preorder);
+		let mut readers_left: Vec<u32> = (0..node_count).map(|node| if is_root(node) { 0 } else { readers.of(node).len() as u32 }).collect();
+		let mut ready: Vec<u32> = (0..node_count as u32).rev().filter(|node| readers_left[*node as usize] == 0).collect();
+		let mut next_unplaced = 0;
+
+		while forest.order.len() < node_count {
+			let node = match ready.pop() {
+				Some(node) => node as usize,
+				// Every node left is read by another one left, so the first of them breaks a cycle
+				None => {
+					while forest.ranks[next_unplaced] != u32::MAX {
+						next_unplaced += 1;
+					}
+					forest.cyclic.push(next_unplaced as u32);
+					next_unplaced
+				}
+			};
+			if forest.ranks[node] != u32::MAX {
+				continue;
+			}
+			forest.ranks[node] = forest.order.len() as u32;
+			forest.order.push(node as u32);
+
+			stored_positions[node] = match forest.highest_reader(graph, readers, node, &stored_positions).filter(|_| !is_root(node)) {
+				Some(wire) => {
+					let owner = wire.target as usize;
+					forest.owners[node] = Some(owner as u32);
+					forest.owner_inputs[node] = wire.input;
+					let stored_position = forest.anchor(graph, readers, node, &stored_positions) + stored_offset(graph, node, owner as u32);
+					forest.offsets[node] = stored_position - stored_positions[owner];
+					stored_position
+				}
+				None => root_position(&graph.nodes[node]),
+			};
+
+			for wire in inputs.of(node) {
+				let source = graph.wires[*wire as usize].source as usize;
+				if readers_left[source] > 0 {
+					readers_left[source] -= 1;
+					if readers_left[source] == 0 {
+						ready.push(source as u32);
+					}
+				}
 			}
 		}
 
-		// Grouping the owned nodes in preorder keeps each owner's in the order the walk reached them
-		let owned_in_preorder: Vec<u32> = preorder.iter().copied().filter(|node| owners[*node as usize].is_some()).collect();
-		let children = GroupedByNode::grouped_items(node_count, &owned_in_preorder, |node| owners[*node as usize].unwrap_or_default());
-
-		Self {
-			owners,
-			owner_inputs,
-			preorder,
-			children,
-			cyclic,
-		}
+		let owned: Vec<u32> = forest.order.iter().copied().filter(|node| forest.owners[*node as usize].is_some()).collect();
+		forest.children = GroupedByNode::grouped_items(node_count, &owned, |node| forest.owners[*node as usize].unwrap_or_default());
+		forest
 	}
+
+	/// The wires to the readers of `node` placed before it.
+	fn anchoring_wires<'a>(&'a self, graph: &'a Graph, readers: &'a GroupedByNode, node: usize) -> impl Iterator<Item = Wire> + 'a {
+		readers
+			.of(node)
+			.iter()
+			.map(|wire| graph.wires[*wire as usize])
+			.filter(move |wire| self.ranks[wire.target as usize] < self.ranks[node])
+	}
+
+	/// The wire to the highest reader of `node` at `positions`, taking the leftmost of equally high ones and then the input drawn first.
+	fn highest_reader(&self, graph: &Graph, readers: &GroupedByNode, node: usize, positions: &[IVec2]) -> Option<Wire> {
+		self.anchoring_wires(graph, readers, node).min_by_key(|wire| {
+			let position = positions[wire.target as usize];
+			(position.y, position.x, drawing_order(graph, wire))
+		})
+	}
+
+	/// The point the stored offset of `node` is taken from: the left of its readers at `positions`, level with its owner.
+	fn anchor(&self, graph: &Graph, readers: &GroupedByNode, node: usize, positions: &[IVec2]) -> IVec2 {
+		let Some(owner) = self.owners[node] else { return IVec2::ZERO };
+		let owner_position = positions[owner as usize];
+		let left = self
+			.anchoring_wires(graph, readers, node)
+			.map(|wire| positions[wire.target as usize].x)
+			.min()
+			.unwrap_or(owner_position.x);
+		IVec2::new(left, owner_position.y)
+	}
+}
+
+/// Where the input a wire enters is drawn among the inputs of its node: top to bottom, and a layer's stack input after the rest.
+fn drawing_order(graph: &Graph, wire: &Wire) -> u32 {
+	if graph.nodes[wire.target as usize].is_layer && wire.input == 0 { u32::MAX } else { wire.input }
 }
 
 fn root_position(node: &Node) -> IVec2 {
@@ -297,9 +324,8 @@ fn root_position(node: &Node) -> IVec2 {
 	}
 }
 
-/// Where a node sits from its owner as stored, before anything is fitted.
-fn stored_offset(graph: &Graph, node: usize, owner: Option<u32>) -> IVec2 {
-	let Some(owner) = owner else { return IVec2::ZERO };
+/// Where a node sits from its anchor as stored, before anything is fitted.
+fn stored_offset(graph: &Graph, node: usize, owner: u32) -> IVec2 {
 	match graph.nodes[node].placement {
 		Placement::Relative(offset) => offset,
 		Placement::Chain => IVec2::new(-CHAIN_WIDTH, 0),
@@ -312,12 +338,13 @@ fn stored_offset(graph: &Graph, node: usize, owner: Option<u32>) -> IVec2 {
 /// each is moved left of it if it would cover it, or below it when it feeds a layer's stack input, then down past the
 /// outlines of those taken before it. A link in a chain is never moved, so a chain stays whole and gives way only at
 /// its end, and a waypoint stays where it is put.
-fn elongations(graph: &Graph, forest: &Forest, offsets: &[IVec2]) -> Vec<IVec2> {
+fn elongations(graph: &Graph, forest: &Forest) -> Vec<IVec2> {
+	let offsets = &forest.offsets;
 	let node_count = graph.nodes.len();
 	let mut elongations = vec![IVec2::ZERO; node_count];
 	let mut contours: Vec<Contour> = vec![Contour::default(); node_count];
-	let mut pool = SpanPool::default();
-	let chain_links = chain_links(graph, forest, offsets);
+	let mut pool = ColumnPool::default();
+	let chain_links = chain_links(graph, forest);
 
 	let mut children_from_the_top = forest.children.items.clone();
 	for node in 0..node_count {
@@ -325,7 +352,7 @@ fn elongations(graph: &Graph, forest: &Forest, offsets: &[IVec2]) -> Vec<IVec2> 
 		children_from_the_top[range].sort_by_key(|child| (offsets[*child as usize].y, offsets[*child as usize].x));
 	}
 
-	for &node in forest.preorder.iter().rev() {
+	for &node in forest.order.iter().rev() {
 		let node = node as usize;
 		let own = own_bounds(&graph.nodes[node]);
 		let mut placed = Contour::default();
@@ -373,17 +400,17 @@ fn own_bounds(node: &Node) -> Option<Bounds> {
 }
 
 /// Whether each node sits as a link in a chain, one chain width left of the layer or chain link it feeds through its chain input.
-fn chain_links(graph: &Graph, forest: &Forest, offsets: &[IVec2]) -> Vec<bool> {
+fn chain_links(graph: &Graph, forest: &Forest) -> Vec<bool> {
 	let mut chain_links = vec![false; graph.nodes.len()];
 
 	// Each owner comes before what it owns, so whether the owner is in a chain is already known
-	for &node in &forest.preorder {
+	for &node in &forest.order {
 		let node = node as usize;
 		let Some(owner) = forest.owners[node] else { continue };
 		let owner = owner as usize;
 
 		let feeds_chain_input = forest.owner_inputs[node] == graph.nodes[owner].chain_input();
-		let beside = offsets[node] == IVec2::new(-CHAIN_WIDTH, 0);
+		let beside = forest.offsets[node] == IVec2::new(-CHAIN_WIDTH, 0);
 		let owner_in_chain = graph.nodes[owner].is_layer || chain_links[owner];
 		chain_links[node] = graph.nodes[node].chainable && !graph.nodes[node].is_layer && feeds_chain_input && beside && owner_in_chain;
 	}
@@ -597,7 +624,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_shared_node_belongs_to_the_first_reader_reaching_it() {
+	fn a_shared_node_belongs_to_its_highest_reader() {
 		let graph = Graph {
 			nodes: vec![
 				node(Placement::Absolute(IVec2::new(30, 20)), false),
@@ -608,9 +635,25 @@ mod tests {
 		};
 		let layout = layout(&graph);
 
-		// The upper reader is the first root walked from
 		assert_eq!(layout.owners[2], Some(1));
 		assert_eq!(layout.positions[2], IVec2::new(30 - CHAIN_WIDTH, 10));
+	}
+
+	#[test]
+	fn a_shared_node_is_placed_from_the_left_of_its_readers_level_with_the_highest() {
+		let graph = Graph {
+			nodes: vec![
+				node(Placement::Absolute(IVec2::new(20, 30)), false),
+				node(Placement::Absolute(IVec2::new(30, 10)), false),
+				node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 2)), false),
+			],
+			wires: vec![wire(2, 0, 0), wire(2, 1, 0)],
+		};
+		let layout = layout(&graph);
+
+		assert_eq!(layout.owners[2], Some(1));
+		assert_eq!(layout.anchors[2], IVec2::new(20, 10));
+		assert_eq!(layout.positions[2], IVec2::new(20 - CHAIN_WIDTH, 12));
 	}
 
 	#[test]
@@ -620,8 +663,8 @@ mod tests {
 
 		let mut refitted = graph.clone();
 		for (node, data) in refitted.nodes.iter_mut().enumerate() {
-			if let Some(owner) = first.owners[node] {
-				data.placement = Placement::Relative(first.positions[node] - first.positions[owner as usize]);
+			if first.owners[node].is_some() {
+				data.placement = Placement::Relative(first.positions[node] - first.anchors[node]);
 			}
 		}
 		let second = layout(&refitted);
@@ -792,20 +835,19 @@ mod phase_timing {
 				times[0] += start.elapsed();
 
 				let start = Instant::now();
-				let forest = Forest::walk(&graph, &readers, &inputs);
+				let forest = Forest::grow(&graph, &readers, &inputs);
 				times[1] += start.elapsed();
 
 				let start = Instant::now();
-				let offsets: Vec<IVec2> = (0..node_count).map(|node| stored_offset(&graph, node, forest.owners[node])).collect();
-				let elongations = elongations(&graph, &forest, &offsets);
+				let elongations = elongations(&graph, &forest);
 				times[2] += start.elapsed();
 
 				let start = Instant::now();
 				let mut positions = vec![IVec2::ZERO; node_count];
-				for &node in &forest.preorder {
+				for &node in &forest.order {
 					let node = node as usize;
 					positions[node] = match forest.owners[node] {
-						Some(owner) => positions[owner as usize] + offsets[node] + elongations[node],
+						Some(owner) => forest.anchor(&graph, &readers, node, &positions) + stored_offset(&graph, node, owner) + elongations[node],
 						None => root_position(&graph.nodes[node]),
 					};
 				}
@@ -834,7 +876,9 @@ mod phase_timing {
 				times[6] += start.elapsed();
 			}
 			let [grouping, walk, fitting, placing, wires, chains, total] = times.map(|time| time / repetitions);
-			println!("{name:15} grouping {grouping:>8.1?} | walk {walk:>8.1?} | fitting {fitting:>8.1?} | placing {placing:>8.1?} | wire ends {wires:>8.1?} | chains {chains:>8.1?} | whole layout {total:>8.1?}");
+			println!(
+				"{name:15} grouping {grouping:>8.1?} | walk {walk:>8.1?} | fitting {fitting:>8.1?} | placing {placing:>8.1?} | wire ends {wires:>8.1?} | chains {chains:>8.1?} | whole layout {total:>8.1?}"
+			);
 		}
 	}
 }

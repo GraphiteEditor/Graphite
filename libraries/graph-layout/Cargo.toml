@@ -16,6 +16,7 @@ workspace = true
 
 [dependencies]
 glam = { workspace = true }
+smallvec = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
