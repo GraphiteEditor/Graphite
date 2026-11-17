@@ -29,6 +29,8 @@ pub mod codec;
 pub mod error;
 pub mod export;
 pub mod io;
+#[cfg(feature = "conversion")]
+pub mod layers;
 pub mod layout;
 mod load;
 pub mod manifest;

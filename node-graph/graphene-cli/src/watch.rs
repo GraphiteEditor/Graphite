@@ -2,7 +2,7 @@ use document_live::{Event, LiveDocument};
 use graph_craft::application_io::resource::ResourceHash;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue, UVec2};
-use graphene_cli::{TokioSpawner, compile_graph, create_executor, editor_api, export, layer_paths};
+use graphene_cli::{TokioSpawner, compile_graph, create_executor, editor_api, export};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphene_std::runtime::AsyncRuntime;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -124,11 +124,10 @@ impl Viewer {
 	}
 
 	fn recompile(&mut self) {
-		let (network, nodes) = match self.runtime.block_on(self.live.network_with_metadata()) {
-			Ok(network_with_metadata) => network_with_metadata,
+		let (network, layers) = match self.runtime.block_on(self.live.network_with_layers()) {
+			Ok(network_with_layers) => network_with_layers,
 			Err(error) => return log::error!("Failed to build the runtime network: {error}"),
 		};
-		let layers = layer_paths(&network, &nodes);
 		let proto = match compile_graph(network, &layers, self.editor_api.clone(), Some(self.live.document()), self.graph_runtime.handle()) {
 			Ok(proto) => proto,
 			Err(error) => return log::error!("Compile failed: {error}"),
