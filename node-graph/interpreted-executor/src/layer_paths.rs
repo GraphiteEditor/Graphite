@@ -60,7 +60,8 @@ pub fn write_layer_paths(network: &mut NodeNetwork, layer_paths: &[Vec<NodeId>])
 		let Some((layer, parent_path)) = layer_path.split_last() else { continue };
 		let Some(content) = layer_content(layer_path, network) else { continue };
 
-		// An Extend node deeper inside the layer may be in a network other layers share, so the writer goes on the layer's whole output instead
+		// An Extend node nested deeper than the layer may be in a network that other layers share.
+		// So the writer goes after the layer's output, and the Extend node only decides if the content can carry the path.
 		let content = match content {
 			LayerContent::Added { network_path, extend } if network_path.len() > layer_path.len() => LayerContent::Output([network_path.as_slice(), &[extend]].concat()),
 			content => content,
@@ -201,7 +202,7 @@ fn layer_path_writer(content: NodeInput, layer_beside: Vec<NodeId>) -> DocumentN
 	DocumentNode {
 		inputs: vec![
 			content,
-			// The writer is in the layer's own network or beside the layer, so dropping just its own ID reaches it
+			// The writer is directly inside the layer or beside it, so removing only its own ID gives the path
 			NodeInput::value(TaggedValue::Integer(1), false),
 			NodeInput::value(TaggedValue::NodeIdPath(NodeIdPath::from(layer_beside)), false),
 			NodeInput::Reflection(DocumentNodeMetadata::DocumentNodePath),
@@ -291,9 +292,9 @@ mod tests {
 
 		// The writer writes the path of the layer holding its network, whichever layer that is
 		let writer = &written[0].definitions[&merge].nodes[&layer_path_writer_id(NodeId(1))];
-		let (levels_up, layer_beside) = (&writer.inputs[1], &writer.inputs[2]);
-		assert_eq!(*levels_up, NodeInput::value(TaggedValue::Integer(1), false));
-		assert_eq!(*layer_beside, NodeInput::value(TaggedValue::NodeIdPath(NodeIdPath::from(Vec::new())), false));
+		let (levels_up, layer_beside) = (writer.input(write_layer_path::LevelsUpInput), writer.input(write_layer_path::LayerBesideInput));
+		assert_eq!(levels_up, Some(&NodeInput::value(TaggedValue::Integer(1), false)));
+		assert_eq!(layer_beside, Some(&NodeInput::value(TaggedValue::NodeIdPath(NodeIdPath::from(Vec::new())), false)));
 	}
 
 	// Content that already writes its own layer path, like the 'Merge' networks of older documents, gets no second writer

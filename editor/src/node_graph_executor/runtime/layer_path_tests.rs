@@ -4,13 +4,16 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use crate::test_utils::test_prelude::*;
 use graphene_std::graphic::extend;
 
-// A layer that ends in no Extend node has its path written onto its whole output, which gives the editor its click targets
+fn rectangle() -> DefinitionIdentifier {
+	DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)
+}
+
+// A layer without an Extend node gets its path written onto its whole output
 #[tokio::test]
-async fn a_node_shown_as_a_layer_is_traced_back_to() {
+async fn a_layer_gets_click_targets() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
-	let rectangle = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER);
-	let rectangle = editor.create_node_by_name_at(rectangle, 0, 0).await;
+	let rectangle = editor.create_node_by_name_at(rectangle(), 0, 0).await;
 	editor
 		.handle_message(NodeGraphMessage::CreateWire {
 			output_connector: OutputConnector::node(rectangle, 0),
@@ -30,14 +33,13 @@ async fn a_node_shown_as_a_layer_is_traced_back_to() {
 	);
 }
 
-// A layer that is itself an Extend node has its path written, from beside it, onto what it's given to add
+// A layer that is an Extend node gets its path written onto what it adds
 #[tokio::test]
-async fn an_extend_node_shown_as_a_layer_is_traced_back_to() {
+async fn an_extend_node_layer_gets_click_targets() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let extend = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(extend::IDENTIFIER), 0, 0).await;
-	let rectangle = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER);
-	let (below, added) = (editor.create_node_by_name_at(rectangle.clone(), -10, 0).await, editor.create_node_by_name_at(rectangle, -10, 4).await);
+	let (below, added) = (editor.create_node_by_name_at(rectangle(), -10, 0).await, editor.create_node_by_name_at(rectangle(), -10, 4).await);
 	for (rectangle, input) in [(below, InputConnector::node(extend, extend::BaseInput)), (added, InputConnector::node(extend, extend::NewInput))] {
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {

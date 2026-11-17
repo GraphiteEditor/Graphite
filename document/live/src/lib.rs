@@ -3,9 +3,9 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
-use document_graph_storage::{NodeMetadataEntry, PeerId, UserId};
+use document_graph_storage::{PeerId, UserId};
 use graph_craft::application_io::resource::ResourceHash;
-use graph_craft::document::NodeNetwork;
+use graph_craft::document::{NodeId, NodeNetwork};
 use peer_transport::{Room, SyncTarget};
 
 pub use document_format::Error as FormatError;
@@ -97,10 +97,12 @@ impl LiveDocument {
 		&mut self.gdd
 	}
 
-	/// The document's runtime network, with the metadata of each of its nodes.
-	pub async fn network_with_metadata(&self) -> Result<(NodeNetwork, Vec<NodeMetadataEntry>), LiveError> {
+	/// The document's runtime network, with the path of every layer in it.
+	pub async fn network_with_layers(&self) -> Result<(NodeNetwork, Vec<Vec<NodeId>>), LiveError> {
 		let declarations = self.gdd.declarations(&self.gdd).await;
-		Ok(self.gdd.registry().to_runtime_with_metadata(&declarations, self.gdd.blobs())?)
+		let (network, node_metadata) = self.gdd.registry().to_runtime_with_metadata(&declarations, self.gdd.blobs())?;
+		let layers = document_format::layers::layer_paths(&network, &node_metadata);
+		Ok((network, layers))
 	}
 
 	pub fn leave(&mut self) {
