@@ -317,7 +317,6 @@ impl NodeNetworkInterface {
 		// An export is an output of each encapsulating node, so its wires live in the encapsulating networks
 		for (encapsulating_network_path, parent_id) in &encapsulating_nodes {
 			self.unload_outward_wires(encapsulating_network_path);
-			self.unload_stack_dependents(encapsulating_network_path);
 
 			let last_output_index = self.number_of_outputs(parent_id, encapsulating_network_path) - 1;
 			self.reindex_downstream_wires(encapsulating_network_path, |index| OutputConnector::node(*parent_id, index), last_output_index, start_index, end_index);
@@ -325,7 +324,6 @@ impl NodeNetworkInterface {
 
 		self.unload_outward_wires(network_path);
 		self.invalidate_import_export(network_path);
-		self.unload_stack_dependents(network_path);
 	}
 
 	/// The end index is before the import is removed, so moving to the end is the length of the current imports
@@ -352,7 +350,6 @@ impl NodeNetworkInterface {
 		// An import is an input of each encapsulating node, so moving it moves those nodes' ports
 		for (encapsulating_network_path, _) in &encapsulating_nodes {
 			self.unload_outward_wires(encapsulating_network_path);
-			self.unload_stack_dependents(encapsulating_network_path);
 		}
 
 		// The wires an import feeds live in the network the import belongs to
@@ -361,7 +358,6 @@ impl NodeNetworkInterface {
 
 		self.unload_outward_wires(network_path);
 		self.invalidate_import_export(network_path);
-		self.unload_stack_dependents(network_path);
 	}
 
 	/// Rewires every downstream connection so it follows the slot it was pointing at, after the slot at
@@ -701,7 +697,6 @@ impl NodeNetworkInterface {
 				if matches!(input_connector, InputConnector::Export(_)) {
 					self.unload_import_export_ports(network_path);
 				}
-				self.unload_stack_dependents(network_path);
 				self.try_set_upstream_to_chain(input_connector, network_path);
 			}
 
@@ -714,7 +709,6 @@ impl NodeNetworkInterface {
 				}
 
 				self.reload_structure_if_affected(input_connector, network_path);
-				self.unload_stack_dependents(network_path);
 			}
 
 			_ => {}
@@ -1134,13 +1128,17 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let mut reconnect_node = None;
+		// The node taking over the removed node's place keeps its offset, so it moves into that place along with its upstream
+		let reconnected_offset = reconnect_to_input
+			.as_ref()
+			.and_then(NodeInput::as_node)
+			.and_then(|reconnected| Some((reconnected, self.relative_offset(&reconnected, network_path)?)));
+
 		let mut exports_fed_by_import = Vec::new();
 
 		for downstream_input in &downstream_inputs_to_disconnect {
 			self.disconnect_input(downstream_input, network_path);
 			if let Some(reconnect_input) = &reconnect_to_input {
-				reconnect_node = reconnect_input.as_node().filter(|&node_id| self.is_stack(&node_id, network_path));
 				self.disconnect_input(&InputConnector::primary_input(*node_id), network_path);
 
 				// An import can't feed an export directly, so the exports it takes over share one new redirect dot, wired below
@@ -1156,32 +1154,10 @@ impl NodeNetworkInterface {
 			self.create_wires(&OutputConnector::Import(import_index), &exports_fed_by_import, network_path);
 		}
 
-		// Shift the reconnected node up to collapse space
-		if let Some(reconnect_node) = &reconnect_node {
-			let Some(reconnected_node_position) = self.position(reconnect_node, network_path) else {
-				log::error!("Could not get reconnected node position in remove_references_from_network");
-				return false;
-			};
-			let Some(disconnected_node_position) = self.position(node_id, network_path) else {
-				log::error!("Could not get disconnected node position in remove_references_from_network");
-				return false;
-			};
-			let max_shift_distance = reconnected_node_position.y - disconnected_node_position.y;
-
-			let upstream_nodes = self.upstream_flow_back_from_nodes(vec![*reconnect_node], network_path, FlowType::PrimaryFlow).collect::<HashSet<_>>();
-
-			// Build the stack dependents from the reconnected flow rather than the selection so the shifting works correctly
-			self.unload_stack_dependents(network_path);
-			self.load_stack_dependents_for_nodes(upstream_nodes.iter().copied().collect(), network_path);
-
-			// Shift up until there is either a collision or the disconnected node position is reached
-			let mut current_shift_distance = 0;
-			while self.check_collision_with_stack_dependents(reconnect_node, -1, network_path).is_empty() && max_shift_distance > current_shift_distance {
-				self.shift_nodes(upstream_nodes.clone(), Direction::Up, false, network_path);
-				current_shift_distance += 1;
-			}
-
-			self.unload_stack_dependents(network_path);
+		if let Some((reconnected, offset)) = reconnected_offset
+			&& !self.reading_nodes(&reconnected, network_path).is_empty()
+		{
+			self.set_relative_position(&reconnected, offset, network_path);
 		}
 
 		true
@@ -1402,10 +1378,8 @@ impl NodeNetworkInterface {
 			return;
 		};
 		transient.layer_width.unload();
-		transient.owned_nodes.unload();
 
 		self.transaction_modified();
-		self.unload_stack_dependents(network_path);
 		self.unload_all_nodes_bounding_box(network_path);
 		self.invalidate_import_export(network_path);
 		self.load_structure();

@@ -30,8 +30,6 @@ impl NodeNetworkInterface {
 			let empty = current.selected_layers_except_artboards(self).next().is_none();
 			(current, previous, empty)
 		};
-		self.unload_stack_dependents(network_path);
-
 		let Some(history) = self.selection_history_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes_mut");
 			return None;
@@ -76,196 +74,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub(crate) fn stack_dependents(&mut self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
-		self.try_load_stack_dependents(network_path);
-		self.try_get_stack_dependents(network_path)
-	}
-
-	pub(crate) fn try_load_stack_dependents(&self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in try_load_stack_dependents");
-			return;
-		};
-
-		if !network_metadata.transient_metadata.stack_dependents.is_loaded() {
-			self.load_stack_dependents(network_path);
-		}
-	}
-
-	/// Reads the stack dependents through &self if they are already loaded.
-	pub(crate) fn with_stack_dependents_if_loaded<R>(&self, network_path: &[NodeId], read: impl FnOnce(&HashMap<NodeId, LayerOwner>) -> R) -> Option<R> {
-		self.network_metadata(network_path)?.transient_metadata.stack_dependents.with_loaded(read)
-	}
-
-	pub(crate) fn try_get_stack_dependents(&mut self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in try_get_stack_dependents");
-			return None;
-		};
-		let Some(stack_dependents) = transient.stack_dependents.get_loaded_mut() else {
-			log::error!("Could not load stack dependents in try_get_stack_dependents");
-			return None;
-		};
-		Some(stack_dependents)
-	}
-
-	// This function always has to be in sync with the selected nodes.
-	fn load_stack_dependents(&self, network_path: &[NodeId]) {
-		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
-			log::error!("Could not get selected nodes in load_stack_dependents");
-			return;
-		};
-		self.load_stack_dependents_for_nodes(selected_nodes.selected_nodes().cloned().collect(), network_path);
-	}
-
-	/// Builds the stack dependents as if `seed_nodes` were the selection, for shifts driven by a node set other than the selection.
-	pub(crate) fn load_stack_dependents_for_nodes(&self, seed_nodes: Vec<NodeId>, network_path: &[NodeId]) {
-		let mut selected_layers = seed_nodes.iter().filter(|node_id| self.is_layer(node_id, network_path)).copied().collect::<HashSet<_>>();
-
-		// Deselect all layers that are upstream of other selected layers
-		let mut removed_layers = Vec::new();
-		for layer in selected_layers.clone() {
-			if removed_layers.contains(&layer) {
-				continue;
-			}
-			for upstream_node in self.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::UpstreamFlow).skip(1) {
-				if selected_layers.remove(&upstream_node) {
-					removed_layers.push(upstream_node)
-				}
-			}
-		}
-
-		// Get a unique list of the top of each stack for each layer
-		let mut stack_tops = HashSet::new();
-
-		for layer in &selected_layers {
-			let mut current_node = *layer;
-			loop {
-				if self.is_layer(&current_node, network_path) && !self.is_stack(&current_node, network_path) {
-					stack_tops.insert(current_node);
-					break;
-				};
-				let Some(first_downstream_input) = self.with_outward_wires(network_path, |outward_wires| {
-					outward_wires
-						.get(&OutputConnector::primary_output(current_node))
-						.map(|layer_outward_wires| layer_outward_wires.first().copied())
-				}) else {
-					log::error!("Cannot load outward wires in load_stack_dependents_for_nodes");
-					return;
-				};
-				let Some(first_downstream_input) = first_downstream_input else {
-					log::error!("Could not get outward_wires for layer {current_node}");
-					break;
-				};
-				match first_downstream_input {
-					Some(downstream_input) => {
-						let Some(downstream_node) = downstream_input.node_id() else {
-							log::error!("Node connected to export should be absolute");
-							break;
-						};
-						current_node = downstream_node
-					}
-					None => break,
-				}
-			}
-		}
-
-		let mut stack_dependents = HashMap::new();
-		let mut owned_sole_dependents = HashSet::new();
-		// Loop through all layers below the stack_tops, and set sole dependents upstream from that layer to be owned by that layer. Ensure LayerOwner is kept in sync.
-		for stack_top in &stack_tops {
-			for upstream_stack_layer in self
-				.upstream_flow_back_from_nodes(vec![*stack_top], network_path, FlowType::PrimaryFlow)
-				.take_while(|upstream_node| self.is_layer(upstream_node, network_path))
-				.collect::<Vec<_>>()
-			{
-				for upstream_layer in self.upstream_flow_back_from_nodes(vec![upstream_stack_layer], network_path, FlowType::UpstreamFlow).collect::<Vec<_>>() {
-					if !self.is_layer(&upstream_layer, network_path) {
-						continue;
-					}
-					let mut new_owned_nodes = HashSet::new();
-					for layer_sole_dependent in &self.upstream_nodes_below_layer(&upstream_layer, network_path) {
-						stack_dependents.insert(*layer_sole_dependent, LayerOwner::Layer(upstream_layer));
-						owned_sole_dependents.insert(*layer_sole_dependent);
-						new_owned_nodes.insert(*layer_sole_dependent);
-					}
-					let Some(layer_node) = self.node_metadata(&upstream_layer, network_path) else {
-						log::error!("Could not get layer node in load_stack_dependents_for_nodes");
-						continue;
-					};
-					layer_node.transient_metadata.owned_nodes.store(new_owned_nodes);
-				}
-			}
-		}
-
-		// Set any sole dependents of the stack top that are not dependents of a layer in the stack to LayerOwner::None. These nodes will be pushed as blocks when a layer is shifted.
-		for stack_top in &stack_tops {
-			let mut sole_dependents = HashSet::new();
-			let mut not_sole_dependents = HashSet::new();
-			sole_dependents.insert(*stack_top);
-			for upstream_node in self.upstream_flow_back_from_nodes(vec![*stack_top], network_path, FlowType::UpstreamFlow).collect::<Vec<_>>() {
-				if sole_dependents.contains(&upstream_node) || not_sole_dependents.contains(&upstream_node) {
-					continue;
-				}
-
-				// A path terminates at an already-verified sole dependent, and fails fast through a known non-sole node
-				let is_sole_dependent = self.is_sole_dependent(upstream_node, network_path, |downstream_node, _| {
-					if not_sole_dependents.contains(&downstream_node) {
-						SoleDependentStep::Escape
-					} else if sole_dependents.contains(&downstream_node) {
-						SoleDependentStep::Terminate
-					} else {
-						SoleDependentStep::Continue
-					}
-				});
-
-				if is_sole_dependent {
-					sole_dependents.insert(upstream_node);
-				} else {
-					not_sole_dependents.insert(upstream_node);
-				}
-			}
-
-			for sole_dependent in sole_dependents {
-				if !owned_sole_dependents.contains(&sole_dependent) {
-					stack_dependents.insert(sole_dependent, LayerOwner::None);
-				}
-			}
-		}
-
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get current network in load_stack_dependents_for_nodes");
-			return;
-		};
-
-		network_metadata.transient_metadata.stack_dependents.store(stack_dependents);
-	}
-
-	pub fn unload_stack_dependents(&mut self, network_path: &[NodeId]) {
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in unload_stack_dependents");
-			return;
-		};
-		transient.stack_dependents.unload();
-
-		// Drag offsets are only meaningful relative to the stack dependents snapshot they were accumulated against, so they must not outlive it
-		transient.drag_offsets.borrow_mut().clear();
-	}
-
-	/// The vertical distance the node has been pushed from its resting position during the current drag.
-	pub(crate) fn drag_offset(&self, node_id: &NodeId, network_path: &[NodeId]) -> i32 {
-		self.network_metadata(network_path)
-			.map_or(0, |network_metadata| network_metadata.transient_metadata.drag_offsets.borrow().get(node_id).copied().unwrap_or(0))
-	}
-
-	pub(crate) fn add_drag_offset(&self, node_id: &NodeId, delta: i32, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in add_drag_offset");
-			return;
-		};
-		*network_metadata.transient_metadata.drag_offsets.borrow_mut().entry(*node_id).or_insert(0) += delta;
-	}
-
 	pub fn glide_offsets(&self, network_path: &[NodeId]) -> GlideOffsets {
 		self.network_metadata(network_path)
 			.map(|network_metadata| network_metadata.transient_metadata.glide_offsets.borrow().clone())
@@ -278,15 +86,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		*network_metadata.transient_metadata.glide_offsets.borrow_mut() = glide_offsets;
-	}
-
-	/// Discards all drag offsets when the drag ends.
-	pub fn clear_drag_offsets(&self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in clear_drag_offsets");
-			return;
-		};
-		network_metadata.transient_metadata.drag_offsets.borrow_mut().clear();
 	}
 
 	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
@@ -325,15 +124,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		transient.import_export_ports.unload();
-	}
-
-	/// Reads the owned nodes of a layer through &self if they are loaded.
-	pub(crate) fn with_owned_nodes_if_loaded<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&HashSet<NodeId>) -> R) -> Option<R> {
-		let layer_node = self.node_metadata(node_id, network_path)?;
-		if !layer_node.persistent_metadata.is_layer() {
-			return None;
-		}
-		layer_node.transient_metadata.owned_nodes.with_loaded(read)
 	}
 
 	pub fn all_nodes_bounding_box(&self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {

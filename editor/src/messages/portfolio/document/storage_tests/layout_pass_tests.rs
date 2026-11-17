@@ -91,15 +91,27 @@ fn time_the_layout_click_targets_and_hit_tests() {
 			}
 		}
 		let types = start.elapsed() / REPETITIONS;
-		let endpoints: Vec<_> = connected.iter().filter_map(|(input, output)| Some((interface.output_position(output, &[])?, interface.input_position(input, &[])?))).collect();
+		let endpoints: Vec<_> = connected
+			.iter()
+			.filter_map(|(input, output)| Some((interface.output_position(output, &[])?, interface.input_position(input, &[])?)))
+			.collect();
 		let start = Instant::now();
 		for _ in 0..REPETITIONS {
 			for (output, input) in &endpoints {
-				std::hint::black_box(crate::messages::portfolio::document::utility_types::wires::build_vector_wire(*output, *input, false, false, GraphWireStyle::default()));
+				std::hint::black_box(crate::messages::portfolio::document::utility_types::wires::build_vector_wire(
+					*output,
+					*input,
+					false,
+					false,
+					GraphWireStyle::default(),
+				));
 			}
 		}
 		let paths = start.elapsed() / REPETITIONS;
-		let built: Vec<_> = endpoints.iter().map(|(output, input)| crate::messages::portfolio::document::utility_types::wires::build_vector_wire(*output, *input, false, false, GraphWireStyle::default())).collect();
+		let built: Vec<_> = endpoints
+			.iter()
+			.map(|(output, input)| crate::messages::portfolio::document::utility_types::wires::build_vector_wire(*output, *input, false, false, GraphWireStyle::default()))
+			.collect();
 		let start = Instant::now();
 		for _ in 0..REPETITIONS {
 			for path in &built {
@@ -107,7 +119,10 @@ fn time_the_layout_click_targets_and_hit_tests() {
 			}
 		}
 		let svg = start.elapsed() / REPETITIONS;
-		println!("    {} wires | ends {ends:>8.1?} | types {types:>8.1?} | paths {paths:>8.1?} | svg strings {svg:>8.1?}", connected.len());
+		println!(
+			"    {} wires | ends {ends:>8.1?} | types {types:>8.1?} | paths {paths:>8.1?} | svg strings {svg:>8.1?}",
+			connected.len()
+		);
 
 		let node_graph_to_viewport = interface
 			.network_metadata(&[])

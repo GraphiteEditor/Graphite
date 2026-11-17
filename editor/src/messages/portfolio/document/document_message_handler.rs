@@ -2632,7 +2632,6 @@ impl DocumentMessageHandler {
 
 	fn finish_remote_reconcile(&mut self, reconciled: Reconciled, resources_changed: bool, open_network_transform: Option<DAffine2>, responses: &mut VecDeque<Message>) {
 		for path in self.network_interface.paths_reaching(&reconciled.networks) {
-			self.network_interface.unload_stack_dependents(&path);
 			self.network_interface.unload_import_export_ports(&path);
 			self.network_interface.unload_all_nodes_bounding_box(&path);
 			self.network_interface.unload_outward_wires(&path);

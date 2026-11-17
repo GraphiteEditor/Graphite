@@ -30,6 +30,7 @@ fn node(placement: Placement, is_layer: bool) -> Node {
 		inputs: 3,
 		outputs: 1,
 		chainable: true,
+		waypoint: false,
 		name_width: 60.,
 		locked: false,
 	}
