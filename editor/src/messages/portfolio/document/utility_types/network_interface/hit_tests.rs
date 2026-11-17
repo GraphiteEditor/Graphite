@@ -123,23 +123,18 @@ impl NodeNetworkInterface {
 		Some(&mut navigation.node_graph_ptz)
 	}
 
-	// TODO: Optimize getting click target intersections from click by using a spacial data structure like a quadtree instead of linear search
-	/// Click target getter methods
+	/// The node drawn topmost at `click`, in viewport space. Only the nodes whose reach covers it build their exact click targets.
 	pub fn node_from_click(&self, click: DVec2, network_path: &[NodeId]) -> Option<NodeId> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in node_from_click");
-			return None;
-		};
-		let Some(network) = self.nested_network(network_path) else {
-			log::error!("Could not get nested network in node_from_click");
 			return None;
 		};
 
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 		// Each node is pressed where it's drawn, even while gliding into its grid cell
 		let glide_offsets = self.glide_offsets(network_path);
-		let nodes = network.nodes.keys().copied().collect::<Vec<_>>();
-		let clicked_nodes = nodes
+		let clicked_nodes = self
+			.nodes_reaching(point, network_path)
 			.iter()
 			.filter(|node_id| {
 				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
@@ -166,16 +161,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in visibility_from_click");
 			return None;
 		};
-		let Some(network) = self.nested_network(network_path) else {
-			log::error!("Could not get nested network in visibility_from_click");
-			return None;
-		};
 
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 		let glide_offsets = self.glide_offsets(network_path);
-		let node_ids: Vec<_> = network.nodes.keys().copied().collect();
 
-		node_ids
+		self.nodes_reaching(point, network_path)
 			.iter()
 			.filter_map(|node_id| {
 				let point = point - glide_offsets.node(node_id);
@@ -271,19 +261,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in input_port_from_click");
 			return None;
 		};
-		let Some(network) = self.nested_network(network_path) else {
-			log::error!("Could not get nested network in input_port_from_click");
-			return None;
-		};
 
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 		let glide_offsets = self.glide_offsets(network_path);
 		let covering_dot = self.redirect_dot_from_click(click, network_path);
-		network
-			.nodes
-			.keys()
-			.copied()
-			.collect::<Vec<_>>()
+		self.nodes_reaching(point, network_path)
 			.iter()
 			.filter(|node_id| covering_dot.is_none_or(|dot| dot == **node_id))
 			.filter_map(|node_id| {
@@ -311,17 +293,12 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in output_port_from_click");
 			return None;
 		};
-		let Some(network) = self.nested_network(network_path) else {
-			log::error!("Could not get nested network in output_port_from_click");
-			return None;
-		};
 
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 		let glide_offsets = self.glide_offsets(network_path);
 		// A redirect dot is drawn above everything else, so where it covers other ports, only its own can be pressed
 		let covering_dot = self.redirect_dot_from_click(click, network_path);
-		let nodes = network.nodes.keys().copied().collect::<Vec<_>>();
-		nodes
+		self.nodes_reaching(point, network_path)
 			.iter()
 			.filter(|node_id| covering_dot.is_none_or(|dot| dot == **node_id))
 			.filter_map(|node_id| {
@@ -345,11 +322,7 @@ impl NodeNetworkInterface {
 
 	pub fn input_position(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {
 		match input_connector {
-			InputConnector::Node { node_id, input_index } => self
-				.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
-					transient_node_metadata.port_click_targets.input_port_position(*input_index)
-				})
-				.flatten(),
+			InputConnector::Node { node_id, input_index } => self.node_input_anchor(node_id, *input_index, network_path),
 			InputConnector::Export(export_index) => self
 				.with_import_export_ports(network_path, |import_export_ports| import_export_ports.input_port_position(*export_index))
 				.flatten(),
@@ -358,11 +331,7 @@ impl NodeNetworkInterface {
 
 	pub fn output_position(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
 		match output_connector {
-			OutputConnector::Node { node_id, output_index } => self
-				.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
-					transient_node_metadata.port_click_targets.output_port_position(*output_index)
-				})
-				.flatten(),
+			OutputConnector::Node { node_id, output_index } => self.node_output_anchor(node_id, *output_index, network_path),
 			OutputConnector::Import(import_index) => self
 				.with_import_export_ports(network_path, |import_export_ports| import_export_ports.output_port_position(*import_index))
 				.flatten(),

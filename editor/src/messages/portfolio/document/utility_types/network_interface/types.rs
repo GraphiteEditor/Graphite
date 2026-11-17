@@ -773,8 +773,6 @@ pub struct NodeNetworkTransientMetadata {
 	/// All export connector click targets
 	pub(crate) import_export_ports: TransientCache<Ports>,
 
-	/// Cached wire SVG paths per input connector, where an entry's presence means that wire is loaded.
-	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
 	/// Drag-session state: how far each unowned stack dependent has been pushed vertically from its resting position. Cleared when the drag ends.
 	pub(crate) drag_offsets: std::cell::RefCell<HashMap<NodeId, i32>>,
 	/// How far whatever is gliding into the place it just moved to is drawn from that place, which hit tests account for.
@@ -1171,7 +1169,6 @@ pub enum NodePosition {
 #[derive(Debug, Default, Clone)]
 pub struct DocumentNodeTransientMetadata {
 	// The click targets are stored as a single struct since it is very rare for only one to be updated, and recomputing all click targets in one function is more efficient than storing them separately.
-	pub(crate) click_targets: TransientCache<DocumentNodeClickTargets>,
 	/// All nodes that should be moved when this layer is moved, kept here since only layers own nodes.
 	pub(crate) owned_nodes: TransientCache<HashSet<NodeId>>,
 	/// Width in grid units from the left edge of the layer's thumbnail to its left end, cached since text measurement is slow. Only loaded for layers.

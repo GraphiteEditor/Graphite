@@ -330,7 +330,7 @@ async fn a_relative_node_follows_its_readers_until_it_loses_the_last_one() {
 	}
 	let relative = NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(IVec2::new(-7, 3))));
 	network_interface.node_mut(NodeLocator::new(node, &[])).expect("the node exists").set_node_type(relative);
-	network_interface.invalidate_position(&node, &[]);
+	network_interface.invalidate_positions(&[]);
 
 	// The offset applies to the top left corner of the box around both readers
 	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(13, 7)));
@@ -1445,13 +1445,6 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 	let network_interface = &editor.active_document().network_interface;
 	assert!(!network_interface.hidden_primary_import(&path), "the empty primary should be filled");
 	assert_eq!(network_interface.number_of_imports(&path), import_count + 1, "filling the empty primary shouldn't add another import");
-
-	let drawn_wire = network_interface
-		.network_metadata(&path)
-		.and_then(|network_metadata| network_metadata.transient_metadata.wires.borrow().get(&wired_input).cloned())
-		.and_then(|wire| wire.wire_path_update);
-	let current_wire = network_interface.wire_path_from_input(&wired_input, GraphWireStyle::default(), false, &GlideOffsets::default(), &path);
-	assert_eq!(drawn_wire, current_wire, "the input's wire should be redrawn from its new import");
 
 	assert_invariants(&editor, "after adding imports from the empty connectors");
 }

@@ -100,7 +100,6 @@ impl NodeNetworkInterface {
 				encapsulating_transient.all_nodes_bounding_box.unload();
 				encapsulating_transient.import_export_clearance.unload();
 			}
-			self.unload_node_click_targets(&parent_id, &encapsulating_path);
 
 			// An export inserted as the first or second output of a node in the document network may have affected the document metadata structure
 			affects_document_structure |= encapsulating_path.is_empty() && inserted_index <= 1;
@@ -142,7 +141,6 @@ impl NodeNetworkInterface {
 
 			// Update the metadata for the encapsulating node
 			self.unload_outward_wires(encapsulating_network_path);
-			self.unload_node_click_targets(node_id, encapsulating_network_path);
 			self.unload_all_nodes_bounding_box(encapsulating_network_path);
 			affects_document_structure |= encapsulating_network_path.is_empty() && inserted_index <= 1;
 		}
@@ -181,7 +179,6 @@ impl NodeNetworkInterface {
 	fn finish_signature_edit(&mut self, parent_id: NodeId, encapsulating_network_path: &[NodeId], network_path: &[NodeId]) {
 		// Update the metadata for the encapsulating node
 		self.unload_outward_wires(encapsulating_network_path);
-		self.unload_node_click_targets(&parent_id, encapsulating_network_path);
 		self.unload_all_nodes_bounding_box(encapsulating_network_path);
 		if !self.is_eligible_to_be_layer(&parent_id, encapsulating_network_path) && self.is_layer(&parent_id, encapsulating_network_path) {
 			self.set_to_node_or_layer(&parent_id, encapsulating_network_path, false);
@@ -681,7 +678,6 @@ impl NodeNetworkInterface {
 			(NodeInput::Value { exposed: old_exposed, .. }, NodeInput::Value { exposed: new_exposed, .. }) => match input_connector {
 				// Exposing or hiding a value input changes the node's port count
 				InputConnector::Node { node_id, .. } if old_exposed != new_exposed => {
-					self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 					self.unload_all_nodes_bounding_box(network_path);
 
 					// A nested network draws its interior ports from the encapsulating node's inputs
@@ -695,13 +691,6 @@ impl NodeNetworkInterface {
 			},
 
 			(_, NodeInput::Node { node_id: upstream_node_id, .. }) => {
-				// `Node` inputs are always exposed, so connecting to a hidden input adds a port
-				if !old_input.is_exposed()
-					&& let InputConnector::Node { node_id, .. } = input_connector
-				{
-					self.unload_node_click_targets(node_id, network_path);
-				}
-
 				self.reload_structure_if_affected(input_connector, network_path);
 
 				if !self.reposition_connected_upstream(upstream_node_id, input_connector, network_path) {
@@ -712,21 +701,12 @@ impl NodeNetworkInterface {
 				if matches!(input_connector, InputConnector::Export(_)) {
 					self.unload_import_export_ports(network_path);
 				}
-				self.unload_upstream_node_click_targets(vec![*upstream_node_id], network_path);
 				self.unload_stack_dependents(network_path);
 				self.try_set_upstream_to_chain(input_connector, network_path);
 			}
 
-			// A wire to or from the imports changed
-			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Import { .. }, NodeInput::Import { .. })
-			| (NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. }) => {
-				self.unload_wire(input_connector, network_path);
-			}
-
 			// A node was disconnected
 			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Import { .. }) => {
-				self.unload_wire(input_connector, network_path);
-
 				if let Some((old_upstream_node_id, previous_position)) = disconnected_upstream
 					&& !self.reposition_disconnected_upstream(&old_upstream_node_id, previous_position, network_path)
 				{
@@ -932,9 +912,6 @@ impl NodeNetworkInterface {
 
 			self.transaction_modified();
 		}
-		for new_node_id in new_ids.values() {
-			self.unload_node_click_targets(new_node_id, network_path);
-		}
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_outward_wires(network_path);
 	}
@@ -959,7 +936,6 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 		self.unload_all_nodes_bounding_box(network_path);
-		self.unload_node_click_targets(&node_id, network_path);
 
 		previous_entry
 	}
@@ -1117,14 +1093,6 @@ impl NodeNetworkInterface {
 			network.retain_pinned(|node_id| surviving_nodes.contains(node_id));
 		}
 
-		// Purge the removed nodes' cached wire paths, which the per-node unload can no longer reach
-		if let Some(network_metadata) = self.network_metadata(network_path) {
-			network_metadata
-				.transient_metadata
-				.wires
-				.borrow_mut()
-				.retain(|connector, _| connector.node_id().is_none_or(|node_id| !removed_nodes.contains(&node_id)));
-		}
 		// Their outputs leave the outward wire cache with them
 		if let Some(transient) = self.network_transient_mut(network_path)
 			&& let Some(outward_wires) = transient.outward_wires.get_loaded_mut()
@@ -1133,8 +1101,6 @@ impl NodeNetworkInterface {
 		}
 
 		self.unload_all_nodes_bounding_box(network_path);
-		// The per-node unload cannot reach nodes that no longer exist
-		self.unload_all_nodes_click_targets(network_path);
 		let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
 			log::error!("Could not get selected nodes in NodeGraphMessage::DeleteNodes");
 			return;
@@ -1440,7 +1406,6 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 		self.unload_stack_dependents(network_path);
-		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		self.unload_all_nodes_bounding_box(network_path);
 		self.invalidate_import_export(network_path);
 		self.load_structure();

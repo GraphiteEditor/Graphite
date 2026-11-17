@@ -135,8 +135,8 @@ pub struct NodeGraphMessageHandler {
 	end_index: Option<usize>,
 	/// The nodes the frontend currently knows about
 	frontend_nodes: Vec<FrontendNode>,
-	/// Used to keep track of what wires are sent to the frontend so the old ones can be removed
-	frontend_wires: HashSet<(NodeId, usize)>,
+	/// The wires the frontend draws, by the node and input they lead into, so only the ones that changed are sent
+	frontend_wires: HashMap<(NodeId, usize), WirePath>,
 	evaluation_errors: Vec<NodeEvaluationError>,
 }
 
@@ -2001,10 +2001,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}),
 			NodeGraphMessage::EndSendClickTargets => responses.add(FrontendMessage::UpdateClickTargets { click_targets: None }),
 			NodeGraphMessage::UnloadWires => {
-				for input in network_interface.node_graph_input_connectors(breadcrumb_network_path) {
-					network_interface.unload_wire(&input, breadcrumb_network_path);
-				}
-
+				self.frontend_wires.clear();
 				responses.add(FrontendMessage::ClearAllNodeGraphWires);
 			}
 			NodeGraphMessage::SendWires => {
@@ -2640,35 +2637,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				node_graph_errors,
 				node_graph_warnings,
 			} => {
-				// Hidden passthrough nodes let a wire borrow its color and rank from an upstream node, so any type change can restyle wires whose own node is unchanged.
-				// Compare each displayed wire's style (color, rank) across the update and unload only those that changed, so value-only recompiles keep their built wire paths.
-				let types_changed = !resolved_types.add.is_empty() || !resolved_types.remove.is_empty();
-				let wire_style = |network_interface: &mut NodeNetworkInterface, input: &InputConnector| {
-					network_interface.upstream_output_connector(input, breadcrumb_network_path).map(|output| {
-						let output_type = network_interface.output_type(&output, breadcrumb_network_path);
-						(output_type.displayed_type(), output_type.is_list())
-					})
-				};
-				let styles_before = types_changed.then(|| {
-					network_interface
-						.node_graph_input_connectors(breadcrumb_network_path)
-						.into_iter()
-						.map(|input| {
-							let style = wire_style(network_interface, &input);
-							(input, style)
-						})
-						.collect::<Vec<_>>()
-				});
-
 				network_interface.resolved_types.update(resolved_types, node_graph_errors, node_graph_warnings);
-
-				if let Some(styles_before) = styles_before {
-					for (input, style_before) in styles_before {
-						if wire_style(network_interface, &input) != style_before {
-							network_interface.unload_wire(&input, breadcrumb_network_path);
-						}
-					}
-				}
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -3730,26 +3699,28 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn collect_wires(&mut self, network_interface: &mut NodeNetworkInterface, graph_wire_style: GraphWireStyle, breadcrumb_network_path: &[NodeId]) -> Vec<WirePathUpdate> {
-		let mut added_wires = network_interface
+		let drawn_wires: HashMap<(NodeId, usize), WirePath> = network_interface
 			.node_graph_input_connectors(breadcrumb_network_path)
 			.iter()
-			.filter_map(|connector| network_interface.newly_loaded_input_wire(connector, graph_wire_style, breadcrumb_network_path))
-			.collect::<Vec<_>>();
+			.filter_map(|connector| network_interface.wire_update_from_input(connector, graph_wire_style, &GlideOffsets::default(), breadcrumb_network_path))
+			.filter_map(|update| Some(((update.id, update.input_index), update.wire_path_update?)))
+			.collect();
 
-		let changed_wire_inputs = added_wires.iter().map(|update| (update.id, update.input_index)).collect::<Vec<_>>();
-		self.frontend_wires.extend(changed_wire_inputs);
-
-		let mut orphaned_wire_inputs = self.frontend_wires.clone();
-		self.frontend_wires = network_interface
-			.node_graph_wire_inputs(breadcrumb_network_path)
-			.iter()
-			.filter_map(|visible_wire_input| orphaned_wire_inputs.take(visible_wire_input))
-			.collect::<HashSet<_>>();
-		added_wires.extend(orphaned_wire_inputs.into_iter().map(|(id, input_index)| WirePathUpdate {
-			id,
-			input_index,
+		let removed_wires = self.frontend_wires.keys().filter(|wire| !drawn_wires.contains_key(wire)).map(|(id, input_index)| WirePathUpdate {
+			id: *id,
+			input_index: *input_index,
 			wire_path_update: None,
-		}));
+		});
+		let changed_wires = drawn_wires
+			.iter()
+			.filter(|(wire, path)| self.frontend_wires.get(wire) != Some(path))
+			.map(|((id, input_index), path)| WirePathUpdate {
+				id: *id,
+				input_index: *input_index,
+				wire_path_update: Some(path.clone()),
+			});
+		let mut added_wires: Vec<WirePathUpdate> = removed_wires.chain(changed_wires).collect();
+		self.frontend_wires = drawn_wires;
 
 		if let Some(wire_to_preview) = network_interface.wire_to_preview(graph_wire_style, &GlideOffsets::default(), breadcrumb_network_path) {
 			added_wires.push(wire_to_preview);
@@ -4110,7 +4081,7 @@ impl Default for NodeGraphMessageHandler {
 			reordering_import: None,
 			end_index: None,
 			frontend_nodes: Vec::new(),
-			frontend_wires: HashSet::new(),
+			frontend_wires: HashMap::new(),
 			evaluation_errors: Vec::new(),
 		}
 	}

@@ -1,5 +1,5 @@
 use super::*;
-use graph_layout::{Graph, Layout, Node, Placement, Wire, layout};
+use graph_layout::{Graph, Layout, Node, Placement, Wire, layout, reach};
 
 /// Where each node of a network is drawn and which layer's chain it is drawn in, as of one revision of the interface.
 #[derive(Debug, Clone)]
@@ -7,6 +7,7 @@ pub struct NetworkLayout {
 	revision: u64,
 	node_ids: Vec<NodeId>,
 	indices: HashMap<NodeId, u32>,
+	graph: Graph,
 	layout: Layout,
 }
 
@@ -25,6 +26,13 @@ impl NetworkLayout {
 	pub fn chain_length(&self, layer: &NodeId) -> u32 {
 		self.indices.get(layer).map_or(0, |index| self.layout.chain_lengths[*index as usize])
 	}
+
+	/// Whether `point`, in node graph space, lies within the box around everything the node draws.
+	pub fn reaches(&self, node_id: &NodeId, point: DVec2) -> bool {
+		let Some(index) = self.indices.get(node_id) else { return false };
+		let [min, max] = reach(&self.graph, &self.layout, *index as usize);
+		point.cmpge(min).all() && point.cmplt(max).all()
+	}
 }
 
 impl NodeNetworkInterface {
@@ -37,6 +45,15 @@ impl NodeNetworkInterface {
 		}
 
 		cache.with_loaded_or(|| self.lay_out(network_path, revision), read)
+	}
+
+	/// The nodes whose drawing could cover `point`, in node graph space, each offset by how far it is drawn from its grid cell while gliding into it.
+	pub(crate) fn nodes_reaching(&self, point: DVec2, network_path: &[NodeId]) -> Vec<NodeId> {
+		let glide_offsets = self.glide_offsets(network_path);
+		self.with_layout(network_path, |layout| {
+			layout.node_ids.iter().filter(|node_id| layout.reaches(node_id, point - glide_offsets.node(node_id))).copied().collect()
+		})
+		.unwrap_or_default()
 	}
 
 	fn lay_out(&self, network_path: &[NodeId], revision: u64) -> Option<NetworkLayout> {
@@ -62,15 +79,17 @@ impl NodeNetworkInterface {
 			})
 			.collect();
 
+		let graph = Graph { nodes, wires };
 		Some(NetworkLayout {
 			revision,
-			layout: layout(&Graph { nodes, wires }),
+			layout: layout(&graph),
+			graph,
 			node_ids,
 			indices,
 		})
 	}
 
-	/// The node as the layout pass reads it, which only places it, so its size and appearance are left out.
+	/// The node as the layout pass reads it, sized in grid cells but without the name width, which only exact click targets need.
 	fn layout_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<Node> {
 		let metadata = self.node_metadata(node_id, network_path)?;
 		let (placement, is_layer) = match &metadata.persistent_metadata.node_type_metadata {
@@ -90,12 +109,12 @@ impl NodeNetworkInterface {
 			placement,
 			is_layer,
 			rows: self.node_height(node_id, network_path).saturating_sub(1),
-			width: 0,
-			inputs: 0,
-			outputs: 0,
+			width: if is_layer { self.layer_width(node_id, network_path).unwrap_or_default() } else { 5 },
+			inputs: self.number_of_displayed_inputs(node_id, network_path) as u32,
+			outputs: self.number_of_outputs(node_id, network_path) as u32,
 			chainable: !self.is_redirect_dot(node_id, network_path) && !self.hidden_primary_output(node_id, network_path),
 			name_width: 0.,
-			locked: false,
+			locked: self.is_locked(node_id, network_path),
 		})
 	}
 }

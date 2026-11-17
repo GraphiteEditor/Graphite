@@ -50,7 +50,7 @@ fn revert_to_stored_positions(interface: &mut NodeNetworkInterface, positions: &
 			}
 			(None, None) => {}
 		}
-		interface.invalidate_position(node_id, network_path);
+		interface.invalidate_positions(network_path);
 	}
 }
 
