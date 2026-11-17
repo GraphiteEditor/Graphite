@@ -51,9 +51,9 @@ pub fn open_demo_with_named_subgraph_interfaces(file_name: &str) -> DocumentMess
 	// It picks one sharing its catalog entry with another node, so the fork leaves no unused entry behind.
 	let root_nodes = &interface.document_network().nodes;
 	let shared_subgraph = root_nodes.iter().find_map(|(node_id, node)| {
-		let is_subgraph = matches!(node.implementation, DocumentNodeImplementation::Definition(_));
+		let is_built_in = interface.is_read_only(&[*node_id]);
 		let is_shared = root_nodes.values().filter(|other| other.implementation == node.implementation).count() > 1;
-		(is_subgraph && is_shared).then_some((*node_id, node.inputs.len()))
+		(is_built_in && is_shared).then_some((*node_id, node.inputs.len()))
 	});
 	if let Some((node_id, import_count)) = shared_subgraph
 		&& let Some(mut node) = interface.node_interface_mut(NodeLocator::new(node_id, &[]))

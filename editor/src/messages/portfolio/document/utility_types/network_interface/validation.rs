@@ -187,7 +187,7 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 			violations.push(format!("Node {node_id} in network {path:?} implements an inline network, which belongs in the definitions table"));
 		}
 
-		// Input metadata is a parallel array to the node's inputs and the lengths must stay in sync
+		// A table entry's import metadata is a parallel array to the inputs of each node naming it, so the lengths must stay in sync
 		if let Some(network_metadata) = implementation_metadata {
 			let import_metadata = &network_metadata.persistent_metadata.import_metadata;
 			if import_metadata.len() != node.inputs.len() {

@@ -407,13 +407,19 @@ impl NodeNetworkInterface {
 			log::error!("Could not locate network {:?} in replace_node_implementation", locator.network_path);
 			return;
 		};
+		let Ok(view) = self.view(locator.network_path) else {
+			log::error!("Could not view network {:?} in replace_node_implementation", locator.network_path);
+			return;
+		};
+
+		// Nothing goes into the definitions table for a node that isn't there
+		if view.node(&node_id).is_err() {
+			log::error!("Could not get node {node_id} in replace_node_implementation");
+			return;
+		}
 
 		if matches!(implementation, DocumentNodeImplementation::Network(_)) {
 			// The network takes the interface the node had, whether its definition's or the one its table entry stored
-			let Ok(view) = self.view(locator.network_path) else {
-				log::error!("Could not view network {:?} in replace_node_implementation", locator.network_path);
-				return;
-			};
 			let previous = (
 				view.input_metadata(&node_id).map(<[_]>::to_vec).unwrap_or_default(),
 				view.output_names(&node_id).map(<[_]>::to_vec).unwrap_or_default(),
