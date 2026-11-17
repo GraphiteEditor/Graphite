@@ -760,6 +760,8 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) import_export_clearance: TransientCache<ImportExportClearance>,
 	/// Cache for all outward wire connections
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
+	/// Where every node is drawn, laid out again on the first read after any write.
+	pub(crate) layout: TransientCache<NetworkLayout>,
 	/// All export connector click targets
 	pub(crate) import_export_ports: TransientCache<Ports>,
 

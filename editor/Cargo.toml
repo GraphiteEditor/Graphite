@@ -47,6 +47,7 @@ serde_json = { workspace = true }
 kurbo = { workspace = true }
 futures = { workspace = true }
 glam = { workspace = true }
+graph-layout = { workspace = true }
 derivative = { workspace = true }
 tsify = { workspace = true }
 dyn-any = { workspace = true }
@@ -77,4 +78,3 @@ futures = { workspace = true }
 node-macro = { workspace = true }
 core-types = { workspace = true }
 migration-core = { workspace = true, features = ["typed"] }
-graph-layout = { workspace = true }
