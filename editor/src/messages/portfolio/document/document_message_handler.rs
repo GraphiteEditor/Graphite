@@ -2679,7 +2679,6 @@ impl DocumentMessageHandler {
 			self.network_interface.unload_import_export_ports(&path);
 			self.network_interface.unload_all_nodes_bounding_box(&path);
 			self.network_interface.unload_outward_wires(&path);
-			self.network_interface.unload_all_nodes_click_targets(&path);
 		}
 		self.network_interface.load_structure();
 

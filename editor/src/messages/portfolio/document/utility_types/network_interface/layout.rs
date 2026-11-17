@@ -51,7 +51,7 @@ impl NodeNetworkInterface {
 		}
 
 		self.transaction_modified();
-		self.invalidate_position(node_id, network_path);
+		self.invalidate_positions(network_path);
 	}
 
 	/// Converts every node that another node reads in all networks, whether absolute, chained, or stacked, to a position relative to its readers.
@@ -139,7 +139,7 @@ impl NodeNetworkInterface {
 		}
 
 		self.transaction_modified();
-		self.invalidate_position(node_id, network_path);
+		self.invalidate_positions(network_path);
 	}
 
 	/// Sets the position of a layer to a stack position
@@ -154,7 +154,7 @@ impl NodeNetworkInterface {
 			self.transaction_modified();
 		}
 
-		self.invalidate_position(node_id, network_path);
+		self.invalidate_positions(network_path);
 	}
 
 	/// Sets the position of a node to a stack position without changing its y offset
@@ -254,28 +254,6 @@ impl NodeNetworkInterface {
 		for node_id in &valid_upstream_chain_nodes {
 			self.set_chain_position(node_id, network_path);
 		}
-
-		// Reload click target of the layer which used to encapsulate the node
-		if !valid_upstream_chain_nodes.is_empty() {
-			let mut downstream_layer = Some(input_connector.node_id().unwrap());
-			while let Some(downstream_layer_id) = downstream_layer {
-				if downstream_layer_id == input_connector.node_id().unwrap() || !self.is_layer(&downstream_layer_id, network_path) {
-					let Some(outward_wires) = self.outward_wires(network_path) else {
-						log::error!("Could not get outward wires in try_set_upstream_to_chain");
-						downstream_layer = None;
-						break;
-					};
-					downstream_layer = outward_wires
-						.get(&OutputConnector::primary_output(downstream_layer_id))
-						.and_then(|outward_wires| if outward_wires.len() == 1 { outward_wires[0].node_id() } else { None });
-				} else {
-					break;
-				}
-			}
-			if let Some(downstream_layer) = downstream_layer {
-				self.unload_node_click_targets(&downstream_layer, network_path);
-			}
-		}
 	}
 
 	pub(crate) fn try_set_node_to_chain(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
@@ -308,10 +286,6 @@ impl NodeNetworkInterface {
 
 	/// Takes `node_id`, the first chain node rather than the layer, and the chain nodes upstream of it out of the chain where they are drawn.
 	pub(crate) fn unchain_upstream(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
-		let Some(downstream_layer) = self.downstream_layer_for_chain_node(node_id, network_path) else {
-			log::error!("Could not get downstream layer in unchain_upstream");
-			return;
-		};
 		for upstream_id in &self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).collect::<Vec<_>>() {
 			let Some(previous_position) = self.position(upstream_id, network_path) else {
 				log::error!("Could not get position in unchain_upstream");
@@ -319,8 +293,6 @@ impl NodeNetworkInterface {
 			};
 			if self.is_chain(upstream_id, network_path) {
 				self.place_at(upstream_id, previous_position, network_path);
-				// Reload click target of the layer which used to encapsulate the chain
-				self.unload_node_click_targets(&downstream_layer, network_path);
 			}
 			// If there is an upstream layer then stop breaking the chain
 			else {
@@ -385,7 +357,6 @@ impl NodeNetworkInterface {
 				&& self.is_layer(&downstream_node_id, network_path)
 			{
 				self.set_stack_position_calculated_offset(node_id, &downstream_node_id, network_path);
-				self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 			}
 		} else if !is_layer {
 			self.try_set_node_to_chain(node_id, network_path);
@@ -424,7 +395,7 @@ impl NodeNetworkInterface {
 		if shifted_any {
 			self.transaction_modified();
 		}
-		self.invalidate_position(layer, network_path);
+		self.invalidate_positions(network_path);
 	}
 
 	/// Shifts the selected nodes one grid step. The relative nodes upstream of them follow, unless `keep_upstream` leaves them where they are drawn.
@@ -511,7 +482,7 @@ impl NodeNetworkInterface {
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
 		if node.shift_absolute_position(position - current_position) {
 			self.transaction_modified();
-			self.invalidate_position(node_id, network_path);
+			self.invalidate_positions(network_path);
 		}
 	}
 
@@ -779,7 +750,6 @@ impl NodeNetworkInterface {
 	}
 
 	pub(crate) fn check_collision_with_stack_dependents(&mut self, node_id: &NodeId, shift_sign: i32, network_path: &[NodeId]) -> Vec<(NodeId, LayerOwner)> {
-		self.load_all_node_click_targets(network_path);
 		self.try_load_stack_dependents(network_path);
 
 		let nodes_to_shift = self.with_stack_dependents_if_loaded(network_path, |stack_dependents| {
@@ -797,12 +767,12 @@ impl NodeNetworkInterface {
 						if node_to_check_collision.0 == current_node {
 							continue;
 						}
-						let Some(mut current_node_bounding_box) = self.try_get_node_bounding_box(current_node, network_path) else {
+						let Some(mut current_node_bounding_box) = self.node_bounding_box(current_node, network_path) else {
 							log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
 							continue;
 						};
 
-						let Some(node_bounding_box) = self.try_get_node_bounding_box(node_to_check_collision.0, network_path) else {
+						let Some(node_bounding_box) = self.node_bounding_box(node_to_check_collision.0, network_path) else {
 							log::error!("Could not get bounding box for node {node_to_check_collision:?} in shift_selected_nodes");
 							continue;
 						};
@@ -907,7 +877,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		self.invalidate_position(node_id, network_path);
+		self.invalidate_positions(network_path);
 	}
 
 	/// The grid rows a node occupies when stacked, as absolute `(top, bottom)` rows. A layer's box starts
@@ -1130,7 +1100,6 @@ impl NodeNetworkInterface {
 			self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 			self.take_over_outward_wires(layer.to_node(), network_path);
 		}
-		self.unload_upstream_node_click_targets(vec![layer.to_node()], network_path);
 		self.push_stacks_below_ancestors_past_their_content(layer.to_node(), network_path);
 
 		self.remove_orphaned_dots(network_path);

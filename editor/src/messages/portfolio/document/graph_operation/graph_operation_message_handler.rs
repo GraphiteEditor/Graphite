@@ -809,7 +809,6 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			set_import_child_positions(modify_inputs.network_interface, layer, parent_pos, &child_extents_svg_order, &group_extents_map);
 
 			// Invalidate caches once after all positions are set
-			modify_inputs.network_interface.unload_all_nodes_click_targets(&[]);
 			modify_inputs.network_interface.unload_all_nodes_bounding_box(&[]);
 		}
 		usvg::Node::Path(path) => {
