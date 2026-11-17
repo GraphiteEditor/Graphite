@@ -130,6 +130,11 @@ impl Contour {
 		}
 	}
 
+	/// Hands the buffer of an outline no longer needed back to `pool`.
+	pub fn release(self, pool: &mut ColumnPool) {
+		pool.give_back(self.columns);
+	}
+
 	/// The outline covering both, built by adding the columns of the narrower one to the wider one. The narrower one's buffer goes back to `pool`.
 	pub fn union(self, other: Self, pool: &mut ColumnPool) -> Self {
 		let (mut wider, narrower) = if self.width() >= other.width() { (self, other) } else { (other, self) };
