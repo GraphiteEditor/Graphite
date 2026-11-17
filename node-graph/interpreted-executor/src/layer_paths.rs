@@ -201,6 +201,8 @@ fn layer_path_writer(content: NodeInput, layer_beside: Vec<NodeId>) -> DocumentN
 	DocumentNode {
 		inputs: vec![
 			content,
+			// The writer is in the layer's own network or beside the layer, so dropping just its own ID reaches it
+			NodeInput::value(TaggedValue::Integer(1), false),
 			NodeInput::value(TaggedValue::NodeIdPath(NodeIdPath::from(layer_beside)), false),
 			NodeInput::Reflection(DocumentNodeMetadata::DocumentNodePath),
 		],
@@ -289,7 +291,9 @@ mod tests {
 
 		// The writer writes the path of the layer holding its network, whichever layer that is
 		let writer = &written[0].definitions[&merge].nodes[&layer_path_writer_id(NodeId(1))];
-		assert_eq!(writer.inputs[1], NodeInput::value(TaggedValue::NodeIdPath(NodeIdPath::from(Vec::new())), false));
+		let (levels_up, layer_beside) = (&writer.inputs[1], &writer.inputs[2]);
+		assert_eq!(*levels_up, NodeInput::value(TaggedValue::Integer(1), false));
+		assert_eq!(*layer_beside, NodeInput::value(TaggedValue::NodeIdPath(NodeIdPath::from(Vec::new())), false));
 	}
 
 	// Content that already writes its own layer path, like the 'Merge' networks of older documents, gets no second writer
