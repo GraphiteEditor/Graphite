@@ -1,5 +1,4 @@
 use super::evaluated_output;
-use super::layer_content::layer_content;
 use crate::messages::frontend::FrontendMessage;
 #[cfg(feature = "gpu")]
 use atlas::ThumbnailAtlasLayout;
@@ -21,6 +20,7 @@ use graphene_std::transform::{Footprint, RenderQuality};
 use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Color, Context, ContextFeatures, Graphic};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
+use interpreted_executor::layer_paths::layer_content;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
@@ -467,11 +467,11 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 #[cfg(test)]
 mod tests {
 	use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, shipped_node_id};
-	use crate::node_graph_executor::runtime::layer_content::layer_path_writer_id;
 	use crate::test_utils::test_prelude::*;
 	use glam::UVec2;
 	use graph_craft::document::NodeId;
 	use graphene_std::application_io::TimingInformation;
+	use interpreted_executor::layer_paths::layer_path_writer_id;
 
 	async fn compile_and_run(editor: &mut EditorTestUtils) {
 		let portfolio = editor.portfolio_message_handler_mut();

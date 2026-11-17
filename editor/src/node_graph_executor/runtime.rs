@@ -19,6 +19,7 @@ use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::style::RenderMode;
 use graphene_std::{Context, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
+use interpreted_executor::layer_paths::write_layer_paths;
 use interpreted_executor::util::wrap_network_in_scope;
 use observer::Observer;
 pub use observer::{InspectResult, InspectedContext, Observation, ObservedConnector, ObservedValue};
@@ -27,7 +28,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use thumbnails::Thumbnails;
 
-mod layer_content;
+#[cfg(test)]
+mod layer_path_tests;
 mod observer;
 mod thumbnails;
 
@@ -213,7 +215,7 @@ impl NodeRuntime {
 		};
 
 		apply_previews(&mut network, &previewed);
-		layer_content::write_layer_paths(&mut network, &layers);
+		write_layer_paths(&mut network, &layers);
 		self.observer.replace_all(observations);
 		self.resources = resources;
 
