@@ -22,10 +22,15 @@ impl NetworkLayout {
 		Some(self.node_ids[layer as usize])
 	}
 
-	/// The node the node is placed relative to, the first reader reaching it from the roots.
+	/// The reader the node is fitted with and drawn level with, its highest reader as stored.
 	pub fn owner(&self, node_id: &NodeId) -> Option<NodeId> {
 		let owner = self.layout.owners[*self.indices.get(node_id)? as usize]?;
 		Some(self.node_ids[owner as usize])
+	}
+
+	/// The point the node's stored offset is taken from: the left of its readers, level with its owner.
+	pub fn anchor(&self, node_id: &NodeId) -> Option<IVec2> {
+		self.indices.get(node_id).map(|index| self.layout.anchors[*index as usize])
 	}
 
 	/// How far the connection to the node's owner is drawn longer than stored.

@@ -332,8 +332,8 @@ async fn a_relative_node_follows_its_readers_until_it_loses_the_last_one() {
 	network_interface.node_mut(NodeLocator::new(node, &[])).expect("the node exists").set_node_type(relative);
 	network_interface.invalidate_positions(&[]);
 
-	// The upper reader is the first to reach the node from the top of the graph, so the offset applies to it
-	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(23, 7)));
+	// The offset applies from the left of the readers, level with the upper one
+	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(13, 7)));
 
 	network_interface.disconnect_input(&InputConnector::primary_input(upper_reader), &[]);
 	assert!(network_interface.is_relative(&node, &[]), "A node still read by another node should stay relative");

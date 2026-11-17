@@ -1,4 +1,4 @@
-//! Opening a document converts the absolute, chained, and stacked positions of nodes one other node reads to positions relative to it.
+//! Opening a document converts the absolute, chained, and stacked positions of nodes other nodes read to positions relative to them.
 
 use super::test_support::{node_paths, open_demo};
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeLocator, NodeNetworkInterface};
@@ -61,8 +61,8 @@ fn opening_a_demo_makes_every_read_node_relative_where_it_was_drawn() {
 				})
 				.unwrap_or_default();
 			assert!(
-				node_readers != 1 || !interface.is_absolute(node_id, network_path),
-				"{demo}: node {node_id} is read by one other node, so it should be relative"
+				node_readers == 0 || !interface.is_absolute(node_id, network_path),
+				"{demo}: node {node_id} is read by another node, so it should be relative"
 			);
 		}
 

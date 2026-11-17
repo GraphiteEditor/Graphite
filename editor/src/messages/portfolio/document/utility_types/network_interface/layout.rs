@@ -27,27 +27,22 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Where the node's owner, the first reader reaching it from the roots, is drawn.
-	fn owner_position(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
-		self.with_layout(network_path, |layout| layout.owner(node_id).and_then(|owner| layout.position(&owner))).flatten()
-	}
-
-	/// Stores `position` as an offset from the node's owner, or as an absolute position if no node reads it.
+	/// Stores `position` as an offset from the node's anchor, the left of its readers level with the highest, or as an absolute position if no node reads it.
 	pub(crate) fn place_at(&mut self, node_id: &NodeId, position: IVec2, network_path: &[NodeId]) {
 		if self.reading_nodes(node_id, network_path).is_empty() {
 			self.set_absolute_position(node_id, position, network_path);
 			return;
 		}
 
-		// An absolute node starts a tree of its own, so it only gets an owner once it is relative
+		// An absolute node starts a tree of its own, so it only gets an anchor once it is relative
 		if !self.is_relative(node_id, network_path) {
 			self.set_relative_position(node_id, IVec2::ZERO, network_path);
 		}
-		let Some(owner_position) = self.owner_position(node_id, network_path) else {
-			log::error!("Could not get the position of the owner of node {node_id}");
+		let Some(anchor) = self.with_layout(network_path, |layout| layout.anchor(node_id)).flatten() else {
+			log::error!("Could not get the anchor of node {node_id}");
 			return;
 		};
-		self.set_relative_position(node_id, position - owner_position, network_path);
+		self.set_relative_position(node_id, position - anchor, network_path);
 	}
 
 	pub(crate) fn set_relative_position(&mut self, node_id: &NodeId, offset: IVec2, network_path: &[NodeId]) {
@@ -63,7 +58,7 @@ impl NodeNetworkInterface {
 		self.invalidate_positions(network_path);
 	}
 
-	/// Converts every node that exactly one other node reads in all networks, whether absolute, chained, or stacked, to a position relative to it.
+	/// Converts every node another node reads in all networks, whether absolute, chained, or stacked, to a position relative to the left of its readers, level with the highest.
 	pub fn convert_positions_to_relative(&mut self) {
 		let mut network_paths = Vec::new();
 		self.for_each_network(&mut |network_path, _| network_paths.push(network_path.to_vec()));
@@ -74,24 +69,16 @@ impl NodeNetworkInterface {
 			let node_ids: Vec<NodeId> = network.nodes.keys().copied().collect();
 			let positions: HashMap<NodeId, IVec2> = self.positions(node_ids.iter().copied(), &network_path).into_iter().collect();
 
-			// A node several nodes read was placed beside one of them, which needn't be the reader that comes to own it, so it stays a root of its own.
-			// Which reader owns each node only settles once the absolute nodes stop being roots, so they become relative first.
-			let converted: Vec<NodeId> = node_ids
+			// With every node stored where it is drawn, the highest reader is the top of its readers' bounding box, so the anchor is its top left corner
+			let offsets: Vec<(NodeId, IVec2)> = node_ids
 				.into_iter()
-				.filter(|node_id| !self.is_relative(node_id, &network_path) && self.reading_nodes(node_id, &network_path).len() == 1)
-				.collect();
-			for node_id in &converted {
-				self.set_relative_position(node_id, IVec2::ZERO, &network_path);
-			}
-
-			let offsets: Vec<(NodeId, IVec2)> = self
-				.with_layout(&network_path, |layout| {
-					converted
-						.iter()
-						.filter_map(|node_id| Some((*node_id, positions.get(node_id)? - positions.get(&layout.owner(node_id)?)?)))
-						.collect()
+				.filter(|node_id| !self.is_relative(node_id, &network_path))
+				.filter_map(|node_id| {
+					let reader_positions = self.reading_nodes(&node_id, &network_path).into_iter().filter_map(|reader| positions.get(&reader).copied());
+					let anchor = reader_positions.reduce(IVec2::min)?;
+					Some((node_id, positions.get(&node_id)? - anchor))
 				})
-				.unwrap_or_default();
+				.collect();
 			for (node_id, offset) in offsets {
 				self.set_relative_position(&node_id, offset, &network_path);
 			}
@@ -287,8 +274,7 @@ impl NodeNetworkInterface {
 		if let Some(outward_wires) = self
 			.outward_wires(network_path)
 			.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(*node_id)))
-			.cloned()
-			&& outward_wires.len() == 1
+			.cloned() && outward_wires.len() == 1
 		{
 			self.try_set_upstream_to_chain(&outward_wires[0], network_path);
 		}
