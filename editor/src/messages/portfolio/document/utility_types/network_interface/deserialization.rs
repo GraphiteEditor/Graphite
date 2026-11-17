@@ -142,10 +142,14 @@ struct DocumentNodePersistentMetadataStringReference {
 
 impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersistentMetadataInstanceInterface {
 	fn from(mut old: DocumentNodePersistentMetadataStringReference) -> Self {
-		if let Some(metadata) = old.network_metadata.as_mut() {
+		// A node without a reference leaves the one its network holds
+		if let Some(metadata) = old.network_metadata.as_mut()
+			&& old.reference.is_some()
+		{
 			metadata.persistent_metadata.reference = old.reference;
 		}
 		DocumentNodePersistentMetadataInstanceInterface {
+			storage_id: None,
 			display_name: old.display_name,
 			input_metadata: old.input_metadata,
 			output_names: old.output_names,
@@ -162,6 +166,9 @@ impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersist
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DocumentNodePersistentMetadataInstanceInterface {
+	/// An ID some of these documents stored for the storage format, which nothing reads.
+	#[serde(default, skip_serializing)]
+	pub storage_id: Option<Value>,
 	#[serde(default)]
 	pub display_name: String,
 	pub input_metadata: Vec<InputMetadata>,
@@ -271,6 +278,19 @@ mod tests {
 	fn a_node_without_a_network_opens_without_the_interface_it_stored() {
 		let metadata = deserialize_node_persistent_metadata(saved_with_interface(None)).unwrap();
 		assert_eq!(metadata, DocumentNodePersistentMetadata::default());
+	}
+
+	#[test]
+	fn a_node_saved_with_a_storage_id_keeps_its_network_reference() {
+		let mut network_metadata = NodeNetworkMetadata::default();
+		network_metadata.persistent_metadata.reference = Some("Merge".into());
+		let mut saved = saved_with_interface(Some(network_metadata));
+		saved["storage_id"] = 5.into();
+
+		let metadata = deserialize_node_persistent_metadata(saved).unwrap();
+		let network = metadata.network_metadata.expect("the network should be kept").persistent_metadata;
+		assert_eq!(network.reference.as_deref(), Some("Merge"));
+		assert_eq!(network.import_metadata[0].persistent_metadata.input_name, "Content");
 	}
 
 	#[test]
