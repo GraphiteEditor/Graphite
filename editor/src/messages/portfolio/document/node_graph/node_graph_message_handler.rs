@@ -89,6 +89,8 @@ pub struct NodeGraphMessageHandler {
 	pub selection_before_pointer_down: Vec<NodeId>,
 	/// If the grip icon is held during a drag, then shift without pushing other nodes
 	shift_without_push: bool,
+	/// Whether dragging leaves the relative nodes upstream of the dragged ones where they are drawn.
+	keep_upstream_in_place: bool,
 	disconnecting: Option<InputConnector>,
 	initial_disconnecting: bool,
 	/// Node to select on pointer up if multiple nodes are selected and they were not dragged.
@@ -1440,6 +1442,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						}
 					}
 
+					self.keep_upstream_in_place = ipp.keyboard.get(Key::Control as usize);
+
 					let mut graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
 					let previous_round_x = drag_start.round_x;
 					let previous_round_y = drag_start.round_y;
@@ -1625,6 +1629,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// End of dragging a node
 				else if let Some((drag_start, _)) = &self.drag_start {
 					self.shift_without_push = false;
+					self.keep_upstream_in_place = false;
 
 					// Reset all offsets to end the rubber banding while dragging
 					network_interface.clear_drag_offsets(selection_network_path);
@@ -2168,7 +2173,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// The shift can also push other nodes and the imports and exports, so everything it moves glides to where it lands
 				let positions_before = (glide && graph_view_overlay_open).then(|| Self::glide_positions(network_interface, selection_network_path));
 
-				network_interface.shift_selected_nodes(direction, self.shift_without_push, selection_network_path);
+				network_interface.shift_selected_nodes(direction, self.shift_without_push, self.keep_upstream_in_place, selection_network_path);
 
 				if !rubber_band {
 					network_interface.clear_drag_offsets(selection_network_path);
@@ -4079,6 +4084,7 @@ impl Default for NodeGraphMessageHandler {
 			double_click_used_by_press: false,
 			dot_drag_out: None,
 			shift_without_push: false,
+			keep_upstream_in_place: false,
 			box_selection_start: None,
 			drag_start_chain_nodes: Vec::new(),
 			wire_insertion_preview: None,

@@ -6,5 +6,6 @@
 
 mod lifecycle_tests;
 mod metadata_tests;
+mod relative_positions_tests;
 mod round_trip_tests;
 pub(crate) mod test_support;

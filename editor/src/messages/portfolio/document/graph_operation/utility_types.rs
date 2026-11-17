@@ -1110,7 +1110,7 @@ pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, netw
 		if *was_chain {
 			network_interface.set_chain_position(&node_id, network_path);
 		} else if let Some(position) = position {
-			network_interface.set_absolute_position(&node_id, *position, network_path);
+			network_interface.place_at(&node_id, *position, network_path);
 		}
 	}
 

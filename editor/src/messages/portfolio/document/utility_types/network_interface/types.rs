@@ -1094,7 +1094,7 @@ impl NodeTypePersistentMetadata {
 /// All fields in LayerMetadata should automatically be updated by using the network interface API
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LayerPersistentMetadata {
-	/// Stores the position of a layer node, which can either be Absolute or Stack
+	/// Stores the position of a layer node, which can be Absolute or Relative, or Stack in older documents
 	pub position: LayerPosition,
 }
 
@@ -1119,13 +1119,22 @@ impl NodePersistentMetadata {
 	}
 }
 
-/// A layer can either be position as Absolute or in a Stack
+/// A layer is positioned as Absolute or Relative to the nodes reading it. Stack is only read from older documents, which opening converts to Relative.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LayerPosition {
 	// Position of the node in grid spaces
 	Absolute(IVec2),
 	// A layer is in a Stack when it feeds into the bottom input of a layer. The Y position stores the vertical distance between the layer and its upstream sibling/parent.
 	Stack(u32),
+	// Offset from the top left corner of the bounding box of the positions of the nodes reading this one
+	Relative(IVec2),
+}
+
+impl LayerPosition {
+	/// Stacked `y_offset` rows below the gap under the layer reading it.
+	pub fn stacked(y_offset: u32) -> Self {
+		Self::Relative(IVec2::new(0, STACK_VERTICAL_GAP + y_offset as i32))
+	}
 }
 
 /// A node can be positioned as Absolute, in a Chain, or Relative to the nodes reading it

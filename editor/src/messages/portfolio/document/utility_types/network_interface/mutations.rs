@@ -437,7 +437,7 @@ impl NodeNetworkInterface {
 		let new_inputs = std::mem::take(&mut new_template.inputs);
 		let new_input_metadata = std::mem::take(&mut new_template.input_metadata);
 
-		// A chain whose link into this node is dropped loses the layer it's positioned against, so it becomes absolute while that layer is still reachable
+		// A chain whose link into this node is dropped loses the layer it's positioned against, so it leaves the chain while that layer is still reachable
 		let chain_input_index = if self.is_layer(node_id, network_path) { LAYER_SECONDARY_INPUT_INDEX } else { PRIMARY_INPUT_INDEX };
 		let disconnected_chain_node = self
 			.document_node(node_id, network_path)
@@ -453,8 +453,23 @@ impl NodeNetworkInterface {
 			})
 			.filter(|upstream_node_id| self.is_chain(upstream_node_id, network_path));
 		if let Some(upstream_node_id) = disconnected_chain_node {
-			self.set_upstream_chain_to_absolute(&upstream_node_id, network_path);
+			self.unchain_upstream(&upstream_node_id, network_path);
 		}
+
+		let disconnected_upstream_positions: Vec<(NodeId, IVec2)> = self
+			.document_node(node_id, network_path)
+			.map(|node| {
+				node.inputs
+					.iter()
+					.enumerate()
+					.filter(|(index, old_input)| new_inputs.get(*index) != Some(*old_input))
+					.filter_map(|(_, old_input)| old_input.as_node())
+					.collect::<Vec<_>>()
+			})
+			.unwrap_or_default()
+			.into_iter()
+			.filter_map(|upstream_node_id| Some((upstream_node_id, self.position(&upstream_node_id, network_path)?)))
+			.collect();
 
 		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in replace_inputs");
@@ -463,6 +478,10 @@ impl NodeNetworkInterface {
 		let old_inputs = node.replace_inputs(new_inputs.clone(), new_input_metadata);
 
 		self.update_outward_wires_for_inputs(network_path, node_id, &old_inputs, &new_inputs);
+
+		for (upstream_node_id, position) in disconnected_upstream_positions {
+			self.pin_relative_node_without_readers(&upstream_node_id, position, network_path);
+		}
 		Some(old_inputs)
 	}
 
@@ -610,7 +629,7 @@ impl NodeNetworkInterface {
 			if let NodeInput::Node { node_id: chain_node_id, .. } = chain_input
 				&& self.is_chain(chain_node_id, network_path)
 			{
-				self.set_upstream_chain_to_absolute(chain_node_id, network_path);
+				self.unchain_upstream(chain_node_id, network_path);
 			}
 		}
 
@@ -779,7 +798,7 @@ impl NodeNetworkInterface {
 		{
 			// If the node upstream from the disconnected input is a chain, then break the chain by setting it to absolute positioning
 			if self.is_chain(upstream_node_id, network_path) {
-				self.set_upstream_chain_to_absolute(upstream_node_id, network_path);
+				self.unchain_upstream(upstream_node_id, network_path);
 			}
 			// If the node upstream from the disconnected input has an outward wire to the bottom of a layer, set it back to stack positioning
 			if self.is_layer(upstream_node_id, network_path) {
@@ -891,9 +910,16 @@ impl NodeNetworkInterface {
 		dot_template.node_type_metadata = NodeTypePersistentMetadata::node(center - IVec2::Y);
 		self.insert_node(dot, dot_template, network_path);
 
+		let upstream_node = output_connector.node_id();
+		let upstream_position = upstream_node.and_then(|upstream_node| self.position(&upstream_node, network_path));
+
 		self.create_wire(output_connector, &InputConnector::primary_input(dot), network_path);
 		for fed_input in fed_inputs {
 			self.create_wire(&OutputConnector::primary_output(dot), fed_input, network_path);
+		}
+
+		if let (Some(upstream_node), Some(upstream_position)) = (upstream_node, upstream_position) {
+			self.keep_drawn_at(&upstream_node, upstream_position, network_path);
 		}
 	}
 
@@ -1315,20 +1341,20 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_to_node_or_layer(&mut self, node_id: &NodeId, network_path: &[NodeId], is_layer: bool) {
-		// If a layer is set to a node, set upstream nodes to absolute position, and upstream siblings to absolute position
+		// If a layer is set to a node, take its chain out of the chain and its upstream sibling out of the stack where they are drawn
 		let child_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).nth(1) };
 		let upstream_sibling_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow).nth(1) };
 		match (self.is_layer(node_id, network_path), is_layer) {
 			(true, false) => {
 				if let Some(child_id) = child_id {
-					self.set_upstream_chain_to_absolute(&child_id, network_path);
+					self.unchain_upstream(&child_id, network_path);
 				}
 				if let Some(upstream_sibling_id) = upstream_sibling_id {
 					let Some(upstream_sibling_position) = self.position(&upstream_sibling_id, network_path) else {
 						log::error!("Could not get upstream sibling position in set_to_node_or_layer");
 						return;
 					};
-					self.set_absolute_position(&upstream_sibling_id, upstream_sibling_position, network_path);
+					self.place_at(&upstream_sibling_id, upstream_sibling_position, network_path);
 				}
 			}
 			(false, true) => {
@@ -1343,7 +1369,7 @@ impl NodeNetworkInterface {
 					{
 						self.set_stack_position_calculated_offset(&upstream_sibling_id, node_id, network_path);
 					} else {
-						self.set_upstream_chain_to_absolute(&upstream_sibling_id, network_path);
+						self.unchain_upstream(&upstream_sibling_id, network_path);
 					}
 				}
 			}
@@ -1366,7 +1392,7 @@ impl NodeNetworkInterface {
 			.filter(|downstream_node_id| self.is_layer(downstream_node_id, network_path))
 			.and_then(|downstream_layer| self.position(&downstream_layer, network_path));
 
-		// First set the position to absolute
+		// First switch between layer and node where it is drawn
 		let absolute = match is_layer {
 			true => NodeTypePersistentMetadata::layer(position),
 			false => NodeTypePersistentMetadata::node(position),
@@ -1376,6 +1402,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node.set_node_type(absolute);
+		self.place_at(node_id, position, network_path);
 
 		// Try build the chain
 		if is_layer {
