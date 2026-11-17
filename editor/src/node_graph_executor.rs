@@ -70,6 +70,11 @@ pub type NodeErrorTrace = Box<[NodePaths]>;
 pub type NodePaths = Box<[Box<[NodeId]>]>;
 
 impl EvaluationErrors {
+	/// An error that isn't traced back to any node.
+	fn untraced(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+		Self(Box::new([(Arc::clone(graphene_std::NodeError::new(error).error()), NodeErrorTrace::default())]))
+	}
+
 	pub(crate) fn iter(&self) -> impl Iterator<Item = (&(dyn std::error::Error + Send + Sync + 'static), &NodeErrorTrace)> {
 		self.0.iter().map(|(error, trace)| (&**error, trace))
 	}

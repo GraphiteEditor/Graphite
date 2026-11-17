@@ -16,6 +16,7 @@ use document_container::store::MemoryStore;
 use glam::{DVec2, UVec2};
 use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::application_io::{ApplicationIo, PlatformApplicationIo};
+use graph_craft::proto::GraphErrors;
 use graphene_std::raster::color::Color;
 use graphene_std::uuid::NodeId;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -83,6 +84,11 @@ impl EditorTestUtils {
 
 		let frontend_messages = self.dispatch(Message::Wake);
 		let evaluation_errors = self.portfolio_message_handler_mut().executor.take_evaluation_errors();
+		// Nodes with type errors get hidden so the rest of the graph still renders, which means a successful render doesn't rule them out
+		let graph_errors = &self.active_document().network_interface.resolved_types.node_graph_errors;
+		if !graph_errors.is_empty() {
+			return Err(TestGraphError::Compilation(graph_errors.clone()));
+		}
 		if evaluation_errors.is_none() && frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
 			return Err(TestGraphError::Render);
 		}
@@ -453,6 +459,7 @@ impl FrontendMessageTestUtils for FrontendMessage {
 
 #[derive(Debug)]
 pub enum TestGraphError {
+	Compilation(GraphErrors),
 	Evaluation(EvaluationErrors),
 	Render,
 	Other(String),
@@ -461,6 +468,7 @@ pub enum TestGraphError {
 impl std::fmt::Display for TestGraphError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
+			Self::Compilation(errors) => write!(f, "Graph compilation failed:\n{errors:#?}"),
 			Self::Evaluation(errors) => write!(f, "Graph evaluation failed:\n{errors}"),
 			Self::Render => write!(f, "Graph should render"),
 			Self::Other(message) => write!(f, "{message}"),

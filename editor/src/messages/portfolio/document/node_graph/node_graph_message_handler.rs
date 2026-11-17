@@ -3846,7 +3846,7 @@ impl NodeGraphMessageHandler {
 	fn node_graph_errors(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<NodeGraphErrorDiagnostic> {
 		let depth = breadcrumb_network_path.len();
 		let inside = |path: &[NodeId]| path.starts_with(breadcrumb_network_path) && path.len() > depth;
-		let graph_errors: Vec<_> = network_interface
+		let graph_errors = network_interface
 			.resolved_types
 			.node_graph_errors
 			.iter()
@@ -3854,18 +3854,14 @@ impl NodeGraphMessageHandler {
 			.map(|error| match error.node_path.len() == depth + 1 {
 				true => (error.node_path[depth], format!("{:?}", error.error)),
 				false => (error.node_path[depth], "Node graph type error within this node".to_string()),
-			})
-			.collect();
-		// Evaluation errors come from the last graph that compiled, so a type error hides them
-		let mut errors: Vec<_> = match graph_errors.is_empty() {
-			true => self
-				.evaluation_errors
-				.iter()
-				.filter(|error| inside(&error.node_path))
-				.map(|error| (error.node_path[depth], error.message.clone()))
-				.collect(),
-			false => graph_errors,
-		};
+			});
+		// Nodes with type errors get hidden so the rest of the graph still evaluates, so its evaluation errors are just as current
+		let evaluation_errors = self
+			.evaluation_errors
+			.iter()
+			.filter(|error| inside(&error.node_path))
+			.map(|error| (error.node_path[depth], error.message.clone()));
+		let mut errors: Vec<_> = graph_errors.chain(evaluation_errors).collect();
 		let warnings = network_interface
 			.resolved_types
 			.node_graph_warnings

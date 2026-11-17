@@ -47,8 +47,10 @@ pub struct NodeRuntime {
 	pending_export: Option<ExecutionRequest>,
 	pending_eyedropper: Option<ExecutionRequest>,
 	pending_thumbnails: Option<DocumentId>,
-	/// The network the executor last compiled successfully, with previews applied.
+	/// The network the executor last compiled successfully, with previews applied and its erroring nodes hidden.
 	old_graph: Option<NodeNetwork>,
+	/// Whether the latest network failed to compile, so the executor still holds an older one that mustn't be rendered as if it were current.
+	compile_failed: bool,
 	async_runtime: Option<AsyncRuntime>,
 
 	editor_api: Arc<PlatformEditorApi>,
@@ -135,6 +137,7 @@ impl NodeRuntime {
 			pending_eyedropper: None,
 			pending_thumbnails: None,
 			old_graph: None,
+			compile_failed: false,
 			resources: ResourceRegistry::default(),
 			async_runtime: None,
 
@@ -218,8 +221,8 @@ impl NodeRuntime {
 		self.resources = resources;
 
 		self.node_graph_errors.clear();
-		self.node_graph_warnings.clear();
-		let result = self.update_network(network.clone());
+		let result = self.update_network(&mut network);
+		self.compile_failed = result.is_err();
 		if result.is_ok() {
 			self.thumbnails.update_sources(&layers, &network, &self.executor);
 			self.old_graph = Some(network);
@@ -351,6 +354,10 @@ impl NodeRuntime {
 			render_config.export_format = ExportFormat::Svg;
 		}
 
+		if self.compile_failed {
+			return Some(ExecutionResult::Error(EvaluationErrors::untraced("The node graph failed to compile")));
+		}
+
 		let context = render_config.into_context_with_generations(self.async_runtime().snapshot());
 		let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.tree().eval_tagged_value(self.executor.output(), &context))) {
 			Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
@@ -361,7 +368,7 @@ impl NodeRuntime {
 				ExecutionResult::Fallback(value, self.resolve_errors(&error))
 			}
 			Ok(Ok(Poll::Error(error))) => ExecutionResult::Error(self.resolve_errors(&error)),
-			Ok(Err(error)) => ExecutionResult::Error(EvaluationErrors(Box::new([(Arc::clone(NodeError::new(error).error()), NodeErrorTrace::default())]))),
+			Ok(Err(error)) => ExecutionResult::Error(EvaluationErrors::untraced(error)),
 			Err(payload) => {
 				let response = ExecutionResponse {
 					execution_id,
@@ -406,11 +413,39 @@ impl NodeRuntime {
 		Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await
 	}
 
-	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+	/// Compiles the network into the executor, hiding each node with an error so the rest of the graph can still render without it.
+	/// A hidden node passes its primary input through, which may in turn break the nodes downstream of it, so this goes on
+	/// until the network compiles or its errors are on nothing more that can be hidden. The nodes it hid stay hidden in `graph`.
+	fn update_network(&mut self, graph: &mut NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+		loop {
+			let (types, message, errors) = match self.compile_network(graph.clone()) {
+				Ok(types) => return Ok(types),
+				Err(failure) => failure,
+			};
+
+			let mut hid_any = false;
+			for error in errors {
+				hid_any |= graph.hide_node(&error.node_path);
+				if !self.node_graph_errors.contains(&error) {
+					self.node_graph_errors.push(error);
+				}
+			}
+
+			if !hid_any {
+				return Err((types, message));
+			}
+		}
+	}
+
+	/// Compiles the network into the executor, or gives back why it couldn't along with the errors of the nodes responsible, if any.
+	fn compile_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String, GraphErrors)> {
+		// Warnings are only kept from the latest attempt, since an earlier one may have had nodes that are hidden now
+		self.node_graph_warnings.clear();
+
 		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone(), self.async_runtime().handle());
 
 		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
-			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));
+			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string(), GraphErrors::new()));
 		}
 
 		// We assume only one output
@@ -419,20 +454,13 @@ impl NodeRuntime {
 		let c = Compiler {};
 		let CompiledNetwork { network: proto_network, warnings } = match c.compile_single(scoped_network) {
 			Ok(compiled_network) => compiled_network,
-			Err(CompileError::Graph(errors)) => {
-				let message = format!("{errors:?}");
-				self.node_graph_errors = errors;
-				return Err((ResolvedDocumentNodeTypesDelta::default(), message));
-			}
-			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
+			Err(CompileError::Graph(errors)) => return Err((ResolvedDocumentNodeTypesDelta::default(), format!("{errors:?}"), errors)),
+			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message, GraphErrors::new())),
 		};
 		self.node_graph_warnings = warnings;
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		let result = self.executor.update(proto_network).map_err(|(types, e)| {
-			self.node_graph_errors.clone_from(&e);
-			(types, format!("{e:?}"))
-		});
+		let result = self.executor.update(proto_network).map_err(|(types, e)| (types, format!("{e:?}"), e));
 		self.async_runtime().update_sources(self.executor.sources());
 		result
 	}
@@ -612,6 +640,105 @@ mod tests {
 			output_connector: OutputConnector::primary_output(vectorize),
 			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
 		});
+	}
+
+	/// Feeds the layer's content through a Blur node, which only takes raster images, so it fails to type check with the rectangle it's given.
+	fn blur_layer_content(editor: &mut EditorTestUtils) -> NodeId {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let content = InputConnector::node_at_index(layer.to_node(), 1);
+		let rectangle = editor.active_document().network_interface.upstream_output_connector(&content, &[]).unwrap();
+
+		let blur = NodeId::new();
+		editor.dispatch(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(blur),
+			node_type: DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::filter::blur::IDENTIFIER),
+			xy: None,
+			add_transaction: true,
+		});
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: rectangle,
+			input_connector: InputConnector::node_at_index(blur, 0),
+		});
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(blur),
+			input_connector: content,
+		});
+		blur
+	}
+
+	/// Updates the runtime with the document's network and evaluates it, giving back what the editor sent the frontend in response.
+	async fn update_and_run(editor: &mut EditorTestUtils) -> Vec<FrontendMessage> {
+		send_update(editor);
+		editor.runtime.update();
+		editor.runtime.run().await;
+		editor.dispatch(Message::Wake)
+	}
+
+	#[tokio::test]
+	async fn a_node_with_a_type_error_is_hidden_so_the_rest_still_renders() {
+		let mut editor = editor().await;
+		let blur = blur_layer_content(&mut editor);
+
+		let messages = update_and_run(&mut editor).await;
+		assert!(messages.iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. })));
+		assert!(!messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }));
+
+		let document = editor.active_document();
+		let error_paths: Vec<_> = document.network_interface.resolved_types.node_graph_errors.iter().map(|error| error.node_path.clone()).collect();
+		assert_eq!(error_paths, [vec![blur]], "The rectangle passing through should leave nothing else to fail");
+
+		let layer = document.metadata().all_layers().next().unwrap();
+		assert!(
+			document.metadata().click_targets(layer).is_some_and(|targets| !targets.is_empty()),
+			"The rectangle should still be rendered"
+		);
+		assert!(
+			document.network_interface.is_visible(&blur, &[]),
+			"Only the compiled network should have the node hidden, not the document"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_network_that_fails_to_compile_does_not_render_the_last_one_that_did() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+
+		let mut editor = editor().await;
+		assert!(update_and_run(&mut editor).await.iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. })));
+
+		// The renderer has nothing for a lone bool, and its own nodes aren't in the document to be hidden
+		let bool_value = NodeId::new();
+		editor.dispatch(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(bool_value),
+			node_type: DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::bool_value::IDENTIFIER),
+			xy: None,
+			add_transaction: true,
+		});
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(bool_value),
+			input_connector: InputConnector::Export(0),
+		});
+
+		let messages = update_and_run(&mut editor).await;
+		assert!(messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }));
+
+		// Panning only asks for another render, which mustn't bring back the rectangle from before as if it were still there
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+		executor
+			.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO)
+			.unwrap();
+		editor.runtime.update();
+		editor.runtime.run().await;
+
+		let messages = editor.dispatch(Message::Wake);
+		assert!(!messages.iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. })));
+		assert!(messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }));
 	}
 
 	/// The ID of the viewport request the runtime evaluates, which only changes once it has read a newer one.

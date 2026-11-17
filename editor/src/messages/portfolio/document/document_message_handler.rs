@@ -4922,6 +4922,8 @@ mod document_message_handler_tests {
 
 		let frontend_messages = editor.editor.handle_message(Message::Wake);
 		assert!(!frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }));
+		// Erroring nodes get hidden so the rest still renders, so the render alone doesn't show the graph compiled
+		assert!(editor.active_document().network_interface.resolved_types.node_graph_errors.is_empty());
 	}
 
 	#[tokio::test]

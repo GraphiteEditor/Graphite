@@ -655,6 +655,49 @@ impl NodeNetwork {
 		dropped
 	}
 
+	/// Hides the node at this path from the document network, as its eye icon would, so it compiles to a passthrough of its primary input.
+	/// The table entries along the path are copied for just this instance first, since the other instances sharing them shouldn't lose the node too.
+	/// Returns false without changing anything if there's no such node or it's already hidden.
+	pub fn hide_node(&mut self, node_path: &[NodeId]) -> bool {
+		fn hide(network: &mut NodeNetwork, definitions: &mut FxHashMap<NetworkId, NodeNetwork>, node_path: &[NodeId], copied: &mut Vec<NetworkId>) -> bool {
+			let Some((node_id, deeper_path)) = node_path.split_first() else { return false };
+			let Some(node) = network.nodes.get_mut(node_id) else { return false };
+
+			if deeper_path.is_empty() {
+				return std::mem::replace(&mut node.visible, false);
+			}
+
+			match &mut node.implementation {
+				DocumentNodeImplementation::Network(nested) => hide(nested, definitions, deeper_path, copied),
+				DocumentNodeImplementation::Definition(id) => {
+					let Some(mut copy) = definitions.get(id).cloned() else { return false };
+					if !hide(&mut copy, definitions, deeper_path, copied) {
+						return false;
+					}
+
+					copied.push(*id);
+					*id = NetworkId::new();
+					definitions.insert(*id, copy);
+					true
+				}
+				_ => false,
+			}
+		}
+
+		let mut definitions = std::mem::take(&mut self.definitions);
+		let mut copied = Vec::new();
+		let hidden = hide(self, &mut definitions, node_path, &mut copied);
+		self.definitions = definitions;
+
+		// An entry that only this instance used is left with nothing naming it once copied, so it's dropped rather than kept around
+		if !copied.is_empty() {
+			let reached = self.reachable_definitions();
+			self.definitions.retain(|id, _| !copied.contains(id) || reached.contains(id));
+		}
+
+		hidden
+	}
+
 	/// Checks that every table entry a node names exists, that no entries name each other in a cycle, and that only this network holds a table.
 	pub fn validate_definitions(&self) -> Result<(), DefinitionError> {
 		validate_named_definitions(self, &self.definitions, &mut Vec::new(), &mut FxHashSet::default())

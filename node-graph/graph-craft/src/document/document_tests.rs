@@ -225,6 +225,52 @@ fn edits_through_one_instance_reach_every_instance() {
 }
 
 #[test]
+fn hiding_a_node_in_one_instance_leaves_the_others_alone() {
+	let mut network = two_add_instances();
+	assert!(network.hide_node(&[NodeId(10), NodeId(1)]));
+
+	assert!(!network.nested_network(&[NodeId(10)]).unwrap().nodes[&NodeId(1)].visible);
+	assert!(network.nested_network(&[NodeId(11)]).unwrap().nodes[&NodeId(1)].visible, "The other instance should keep the node");
+	assert_eq!(network.locate(&[NodeId(11)]), Some(Some(ADD)));
+	assert_eq!(network.validate_definitions(), Ok(()));
+	assert!(!network.hide_node(&[NodeId(10), NodeId(1)]), "The node is already hidden");
+
+	// Hiding another node copies this instance's entry again, and the copy from before is no longer named by anything
+	assert!(network.hide_node(&[NodeId(10), NodeId(0)]));
+	let hidden: Vec<_> = network.nested_network(&[NodeId(10)]).unwrap().nodes.values().map(|node| node.visible).collect();
+	assert_eq!(hidden, [false, false]);
+	assert_eq!(network.definitions.len(), 2);
+}
+
+#[test]
+fn hiding_a_node_copies_each_entry_on_its_path() {
+	let outer = NetworkId(2);
+	let mut network = network_with(
+		[(NodeId(10), DocumentNodeImplementation::Definition(outer)), (NodeId(11), DocumentNodeImplementation::Definition(outer))],
+		[(ADD, add_network()), (outer, network_with([(NodeId(10), DocumentNodeImplementation::Definition(ADD))], []))],
+	);
+	assert!(network.hide_node(&[NodeId(10), NodeId(10), NodeId(1)]));
+
+	assert!(!network.nested_network(&[NodeId(10), NodeId(10)]).unwrap().nodes[&NodeId(1)].visible);
+	assert!(network.nested_network(&[NodeId(11), NodeId(10)]).unwrap().nodes[&NodeId(1)].visible);
+	assert_eq!(network.definitions.len(), 4, "The other instance still names both original entries");
+	assert_eq!(network.validate_definitions(), Ok(()));
+}
+
+#[test]
+fn hiding_a_node_that_is_not_there_changes_nothing() {
+	let mut network = two_add_instances();
+	assert!(!network.hide_node(&[]));
+	assert!(!network.hide_node(&[NodeId(12)]));
+	assert!(!network.hide_node(&[NodeId(10), NodeId(5)]));
+	assert_eq!(network, two_add_instances());
+
+	assert!(network.hide_node(&[NodeId(10)]));
+	assert!(!network.nodes[&NodeId(10)].visible);
+	assert_eq!(network.locate(&[NodeId(10)]), Some(Some(ADD)), "Hiding the instance itself needs no copy");
+}
+
+#[test]
 fn definition_edits_change_the_network_hash() {
 	let mut network = two_add_instances();
 	let before = network.current_hash();

@@ -72,9 +72,11 @@ impl DynamicExecutor {
 	}
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
+	/// If the network fails to update, the executor keeps evaluating the last one that succeeded.
 	#[cfg_attr(debug_assertions, inline(never))]
 	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
-		self.output = proto_network.output;
+		// The output only moves over once its node is in the tree, otherwise a failed update would leave nothing to evaluate
+		let output = proto_network.output;
 		self.typing_context.update(&proto_network).map_err(|e| {
 			// If there is an error then get types that have been resolved before the error
 			let add = proto_network
@@ -96,8 +98,11 @@ impl DynamicExecutor {
 			(ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }, e)
 		})?;
 
-		self.sources = proto_network.source_ids().copied().collect();
+		let sources = proto_network.source_ids().copied().collect();
 		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
+		self.output = output;
+		self.sources = sources;
+
 		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
 		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
 		for node_id in old_to_remove {

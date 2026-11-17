@@ -925,6 +925,26 @@ fn executor_panics_reach_the_host_with_the_original_payload() {
 }
 
 #[test]
+fn a_failed_update_keeps_evaluating_the_last_network() {
+	let mut executor = DynamicExecutor::new(bounding_box_network(TaggedValue::TypeDefault(item!(Vector)))).unwrap();
+
+	// Bounding Box has no implementation taking a bool, so this network fails to type check
+	let mut bounding_box_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2)]), vec![NodeId(3)]);
+	bounding_box_node.identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+	let broken = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(3),
+		nodes: vec![value_node(2, TaggedValue::Bool(true)), (NodeId(3), bounding_box_node)],
+	};
+	assert!(executor.update(broken).is_err());
+
+	assert_eq!(executor.output(), NodeId(1));
+	let context: Context = None;
+	let result: Option<Item<Vector>> = executor.tree().eval(executor.output(), &context);
+	assert!(result.is_some(), "The network from before the failed update should still evaluate");
+}
+
+#[test]
 fn chained_fallbacks_both_reach_the_root() {
 	let executor = DynamicExecutor::new(ProtoNetwork {
 		inputs: vec![],
