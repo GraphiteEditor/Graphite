@@ -2,6 +2,7 @@
 #![recursion_limit = "256"]
 
 pub mod dynamic_executor;
+pub mod layer_paths;
 pub mod node_registry;
 pub mod util;
 
