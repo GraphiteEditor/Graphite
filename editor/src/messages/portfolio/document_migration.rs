@@ -1910,6 +1910,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	// Last, so the rest of the graph is upgraded enough to compile when each Copy to Points node's content type is resolved
 	migrate_copy_to_points_nodes(document);
 
+	// After the upgrades that add or rewire nodes, so the nodes they place are converted too
+	document.network_interface.convert_positions_to_relative();
+
 	// Bringing an old document up to date is not a set of edits on it, it is how the document arrives.
 	// The upgrades run through the ordinary mutators, so the store records them; dropping what they
 	// recorded leaves the opened document as the baseline rather than as a pile of changes to itself.

@@ -144,12 +144,28 @@ impl NodeMut<'_> {
 		self.set_node_type(node_type)
 	}
 
+	/// Places the node at an offset from the top left corner of the bounding box of the nodes reading it.
+	pub(crate) fn set_relative_position(&mut self, offset: IVec2) -> bool {
+		let node_type = match self.metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(_) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::Relative(offset),
+			}),
+			NodeTypePersistentMetadata::Node(_) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(offset))),
+		};
+		self.set_node_type(node_type)
+	}
+
 	/// Offsets a node that is absolutely or relatively positioned, leaving a stack or chain node where it is.
 	pub(crate) fn shift_absolute_position(&mut self, shift: IVec2) -> bool {
 		let shifted = match self.metadata.node_type_metadata {
 			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 				position: LayerPosition::Absolute(position),
 			}) => NodeTypePersistentMetadata::layer(position + shift),
+			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::Relative(offset),
+			}) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::Relative(offset + shift),
+			}),
 			NodeTypePersistentMetadata::Node(ref node) => match node.position {
 				NodePosition::Absolute(position) => NodeTypePersistentMetadata::node(position + shift),
 				NodePosition::Relative(offset) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(offset + shift))),
@@ -166,7 +182,7 @@ impl NodeMut<'_> {
 			return false;
 		}
 		self.set_node_type(NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-			position: LayerPosition::Stack(y_offset),
+			position: LayerPosition::stacked(y_offset),
 		}))
 	}
 

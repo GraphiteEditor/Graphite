@@ -239,15 +239,20 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 
 	pub fn is_relative(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
 		Ok(match &self.node_metadata(node_id)?.persistent_metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(layer_metadata) => matches!(layer_metadata.position, LayerPosition::Relative(_)),
 			NodeTypePersistentMetadata::Node(node_metadata) => matches!(node_metadata.position, NodePosition::Relative(_)),
-			_ => false,
 		})
 	}
 
-	pub fn is_stack(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
+	/// The rows a layer sits below the gap under the node reading it, if its position places it straight below that node.
+	pub fn stack_offset(&self, node_id: &NodeId) -> Result<Option<i32>, NetworkError> {
 		Ok(match &self.node_metadata(node_id)?.persistent_metadata.node_type_metadata {
-			NodeTypePersistentMetadata::Layer(layer_metadata) => matches!(layer_metadata.position, LayerPosition::Stack(_)),
-			_ => false,
+			NodeTypePersistentMetadata::Layer(layer_metadata) => match layer_metadata.position {
+				LayerPosition::Stack(y_offset) => Some(y_offset as i32),
+				LayerPosition::Relative(offset) if offset.x == 0 => Some(offset.y - STACK_VERTICAL_GAP),
+				_ => None,
+			},
+			NodeTypePersistentMetadata::Node(_) => None,
 		})
 	}
 

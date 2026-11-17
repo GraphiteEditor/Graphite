@@ -141,7 +141,7 @@ impl NodeNetworkInterface {
 		for layer in &selected_layers {
 			let mut current_node = *layer;
 			loop {
-				if self.is_layer(&current_node, network_path) && self.is_absolute(&current_node, network_path) {
+				if self.is_layer(&current_node, network_path) && !self.is_stack(&current_node, network_path) {
 					stack_tops.insert(current_node);
 					break;
 				};
