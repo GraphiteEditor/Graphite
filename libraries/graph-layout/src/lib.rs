@@ -213,6 +213,8 @@ struct Forest {
 	offsets: Vec<IVec2>,
 	/// The nodes each node owns, grouped by owner, in `order`.
 	children: GroupedByNode,
+	/// Whether each node is stored closer to another of its readers than to its owner, which leaves it out of its owner's outline.
+	detached: Vec<bool>,
 	cyclic: Vec<u32>,
 }
 
@@ -228,6 +230,7 @@ impl Forest {
 			ranks: vec![u32::MAX; node_count],
 			offsets: vec![IVec2::ZERO; node_count],
 			children: GroupedByNode::grouped_items(node_count, &[], |_| 0),
+			detached: vec![false; node_count],
 			cyclic: Vec::new(),
 		};
 		let mut stored_positions = vec![IVec2::ZERO; node_count];
@@ -261,6 +264,12 @@ impl Forest {
 					forest.owner_inputs[node] = wire.input;
 					let stored_position = forest.anchor(graph, readers, node, &stored_positions) + stored_offset(graph, node, owner as u32);
 					forest.offsets[node] = stored_position - stored_positions[owner];
+
+					let distance = |reader: usize| (stored_positions[reader] - stored_position).abs().element_sum();
+					let owner_distance = distance(owner);
+					let nearer_reader = forest.anchoring_wires(graph, readers, node).any(|wire| distance(wire.target as usize) < owner_distance);
+					forest.detached[node] = nearer_reader;
+
 					stored_position
 				}
 				None => root_position(&graph.nodes[node]),
@@ -337,7 +346,8 @@ fn stored_offset(graph: &Graph, node: usize, owner: u32) -> IVec2 {
 /// Fits each node's upstream together, from the deepest nodes up. The nodes it owns are taken from the top as stored:
 /// each is moved left of it if it would cover it, or below it when it feeds a layer's stack input, then down past the
 /// outlines of those taken before it. A link in a chain is never moved, so a chain stays whole and gives way only at
-/// its end, and a waypoint stays where it is put.
+/// its end, and a waypoint stays where it is put. A node stored closer to another of its readers is left out, so it neither
+/// moves nor takes room in its owner's outline.
 fn elongations(graph: &Graph, forest: &Forest) -> Vec<IVec2> {
 	let offsets = &forest.offsets;
 	let node_count = graph.nodes.len();
@@ -360,6 +370,11 @@ fn elongations(graph: &Graph, forest: &Forest) -> Vec<IVec2> {
 		let children = &children_from_the_top[forest.children.starts[node] as usize..forest.children.starts[node + 1] as usize];
 		for &child in children {
 			let child = child as usize;
+			if forest.detached[child] {
+				std::mem::take(&mut contours[child]).release(&mut pool);
+				continue;
+			}
+
 			let mut contour = std::mem::take(&mut contours[child]).moved(offsets[child]);
 			let mut elongation = IVec2::ZERO;
 
@@ -637,6 +652,44 @@ mod tests {
 
 		assert_eq!(layout.owners[2], Some(1));
 		assert_eq!(layout.positions[2], IVec2::new(30 - CHAIN_WIDTH, 10));
+	}
+
+	/// A layer with a chain node, and a layer stacked below it fed by a tall node, with a node far below the chain node
+	/// beside the tall node, read by the chain node and, if `also_read_from_beside`, by a node right beside it.
+	fn far_upstream_beside_tall_content(also_read_from_beside: bool) -> Graph {
+		let tall_node = Node {
+			rows: 30,
+			..node(Placement::Relative(IVec2::new(-14, 0)), false)
+		};
+		let far_offset = if also_read_from_beside { IVec2::new(-CHAIN_WIDTH, 30) } else { IVec2::new(-10, 30) };
+		let mut wires = vec![wire(1, 0, 0), wire(2, 1, 1), wire(3, 0, 1), wire(5, 3, 0)];
+		if also_read_from_beside {
+			wires.push(wire(5, 4, 0));
+		}
+
+		Graph {
+			nodes: vec![
+				node(Placement::Absolute(IVec2::new(30, 10)), true),
+				node(Placement::Stack(0), true),
+				tall_node,
+				node(Placement::Chain, false),
+				node(Placement::Absolute(IVec2::new(20, 40)), false),
+				node(Placement::Relative(far_offset), false),
+			],
+			wires,
+		}
+	}
+
+	#[test]
+	fn a_shared_node_stored_beside_another_reader_takes_no_room_from_its_owner() {
+		let only_read_by_the_chain = layout(&far_upstream_beside_tall_content(false));
+		assert_eq!(only_read_by_the_chain.positions[5], IVec2::new(13, 40));
+		assert_ne!(only_read_by_the_chain.elongations[1], IVec2::ZERO);
+
+		let also_read_from_beside = layout(&far_upstream_beside_tall_content(true));
+		assert_eq!(also_read_from_beside.owners[5], Some(3));
+		assert_eq!(also_read_from_beside.positions[5], IVec2::new(13, 40));
+		assert_eq!(also_read_from_beside.elongations[1], IVec2::ZERO);
 	}
 
 	#[test]
