@@ -8,7 +8,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use document_graph_storage::{NodeMetadataSource, PeerId, Registry, to_value};
 
-use super::test_support::{located_node, network_locations, node_locations, open_demo, open_demo_with_output_descriptions};
+use super::test_support::{located_node, network_locations, node_locations, open_demo, open_demo_with_named_subgraph_interfaces};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeLocator;
@@ -30,7 +30,7 @@ fn normalize_output_descriptions(output_descriptions: Vec<String>) -> Vec<String
 /// Uses one demo (rather than the full set) because this is an exhaustive per-node check.
 #[test]
 fn editor_metadata_round_trip_against_demo() {
-	let document = open_demo_with_output_descriptions("changing-seasons.graphite");
+	let document = open_demo_with_named_subgraph_interfaces("changing-seasons.graphite");
 	let interface = &document.network_interface;
 	let source = StorageMetadataView::new(interface);
 
@@ -99,7 +99,6 @@ fn editor_metadata_round_trip_against_demo() {
 	// just iterating empty metadata and proving nothing.
 	assert!(checked_any_position, "demo artwork produced no positioned nodes: fixture is wrong or extraction is broken");
 	assert!(checked_any_layer, "demo artwork produced no layer nodes: fixture is wrong or extraction is broken");
-	// Demo artworks always have subgraphs with named imports; if not, the per-input round-trip isn't actually being exercised here.
 	assert!(checked_any_input_metadata, "demo artwork produced no named imports: fixture is wrong or extraction is broken");
 	assert!(checked_any_output_description, "no output descriptions were round-tripped: fixture is wrong or extraction is broken");
 }
@@ -109,7 +108,7 @@ fn editor_metadata_round_trip_against_demo() {
 /// the original when read through `StorageMetadataView`.
 #[test]
 fn editor_interface_rebuild_round_trip() {
-	let document = open_demo_with_output_descriptions("changing-seasons.graphite");
+	let document = open_demo_with_named_subgraph_interfaces("changing-seasons.graphite");
 	let original = &document.network_interface;
 	let original_view = StorageMetadataView::new(original);
 
