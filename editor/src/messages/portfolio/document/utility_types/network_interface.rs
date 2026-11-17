@@ -143,7 +143,7 @@ impl PartialEq for NodeNetworkInterface {
 }
 
 impl NodeNetworkInterface {
-	/// Gives each entry under a catalog ID that differs from the shipped network a fresh ID.
+	/// Gives each entry under a catalog ID that differs from the shipped network a fresh ID, rekeying its nodes so they can't collide with the shipped network's.
 	pub fn give_diverged_catalog_entries_new_ids(&mut self) {
 		loop {
 			let metadata_definitions = &self.network_metadata.persistent_metadata.definitions;
@@ -164,7 +164,8 @@ impl NodeNetworkInterface {
 
 			self.migrate_graph(|network| {
 				for (old, new) in &diverged {
-					if let Some(definition) = network.definitions.remove(old) {
+					if let Some(mut definition) = network.definitions.remove(old) {
+						definition.map_ids(|node_id| derived_ids::derived_node_id(*new, node_id));
 						network.definitions.insert(*new, definition);
 					}
 				}
@@ -179,7 +180,9 @@ impl NodeNetworkInterface {
 			});
 			self.migrate_metadata(|metadata, _| {
 				for (old, new) in &diverged {
-					if let Some(definition) = metadata.persistent_metadata.definitions.remove(old) {
+					if let Some(mut definition) = metadata.persistent_metadata.definitions.remove(old) {
+						derived_ids::rekey_node_metadata(*new, &mut definition.persistent_metadata);
+						definition.transient_metadata = Default::default();
 						metadata.persistent_metadata.definitions.insert(*new, definition);
 					}
 				}

@@ -163,6 +163,27 @@ async fn an_entry_that_diverged_under_a_catalog_id_gets_a_fresh_id_on_open() {
 }
 
 #[tokio::test]
+async fn an_entry_given_a_fresh_id_on_open_can_sit_beside_the_shipped_entry() {
+	let (mut editor, blends) = editor_with_blends(1).await;
+	let shipped = entry_of(&editor, blends[0]);
+
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.migrate_graph(|network| {
+		let definition = network.definitions.get_mut(&shipped).expect("the shipped entry");
+		let node = definition.nodes.values_mut().next().expect("the shipped entry should hold a node");
+		node.visible = !node.visible;
+	});
+	interface.give_diverged_catalog_entries_new_ids();
+
+	// A new node brings the shipped entry back, whose node IDs the renamed entry must no longer share
+	let template = resolve_network_node_type("Blend").expect("the catalog should hold Blend").default_node_template();
+	interface.insert_node(NodeId::new(), template, &[]);
+
+	assert_ne!(entry_of(&editor, blends[0]), shipped);
+	assert_eq!(editor.active_document().network_interface.validate_invariants(), Vec::<String>::new());
+}
+
+#[tokio::test]
 async fn a_catalog_entry_saved_with_an_outdated_interface_stays_shared_and_shows_the_shipped_one() {
 	let (mut editor, blends) = editor_with_blends(1).await;
 	let shipped = entry_of(&editor, blends[0]);
