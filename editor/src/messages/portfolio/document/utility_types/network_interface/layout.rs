@@ -27,18 +27,27 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// The top left corner of the bounding box of the positions of the nodes reading `node_id`.
-	fn readers_top_left(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
-		let readers = self.reading_nodes(node_id, network_path);
-		self.positions(readers, network_path).into_iter().map(|(_, position)| position).reduce(IVec2::min)
+	/// Where the node's owner, the first reader reaching it from the roots, is drawn.
+	fn owner_position(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
+		self.with_layout(network_path, |layout| layout.owner(node_id).and_then(|owner| layout.position(&owner))).flatten()
 	}
 
-	/// Stores `position` as an offset from the nodes reading the node, or as an absolute position if no node reads it.
+	/// Stores `position` as an offset from the node's owner, or as an absolute position if no node reads it.
 	pub(crate) fn place_at(&mut self, node_id: &NodeId, position: IVec2, network_path: &[NodeId]) {
-		match self.readers_top_left(node_id, network_path) {
-			Some(top_left) => self.set_relative_position(node_id, position - top_left, network_path),
-			None => self.set_absolute_position(node_id, position, network_path),
+		if self.reading_nodes(node_id, network_path).is_empty() {
+			self.set_absolute_position(node_id, position, network_path);
+			return;
 		}
+
+		// An absolute node starts a tree of its own, so it only gets an owner once it is relative
+		if !self.is_relative(node_id, network_path) {
+			self.set_relative_position(node_id, IVec2::ZERO, network_path);
+		}
+		let Some(owner_position) = self.owner_position(node_id, network_path) else {
+			log::error!("Could not get the position of the owner of node {node_id}");
+			return;
+		};
+		self.set_relative_position(node_id, position - owner_position, network_path);
 	}
 
 	pub(crate) fn set_relative_position(&mut self, node_id: &NodeId, offset: IVec2, network_path: &[NodeId]) {
@@ -54,7 +63,7 @@ impl NodeNetworkInterface {
 		self.invalidate_positions(network_path);
 	}
 
-	/// Converts every node that another node reads in all networks, whether absolute, chained, or stacked, to a position relative to its readers.
+	/// Converts every node that exactly one other node reads in all networks, whether absolute, chained, or stacked, to a position relative to it.
 	pub fn convert_positions_to_relative(&mut self) {
 		let mut network_paths = Vec::new();
 		self.for_each_network(&mut |network_path, _| network_paths.push(network_path.to_vec()));
@@ -65,27 +74,45 @@ impl NodeNetworkInterface {
 			let node_ids: Vec<NodeId> = network.nodes.keys().copied().collect();
 			let positions: HashMap<NodeId, IVec2> = self.positions(node_ids.iter().copied(), &network_path).into_iter().collect();
 
-			let offsets: Vec<(NodeId, IVec2)> = node_ids
-				.iter()
-				.filter(|node_id| !self.is_relative(node_id, &network_path))
-				.filter_map(|node_id| {
-					let top_left = self
-						.reading_nodes(node_id, &network_path)
-						.iter()
-						.filter_map(|reader| positions.get(reader).copied())
-						.reduce(IVec2::min)?;
-					Some((*node_id, positions.get(node_id)? - top_left))
-				})
+			// A node several nodes read was placed beside one of them, which needn't be the reader that comes to own it, so it stays a root of its own.
+			// Which reader owns each node only settles once the absolute nodes stop being roots, so they become relative first.
+			let converted: Vec<NodeId> = node_ids
+				.into_iter()
+				.filter(|node_id| !self.is_relative(node_id, &network_path) && self.reading_nodes(node_id, &network_path).len() == 1)
 				.collect();
+			for node_id in &converted {
+				self.set_relative_position(node_id, IVec2::ZERO, &network_path);
+			}
 
+			let offsets: Vec<(NodeId, IVec2)> = self
+				.with_layout(&network_path, |layout| {
+					converted
+						.iter()
+						.filter_map(|node_id| Some((*node_id, positions.get(node_id)? - positions.get(&layout.owner(node_id)?)?)))
+						.collect()
+				})
+				.unwrap_or_default();
 			for (node_id, offset) in offsets {
 				self.set_relative_position(&node_id, offset, &network_path);
 			}
 		}
 	}
 
+	/// The stored offset of a relative node from its owner.
+	pub(crate) fn relative_offset(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
+		match self.node_metadata(node_id, network_path)?.persistent_metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::Relative(offset),
+			})
+			| NodeTypePersistentMetadata::Node(NodePersistentMetadata {
+				position: NodePosition::Relative(offset),
+			}) => Some(offset),
+			_ => None,
+		}
+	}
+
 	/// The nodes reading any output of `node_id`.
-	fn reading_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
+	pub(crate) fn reading_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
 		let output_count = self.number_of_outputs(node_id, network_path);
 		self.with_outward_wires(network_path, |outward_wires| {
 			(0..output_count)
@@ -374,32 +401,8 @@ impl NodeNetworkInterface {
 		Some(node_ids_with_position.into_iter().map(|(node_id, _)| node_id).collect::<Vec<_>>())
 	}
 
-	/// Used when moving layer by the layer panel, does not run any pushing logic. Moves all sole dependents of the layer as well.
-	/// Ensure that the layer is absolute position.
-	pub fn shift_absolute_node_position(&mut self, layer: &NodeId, shift: IVec2, network_path: &[NodeId]) {
-		if shift == IVec2::ZERO {
-			return;
-		}
-		let mut nodes_to_shift = self.upstream_nodes_below_layer(layer, network_path);
-		nodes_to_shift.insert(*layer);
-
-		let mut shifted_any = false;
-		for node_id in nodes_to_shift {
-			let Some(mut node) = self.node_mut(NodeLocator::new(node_id, network_path)) else {
-				log::error!("Could not get node metadata for node {node_id} in set_layer_position");
-				continue;
-			};
-			shifted_any |= node.shift_absolute_position(shift);
-		}
-
-		if shifted_any {
-			self.transaction_modified();
-		}
-		self.invalidate_positions(network_path);
-	}
-
 	/// Shifts the selected nodes one grid step. The relative nodes upstream of them follow, unless `keep_upstream` leaves them where they are drawn.
-	pub fn shift_selected_nodes(&mut self, direction: Direction, shift_without_push: bool, keep_upstream: bool, network_path: &[NodeId]) {
+	pub fn shift_selected_nodes(&mut self, direction: Direction, keep_upstream: bool, network_path: &[NodeId]) {
 		let Some(node_ids) = self
 			.selected_nodes_in_nested_network(network_path)
 			.map(|selected_nodes| selected_nodes.selected_nodes().copied().collect::<HashSet<_>>())
@@ -409,7 +412,7 @@ impl NodeNetworkInterface {
 		};
 		let placements_before = keep_upstream.then(|| self.placements(network_path));
 
-		self.shift_nodes(node_ids.clone(), direction, shift_without_push, network_path);
+		self.shift_nodes(node_ids.clone(), direction, network_path);
 
 		if let Some(placements_before) = placements_before {
 			self.restore_followers(&placements_before, &node_ids, network_path);
@@ -486,410 +489,70 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub(crate) fn shift_nodes(&mut self, node_ids: HashSet<NodeId>, direction: Direction, shift_without_push: bool, network_path: &[NodeId]) {
-		let seed_nodes = node_ids.clone();
-		let node_ids = self.nodes_to_shift(node_ids, shift_without_push, network_path);
-
-		// A stacked layer at offset zero has nowhere to go, so the whole shift is cancelled rather than clamped
-		if direction == Direction::Up && shift_without_push && self.stack_shift_up_is_blocked(&node_ids, network_path) {
-			return;
-		}
-
-		let Some(mut sorted_node_ids) = self.nodes_sorted_top_to_bottom(node_ids.iter(), network_path) else {
-			return;
-		};
-		if sorted_node_ids.len() != node_ids.len() {
-			log::error!("Could not get position for all nodes in shift_nodes");
-			return;
-		}
-
-		// Shifting down moves the lowest node first, so a node never lands on one that has yet to move
-		if direction == Direction::Down {
-			sorted_node_ids.reverse();
-		}
-
-		let shift_sign = if direction == Direction::Left || direction == Direction::Up { -1 } else { 1 };
-		let mut shifted_absolute_layers = Vec::new();
-		let mut shifted_nodes = HashSet::new();
-
-		for node_id in &sorted_node_ids {
-			match direction {
-				Direction::Left | Direction::Right => self.shift_horizontally(node_id, shift_sign, shift_without_push, &mut shifted_absolute_layers, &mut shifted_nodes, network_path),
-				Direction::Up | Direction::Down => self.shift_vertically(node_id, shift_sign, shift_without_push, &mut shifted_nodes, network_path),
-			}
-		}
-
-		self.settle_drag_offsets(&seed_nodes, network_path);
-	}
-
-	/// The nodes a shift should move on their own. A layer already carries the nodes it owns and a chain
-	/// follows the layer it feeds, so neither is moved a second time in its own right.
-	fn nodes_to_shift(&mut self, mut node_ids: HashSet<NodeId>, shift_without_push: bool, network_path: &[NodeId]) -> HashSet<NodeId> {
-		if !shift_without_push {
-			// The owned nodes of each layer are populated by the stack dependents load, which otherwise may not run until after this filter
-			self.try_load_stack_dependents(network_path);
-			for node_id in node_ids.clone() {
-				if self.is_layer(&node_id, network_path) {
-					self.with_owned_nodes_if_loaded(&node_id, network_path, |owned_nodes| {
-						for owned_node in owned_nodes {
-							node_ids.remove(owned_node);
-						}
-					});
-				}
-			}
-		}
-
-		for selected_node in node_ids.clone() {
-			if self.is_chain(&selected_node, network_path)
-				&& self
-					.downstream_layer_for_chain_node(&selected_node, network_path)
-					.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer))
-			{
-				node_ids.remove(&selected_node);
-			}
-		}
-
-		// A relative node already follows its readers, so shifting it with all of them would move it twice
-		let shifting_nodes = node_ids.clone();
-		for selected_node in &shifting_nodes {
-			let readers = self.reading_nodes(selected_node, network_path);
-			if self.is_relative(selected_node, network_path) && !readers.is_empty() && readers.iter().all(|reader| shifting_nodes.contains(reader)) {
-				node_ids.remove(selected_node);
-			}
-		}
-
-		node_ids
-	}
-
-	/// Whether moving these nodes up would drive a stacked layer to a negative offset, which it cannot
-	/// hold. A layer whose downstream layer is moving with it keeps its offset, so it does not block.
-	/// A node that cannot be read blocks the shift rather than letting part of it through.
-	fn stack_shift_up_is_blocked(&mut self, node_ids: &HashSet<NodeId>, network_path: &[NodeId]) -> bool {
-		for node_id in node_ids {
-			let Some(offset) = self.stack_offset(node_id, network_path) else { continue };
-
-			let Some(outward_wires) = self.outward_wires(network_path).and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(*node_id))) else {
-				log::error!("Could not get outward wires in stack_shift_up_is_blocked");
-				return true;
-			};
-			if let Some(downstream_node_id) = outward_wires.first().and_then(|input_connector| input_connector.node_id())
-				&& node_ids.contains(&downstream_node_id)
-			{
-				continue;
-			}
-
-			if offset <= 0 {
-				return true;
-			}
-		}
-
-		false
-	}
-
-	/// Shifts one node sideways. A stacked layer has no horizontal position of its own, so the whole stack
-	/// moves by its absolute anchor instead; `shifted_absolute_layers` records the anchors already moved so
-	/// a stack with several selected layers still moves once.
-	fn shift_horizontally(
-		&mut self,
-		node_id: &NodeId,
-		shift_sign: i32,
-		shift_without_push: bool,
-		shifted_absolute_layers: &mut Vec<NodeId>,
-		shifted_nodes: &mut HashSet<NodeId>,
-		network_path: &[NodeId],
-	) {
-		if !self.is_layer(node_id, network_path) {
-			self.try_shift_node(node_id, IVec2::new(shift_sign, 0), shifted_nodes, network_path);
-			return;
-		}
-
-		// Walk down the stack to its top layer, which anchors the rest
-		let mut downstream_absolute_layer = *node_id;
-		while self.is_stack(&downstream_absolute_layer, network_path) {
-			let Some(downstream_node) = self
-				.outward_wires(network_path)
-				.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(downstream_absolute_layer)))
-				.and_then(|downstream_nodes| downstream_nodes.first())
-				.and_then(|downstream_node| downstream_node.node_id())
-			else {
-				log::error!("Could not get downstream node of stack layer {downstream_absolute_layer} in shift_horizontally");
-				break;
-			};
-			downstream_absolute_layer = downstream_node;
-		}
-
-		if shifted_absolute_layers.contains(&downstream_absolute_layer) {
-			return;
-		}
-		shifted_absolute_layers.push(downstream_absolute_layer);
-
-		self.try_shift_node(&downstream_absolute_layer, IVec2::new(shift_sign, 0), shifted_nodes, network_path);
-
-		if shift_without_push {
-			return;
-		}
-
-		// The nodes hanging below each layer of the stack hold absolute positions, so they move too
-		for stack_node in self
-			.upstream_flow_back_from_nodes(vec![downstream_absolute_layer], network_path, FlowType::PrimaryFlow)
-			.take_while(|layer| self.is_layer(layer, network_path))
-			.collect::<Vec<_>>()
-		{
-			for sole_dependent in &self.upstream_nodes_below_layer(&stack_node, network_path) {
-				if self.is_absolute(sole_dependent, network_path) {
-					self.try_shift_node(sole_dependent, IVec2::new(shift_sign, 0), shifted_nodes, network_path);
-				}
-			}
-		}
-	}
-
-	/// Shifts one node vertically, pushing whatever it collides with unless the caller asked for a bare shift.
-	fn shift_vertically(&mut self, node_id: &NodeId, shift_sign: i32, shift_without_push: bool, shifted_nodes: &mut HashSet<NodeId>, network_path: &[NodeId]) {
-		if !shift_without_push && self.is_layer(node_id, network_path) {
-			self.shift_node_or_parent(node_id, shift_sign, shifted_nodes, network_path);
-			return;
-		}
-		if !shifted_nodes.insert(*node_id) {
-			return;
-		}
-
-		self.shift_node(node_id, IVec2::new(0, shift_sign), network_path);
-
-		if self.with_stack_dependents_if_loaded(network_path, |stack_dependents| matches!(stack_dependents.get(node_id), Some(LayerOwner::None))) == Some(true) {
-			self.add_drag_offset(node_id, shift_sign, network_path);
-		}
-	}
-
-	/// Moves every node the shift pushed out of place back to where it started, as far as nothing has since
-	/// moved into its way. `seed_nodes` are the nodes the caller asked to move, which keep their new place.
-	fn settle_drag_offsets(&mut self, seed_nodes: &HashSet<NodeId>, network_path: &[NodeId]) {
-		let Some(stack_dependents) = self
-			.stack_dependents(network_path)
-			.map(|stack_dependents| stack_dependents.iter().map(|(node_id, owner)| (*node_id, owner.clone())).collect::<Vec<_>>())
-		else {
-			log::error!("Could not load stack dependents in settle_drag_offsets");
-			return;
+	/// Shifts each node one grid step from where it is drawn, carrying everything placed relative to it.
+	pub(crate) fn shift_nodes(&mut self, node_ids: HashSet<NodeId>, direction: Direction, network_path: &[NodeId]) {
+		let shift = match direction {
+			Direction::Left => IVec2::NEG_X,
+			Direction::Right => IVec2::X,
+			Direction::Up => IVec2::NEG_Y,
+			Direction::Down => IVec2::Y,
 		};
 
-		let mut offset_nodes = stack_dependents
-			.iter()
-			.filter_map(|(node_id, owner)| {
-				let LayerOwner::None = owner else { return None };
-
-				let offset = self.drag_offset(node_id, network_path);
-				if offset == 0 {
-					return None;
-				}
-
-				let moved_by_the_caller = seed_nodes
-					.iter()
-					.any(|seed_node| seed_node == node_id || self.with_owned_nodes_if_loaded(node_id, network_path, |owned_nodes| owned_nodes.contains(seed_node)) == Some(true));
-				if moved_by_the_caller {
-					return None;
-				}
-
-				let Some(position) = self.position(node_id, network_path) else {
-					log::error!("Could not get position for node {node_id} in settle_drag_offsets");
-					return None;
-				};
-				Some((*node_id, offset, position.y))
-			})
-			.collect::<Vec<(NodeId, i32, i32)>>();
-
-		// A node returning upward has to leave before the one below it does, and the reverse going down
-		offset_nodes.sort_unstable_by(|(_, offset, y), (_, other_offset, other_y)| {
-			offset
-				.signum()
-				.cmp(&other_offset.signum())
-				.then_with(|| if offset.signum() == 1 { y.cmp(other_y) } else { other_y.cmp(y) })
-		});
-
-		for (node_id, mut offset, _) in offset_nodes {
-			while offset != 0 && self.check_collision_with_stack_dependents(&node_id, -offset.signum(), network_path).is_empty() {
-				self.vertical_shift_with_push(&node_id, -offset.signum(), &mut HashSet::new(), network_path);
-				offset -= offset.signum();
+		let mut shifted = HashSet::new();
+		for node_id in self.nodes_to_shift(node_ids, network_path) {
+			// A stack keeps its layers aligned, so sideways it moves as a whole from its top layer
+			let node_id = if shift.x != 0 { self.stack_top(node_id, network_path) } else { node_id };
+			if shifted.insert(node_id) {
+				self.shift_node(&node_id, shift, network_path);
 			}
 		}
 	}
 
-	fn try_shift_node(&mut self, node_id: &NodeId, shift: IVec2, shifted_nodes: &mut HashSet<NodeId>, network_path: &[NodeId]) {
-		if !shifted_nodes.contains(node_id) {
-			self.shift_node(node_id, shift, network_path);
-			shifted_nodes.insert(*node_id);
-		}
-	}
-
-	fn vertical_shift_with_push(&mut self, node_id: &NodeId, shift_sign: i32, shifted_nodes: &mut HashSet<NodeId>, network_path: &[NodeId]) {
-		if shifted_nodes.contains(node_id) {
-			return;
-		}
-		shifted_nodes.insert(*node_id);
-
-		let nodes_to_shift = self.check_collision_with_stack_dependents(node_id, shift_sign, network_path);
-
-		for node_to_shift in nodes_to_shift {
-			self.shift_node_or_parent(&node_to_shift.0, shift_sign, shifted_nodes, network_path);
-		}
-
-		self.shift_node(node_id, IVec2::new(0, shift_sign), network_path);
-
-		match self.with_stack_dependents_if_loaded(network_path, |stack_dependents| stack_dependents.get(node_id).cloned()) {
-			Some(Some(LayerOwner::None)) => self.add_drag_offset(node_id, shift_sign, network_path),
-			Some(Some(LayerOwner::Layer(_))) => log::error!("Node being shifted with a push should not be owned"),
-			Some(None) => log::error!("Could not get layer owner in vertical_shift_with_push for node {node_id}"),
-			None => log::error!("Stack dependents should be loaded in vertical_shift_with_push"),
-		}
-
-		if let Some(owned_nodes) = self.with_owned_nodes_if_loaded(node_id, network_path, |owned_nodes| owned_nodes.clone()) {
-			for owned_node in owned_nodes {
-				if self.is_absolute(&owned_node, network_path) {
-					self.try_shift_node(&owned_node, IVec2::new(0, shift_sign), shifted_nodes, network_path);
-				}
-			}
-		}
-	}
-
-	pub(crate) fn check_collision_with_stack_dependents(&mut self, node_id: &NodeId, shift_sign: i32, network_path: &[NodeId]) -> Vec<(NodeId, LayerOwner)> {
-		self.try_load_stack_dependents(network_path);
-
-		let nodes_to_shift = self.with_stack_dependents_if_loaded(network_path, |stack_dependents| {
-			// Borrow the owned nodes for the sweep rather than cloning them per call
-			let collect_collisions = |owned_nodes: &HashSet<NodeId>| {
-				let mut nodes_to_shift = Vec::new();
-
-				for current_node in owned_nodes.iter().chain(std::iter::once(node_id)) {
-					for node_to_check_collision in stack_dependents {
-						// Do not check collision between any of the owned nodes or the shifted node
-						if owned_nodes.contains(node_to_check_collision.0) || node_to_check_collision.0 == node_id {
-							continue;
+	/// The nodes a shift should move on their own, leaving out each one placed relative to another node being moved,
+	/// which already carries it along.
+	fn nodes_to_shift(&self, node_ids: HashSet<NodeId>, network_path: &[NodeId]) -> Vec<NodeId> {
+		self.with_layout(network_path, |layout| {
+			node_ids
+				.iter()
+				.filter(|node_id| {
+					let mut owner = layout.owner(node_id);
+					while let Some(current) = owner {
+						if node_ids.contains(&current) {
+							return false;
 						}
-
-						if node_to_check_collision.0 == current_node {
-							continue;
-						}
-						let Some(mut current_node_bounding_box) = self.node_bounding_box(current_node, network_path) else {
-							log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
-							continue;
-						};
-
-						let Some(node_bounding_box) = self.node_bounding_box(node_to_check_collision.0, network_path) else {
-							log::error!("Could not get bounding box for node {node_to_check_collision:?} in shift_selected_nodes");
-							continue;
-						};
-						// If the nodes do not intersect horizontally, then there is no collision
-						if current_node_bounding_box[1].x < node_bounding_box[0].x || current_node_bounding_box[0].x > node_bounding_box[1].x {
-							continue;
-						}
-						// Do not check collision if the nodes are currently intersecting
-						if current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1 {
-							continue;
-						}
-
-						current_node_bounding_box[1].y += GRID_SIZE as f64 * shift_sign as f64;
-						current_node_bounding_box[0].y += GRID_SIZE as f64 * shift_sign as f64;
-
-						let collision = current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1;
-						if collision {
-							nodes_to_shift.push((*node_to_check_collision.0, node_to_check_collision.1.clone()));
-						}
+						owner = layout.owner(&current);
 					}
-				}
-
-				nodes_to_shift
-			};
-
-			self.with_owned_nodes_if_loaded(node_id, network_path, collect_collisions)
-				.unwrap_or_else(|| collect_collisions(&HashSet::new()))
-		});
-
-		let Some(nodes_to_shift) = nodes_to_shift else {
-			log::error!("Could not load stack dependents in shift_selected_nodes");
-			return Vec::new();
-		};
-		nodes_to_shift
-	}
-
-	fn shift_node_or_parent(&mut self, node_id: &NodeId, shift_sign: i32, shifted_nodes: &mut HashSet<NodeId>, network_path: &[NodeId]) {
-		let Some(stack_dependents) = self.stack_dependents(network_path) else {
-			log::error!("Could not load stack dependents in shift_selected_nodes");
-			return;
-		};
-		let Some(layer_owner) = stack_dependents.get(node_id) else {
-			log::error!("Could not get layer owner in shift_node_or_parent for node {node_id}");
-			return;
-		};
-		match layer_owner {
-			LayerOwner::Layer(layer_owner) => {
-				let layer_owner = *layer_owner;
-				self.shift_node_or_parent(&layer_owner, shift_sign, shifted_nodes, network_path)
-			}
-			LayerOwner::None => self.vertical_shift_with_push(node_id, shift_sign, shifted_nodes, network_path),
-		}
-	}
-
-	/// Shifts a node by a certain offset without the auto layout system. If the node is a layer in a stack, the y_offset is shifted. If the node is a node in a chain, its position gets set to absolute.
-	pub fn shift_node(&mut self, node_id: &NodeId, shift: IVec2, network_path: &[NodeId]) {
-		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get node_metadata for node {node_id}");
-			return;
-		};
-
-		match node_metadata.persistent_metadata.node_type_metadata.clone() {
-			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-				position: LayerPosition::Stack(y_offset),
-			}) => {
-				let shifted_y_offset = y_offset as i32 + shift.y;
-
-				// A layer can only be shifted to a positive y_offset
-				if shifted_y_offset < 0 {
-					log::error!(
-						"Space should be made above the layer before shifting it up. Layer {node_id} current y_offset: {y_offset} shift: {}",
-						shift.y
-					);
-				}
-				if shift.x != 0 {
-					log::error!("Stack layer {node_id} cannot be shifted horizontally.");
-				}
-
-				let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
-				if !node.set_stack_position(shifted_y_offset.max(0) as u32) {
-					return;
-				}
-				self.transaction_modified();
-			}
-
-			// A chain node has no position of its own to shift, so it leaves the chain first
-			NodeTypePersistentMetadata::Node(node_position) if matches!(node_position.position(), NodePosition::Chain) => {
-				self.unchain_upstream(node_id, network_path);
-				self.shift_node(node_id, shift, network_path);
-			}
-
-			_ => {
-				let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
-				let is_layer = node.is_layer();
-				if node.shift_absolute_position(shift) {
-					self.transaction_modified();
-				}
-
-				if !is_layer {
-					self.try_set_node_to_chain(node_id, network_path);
-				}
-			}
-		}
-
-		self.invalidate_positions(network_path);
-	}
-
-	/// The grid rows a node occupies when stacked, as absolute `(top, bottom)` rows. A layer's box starts
-	/// one row above its position and reaches `STACK_VERTICAL_GAP` below it; a node spans two rows down.
-	fn stacked_box_rows(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<(i32, i32)> {
-		let position = self.position(node_id, network_path)?;
-
-		Some(if self.is_layer(node_id, network_path) {
-			(position.y - 1, position.y + STACK_VERTICAL_GAP)
-		} else {
-			(position.y, position.y + 2)
+					true
+				})
+				.copied()
+				.collect()
 		})
+		.unwrap_or_default()
+	}
+
+	/// The top layer of the stack `node_id` is stacked in, or the node itself when it is not stacked.
+	fn stack_top(&self, node_id: NodeId, network_path: &[NodeId]) -> NodeId {
+		let mut top = node_id;
+		let mut visited = HashSet::new();
+		while self.is_stack(&top, network_path) && visited.insert(top) {
+			let reader = self
+				.with_outward_wires(network_path, |outward_wires| {
+					outward_wires.get(&OutputConnector::primary_output(top)).and_then(|readers| readers.first()?.node_id())
+				})
+				.flatten();
+			let Some(reader) = reader else { break };
+			top = reader;
+		}
+		top
+	}
+
+	/// Moves a node by `shift` from where it is drawn, carrying everything placed relative to it.
+	pub fn shift_node(&mut self, node_id: &NodeId, shift: IVec2, network_path: &[NodeId]) {
+		let Some(position) = self.position(node_id, network_path) else {
+			log::error!("Could not get the position of node {node_id} to shift it");
+			return;
+		};
+		self.place_at(node_id, position + shift, network_path);
 	}
 
 	/// A layer that is not an artboard cannot sit beside one at the root, so a move aimed at the root
@@ -964,11 +627,6 @@ impl NodeNetworkInterface {
 
 		let (parent, mut insert_index) = self.redirect_into_artboard(layer, parent, insert_index, network_path);
 
-		let Some(layer_to_move_position) = self.position(&layer.to_node(), network_path) else {
-			log::error!("Could not get layer_to_move_position in move_layer_to_stack");
-			return;
-		};
-
 		// A layer already under this parent vacates its own slot when it disconnects, shifting the target down one
 		if let Some(moved_layer_previous_index) = parent.children(&self.document_metadata).position(|child| child == layer)
 			&& moved_layer_previous_index < insert_index
@@ -987,223 +645,41 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(previous_layer_position) = self.position(&layer.to_node(), network_path) else {
-			log::error!("Could not get previous layer position in move_layer_to_stack");
-			return;
-		};
-
-		let after_move_post_layer_position = if let Some(post_node_id) = post_node.node_id() {
-			self.position(&post_node_id, network_path)
-		} else {
-			Some(IVec2::new(LAYER_INDENT_OFFSET, -STACK_VERTICAL_GAP))
-		};
-
-		let Some(after_move_post_layer_position) = after_move_post_layer_position else {
-			log::error!("Could not get post node position in move_layer_to_stack");
-			return;
-		};
-
-		// Get the height of the downstream node if inserting into a stack
-		let mut downstream_height = 0;
+		let displaced = post_node_input.as_node();
+		let displaced_position = displaced.and_then(|displaced| self.position(&displaced, network_path));
+		let post_node_position = post_node.node_id().and_then(|post_node_id| self.position(&post_node_id, network_path));
 		let inserting_into_stack =
 			!(post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) || !post_node.node_id().is_some_and(|post_node_id| self.is_layer(&post_node_id, network_path)));
-		if inserting_into_stack && let Some(downstream_node) = post_node.node_id() {
-			let Some(downstream_node_position) = self.position(&downstream_node, network_path) else {
-				log::error!("Could not get downstream node position in move_layer_to_stack");
+
+		match post_node_input {
+			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
+				self.create_wire(&OutputConnector::primary_output(layer.to_node()), &post_node, network_path);
+			}
+			// The layer takes the place of what fed the post node, which moves onto the layer's output
+			NodeInput::Node { .. } => {
+				self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
+				self.take_over_outward_wires(layer.to_node(), network_path);
+			}
+			NodeInput::Import { .. } => {
+				log::error!("Cannot move post node to parent which connects to the imports");
 				return;
-			};
-			let mut lowest_y_position = downstream_node_position.y + STACK_VERTICAL_GAP;
-
-			for (_, bottom_position) in self
-				.upstream_nodes_below_layer(&downstream_node, network_path)
-				.iter()
-				.filter_map(|node_id| self.stacked_box_rows(node_id, network_path))
-			{
-				lowest_y_position = lowest_y_position.max(bottom_position);
 			}
-			downstream_height = lowest_y_position - (downstream_node_position.y + STACK_VERTICAL_GAP);
 		}
 
-		let mut highest_y_position = layer_to_move_position.y;
-		let mut lowest_y_position = layer_to_move_position.y;
-
-		for (top_position, bottom_position) in self
-			.upstream_nodes_below_layer(&layer.to_node(), network_path)
-			.iter()
-			.filter_map(|node_id| self.stacked_box_rows(node_id, network_path))
-		{
-			highest_y_position = highest_y_position.min(top_position);
-			lowest_y_position = lowest_y_position.max(bottom_position);
-		}
-		let height_above_layer = layer_to_move_position.y - highest_y_position + downstream_height;
-		let height_below_layer = lowest_y_position - layer_to_move_position.y - STACK_VERTICAL_GAP;
-
-		// Whatever already occupies the destination has to move down to leave room for the layer
-		if let Some(upstream_node_id) = post_node_input.as_node()
-			&& !self.push_stack_down_to_fit(upstream_node_id, after_move_post_layer_position, height_above_layer, height_below_layer, network_path)
-		{
-			return;
-		}
-
-		// If true, this node should be inserted before the post node (toward root from the layer), and all outward wires from the pre node should be moved to its output.
-		let mut insert_node_after_post = false;
-
-		// Connect the layer to a parent layer/node at the top of the stack, or a non layer node midway down the stack
-		if !inserting_into_stack {
-			match post_node_input {
-				// Create a new stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
-					self.create_wire(&OutputConnector::primary_output(layer.to_node()), &post_node, network_path);
-
-					let final_layer_position = after_move_post_layer_position + IVec2::new(-LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP);
-					let shift = final_layer_position - previous_layer_position;
-					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
-				}
-				// Move to the top of a stack
-				NodeInput::Node { node_id, .. } => {
-					let Some(stack_top_position) = self.position(&node_id, network_path) else {
-						log::error!("Could not get stack x position in move_layer_to_stack");
-						return;
-					};
-
-					let final_layer_position = IVec2::new(stack_top_position.x, after_move_post_layer_position.y + STACK_VERTICAL_GAP + height_above_layer);
-					let shift = final_layer_position - previous_layer_position;
-					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
-					insert_node_after_post = true;
-				}
-				NodeInput::Import { .. } => {
-					log::error!("Cannot move post node to parent which connects to the imports")
-				}
-			}
+		// Stacked layers start right below the layer they stack under, and drawing them moves each past the content above it
+		if inserting_into_stack {
+			self.set_stack_position(&layer.to_node(), 0, network_path);
 		} else {
-			match post_node_input {
-				// Move to the bottom of the stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
-					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, STACK_VERTICAL_GAP + height_above_layer);
-					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
-					self.create_wire(&OutputConnector::primary_output(layer.to_node()), &post_node, network_path);
-				}
-				// Insert into the stack
-				NodeInput::Node { .. } => {
-					let final_layer_position = after_move_post_layer_position + IVec2::new(0, STACK_VERTICAL_GAP + height_above_layer);
-					let shift = final_layer_position - previous_layer_position;
-					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
-					insert_node_after_post = true;
-				}
-				NodeInput::Import { .. } => {
-					log::error!("Cannot move post node to parent which connects to the imports")
-				}
-			}
+			let top_of_new_stack = post_node_position.map_or(IVec2::ZERO, |position| position + IVec2::new(-LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP));
+			self.place_at(&layer.to_node(), displaced_position.unwrap_or(top_of_new_stack), network_path);
 		}
-
-		if insert_node_after_post {
-			self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
-			self.take_over_outward_wires(layer.to_node(), network_path);
+		if let Some(displaced) = displaced
+			&& self.is_layer(&displaced, network_path)
+		{
+			self.set_stack_position(&displaced, 0, network_path);
 		}
-		self.push_stacks_below_ancestors_past_their_content(layer.to_node(), network_path);
 
 		self.remove_orphaned_dots(network_path);
-	}
-
-	/// Moves the layers stacked below each layer that `layer` is nested within down past that layer's grown content.
-	fn push_stacks_below_ancestors_past_their_content(&mut self, layer: NodeId, network_path: &[NodeId]) {
-		let mut visited = HashSet::new();
-		let mut ancestor = self.content_parent(layer, network_path, &mut visited);
-		while let Some(parent) = ancestor {
-			let stack_below = self
-				.input_from_connector(&InputConnector::primary_input(parent), network_path)
-				.and_then(NodeInput::as_node)
-				.filter(|stack_below| self.is_layer(stack_below, network_path));
-			if let (Some(stack_below), Some(parent_position)) = (stack_below, self.position(&parent, network_path))
-				&& let Some(stack_below_position) = self.position(&stack_below, network_path)
-			{
-				let content_bottom_row = self
-					.upstream_nodes_below_layer(&parent, network_path)
-					.iter()
-					.filter_map(|node_id| self.stacked_box_rows(node_id, network_path))
-					.map(|(_, bottom)| bottom)
-					.fold(parent_position.y + STACK_VERTICAL_GAP, i32::max);
-				if content_bottom_row > stack_below_position.y {
-					self.shift_stack_down(stack_below, content_bottom_row - stack_below_position.y, network_path);
-				}
-			}
-			ancestor = self.content_parent(parent, network_path, &mut visited);
-		}
-	}
-
-	/// Shifts a stack of layers down by `rows`, along with the absolutely positioned content they own, which would otherwise stay behind.
-	fn shift_stack_down(&mut self, stack_top: NodeId, rows: i32, network_path: &[NodeId]) {
-		let stack = self
-			.upstream_flow_back_from_nodes(vec![stack_top], network_path, FlowType::PrimaryFlow)
-			.take_while(|node_id| self.is_layer(node_id, network_path))
-			.collect::<Vec<_>>();
-		let absolute_content = stack
-			.iter()
-			.flat_map(|layer| self.upstream_nodes_below_layer(layer, network_path))
-			.filter(|node_id| self.is_absolute(node_id, network_path))
-			.collect::<HashSet<_>>();
-
-		self.shift_node(&stack_top, IVec2::new(0, rows), network_path);
-		for node_id in absolute_content {
-			self.shift_node(&node_id, IVec2::new(0, rows), network_path);
-		}
-	}
-
-	/// The layer whose content holds the stack `layer` is part of, reached through any chain nodes feeding that layer.
-	/// `visited` stops the walk on a cyclic graph, which concurrent edits can produce.
-	fn content_parent(&self, layer: NodeId, network_path: &[NodeId], visited: &mut HashSet<NodeId>) -> Option<NodeId> {
-		let mut current = layer;
-		while visited.insert(current) {
-			let consumers = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(current)).cloned())??;
-
-			let mut layer_stacked_upon = None;
-			for consumer in consumers {
-				let Some(consumer_node) = consumer.node_id() else { continue };
-				if !self.is_layer(&consumer_node, network_path) {
-					if self.is_chain(&consumer_node, network_path) {
-						return self.downstream_layer_for_chain_node(&consumer_node, network_path);
-					}
-				} else if consumer.input_index() == 0 {
-					layer_stacked_upon = Some(consumer_node);
-				} else {
-					return Some(consumer_node);
-				}
-			}
-			current = layer_stacked_upon?;
-		}
-
-		log::error!("Cycle reached while finding the content parent of layer {layer}");
-		None
-	}
-
-	/// Shifts `upstream_node_id` and everything stacked below it down until a layer needing
-	/// `height_above` rows above it and `height_below` below fits between it and `post_layer_position`.
-	///
-	/// Returns whether the gap could be measured; the caller abandons the move when it could not.
-	fn push_stack_down_to_fit(&mut self, upstream_node_id: NodeId, post_layer_position: IVec2, height_above: i32, height_below: i32, network_path: &[NodeId]) -> bool {
-		// The push follows the stack dependents of the node being moved, not those of the selection
-		self.unload_stack_dependents(network_path);
-		self.load_stack_dependents_for_nodes(vec![upstream_node_id], network_path);
-
-		// Open the minimum gap first, so the measurement below sees a stack that has already parted
-		for _ in 0..STACK_VERTICAL_GAP {
-			self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
-		}
-
-		let Some(stack_position) = self.position(&upstream_node_id, network_path) else {
-			log::error!("Could not get stack position in push_stack_down_to_fit");
-			self.unload_stack_dependents(network_path);
-			return false;
-		};
-
-		let current_gap = stack_position.y - (post_layer_position.y + 2);
-		let target_gap = 1 + height_above + 2 + height_below + 1;
-		for _ in 0..(target_gap - current_gap).max(0) {
-			self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
-		}
-
-		self.unload_stack_dependents(network_path);
-		true
 	}
 
 	/// Moves every other consumer of the node now feeding `layer` onto `layer`'s own output, so a layer

@@ -1,8 +1,10 @@
 //! Lays out a node graph in one pass: every node is placed after all the nodes reading it, then its bounds, ports, and wires follow from its position.
 
 mod click_targets;
+mod contour;
 
 pub use click_targets::{ClickTarget, GRID_SIZE, Part, node_parts, reach, target_at};
+use contour::Contour;
 use glam::IVec2;
 
 /// How many grid cells a chain steps left for each node.
@@ -34,6 +36,8 @@ pub struct Node {
 	pub outputs: u32,
 	/// Whether the node can be drawn in a layer's chain, which redirect dots and nodes with a hidden primary output can't.
 	pub chainable: bool,
+	/// Whether the node is a point wires are routed through, like a redirect dot, which takes no room and is never moved to make room.
+	pub waypoint: bool,
 	/// The width of a layer's name in pixels, measured by the caller.
 	pub name_width: f64,
 	pub locked: bool,
@@ -105,11 +109,15 @@ pub struct Layout {
 	pub bounds: Vec<[IVec2; 2]>,
 	/// Each wire's output port and input port.
 	pub wire_ends: Vec<[IVec2; 2]>,
+	/// The node each node is placed relative to, which is the first reader to reach it from the roots.
+	pub owners: Vec<Option<u32>>,
+	/// How far each node is drawn from its stored place so its upstream clears what its owner placed before it.
+	pub elongations: Vec<IVec2>,
 	/// The layer whose chain each node is drawn in, if any.
 	pub chain_layers: Vec<Option<u32>>,
 	/// How many nodes each layer's chain holds, and zero for any other node.
 	pub chain_lengths: Vec<u32>,
-	/// Nodes on a cycle, placed only from the readers placed before them.
+	/// Nodes only reached through a cycle, placed as roots.
 	pub cyclic: Vec<u32>,
 }
 
@@ -121,43 +129,31 @@ impl Layout {
 	}
 }
 
+/// Rows kept between the outlines of the upstream of two inputs of a node, beyond the empty row a layer keeps below it.
+const VERTICAL_GAP: i32 = 0;
+/// The empty row a layer keeps below it, which the layer stacked under it starts after.
+const LAYER_BOTTOM_GAP: i32 = 1;
+/// Empty columns kept between a node and the upstream feeding it from the left, which a chain's spacing leaves exactly.
+const HORIZONTAL_GAP: i32 = CHAIN_WIDTH - 5;
+
+/// Lays out the graph as a forest: a depth-first walk from the roots gives each node to the first reader reaching it,
+/// each node's upstream is then fitted together below and left of it, and finally every node is placed from its owner.
 pub fn layout(graph: &Graph) -> Layout {
 	let node_count = graph.nodes.len();
 	let readers = WiresByNode::grouped(node_count, &graph.wires, |wire| wire.source);
 	let inputs = WiresByNode::grouped(node_count, &graph.wires, |wire| wire.target);
 
+	let forest = Forest::walk(graph, &readers, &inputs);
+	let offsets: Vec<IVec2> = (0..node_count).map(|node| stored_offset(graph, node, forest.owners[node])).collect();
+	let elongations = elongations(graph, &forest, &offsets);
+
 	let mut positions = vec![IVec2::ZERO; node_count];
-	let mut placed = vec![false; node_count];
-	let mut unplaced_readers: Vec<u32> = (0..node_count).map(|node| readers.of(node).len() as u32).collect();
-	let mut ready: Vec<u32> = (0..node_count as u32).filter(|node| unplaced_readers[*node as usize] == 0).collect();
-
-	let mut place = |node: usize, positions: &mut Vec<IVec2>, placed: &mut Vec<bool>, ready: &mut Vec<u32>| {
-		positions[node] = position(graph, node, readers.of(node), positions, placed);
-		placed[node] = true;
-
-		for wire in inputs.of(node) {
-			let source = graph.wires[*wire as usize].source as usize;
-			unplaced_readers[source] = unplaced_readers[source].saturating_sub(1);
-			if unplaced_readers[source] == 0 && !placed[source] {
-				ready.push(source as u32);
-			}
-		}
-	};
-
-	while let Some(node) = ready.pop() {
-		place(node as usize, &mut positions, &mut placed, &mut ready);
-	}
-
-	let mut cyclic = Vec::new();
-	for node in 0..node_count {
-		if placed[node] {
-			continue;
-		}
-		cyclic.push(node as u32);
-		place(node, &mut positions, &mut placed, &mut ready);
-		while let Some(node) = ready.pop() {
-			place(node as usize, &mut positions, &mut placed, &mut ready);
-		}
+	for &node in &forest.preorder {
+		let node = node as usize;
+		positions[node] = match forest.owners[node] {
+			Some(owner) => positions[owner as usize] + offsets[node] + elongations[node],
+			None => root_position(&graph.nodes[node]),
+		};
 	}
 
 	let bounds = graph
@@ -185,10 +181,195 @@ pub fn layout(graph: &Graph) -> Layout {
 		positions,
 		bounds,
 		wire_ends,
+		owners: forest.owners,
+		elongations,
 		chain_layers,
 		chain_lengths,
-		cyclic,
+		cyclic: forest.cyclic,
 	}
+}
+
+/// The graph as a forest of the wires along which a depth-first walk first reached each node.
+struct Forest {
+	owners: Vec<Option<u32>>,
+	/// The input of its owner each node is reached through.
+	owner_inputs: Vec<u32>,
+	/// Each node after its owner and before anything it owns.
+	preorder: Vec<u32>,
+	/// The nodes each node owns, in the order the walk reached them.
+	children: Vec<Vec<u32>>,
+	cyclic: Vec<u32>,
+}
+
+impl Forest {
+	fn walk(graph: &Graph, readers: &WiresByNode, inputs: &WiresByNode) -> Self {
+		let node_count = graph.nodes.len();
+		let mut forest = Self {
+			owners: vec![None; node_count],
+			owner_inputs: vec![0; node_count],
+			preorder: Vec::with_capacity(node_count),
+			children: vec![Vec::new(); node_count],
+			cyclic: Vec::new(),
+		};
+		let mut reached = vec![false; node_count];
+
+		// Placed nodes start their own trees, walked from the top of the graph down
+		let is_root = |node: usize| readers.of(node).is_empty() || matches!(graph.nodes[node].placement, Placement::Absolute(_));
+		let mut roots: Vec<usize> = (0..node_count).filter(|node| is_root(*node)).collect();
+		roots.sort_by_key(|node| {
+			let position = root_position(&graph.nodes[*node]);
+			(position.y, position.x, *node)
+		});
+
+		for root in roots {
+			forest.walk_from(root, graph, inputs, &mut reached, &is_root);
+		}
+		for node in 0..node_count {
+			if !reached[node] {
+				forest.cyclic.push(node as u32);
+				forest.walk_from(node, graph, inputs, &mut reached, &is_root);
+			}
+		}
+
+		forest
+	}
+
+	fn walk_from(&mut self, root: usize, graph: &Graph, inputs: &WiresByNode, reached: &mut [bool], is_root: &impl Fn(usize) -> bool) {
+		if reached[root] {
+			return;
+		}
+		reached[root] = true;
+		self.preorder.push(root as u32);
+
+		// Each entry is a node and the inputs of it left to visit, in the order they are drawn from the top
+		let mut stack = vec![(root, input_order(graph, inputs, root))];
+		while let Some((node, remaining)) = stack.last_mut() {
+			let node = *node;
+			let Some(wire) = remaining.pop() else {
+				stack.pop();
+				continue;
+			};
+
+			let wire = graph.wires[wire as usize];
+			let source = wire.source as usize;
+			if reached[source] || is_root(source) {
+				continue;
+			}
+
+			reached[source] = true;
+			self.owners[source] = Some(node as u32);
+			self.owner_inputs[source] = wire.input;
+			self.children[node].push(source as u32);
+			self.preorder.push(source as u32);
+			stack.push((source, input_order(graph, inputs, source)));
+		}
+	}
+}
+
+/// The wires into `node`, last drawn first so popping visits them from the top: a node's inputs top to bottom, and a layer's stack input after the rest.
+fn input_order(graph: &Graph, inputs: &WiresByNode, node: usize) -> Vec<u32> {
+	let is_layer = graph.nodes[node].is_layer;
+	let mut wires = inputs.of(node).to_vec();
+	wires.sort_by_key(|wire| {
+		let input = graph.wires[*wire as usize].input;
+		std::cmp::Reverse(if is_layer && input == 0 { u32::MAX } else { input })
+	});
+	wires
+}
+
+fn root_position(node: &Node) -> IVec2 {
+	match node.placement {
+		Placement::Absolute(position) | Placement::Relative(position) => position,
+		Placement::Chain | Placement::Stack(_) => IVec2::ZERO,
+	}
+}
+
+/// Where a node sits from its owner as stored, before anything is fitted.
+fn stored_offset(graph: &Graph, node: usize, owner: Option<u32>) -> IVec2 {
+	let Some(owner) = owner else { return IVec2::ZERO };
+	match graph.nodes[node].placement {
+		Placement::Relative(offset) => offset,
+		Placement::Chain => IVec2::new(-CHAIN_WIDTH, 0),
+		Placement::Stack(gap) => IVec2::new(0, graph.nodes[owner as usize].height() + 1 + gap as i32),
+		Placement::Absolute(_) => IVec2::ZERO,
+	}
+}
+
+/// Fits each node's upstream together, from the deepest nodes up. The nodes it owns are taken from the top as stored:
+/// each is moved left of it if it would cover it, or below it when it feeds a layer's stack input, then down past the
+/// outlines of those taken before it. A link in a chain is never moved, so a chain stays whole and gives way only at
+/// its end, and a waypoint stays where it is put.
+fn elongations(graph: &Graph, forest: &Forest, offsets: &[IVec2]) -> Vec<IVec2> {
+	let node_count = graph.nodes.len();
+	let mut elongations = vec![IVec2::ZERO; node_count];
+	let mut contours: Vec<Option<Contour>> = vec![None; node_count];
+	let chain_links = chain_links(graph, forest, offsets);
+
+	for &node in forest.preorder.iter().rev() {
+		let node = node as usize;
+		let own = own_contour(&graph.nodes[node]);
+		let mut placed = Contour::default();
+
+		let mut children = forest.children[node].clone();
+		children.sort_by_key(|child| (offsets[*child as usize].y, offsets[*child as usize].x));
+
+		for child in children {
+			let child = child as usize;
+			let mut contour = contours[child].take().unwrap_or_default().moved(offsets[child]);
+			let mut elongation = IVec2::ZERO;
+
+			if !graph.nodes[child].waypoint && !chain_links[child] {
+				let feeds_stack = graph.nodes[node].is_layer && forest.owner_inputs[child] == 0;
+				let own_clearance = if graph.nodes[node].waypoint {
+					IVec2::ZERO
+				} else if feeds_stack {
+					IVec2::new(0, contour.clearance_below(&own, VERTICAL_GAP, HORIZONTAL_GAP))
+				} else {
+					IVec2::new(-contour.clearance_left(&own, VERTICAL_GAP, HORIZONTAL_GAP), 0)
+				};
+				contour = contour.moved(own_clearance);
+
+				let sibling_clearance = IVec2::new(0, contour.clearance_below(&placed, VERTICAL_GAP, HORIZONTAL_GAP));
+				contour = contour.moved(sibling_clearance);
+				elongation = own_clearance + sibling_clearance;
+			}
+
+			elongations[child] = elongation;
+			placed = placed.union(contour);
+		}
+
+		contours[node] = Some(placed.union(own));
+	}
+
+	elongations
+}
+
+fn own_contour(node: &Node) -> Contour {
+	let height = if node.is_layer { node.height() + LAYER_BOTTOM_GAP } else { node.height() };
+	if node.waypoint {
+		Contour::default()
+	} else {
+		Contour::rectangle(IVec2::new(node.width as i32, height))
+	}
+}
+
+/// Whether each node sits as a link in a chain, one chain width left of the layer or chain link it feeds through its chain input.
+fn chain_links(graph: &Graph, forest: &Forest, offsets: &[IVec2]) -> Vec<bool> {
+	let mut chain_links = vec![false; graph.nodes.len()];
+
+	// Each owner comes before what it owns, so whether the owner is in a chain is already known
+	for &node in &forest.preorder {
+		let node = node as usize;
+		let Some(owner) = forest.owners[node] else { continue };
+		let owner = owner as usize;
+
+		let feeds_chain_input = forest.owner_inputs[node] == graph.nodes[owner].chain_input();
+		let beside = offsets[node] == IVec2::new(-CHAIN_WIDTH, 0);
+		let owner_in_chain = graph.nodes[owner].is_layer || chain_links[owner];
+		chain_links[node] = graph.nodes[node].chainable && !graph.nodes[node].is_layer && feeds_chain_input && beside && owner_in_chain;
+	}
+
+	chain_links
 }
 
 /// Walks back from each layer through the chain input of each node in turn, while the node it reaches is chainable,
@@ -220,27 +401,6 @@ fn chain_layers(graph: &Graph, inputs: &WiresByNode, readers: &WiresByNode, posi
 	chain_layers
 }
 
-/// Where `node` sits, given the wires reading it and the positions of the readers placed so far.
-fn position(graph: &Graph, node: usize, readers: &[u32], positions: &[IVec2], placed: &[bool]) -> IVec2 {
-	let placed_readers = readers.iter().map(|wire| graph.wires[*wire as usize]).filter(|wire| placed[wire.target as usize]);
-
-	match graph.nodes[node].placement {
-		Placement::Absolute(position) => position,
-		Placement::Relative(offset) => placed_readers.map(|wire| positions[wire.target as usize]).reduce(IVec2::min).unwrap_or(IVec2::ZERO) + offset,
-		Placement::Chain => {
-			let mut chain_readers = placed_readers.filter(|wire| wire.output == 0 && wire.input == graph.nodes[wire.target as usize].chain_input());
-			chain_readers.next().map_or(IVec2::ZERO, |wire| positions[wire.target as usize] - IVec2::new(CHAIN_WIDTH, 0))
-		}
-		Placement::Stack(gap) => {
-			let mut stack_readers = placed_readers.filter(|wire| wire.output == 0);
-			stack_readers.next().map_or(IVec2::ZERO, |wire| {
-				let below = graph.nodes[wire.target as usize].height() + 1 + gap as i32;
-				positions[wire.target as usize] + IVec2::new(0, below)
-			})
-		}
-	}
-}
-
 fn input_port(node: &Node, position: IVec2, input: u32) -> IVec2 {
 	match (node.is_layer, input) {
 		(true, 0) => position + IVec2::new(2, LAYER_HEIGHT),
@@ -270,6 +430,7 @@ mod tests {
 			inputs: 2,
 			outputs: 1,
 			chainable: true,
+			waypoint: false,
 			name_width: 60.,
 			locked: false,
 		}
@@ -332,6 +493,122 @@ mod tests {
 
 		assert_eq!(layout.cyclic.len(), 1);
 		assert_eq!(layout.positions.len(), 2);
+	}
+
+	/// A layer at the top with a chain of two nodes, the far one fed from below by a node three rows tall, and a stacked layer with a chain of its own.
+	fn stack_with_tall_content(tall_node_reader: u32, tall_node_column: i32) -> Graph {
+		Graph {
+			nodes: vec![
+				node(Placement::Absolute(IVec2::new(30, 10)), true),
+				node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0)), false),
+				node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0)), false),
+				Node {
+					rows: 3,
+					..node(Placement::Relative(IVec2::new(tall_node_column, 3)), false)
+				},
+				node(Placement::Relative(IVec2::new(0, LAYER_HEIGHT + 1)), true),
+				node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0)), false),
+			],
+			wires: vec![wire(1, 0, 1), wire(2, 1, 0), wire(3, tall_node_reader, 1), wire(4, 0, 0), wire(5, 4, 1)],
+		}
+	}
+
+	#[test]
+	fn a_stacked_layer_is_drawn_below_the_content_of_the_layer_above() {
+		let graph = stack_with_tall_content(1, 0);
+		let layout = layout(&graph);
+
+		// The tall node covers rows 13 to 16 under the stacked layer's chain, so the stacked layer moves below it
+		assert_eq!(layout.positions[3], IVec2::new(30 - CHAIN_WIDTH, 13));
+		assert_eq!(layout.positions[4], IVec2::new(30, 13 + 4));
+		assert_eq!(layout.elongations[4], IVec2::new(0, 4));
+		assert_eq!(layout.positions[5], layout.positions[4] - IVec2::new(CHAIN_WIDTH, 0));
+	}
+
+	#[test]
+	fn a_stacked_layer_fits_beside_content_further_left() {
+		let graph = stack_with_tall_content(2, 0);
+		let layout = layout(&graph);
+
+		// The tall node hangs below the far end of the chain, which leaves the columns of the stacked layer's chain free
+		assert_eq!(layout.positions[3], IVec2::new(30 - 2 * CHAIN_WIDTH, 13));
+		assert_eq!(layout.elongations[4], IVec2::ZERO);
+	}
+
+	#[test]
+	fn a_chain_is_never_drawn_apart() {
+		let graph = stack_with_tall_content(1, 0);
+		let layout = layout(&graph);
+
+		assert_eq!(layout.elongations[1], IVec2::ZERO);
+		assert_eq!(layout.elongations[2], IVec2::ZERO);
+		assert_eq!(layout.chain_layers, vec![None, Some(0), Some(0), None, None, Some(4)]);
+	}
+
+	#[test]
+	fn a_node_covering_its_reader_is_drawn_left_of_it() {
+		let graph = Graph {
+			nodes: vec![node(Placement::Absolute(IVec2::new(30, 10)), false), node(Placement::Relative(IVec2::new(-2, 1)), false)],
+			wires: vec![wire(1, 0, 1)],
+		};
+		let layout = layout(&graph);
+
+		assert_eq!(layout.positions[1], IVec2::new(30 - 5 - HORIZONTAL_GAP, 11));
+	}
+
+	#[test]
+	fn a_waypoint_takes_no_room_and_stays_where_it_is_put() {
+		let waypoint = Node {
+			waypoint: true,
+			chainable: false,
+			..node(Placement::Relative(IVec2::new(-1, 1)), false)
+		};
+		let graph = Graph {
+			nodes: vec![
+				node(Placement::Absolute(IVec2::new(30, 10)), false),
+				waypoint,
+				node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0)), false),
+			],
+			wires: vec![wire(1, 0, 0), wire(2, 1, 0)],
+		};
+		let layout = layout(&graph);
+
+		assert_eq!(layout.positions[1], IVec2::new(29, 11));
+		assert_eq!(layout.positions[2], IVec2::new(29 - CHAIN_WIDTH, 11));
+	}
+
+	#[test]
+	fn a_shared_node_belongs_to_the_first_reader_reaching_it() {
+		let graph = Graph {
+			nodes: vec![
+				node(Placement::Absolute(IVec2::new(30, 20)), false),
+				node(Placement::Absolute(IVec2::new(30, 10)), false),
+				node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0)), false),
+			],
+			wires: vec![wire(2, 0, 0), wire(2, 1, 0)],
+		};
+		let layout = layout(&graph);
+
+		// The upper reader is the first root walked from
+		assert_eq!(layout.owners[2], Some(1));
+		assert_eq!(layout.positions[2], IVec2::new(30 - CHAIN_WIDTH, 10));
+	}
+
+	#[test]
+	fn a_fitted_layout_stored_as_offsets_needs_no_further_fitting() {
+		let graph = stack_with_tall_content(1, 0);
+		let first = layout(&graph);
+
+		let mut refitted = graph.clone();
+		for (node, data) in refitted.nodes.iter_mut().enumerate() {
+			if let Some(owner) = first.owners[node] {
+				data.placement = Placement::Relative(first.positions[node] - first.positions[owner as usize]);
+			}
+		}
+		let second = layout(&refitted);
+
+		assert_eq!(second.positions, first.positions);
+		assert!(second.elongations.iter().all(|elongation| *elongation == IVec2::ZERO));
 	}
 
 	#[test]

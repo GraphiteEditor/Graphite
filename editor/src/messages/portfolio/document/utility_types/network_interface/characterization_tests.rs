@@ -332,8 +332,8 @@ async fn a_relative_node_follows_its_readers_until_it_loses_the_last_one() {
 	network_interface.node_mut(NodeLocator::new(node, &[])).expect("the node exists").set_node_type(relative);
 	network_interface.invalidate_positions(&[]);
 
-	// The offset applies to the top left corner of the box around both readers
-	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(13, 7)));
+	// The upper reader is the first to reach the node from the top of the graph, so the offset applies to it
+	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(23, 7)));
 
 	network_interface.disconnect_input(&InputConnector::primary_input(upper_reader), &[]);
 	assert!(network_interface.is_relative(&node, &[]), "A node still read by another node should stay relative");
@@ -397,11 +397,11 @@ async fn dragging_a_node_carries_its_upstream_unless_it_is_kept_in_place() {
 	network_interface.create_wire(&OutputConnector::primary_output(source), &InputConnector::primary_input(node), &[]);
 	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![reader]);
 
-	network_interface.shift_selected_nodes(Direction::Down, true, false, &[]);
+	network_interface.shift_selected_nodes(Direction::Down, false, &[]);
 	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(10, 11)), "The node read by the dragged one should follow it");
 	assert_eq!(network_interface.position(&source, &[]), Some(IVec2::new(0, 11)), "Everything upstream should follow too");
 
-	network_interface.shift_selected_nodes(Direction::Down, true, true, &[]);
+	network_interface.shift_selected_nodes(Direction::Down, true, &[]);
 	assert_eq!(network_interface.position(&reader, &[]), Some(IVec2::new(20, 12)));
 	assert_eq!(
 		network_interface.position(&node, &[]),
@@ -428,7 +428,7 @@ async fn moving_a_chain_node_out_of_its_chain_carries_its_upstream() {
 	let [far_before, source_before, outside_before] = [far, source, outside].map(|node_id| network_interface.position(&node_id, &[]).expect("every node has a position"));
 
 	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![near]);
-	network_interface.shift_selected_nodes(Direction::Down, true, false, &[]);
+	network_interface.shift_selected_nodes(Direction::Down, false, &[]);
 
 	assert!(!network_interface.is_chain(&far, &[]), "The chain upstream of a node moved out of it should leave the chain too");
 	for (node_id, before) in [(far, far_before), (source, source_before), (outside, outside_before)] {
@@ -452,8 +452,8 @@ async fn moving_a_chain_node_out_while_keeping_its_upstream_leaves_the_upstream_
 	let [far_before, source_before] = [far, source].map(|node_id| network_interface.position(&node_id, &[]).expect("every node has a position"));
 
 	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![near]);
-	network_interface.shift_selected_nodes(Direction::Down, true, true, &[]);
-	network_interface.shift_selected_nodes(Direction::Down, true, true, &[]);
+	network_interface.shift_selected_nodes(Direction::Down, true, &[]);
+	network_interface.shift_selected_nodes(Direction::Down, true, &[]);
 
 	assert_eq!(
 		network_interface.position(&far, &[]),
@@ -462,14 +462,39 @@ async fn moving_a_chain_node_out_while_keeping_its_upstream_leaves_the_upstream_
 	);
 	assert_eq!(network_interface.position(&source, &[]), Some(source_before));
 
-	network_interface.shift_selected_nodes(Direction::Up, true, true, &[]);
-	network_interface.shift_selected_nodes(Direction::Up, true, true, &[]);
+	network_interface.shift_selected_nodes(Direction::Up, true, &[]);
+	network_interface.shift_selected_nodes(Direction::Up, true, &[]);
 	assert!(
 		network_interface.is_chain(&near, &[]) && network_interface.is_chain(&far, &[]),
 		"Moving the node back should restore the whole chain"
 	);
 
 	assert_invariants(&editor, "after moving a chain node out of its chain while keeping its upstream");
+}
+
+#[tokio::test]
+async fn the_end_of_a_chain_moves_off_it_one_cell_at_a_time() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, near, far, source, _) = layer_with_chain(&mut editor).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	assert!(network_interface.is_chain(&source, &[]), "fixture is wrong");
+	let source_before = network_interface.position(&source, &[]).expect("every node has a position");
+
+	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![source]);
+	network_interface.shift_selected_nodes(Direction::Left, false, &[]);
+
+	assert_eq!(
+		network_interface.position(&source, &[]),
+		Some(source_before - IVec2::X),
+		"The node should move one cell, not snap back into the chain"
+	);
+	assert!(!network_interface.is_chain(&source, &[]));
+	assert!(
+		network_interface.is_chain(&near, &[]) && network_interface.is_chain(&far, &[]),
+		"The rest of the chain should stay whole"
+	);
 }
 
 /// Builds a layer fed by the chain `near <- far <- source` (a generator fixed at the upstream end), with an outside node also wired into the near node's second input.
@@ -1053,7 +1078,7 @@ async fn move_layer_to_stack_builds_the_layer_stack() {
 }
 
 #[tokio::test]
-async fn drag_offsets_do_not_outlive_programmatic_shifts() {
+async fn a_stack_closes_up_over_a_deleted_layer_and_a_nudge_moves_the_rest_one_row() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
@@ -1074,14 +1099,11 @@ async fn drag_offsets_do_not_outlive_programmatic_shifts() {
 	network_interface.move_layer_to_stack(LayerNodeIdentifier::new(second, network_interface), artboard_layer, 1, &[]);
 	network_interface.move_layer_to_stack(LayerNodeIdentifier::new(third, network_interface), artboard_layer, 2, &[]);
 
-	// Making room while inserting into the stack pushes neighbors with drag-offset bookkeeping that must not outlive the operation
-	for node_id in [first, second, third] {
-		assert_eq!(network_interface.drag_offset(&node_id, &[]), 0, "Inserting into a stack should not leave a drag offset on {node_id}");
-	}
+	let second_position = network_interface.position(&second, &[]);
 
-	// Deleting the middle layer collapses the stack upward, which must also leave no offsets behind
+	// Deleting the middle layer leaves the one below stacked where it was
 	network_interface.delete_nodes(vec![second], false, &[]);
-	assert_eq!(network_interface.drag_offset(&third, &[]), 0, "Collapsing the deleted layer's space should not leave a drag offset");
+	assert_eq!(network_interface.position(&third, &[]), second_position, "The layer below a deleted one should take its place");
 
 	// A later nudge must move the survivor by exactly one unit, without replaying any restore toward its pre-collapse position
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![third] }).await;
@@ -1090,7 +1112,7 @@ async fn drag_offsets_do_not_outlive_programmatic_shifts() {
 	editor
 		.handle_message(NodeGraphMessage::ShiftSelectedNodes {
 			direction: Direction::Down,
-			rubber_band: false,
+			dragging: false,
 			glide: false,
 		})
 		.await;
@@ -1098,7 +1120,7 @@ async fn drag_offsets_do_not_outlive_programmatic_shifts() {
 	let after = network_interface.position(&third, &[]).expect("Surviving layer should have a position");
 	assert_eq!(after.y - before.y, 1, "A single nudge should move the layer exactly one unit");
 
-	assert_invariants(&editor, "after stack pushes, a delete collapse, and a nudge");
+	assert_invariants(&editor, "after a delete collapse and a nudge");
 }
 
 #[tokio::test]

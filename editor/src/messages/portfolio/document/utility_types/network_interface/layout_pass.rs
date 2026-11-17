@@ -22,6 +22,28 @@ impl NetworkLayout {
 		Some(self.node_ids[layer as usize])
 	}
 
+	/// The node the node is placed relative to, the first reader reaching it from the roots.
+	pub fn owner(&self, node_id: &NodeId) -> Option<NodeId> {
+		let owner = self.layout.owners[*self.indices.get(node_id)? as usize]?;
+		Some(self.node_ids[owner as usize])
+	}
+
+	/// How far the connection to the node's owner is drawn longer than stored.
+	pub fn elongation(&self, node_id: &NodeId) -> IVec2 {
+		self.indices.get(node_id).map_or(IVec2::ZERO, |index| self.layout.elongations[*index as usize])
+	}
+
+	/// How far the node is drawn from where its stored offsets alone place it, which adds up the elongations of every connection to its root.
+	pub fn drawn_away_from_stored(&self, node_id: &NodeId) -> IVec2 {
+		let mut total = IVec2::ZERO;
+		let mut current = self.indices.get(node_id).copied();
+		while let Some(index) = current {
+			total += self.layout.elongations[index as usize];
+			current = self.layout.owners[index as usize];
+		}
+		total
+	}
+
 	/// How many nodes the layer's chain holds.
 	pub fn chain_length(&self, layer: &NodeId) -> u32 {
 		self.indices.get(layer).map_or(0, |index| self.layout.chain_lengths[*index as usize])
@@ -105,6 +127,7 @@ impl NodeNetworkInterface {
 			},
 		};
 
+		let is_redirect_dot = self.is_redirect_dot(node_id, network_path);
 		Some(Node {
 			placement,
 			is_layer,
@@ -112,7 +135,8 @@ impl NodeNetworkInterface {
 			width: if is_layer { self.layer_width(node_id, network_path).unwrap_or_default() } else { 5 },
 			inputs: self.number_of_displayed_inputs(node_id, network_path) as u32,
 			outputs: self.number_of_outputs(node_id, network_path) as u32,
-			chainable: !self.is_redirect_dot(node_id, network_path) && !self.hidden_primary_output(node_id, network_path),
+			chainable: !is_redirect_dot && !self.hidden_primary_output(node_id, network_path),
+			waypoint: is_redirect_dot,
 			name_width: 0.,
 			locked: self.is_locked(node_id, network_path),
 		})

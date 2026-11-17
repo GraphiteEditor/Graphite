@@ -1331,7 +1331,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 						if let Some(transform_position) = document.network_interface.position(node_id, network_path) {
 							let multiply_position = transform_position + IVec2::new(-7, 1);
 							document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
-							document.network_interface.shift_absolute_node_position(&multiply_node_id, multiply_position, network_path);
+							document.network_interface.shift_node(&multiply_node_id, multiply_position, network_path);
 							document
 								.network_interface
 								.insert_node_between(&multiply_node_id, &InputConnector::node_at_index(*node_id, 2), 0, network_path);
@@ -1530,9 +1530,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			let math_position = document.network_interface.position(node_id, network_path);
 			document.network_interface.insert_node(extend_node_id, extend_template, network_path);
 			if let Some(math_position) = math_position {
-				document
-					.network_interface
-					.shift_absolute_node_position(&extend_node_id, math_position + IVec2::new(-7, 1), network_path);
+				document.network_interface.shift_node(&extend_node_id, math_position + IVec2::new(-7, 1), network_path);
 			}
 			document
 				.network_interface
@@ -1739,7 +1737,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				.set_input(&InputConnector::node_at_index(inverse_tangent_id, 0), NodeInput::node(*node_id, 1), network_path);
 
 			if let Some(position) = document.network_interface.position(node_id, network_path) {
-				document.network_interface.shift_absolute_node_position(&inverse_tangent_id, position + IVec2::new(7, 0), network_path);
+				document.network_interface.shift_node(&inverse_tangent_id, position + IVec2::new(7, 0), network_path);
 			}
 
 			// Move the tangent node's downstream connections from its old single output to the inserted angle conversion
@@ -1852,7 +1850,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		if text_was_in_chain {
 			document.network_interface.force_set_upstream_to_chain(&converter_id, network_path);
 		} else if let Some(text_position) = document.network_interface.position(node_id, network_path) {
-			document.network_interface.shift_absolute_node_position(&converter_id, text_position + IVec2::new(7, 0), network_path);
+			document.network_interface.shift_node(&converter_id, text_position + IVec2::new(7, 0), network_path);
 		}
 	}
 
@@ -2154,9 +2152,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			};
 			let template = definition.default_node_template();
 			document.network_interface.insert_node(new_id, template, network_path);
-			document
-				.network_interface
-				.shift_absolute_node_position(&new_id, base_position + IVec2::new(chain_x_offset, 0), network_path);
+			document.network_interface.shift_node(&new_id, base_position + IVec2::new(chain_x_offset, 0), network_path);
 			chain_x_offset += 7;
 
 			// Splice this node in just before the original downstream input (so each iteration appends to the chain end)
@@ -3227,7 +3223,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Insert the new Merge node into the network
 		document.network_interface.insert_node(merge_node_id, merge_template, network_path);
 		document.network_interface.set_to_node_or_layer(&merge_node_id, network_path, false);
-		document.network_interface.shift_absolute_node_position(&merge_node_id, merge_position, network_path);
+		document.network_interface.shift_node(&merge_node_id, merge_position, network_path);
 
 		// Connect the old 'source' and 'target' inputs to the new Merge node
 		document
@@ -3295,13 +3291,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		// Insert and position nodes
 		document.network_interface.insert_node(count_id, count_template, network_path);
-		document.network_interface.shift_absolute_node_position(&count_id, morph_position + IVec2::new(-21, 2), network_path);
+		document.network_interface.shift_node(&count_id, morph_position + IVec2::new(-21, 2), network_path);
 
 		document.network_interface.insert_node(subtract_id, subtract_template, network_path);
-		document.network_interface.shift_absolute_node_position(&subtract_id, morph_position + IVec2::new(-14, 2), network_path);
+		document.network_interface.shift_node(&subtract_id, morph_position + IVec2::new(-14, 2), network_path);
 
 		document.network_interface.insert_node(divide_id, divide_template, network_path);
-		document.network_interface.shift_absolute_node_position(&divide_id, morph_position + IVec2::new(-7, 1), network_path);
+		document.network_interface.shift_node(&divide_id, morph_position + IVec2::new(-7, 1), network_path);
 
 		// Wire: content source → Count input 0
 		document.network_interface.set_input(&InputConnector::node_at_index(count_id, 0), old_inputs[0].clone(), network_path);
@@ -3385,7 +3381,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			// Position the Transform node to the right of the Arrow node
 			let arrow_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
 			document.network_interface.insert_node(transform_id, transform_template, network_path);
-			document.network_interface.shift_absolute_node_position(&transform_id, arrow_position + IVec2::new(7, 0), network_path);
+			document.network_interface.shift_node(&transform_id, arrow_position + IVec2::new(7, 0), network_path);
 			document.network_interface.insert_node_between(&transform_id, &downstream_input, 0, network_path);
 		}
 	}
@@ -3446,7 +3442,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			// Position the Transform node to the right of the Line node
 			let line_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
 			document.network_interface.insert_node(transform_id, transform_template, network_path);
-			document.network_interface.shift_absolute_node_position(&transform_id, line_position + IVec2::new(7, 0), network_path);
+			document.network_interface.shift_node(&transform_id, line_position + IVec2::new(7, 0), network_path);
 			document.network_interface.insert_node_between(&transform_id, &downstream_input, 0, network_path);
 		}
 	}

@@ -256,13 +256,13 @@ pub enum NodeGraphMessage {
 	/// With `glide`, whatever the shift moves glides to where it lands, rather than jumping there.
 	ShiftSelectedNodes {
 		direction: Direction,
-		rubber_band: bool,
+		dragging: bool,
 		glide: bool,
 	},
 	/// With `glide`, whatever the shift moves glides to where it lands, rather than jumping there.
 	ShiftSelectedNodesByAmount {
 		graph_delta: IVec2,
-		rubber_band: bool,
+		dragging: bool,
 		glide: bool,
 	},
 	TogglePreview {

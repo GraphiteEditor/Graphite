@@ -706,10 +706,6 @@ impl<T> Default for TransientCache<T> {
 }
 
 impl<T> TransientCache<T> {
-	pub(crate) fn is_loaded(&self) -> bool {
-		self.0.borrow().is_some()
-	}
-
 	pub(crate) fn store(&self, value: T) {
 		*self.0.borrow_mut() = Some(value);
 	}
@@ -751,9 +747,6 @@ impl<T> TransientCache<T> {
 #[derive(Debug, Default, Clone)]
 pub struct NodeNetworkTransientMetadata {
 	pub selected_nodes: SelectedNodes,
-	/// Sole dependents of the top of the stacks of all selected nodes. Used to determine which nodes are checked for collision when shifting.
-	/// The LayerOwner is used to determine whether the collided node should be shifted, or the layer that owns it.
-	pub(crate) stack_dependents: TransientCache<HashMap<NodeId, LayerOwner>>,
 	/// Cache for the bounding box around all nodes in node graph space.
 	pub(crate) all_nodes_bounding_box: TransientCache<[DVec2; 2]>,
 	/// Cache for what the imports and exports keep their distance from, unloaded along with `all_nodes_bounding_box`.
@@ -765,8 +758,6 @@ pub struct NodeNetworkTransientMetadata {
 	/// All export connector click targets
 	pub(crate) import_export_ports: TransientCache<Ports>,
 
-	/// Drag-session state: how far each unowned stack dependent has been pushed vertically from its resting position. Cleared when the drag ends.
-	pub(crate) drag_offsets: std::cell::RefCell<HashMap<NodeId, i32>>,
 	/// How far whatever is gliding into the place it just moved to is drawn from that place, which hit tests account for.
 	pub(crate) glide_offsets: std::cell::RefCell<GlideOffsets>,
 }
@@ -851,13 +842,6 @@ pub struct NetworkEdgeDistance {
 	pub exports_to_edge_distance: DVec2,
 	/// The viewport pixel distance between the left edge of the node graph and the imports.
 	pub imports_to_edge_distance: DVec2,
-}
-
-#[derive(Debug, Clone)]
-pub enum LayerOwner {
-	// Used to get the layer that should be shifted when there is a collision.
-	Layer(NodeId),
-	None,
 }
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -1126,7 +1110,7 @@ pub enum LayerPosition {
 	Absolute(IVec2),
 	// A layer is in a Stack when it feeds into the bottom input of a layer. The Y position stores the vertical distance between the layer and its upstream sibling/parent.
 	Stack(u32),
-	// Offset from the top left corner of the bounding box of the positions of the nodes reading this one
+	// Offset from the node it is placed relative to, the first reader reaching it from the roots
 	Relative(IVec2),
 }
 
@@ -1144,16 +1128,13 @@ pub enum NodePosition {
 	Absolute(IVec2),
 	// In a chain the position is based on the number of nodes to the first layer node
 	Chain,
-	// Offset from the top left corner of the bounding box of the positions of the nodes reading this one
+	// Offset from the node it is placed relative to, the first reader reaching it from the roots
 	Relative(IVec2),
 }
 
 /// Cached metadata that should be calculated when creating a node, and should be recalculated when modifying a node property that affects one of the cached fields.
 #[derive(Debug, Default, Clone)]
 pub struct DocumentNodeTransientMetadata {
-	// The click targets are stored as a single struct since it is very rare for only one to be updated, and recomputing all click targets in one function is more efficient than storing them separately.
-	/// All nodes that should be moved when this layer is moved, kept here since only layers own nodes.
-	pub(crate) owned_nodes: TransientCache<HashSet<NodeId>>,
 	/// Width in grid units from the left edge of the layer's thumbnail to its left end, cached since text measurement is slow. Only loaded for layers.
 	pub(crate) layer_width: TransientCache<u32>,
 }

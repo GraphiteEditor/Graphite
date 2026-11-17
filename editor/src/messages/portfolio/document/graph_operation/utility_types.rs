@@ -630,7 +630,7 @@ impl<'a> ModifyInputsContext<'a> {
 					{
 						let node_position = self.network_interface.position(&node_id, &[]).unwrap_or_default();
 						let desired_position = target_position + IVec2::new(-crate::consts::NODE_CHAIN_WIDTH, 2);
-						self.network_interface.shift_absolute_node_position(&node_id, desired_position - node_position, &[]);
+						self.network_interface.shift_node(&node_id, desired_position - node_position, &[]);
 					}
 				}
 
