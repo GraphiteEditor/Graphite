@@ -16,6 +16,8 @@ workspace = true
 [dependencies]
 # Local dependencies
 core-types = { workspace = true }
+graphic-types = { workspace = true }
+raster-kernels = { workspace = true }
 raster-types = { workspace = true, features = ["wgpu"] }
 graphene-application-io = { workspace = true, features = ["wgpu"] }
 rendering = { workspace = true }
@@ -33,3 +35,4 @@ web-sys = { workspace = true }
 vello_gpu = { workspace = true }
 bytemuck = { workspace = true }
 thiserror = { workspace = true }
+half = { workspace = true }
