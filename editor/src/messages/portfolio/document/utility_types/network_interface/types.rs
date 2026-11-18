@@ -755,6 +755,8 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// Where every node is drawn, laid out again on the first read after any write.
 	pub(crate) layout: TransientCache<NetworkLayout>,
+	/// The nodes the user is dragging, whose connections the layout draws as stored.
+	pub(crate) held_nodes: HashSet<NodeId>,
 	/// All export connector click targets
 	pub(crate) import_export_ports: TransientCache<Ports>,
 

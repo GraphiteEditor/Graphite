@@ -83,12 +83,59 @@ impl NodeNetworkInterface {
 		.unwrap_or_default()
 	}
 
+	/// Holds `node_ids` where the user moves them, so the layout draws their connections as stored until they are released.
+	/// Each node starting to be held, and each node it owns, is first stored where it is drawn, so holding moves nothing.
+	pub fn hold_nodes(&mut self, node_ids: HashSet<NodeId>, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else { return };
+		let held_nodes = &network_metadata.transient_metadata.held_nodes;
+		if *held_nodes == node_ids {
+			return;
+		}
+
+		let newly_held: Vec<NodeId> = node_ids.difference(held_nodes).copied().collect();
+		let owned_by_newly_held: Vec<NodeId> = self
+			.with_layout(network_path, |layout| {
+				layout
+					.node_ids
+					.iter()
+					.filter(|node_id| layout.owner(node_id).is_some_and(|owner| newly_held.contains(&owner)))
+					.copied()
+					.collect()
+			})
+			.unwrap_or_default();
+		let drawn_before = self.positions(newly_held.iter().chain(&owned_by_newly_held).copied(), network_path);
+
+		let Some(transient) = self.network_transient_mut(network_path) else { return };
+		transient.held_nodes = node_ids;
+		transient.layout.unload();
+
+		// Each owner comes before the nodes it owns, so it is in place before they are stored from it
+		for (node_id, position) in drawn_before {
+			if self.position(&node_id, network_path) != Some(position) {
+				self.place_at(&node_id, position, network_path);
+			}
+		}
+	}
+
+	pub fn release_held_nodes(&mut self, network_path: &[NodeId]) {
+		self.hold_nodes(HashSet::new(), network_path);
+	}
+
 	fn lay_out(&self, network_path: &[NodeId], revision: u64) -> Option<NetworkLayout> {
 		let network = self.nested_network(network_path)?;
 		let node_ids: Vec<NodeId> = network.nodes.keys().copied().collect();
 		let indices: HashMap<NodeId, u32> = node_ids.iter().enumerate().map(|(index, node_id)| (*node_id, index as u32)).collect();
 
-		let nodes = node_ids.iter().map(|node_id| self.layout_node(node_id, network_path)).collect::<Option<Vec<_>>>()?;
+		let held_nodes = &self.network_metadata(network_path)?.transient_metadata.held_nodes;
+		let nodes = node_ids
+			.iter()
+			.map(|node_id| {
+				Some(Node {
+					held: held_nodes.contains(node_id),
+					..self.layout_node(node_id, network_path)?
+				})
+			})
+			.collect::<Option<Vec<_>>>()?;
 		let wires = node_ids
 			.iter()
 			.enumerate()
@@ -142,6 +189,7 @@ impl NodeNetworkInterface {
 			outputs: self.number_of_outputs(node_id, network_path) as u32,
 			chainable: !is_redirect_dot && !self.hidden_primary_output(node_id, network_path),
 			waypoint: is_redirect_dot,
+			held: false,
 			name_width: 0.,
 			locked: self.is_locked(node_id, network_path),
 		})
