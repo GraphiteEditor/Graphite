@@ -35,17 +35,25 @@ fn parsed_files() -> MutexGuard<'static, Vec<ParsedFile>> {
 pub fn parse_cached(resource: &Resource) -> ParsedLut {
 	let hash = resource.hash();
 
-	// Follows the copy in hand, in case another copy of the same content is the one that goes away
-	if let Some(entry) = parsed_files().iter_mut().find(|entry| entry.hash == hash) {
-		entry.file = resource.downgrade();
-		return entry.parsed.clone();
+	{
+		let mut parsed_files = parsed_files();
+
+		// Follows the copy in hand before pruning, in case another copy of the same content is the one that went away
+		let cached = parsed_files.iter_mut().find(|entry| entry.hash == hash).map(|entry| {
+			entry.file = resource.downgrade();
+			entry.parsed.clone()
+		});
+		parsed_files.retain(|entry| entry.file.is_alive());
+
+		if let Some(parsed) = cached {
+			return parsed;
+		}
 	}
 
 	// Parsed outside the lock, so a large file doesn't hold up the adjustments reading other files
 	let parsed = Lut::parse(resource).map(Arc::new);
 
 	let mut parsed_files = parsed_files();
-	parsed_files.retain(|entry| entry.file.is_alive());
 	if !parsed_files.iter().any(|entry| entry.hash == hash) {
 		parsed_files.push(ParsedFile {
 			hash,
