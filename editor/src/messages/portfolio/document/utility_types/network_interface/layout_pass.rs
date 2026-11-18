@@ -83,16 +83,16 @@ impl NodeNetworkInterface {
 		.unwrap_or_default()
 	}
 
-	/// Holds `node_ids` where the user moves them, so the layout draws their connections as stored until they are released.
+	/// Also holds `node_ids` where the user moves them, so the layout draws their connections as stored until they are released.
 	/// Each node starting to be held, and each node it owns, is first stored where it is drawn, so holding moves nothing.
 	pub fn hold_nodes(&mut self, node_ids: HashSet<NodeId>, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata(network_path) else { return };
 		let held_nodes = &network_metadata.transient_metadata.held_nodes;
-		if *held_nodes == node_ids {
+		let newly_held: Vec<NodeId> = node_ids.difference(held_nodes).copied().collect();
+		if newly_held.is_empty() {
 			return;
 		}
 
-		let newly_held: Vec<NodeId> = node_ids.difference(held_nodes).copied().collect();
 		let owned_by_newly_held: Vec<NodeId> = self
 			.with_layout(network_path, |layout| {
 				layout
@@ -106,7 +106,7 @@ impl NodeNetworkInterface {
 		let drawn_before = self.positions(newly_held.iter().chain(&owned_by_newly_held).copied(), network_path);
 
 		let Some(transient) = self.network_transient_mut(network_path) else { return };
-		transient.held_nodes = node_ids;
+		transient.held_nodes.extend(newly_held);
 		transient.layout.unload();
 
 		// Each owner comes before the nodes it owns, so it is in place before they are stored from it
@@ -118,7 +118,17 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn release_held_nodes(&mut self, network_path: &[NodeId]) {
-		self.hold_nodes(HashSet::new(), network_path);
+		let Some(transient) = self.network_transient_mut(network_path) else { return };
+		if !transient.held_nodes.is_empty() {
+			transient.held_nodes.clear();
+			transient.layout.unload();
+		}
+	}
+
+	/// Whether the user is moving any nodes in the network.
+	pub(crate) fn holds_nodes(&self, network_path: &[NodeId]) -> bool {
+		self.network_metadata(network_path)
+			.is_some_and(|network_metadata| !network_metadata.transient_metadata.held_nodes.is_empty())
 	}
 
 	fn lay_out(&self, network_path: &[NodeId], revision: u64) -> Option<NetworkLayout> {

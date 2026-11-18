@@ -487,11 +487,36 @@ impl NodeNetworkInterface {
 		let mut shifted = HashSet::new();
 		for node_id in self.nodes_to_shift(node_ids, network_path) {
 			// A stack keeps its layers aligned, so sideways it moves as a whole from its top layer
-			let node_id = if shift.x != 0 { self.stack_top(node_id, network_path) } else { node_id };
-			if shifted.insert(node_id) {
-				self.shift_node(&node_id, shift, network_path);
+			let moved_node_id = match shift {
+				IVec2 { x: 0, y: -1 } => self.lowest_layer_with_room_above(node_id, network_path),
+				IVec2 { x: 0, .. } => node_id,
+				_ => self.stack_top(node_id, network_path),
+			};
+			if !shifted.insert(moved_node_id) {
+				continue;
 			}
+
+			// A layer moved up in place of the dragged one is held along with it, so it keeps where the drag puts it
+			if moved_node_id != node_id && self.holds_nodes(network_path) {
+				self.hold_nodes([moved_node_id].into(), network_path);
+			}
+			self.shift_node(&moved_node_id, shift, network_path);
 		}
+	}
+
+	/// The first layer from `node_id` up its stack with room to move up before closing up under the layer above it,
+	/// or the top layer when the stack is closed up all the way.
+	fn lowest_layer_with_room_above(&self, node_id: NodeId, network_path: &[NodeId]) -> NodeId {
+		let mut layer = node_id;
+		let mut visited = HashSet::new();
+		while visited.insert(layer)
+			&& let Some(above) = self.layer_above(layer, network_path)
+			&& let (Some(position), Some(above_position)) = (self.position(&layer, network_path), self.position(&above, network_path))
+			&& position.y - above_position.y <= STACK_VERTICAL_GAP
+		{
+			layer = above;
+		}
+		layer
 	}
 
 	/// The nodes a shift should move on their own, leaving out each one placed relative to another node being moved,
@@ -520,16 +545,21 @@ impl NodeNetworkInterface {
 	fn stack_top(&self, node_id: NodeId, network_path: &[NodeId]) -> NodeId {
 		let mut top = node_id;
 		let mut visited = HashSet::new();
-		while self.is_stack(&top, network_path) && visited.insert(top) {
-			let reader = self
-				.with_outward_wires(network_path, |outward_wires| {
-					outward_wires.get(&OutputConnector::primary_output(top)).and_then(|readers| readers.first()?.node_id())
-				})
-				.flatten();
-			let Some(reader) = reader else { break };
-			top = reader;
+		while visited.insert(top)
+			&& let Some(above) = self.layer_above(top, network_path)
+		{
+			top = above;
 		}
 		top
+	}
+
+	/// The layer `node_id` is stacked under, if it is stacked.
+	fn layer_above(&self, node_id: NodeId, network_path: &[NodeId]) -> Option<NodeId> {
+		if !self.is_stack(&node_id, network_path) {
+			return None;
+		}
+		self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(node_id))?.first()?.node_id())
+			.flatten()
 	}
 
 	/// Moves a node by `shift` from where it is drawn, carrying everything placed relative to it.
