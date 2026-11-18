@@ -3,6 +3,7 @@ use super::history::HistoryMessage;
 use super::persistent_state::PersistentStateMessage;
 use super::sync::SyncMessage;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::prelude::*;
 use document_container::AnyContainer;
 use std::path::PathBuf;
@@ -155,6 +156,11 @@ pub enum PortfolioMessage {
 		bounds: ExportBounds,
 		artboard_name: Option<String>,
 		artboard_count: usize,
+	},
+	RenderOverlays {
+		#[serde(skip, default = "OverlayContext::default")]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
+		context: OverlayContext,
 	},
 	SaveRasterizedExport {
 		name: String,

@@ -105,20 +105,34 @@ impl App {
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		std::thread::spawn(move || {
 			let mut update = false;
+			let mut frame_in_flight = false;
 			loop {
 				if update {
 					node_runtime.update();
 				}
 				let texture = async_runtime.block_on(node_runtime.run());
+				frame_in_flight |= texture.is_some();
 				rendering_app_event_scheduler.schedule(AppEvent::ViewportTexture(texture));
 
-				let first = start_render_receiver.recv_timeout(Duration::from_millis(100)).unwrap_or(RuntimeCommand::Update);
 				update = false;
-				for reason in std::iter::once(first).chain(start_render_receiver.try_iter()) {
-					match reason {
-						RuntimeCommand::Update => update = true,
-						RuntimeCommand::Run => {}
-						RuntimeCommand::Exit => return,
+				let mut run = false;
+				while !run {
+					let first = start_render_receiver.recv_timeout(Duration::from_millis(100)).unwrap_or(RuntimeCommand::Update);
+					for command in std::iter::once(first).chain(start_render_receiver.try_iter()) {
+						match command {
+							RuntimeCommand::Update => {
+								frame_in_flight = false;
+								update = true;
+								run = true;
+							}
+							RuntimeCommand::RequestQueued if !frame_in_flight => {
+								update = true;
+								run = true;
+							}
+							RuntimeCommand::RequestQueued => {}
+							RuntimeCommand::Run => run = true,
+							RuntimeCommand::Exit => return,
+						}
 					}
 				}
 			}
@@ -319,13 +333,8 @@ impl App {
 			DesktopFrontendMessage::WindowUpdateDirectInput { enabled } => {
 				self.input_state.set_direct_input(enabled);
 			}
-			DesktopFrontendMessage::UpdateOverlays(scene) => {
-				if let Some(render_state) = &mut self.render_state {
-					render_state.set_overlays_scene(*scene);
-				}
-				if let Some(window) = &self.window {
-					window.request_redraw();
-				}
+			DesktopFrontendMessage::WakeNodeRuntime => {
+				let _ = self.runtime_command_sender.send(RuntimeCommand::RequestQueued);
 			}
 			DesktopFrontendMessage::PersistenceWriteState { state } => {
 				persist::write_state(state);
@@ -711,6 +720,7 @@ impl ApplicationHandler for App {
 
 enum RuntimeCommand {
 	Update,
+	RequestQueued,
 	Run,
 	Exit,
 }

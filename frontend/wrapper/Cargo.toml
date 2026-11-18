@@ -11,10 +11,9 @@ publish.workspace = true
 readme = "./README.md"
 
 [features]
-default = ["gpu", "web"]
+default = ["web"]
 web = ["editor", "editor?/wasm"]
 editor = ["dep:editor", "dep:graphene-std", "dep:graph-craft", "dep:spin", "dep:wgpu"]
-gpu = ["editor?/gpu"]
 native = []
 
 [lib]

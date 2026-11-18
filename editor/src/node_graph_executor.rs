@@ -210,6 +210,12 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
+	pub fn submit_overlays(&self, context: crate::messages::portfolio::document::overlays::utility_types::OverlayContext) {
+		if let Err(error) = self.sender.send(GraphRuntimeRequest::RenderOverlays(context)) {
+			log::error!("Failed to send the overlays: {error}");
+		}
+	}
+
 	pub fn submit_inspect_context_overrides(&mut self, overrides: ContextOverrides) {
 		self.inspect_context_overrides = overrides;
 		let Some(observation) = self.data_panel_observation() else { return };
@@ -1092,7 +1098,6 @@ impl NodeGraphExecutor {
 					responses.add(FrontendMessage::TriggerExportImage { svg, name, file_type, size });
 				}
 			}
-			#[cfg(feature = "gpu")]
 			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Buffer { data, width, height },
 				..
