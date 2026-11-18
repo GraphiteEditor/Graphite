@@ -618,7 +618,7 @@ impl<T: TableItemLayout> TableItemLayout for Item<T> {
 			}
 		}
 
-		let attribute_keys: Vec<String> = self.attributes().keys().map(str::to_string).collect();
+		let attribute_keys: Vec<String> = self.attributes().keys().filter(|key| !key.starts_with(INTERNAL_ATTRIBUTE_PREFIX)).map(str::to_string).collect();
 
 		// A single element, so no leading ID column, unlike the `List` table
 		let saved_gradient_settings = data.gradient_settings;

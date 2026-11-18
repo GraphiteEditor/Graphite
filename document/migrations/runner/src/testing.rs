@@ -3,9 +3,10 @@
 
 use crate::node::{apply_migration, needs_whole_states, rewrite_history};
 use crate::{DeclarationTable, MigrationBlobs, RunnerError, references, registry_at};
-use document_graph_storage::attributes::attr::node::ui::REFERENCE;
+use document_graph_storage::attributes::attr::node::ui::{DISPLAY_NAME, IS_LAYER, POSITION, REFERENCE};
 use document_graph_storage::{
-	Delta, ExportSlot, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ROOT_NETWORK, Registry, RegistryDelta, Session, TimeStamp, UserId, apply_retired_op,
+	AttributeDelta, Delta, ExportSlot, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Position, ROOT_NETWORK, Registry, RegistryDelta, Session, TimeStamp, UserId, Value,
+	apply_retired_op, to_value,
 };
 use migration_core::{Declaration, DeclarationResolver, MigrationHost, NodeMigration, decl, implements, literal, registered_migrations};
 use std::collections::HashSet;
@@ -138,6 +139,8 @@ pub struct SourceContract {
 	pub literal: fn(&mut Random, usize) -> NodeInput,
 	/// Whether a slot may read an output of another node of the source declaration.
 	pub reads_own_output: fn(usize) -> bool,
+	/// Display names, besides a custom one, that generated histories give nodes, such as a default the migration clears.
+	pub display_names: &'static [&'static str],
 }
 
 impl SourceContract {
@@ -146,6 +149,7 @@ impl SourceContract {
 			input_count,
 			literal,
 			reads_own_output: |_| true,
+			display_names: &[],
 		}
 	}
 }
@@ -276,11 +280,36 @@ impl Generator<'_> {
 		self.commit_interaction(ops);
 	}
 
+	/// A name, position, or layer flag, written or deleted.
+	fn attribute(&mut self) -> AttributeDelta {
+		let (key, value) = match self.random.below(3) {
+			0 => {
+				let names = self.contract.display_names;
+				let name = match self.random.below(names.len() + 2) {
+					index if index < names.len() => Some(names[index]),
+					index if index == names.len() => Some("Renamed"),
+					_ => None,
+				};
+				(DISPLAY_NAME, name.map(|name| Value::Str(name.to_string())))
+			}
+			1 => {
+				let position = match self.random.below(3) {
+					0 => Position::Chain,
+					_ => Position::Absolute([self.random.below(20) as i32, self.random.below(20) as i32]),
+				};
+				(POSITION, Some(to_value(&position).expect("positions serialize")))
+			}
+			_ => (IS_LAYER, (self.random.below(2) == 0).then_some(Value::Bool(true))),
+		};
+
+		AttributeDelta { key: key.to_string(), value }
+	}
+
 	fn step(&mut self) {
 		let nodes = self.live_nodes();
 		let root_nodes = self.live_nodes_in(ROOT_NETWORK);
 
-		match self.random.below(11) {
+		match self.random.below(13) {
 			0..=3 => {
 				let (declaration, input_count) = if self.random.below(3) == 0 {
 					(self.source, self.contract.input_count)
@@ -334,6 +363,11 @@ impl Generator<'_> {
 			10 if self.undoable > 0 => {
 				self.session.undo().expect("an interaction is left to undo");
 				self.undoable -= 1;
+			}
+			11 | 12 if !nodes.is_empty() => {
+				let id = self.random.pick(&nodes);
+				let delta = self.attribute();
+				self.commit(RegistryDelta::ChangeNodeAttribute { id, delta });
 			}
 			_ => {}
 		}

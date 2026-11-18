@@ -40,6 +40,8 @@ pub enum RunnerError {
 	DuplicateAddedNode { anchor: NodeId, declaration: Declaration, key: String },
 	#[error("added node {0:?} already exists")]
 	AddedNodeExists(NodeId),
+	#[error("node {anchor:?} writes attributes of {node:?}, which is neither it nor a node it adds")]
+	AttributesOutsideRegion { anchor: NodeId, node: NodeId },
 	#[error("{0:?} is rewired by one anchor while its own migration replaces or removes it")]
 	ConflictingSlot(InputConnector),
 	#[error("{0:?} does not exist in the migrated state")]

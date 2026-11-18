@@ -1,9 +1,10 @@
 use document_graph_storage::attr::node::VISIBLE;
+use document_graph_storage::attr::node::ui::DISPLAY_NAME;
 use graphene_std::Color;
 use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::Gradient;
-use migration_core::{Compiler, Inputs, MigrationError, NewNode, Node, NodeInput, Target, Upstream, decl, literal, literal_of, migration};
+use migration_core::{Attributes, Compiler, Inputs, MigrationError, NewNode, Node, NodeInput, Target, Upstream, decl, literal, literal_of, migration};
 use serde::{Deserialize, Serialize};
 
 const CONTENT: usize = 1;
@@ -29,10 +30,22 @@ fn number(input: &NodeInput) -> Option<f64> {
 /// Repeat on Points overwrites. Content that doesn't compile takes Flatten Graphic, which can't make that state any worse. A hidden node only passes
 /// its points through, so it needs nothing past the repeat, and its unused scale and rotation are dropped.
 #[migration("core_types::vector::CopyToPointsNode"@1 => "transform_nodes::transform_nodes::VaryRotationsNode"@2)]
-pub fn vary_nodes_from_copy_to_points(node: &Node, compiler: Option<&dyn Compiler>, inputs: &mut Inputs, upstream: &mut Upstream, target: &mut Target) -> Result<(), MigrationError> {
+pub fn vary_nodes_from_copy_to_points(
+	node: &Node,
+	compiler: Option<&dyn Compiler>,
+	inputs: &mut Inputs,
+	upstream: &mut Upstream,
+	target: &mut Target,
+	attributes: &mut Attributes,
+) -> Result<(), MigrationError> {
 	let slots: Vec<NodeInput> = node.inputs().iter().map(|slot| slot.input.clone()).collect();
 	let [points, content, scale_min, scale_max, scale_bias, scale_seed, rotation, rotation_seed] =
 		<[NodeInput; 8]>::try_from(slots).map_err(|_| MigrationError::invariant("Copy to Points has eight inputs"))?;
+
+	// A stored default name would misname the new node
+	if node.attributes().get_typed::<String>(DISPLAY_NAME).as_deref() == Some("Copy to Points") {
+		attributes.remove(node.id(), DISPLAY_NAME);
+	}
 
 	let repeat = decl!("repeat_nodes::repeat_nodes::RepeatOnPointsNode"@1);
 	let unset = || literal(Tagged::Bool(false));
@@ -170,6 +183,8 @@ fn bias_keeping_average_scale(bias: f64) -> f64 {
 mod tests {
 	use super::*;
 	use crate::CompilerHost;
+	use document_graph_storage::attr::node::ui::POSITION;
+	use document_graph_storage::{NodeId, Position, TimeStamp, Value, to_value};
 	use migration_core::Declaration;
 	use migration_runner::testing::{Fixture, Random, SourceContract, check_commutation_with, check_undo_with};
 
@@ -184,10 +199,13 @@ mod tests {
 	}
 
 	fn contract() -> SourceContract {
-		SourceContract::new(8, |random: &mut Random, slot| match slot {
-			2 | 3 | 4 | 6 => literal(Tagged::Number(random.below(3) as f64)),
-			_ => literal(Tagged::Integer(random.below(3) as i64)),
-		})
+		SourceContract {
+			display_names: &["Copy to Points"],
+			..SourceContract::new(8, |random: &mut Random, slot| match slot {
+				2 | 3 | 4 | 6 => literal(Tagged::Number(random.below(3) as f64)),
+				_ => literal(Tagged::Integer(random.below(3) as i64)),
+			})
+		}
 	}
 
 	fn star_inputs() -> Vec<NodeInput> {
@@ -260,6 +278,48 @@ mod tests {
 		assert_eq!(fixture.declaration_of(&migrated, rotations), Some(VARY_ROTATIONS));
 		assert_eq!(number(&fixture.inputs(&migrated, rotations)[1]), Some(-45.));
 		assert_eq!(number(&fixture.inputs(&migrated, rotations)[2]), Some(45.));
+	}
+
+	#[test]
+	fn the_default_name_is_cleared() {
+		let mut fixture = Fixture::new(&VaryNodesFromCopyToPoints);
+		let star = fixture.add(STAR, star_inputs());
+		let copies = fixture.add(COPY_TO_POINTS, inputs(NodeInput::Node { id: star, index: 0 }, 2., 90.));
+		let name = Value::Str("Copy to Points".to_string());
+		fixture.registry.node_instances.get_mut(&copies).unwrap().attributes_mut().set(DISPLAY_NAME, name, TimeStamp::ORIGIN);
+
+		let migrated = fixture.migrate_with(&VaryNodesFromCopyToPoints, Some(&host())).unwrap();
+
+		assert!(migrated.node_instances[&copies].attributes().get_typed::<String>(DISPLAY_NAME).is_none());
+	}
+
+	/// Matches the layout the legacy migration gives a star copied at a scale of 2 with random rotations spanning 90°.
+	#[test]
+	fn stages_lead_up_to_a_placed_node_in_a_row() {
+		let mut fixture = Fixture::new(&VaryNodesFromCopyToPoints);
+		let star = fixture.add(STAR, star_inputs());
+		let copies = fixture.add(COPY_TO_POINTS, inputs(NodeInput::Node { id: star, index: 0 }, 2., 90.));
+		let position = to_value(&Position::Absolute([20, 10])).unwrap();
+		fixture.registry.node_instances.get_mut(&copies).unwrap().attributes_mut().set(POSITION, position, TimeStamp::ORIGIN);
+
+		let migrated = fixture.migrate_with(&VaryNodesFromCopyToPoints, Some(&host())).unwrap();
+		let position_of = |node: NodeId| migrated.node_instances[&node].attributes().get_typed::<Position>(POSITION);
+
+		// Walk back from the anchor through each stage's points
+		let mut stages = Vec::new();
+		let mut stage = copies;
+		while let NodeInput::Node { id, .. } = fixture.inputs(&migrated, stage)[0]
+			&& id != star
+		{
+			stages.insert(0, position_of(id));
+			stage = id;
+		}
+		let NodeInput::Node { id: group, .. } = fixture.inputs(&migrated, stage)[1] else {
+			panic!("the repeat reads the group")
+		};
+
+		assert_eq!(stages, [-1, 6, 13].map(|x| Some(Position::Absolute([x, 10]))));
+		assert_eq!(position_of(group), Some(Position::Absolute([-8, 13])));
 	}
 
 	#[test]
