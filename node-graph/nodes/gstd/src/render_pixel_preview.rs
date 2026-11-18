@@ -8,11 +8,11 @@ use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use vector_types::vector::style::RenderMode;
 use wgpu_executor::{WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), version(2))]
 fn render_pixel_preview(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
-	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: impl Node<Context<'static>, Output = Item<WgpuPipelineCache>>,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
+	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: impl Node<Context<'static>, Output = Item<WgpuPipelineCache>>,
 ) -> Result<Item<RenderOutput>, Interrupt> {
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()).cloned() else {
 		log::error!("invalid render params for pixel preview");

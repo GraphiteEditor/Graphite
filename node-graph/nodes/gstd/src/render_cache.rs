@@ -317,11 +317,11 @@ fn split_oversized_region(region: RenderRegion, max_region_size: u32) -> Vec<Ren
 	result
 }
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), version(2))]
 fn render_output_cache(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
-	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: impl Node<Context<'static>, Output = Item<WgpuExecutor>>,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
+	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: impl Node<Context<'static>, Output = Item<WgpuExecutor>>,
 	#[data] tile_cache: TileCache,
 ) -> Poll<Item<RenderOutput>> {
 	let footprint = ctx.footprint();

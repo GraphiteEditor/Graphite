@@ -55,7 +55,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	// Separate data fields from regular fields
 	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = fields_iter.partition(|f| f.is_data_field);
-	// The primary's position among the regular fields, which `#[scope]` fields may precede (`#[data]` fields are already partitioned out)
+	// The primary's position among the regular fields, which is 0 unless the node has no parameters, since validation keeps environment fields after them
 	let primary_regular_index = regular_fields.iter().position(|field| !field.is_environment());
 
 	// Extract function generics used by data fields

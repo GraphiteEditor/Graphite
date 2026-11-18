@@ -16,6 +16,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_element_wise,
 		validate_ranked_inputs,
 		validate_async,
+		validate_non_parameters_trail,
 	];
 
 	for validator in validators {
@@ -460,6 +461,26 @@ fn validate_async(parsed: &ParsedNodeFn) {
 	}
 }
 
+/// The arguments that aren't parameters, which are `#[data]` state and the inputs the compiler fills in, go after the parameters.
+/// That keeps the primary input at index 0, where the editor's chain flow and other nodes feeding the primary input expect it.
+fn validate_non_parameters_trail(parsed: &ParsedNodeFn) {
+	if let Some((span, message)) = non_parameter_order_violation(parsed) {
+		emit_error!(span, "{}", message);
+	}
+}
+
+fn non_parameter_order_violation(parsed: &ParsedNodeFn) -> Option<(proc_macro2::Span, String)> {
+	let non_parameter = parsed.fields.iter().find(|field| field.is_environment())?;
+	let parameter = parsed.fields.iter().skip_while(|field| !field.is_environment()).find(|field| !field.is_environment())?;
+
+	let (parameter, non_parameter) = (&parameter.pat_ident, &non_parameter.pat_ident.ident);
+	let message = format!(
+		"The parameter `{}` comes after `{non_parameter}`, which isn't a parameter. Move `{non_parameter}` after the parameters: `#[data]` state and the inputs the compiler fills in (`#[scope]`, `#[source_id]`, and `#[node_path]`) go last, so the primary input is always the node's first input, which is the one the editor's chain flow feeds.",
+		parameter.ident
+	);
+	Some((parameter.span(), message))
+}
+
 fn validate_node_implementation(impl_: &Implementation, input_type: &Type, output_type: &Type, fn_generics: &[GenericParam]) {
 	if contains_generic_param(&impl_.input, fn_generics) || contains_generic_param(&impl_.output, fn_generics) {
 		emit_error!(
@@ -662,6 +683,48 @@ mod tests {
 			),
 		);
 		assert_eq!(data_field_messages, Vec::<String>::new());
+	}
+
+	fn order_violation(input: TokenStream) -> Option<String> {
+		let parsed = parse_node_fn(quote::quote!(category("Test")), input).expect("The test node fn should parse");
+		non_parameter_order_violation(&parsed).map(|(_, message)| message)
+	}
+
+	#[test]
+	fn a_parameter_after_a_non_parameter_is_rejected() {
+		let primary = order_violation(quote::quote!(
+			fn render(_: impl Ctx, #[scope("executor")] executor: Item<f64>, data: Item<f64>) -> Item<f64> {
+				data
+			}
+		));
+		let primary = primary.expect("the scope input before the primary should be rejected");
+		assert!(primary.contains("The parameter `data` comes after `executor`"), "{primary}");
+
+		let secondary = order_violation(quote::quote!(
+			fn render(_: impl Ctx, data: Item<f64>, #[data] cache: u64, opacity: Item<f64>) -> Item<f64> {
+				data
+			}
+		));
+		let secondary = secondary.expect("the data field before a secondary parameter should be rejected");
+		assert!(secondary.contains("The parameter `opacity` comes after `cache`"), "{secondary}");
+	}
+
+	#[test]
+	fn non_parameters_after_the_parameters_pass() {
+		let trailing = order_violation(quote::quote!(
+			fn render(_: impl Ctx, data: Item<f64>, #[scope("executor")] executor: Item<f64>, #[data] cache: u64) -> Item<f64> {
+				data
+			}
+		));
+		assert_eq!(trailing, None);
+
+		// A node with only non-parameters, like a scope provider, has no primary input to keep first
+		let only_non_parameters = order_violation(quote::quote!(
+			fn executor(_: impl Ctx, #[scope("application-io")] application_io: Item<f64>, #[data] cache: u64) -> Item<f64> {
+				application_io
+			}
+		));
+		assert_eq!(only_non_parameters, None);
 	}
 
 	fn row_count_violations(input: TokenStream) -> Vec<String> {

@@ -278,21 +278,21 @@ fn application_io(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item
 #[error("Resource {0} was not found")]
 pub struct ResourceError(ResourceHash);
 
-#[node_macro::node(category(""), placeholder = pending_stored_resource)]
+#[node_macro::node(category(""), version(2), placeholder = pending_stored_resource)]
 async fn resource(
 	_: impl Ctx,
+	/// The content hash identifying which stored resource to load.
+	hash: Item<ResourceHash>,
 	/// The scope-provided application IO giving access to the platform's resource storage.
 	#[scope(application_io::IDENTIFIER)]
 	application_io: Item<Arc<PlatformApplicationIo>>,
-	/// The content hash identifying which stored resource to load.
-	hash: Item<ResourceHash>,
 ) -> Result<Item<Resource>, ResourceError> {
 	let hash = hash.into_element();
 	let resource = application_io.element().load_resource(hash).await.ok_or(ResourceError(hash))?;
 	Ok(Item::new_from_element(resource))
 }
 
-fn pending_stored_resource(_application_io: &Item<Arc<PlatformApplicationIo>>, _hash: &Item<ResourceHash>) -> Item<Resource> {
+fn pending_stored_resource(_hash: &Item<ResourceHash>, _application_io: &Item<Arc<PlatformApplicationIo>>) -> Item<Resource> {
 	Item::new_from_element(Resource::empty())
 }
 
