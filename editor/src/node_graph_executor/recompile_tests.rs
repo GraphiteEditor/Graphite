@@ -11,7 +11,7 @@ async fn compile_and_run(editor: &mut EditorTestUtils) {
 	let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
 	let document = documents.get_mut(&document_id).unwrap();
 	executor
-		.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO)
+		.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO, None)
 		.unwrap();
 	editor.runtime.update();
 	editor.runtime.run().await;

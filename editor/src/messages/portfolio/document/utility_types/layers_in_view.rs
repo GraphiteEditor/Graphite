@@ -2,8 +2,8 @@ use crate::messages::prelude::*;
 use graph_craft::document::NodeId;
 use std::collections::{HashMap, HashSet};
 
-/// The layers the frontend shows in view, as rows of the Layers panel and as nodes in the node graph, which are the only ones it's sent the thumbnails of.
-/// The latest thumbnail of every layer waits here for whenever the layer comes into view.
+/// The layers in view in the Layers panel and the node graph, which the graph runtime renders thumbnails for.
+/// The latest thumbnail of each waits here, and goes to the frontend while its layer has a row in view in the Layers panel.
 #[derive(Debug, Clone, Default)]
 pub struct LayersInView {
 	/// The layers with a row in view in the Layers panel, which is also sent their details.
@@ -21,6 +21,11 @@ impl LayersInView {
 		&self.layers_panel
 	}
 
+	#[cfg(test)]
+	pub fn node_graph(&self) -> &HashSet<NodeId> {
+		&self.node_graph
+	}
+
 	/// The layers in view in either the Layers panel or the node graph.
 	pub fn all_in_view(&self) -> HashSet<NodeId> {
 		self.layers_panel.union(&self.node_graph).copied().collect()
@@ -29,27 +34,26 @@ impl LayersInView {
 	/// Sets the layers with a row in view in the Layers panel, sending the thumbnails it lacks for them.
 	pub fn set_layers_panel(&mut self, layers: HashSet<NodeId>, responses: &mut VecDeque<Message>) {
 		self.layers_panel = layers;
-		self.send_thumbnails_in_view(responses);
+		self.send_thumbnails_in_layers_panel(responses);
 		responses.add(PortfolioMessage::SubmitThumbnailsInView);
 	}
 
-	/// Sets the nodes in view in the node graph, sending the thumbnails it lacks for those that are layers.
+	/// Sets the nodes in view in the node graph, which draws the thumbnails of those that are layers itself.
 	pub fn set_node_graph(&mut self, nodes: HashSet<NodeId>, responses: &mut VecDeque<Message>) {
 		self.node_graph = nodes;
-		self.send_thumbnails_in_view(responses);
 		responses.add(PortfolioMessage::SubmitThumbnailsInView);
 	}
 
 	pub fn thumbnail_layer(message: &FrontendMessage) -> Option<NodeId> {
 		match message {
-			FrontendMessage::UpdateNodeThumbnailCanvases { id, .. } | FrontendMessage::UpdateNodeThumbnailPixels { id, .. } => Some(*id),
+			FrontendMessage::UpdateNodeThumbnailCanvas { id, .. } | FrontendMessage::UpdateNodeThumbnailPixels { id, .. } => Some(*id),
 			_ => None,
 		}
 	}
 
-	/// Keeps the message with a layer's newly rendered thumbnail, sending it to the frontend only if the layer is in view.
+	/// Keeps the message with a layer's newly rendered thumbnail, sending it to the frontend only if the layer is in view in the Layers panel.
 	pub fn receive_thumbnail(&mut self, layer: NodeId, thumbnail: FrontendMessage, responses: &mut VecDeque<Message>) {
-		if self.in_view(&layer) {
+		if self.layers_panel.contains(&layer) {
 			responses.add(thumbnail.clone());
 			self.thumbnails_sent.insert(layer);
 		} else {
@@ -79,13 +83,9 @@ impl LayersInView {
 		}
 	}
 
-	fn in_view(&self, layer: &NodeId) -> bool {
-		self.layers_panel.contains(layer) || self.node_graph.contains(layer)
-	}
-
 	// O(layers in view)
-	fn send_thumbnails_in_view(&mut self, responses: &mut VecDeque<Message>) {
-		for &layer in self.layers_panel.iter().chain(&self.node_graph) {
+	fn send_thumbnails_in_layers_panel(&mut self, responses: &mut VecDeque<Message>) {
+		for &layer in &self.layers_panel {
 			if self.thumbnails_sent.contains(&layer) {
 				continue;
 			}
@@ -136,8 +136,20 @@ mod tests {
 		assert_eq!(thumbnails_sent(responses), vec![(layer, "latest".to_string())], "coming into view, only the latest thumbnail is sent");
 
 		let mut responses = VecDeque::new();
-		layers_in_view.set_node_graph(HashSet::from([layer]), &mut responses);
+		layers_in_view.set_layers_panel(HashSet::from([layer]), &mut responses);
 		assert!(thumbnails_sent(responses).is_empty(), "a thumbnail the frontend already has isn't sent again");
+	}
+
+	#[test]
+	fn a_layer_in_view_only_in_the_node_graph_has_its_thumbnail_rendered_but_not_sent() {
+		let layer = NodeId(1);
+		let mut layers_in_view = LayersInView::default();
+
+		let mut responses = VecDeque::new();
+		layers_in_view.set_node_graph(HashSet::from([layer]), &mut responses);
+		layers_in_view.receive_thumbnail(layer, thumbnail(layer, "drawn by the graph"), &mut responses);
+		assert!(layers_in_view.all_in_view().contains(&layer));
+		assert!(thumbnails_sent(responses).is_empty(), "the node graph draws its thumbnails itself");
 	}
 
 	#[test]

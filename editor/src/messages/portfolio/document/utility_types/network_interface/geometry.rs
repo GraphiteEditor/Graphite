@@ -4,6 +4,8 @@
 //! the caller decides whether to cache the result.
 
 use super::*;
+use graphene_std::graph_ui::metrics::{EXPORT_NAME_INSET, IMPORT_NAME_INSET, LAYER_GRIP_WIDTH, LAYER_NAME_LEFT, NODE_WIDTH, TEXT_SIZE};
+use graphene_std::graph_ui::network_connector::import_export_row_offset;
 
 impl NodeNetworkInterface {
 	pub(super) fn node_input_anchor(&self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> Option<DVec2> {
@@ -115,10 +117,9 @@ impl NodeNetworkInterface {
 
 		let document_node_click_targets = if !node_metadata.persistent_metadata.is_layer() {
 			let height = self.displayed_row_count(node_id, network_path) as u32 * GRID_SIZE;
-			let width = 5 * GRID_SIZE;
 			// Offset down by half a grid so the click target sits below the top connector strip.
 			let node_click_target_top_left = node_top_left + DVec2::new(0., HALF_GRID_SIZE as f64);
-			let node_click_target_bottom_right = node_click_target_top_left + DVec2::new(width as f64, height as f64);
+			let node_click_target_bottom_right = node_click_target_top_left + DVec2::new(NODE_WIDTH, height as f64);
 
 			let radius = 3.;
 			let path = rounded_rectangle_path(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
@@ -130,9 +131,9 @@ impl NodeNetworkInterface {
 				node_type_metadata: NodeTypeClickTargets::Node,
 			}
 		} else {
-			let layer_width_cells = self.layer_width(node_id, network_path).unwrap_or_else(|| {
+			let (layer_width_cells, name_width) = self.layer_width_and_name_width(node_id, network_path).unwrap_or_else(|| {
 				log::error!("Could not get layer width in compute_node_click_targets");
-				0
+				(0, 0.)
 			});
 			let width = layer_width_cells * GRID_SIZE;
 			let height = LAYER_GRID_HEIGHT * GRID_SIZE;
@@ -165,49 +166,23 @@ impl NodeNetworkInterface {
 			};
 
 			// The grip sits to the left of the leftmost icon, 8px wide but spanning the full layer-vertical-center band
-			const GRIP_WIDTH: f64 = 8.;
 			let icons_width = if locked { GRID_SIZE as f64 } else { 0. };
 			let grip_offset_right_edge = node_top_left + DVec2::new(width as f64 - ICON_HALF_EXTENT - icons_width, LAYER_VERTICAL_CENTER);
 			let path = rounded_rectangle_path(
-				DVec2::new(-GRIP_WIDTH, -ICON_HALF_EXTENT) + grip_offset_right_edge,
+				DVec2::new(-LAYER_GRIP_WIDTH, -ICON_HALF_EXTENT) + grip_offset_right_edge,
 				DVec2::new(0., ICON_HALF_EXTENT) + grip_offset_right_edge,
 				[0.; 4],
 			);
 			let grip_click_target = ClickTarget::new_with_path(path, 0.);
 
-			// The double-click rename target is sized to the text bounds, not the surrounding `.details` area,
+			// The double-click rename target is sized to the name's text, not the room the name may take,
 			// so the rest of the layer still drills into the subgraph on double-click
-
-			/// `.layer` margin-left (= 12), for chain layers the negative margin-left and positive padding-left cancel out, keeping content at this same offset
-			const LAYER_LEFT_MARGIN: f64 = HALF_GRID_SIZE as f64;
-			/// `.thumbnail` (70px) + its 1px side margins (= 72)
-			const THUMBNAIL_BLOCK_WIDTH: f64 = 3. * GRID_SIZE as f64;
-			/// `.details` margin-left
-			const DETAILS_LEFT_MARGIN: f64 = 8.;
-			const NAME_LEFT_OFFSET: f64 = LAYER_LEFT_MARGIN + THUMBNAIL_BLOCK_WIDTH + DETAILS_LEFT_MARGIN;
-			/// Distance from layer's right edge to visibility's left edge (= 12)
-			const VISIBILITY_INSET_FROM_LAYER_RIGHT: f64 = HALF_GRID_SIZE as f64;
-			const FONT_SIZE: f64 = 14.;
-
-			let display_name = self.display_name(node_id, network_path);
-			let name_click_target = if display_name.is_empty() {
-				None
-			} else {
-				let name_left = node_top_left.x + NAME_LEFT_OFFSET;
-				let icons_reserve = VISIBILITY_INSET_FROM_LAYER_RIGHT + icons_width + GRIP_WIDTH;
-				let name_right_max = node_top_left.x + width as f64 - icons_reserve;
-				let name_width = text_width(&display_name, FONT_SIZE);
-				let name_right = (name_left + name_width).min(name_right_max);
-				if name_right > name_left {
-					// The 1-grid-tall name strip is centered vertically in the 2-grid-tall layer.
-					let name_top = node_top_left.y + HALF_GRID_SIZE as f64;
-					let name_bottom = node_top_left.y + GRID_SIZE as f64 + HALF_GRID_SIZE as f64;
-					let path = rounded_rectangle_path(DVec2::new(name_left, name_top), DVec2::new(name_right, name_bottom), [3.; 4]);
-					Some(ClickTarget::new_with_path(path, 0.))
-				} else {
-					None
-				}
-			};
+			let name_click_target = (name_width > 0.).then(|| {
+				// The 1-grid-tall name strip is centered vertically in the 2-grid-tall layer.
+				let name_top_left = node_top_left + DVec2::new(LAYER_NAME_LEFT, HALF_GRID_SIZE as f64);
+				let path = rounded_rectangle_path(name_top_left, name_top_left + DVec2::new(name_width, GRID_SIZE as f64), [3.; 4]);
+				ClickTarget::new_with_path(path, 0.)
+			});
 
 			// The layer click target spans the layer and its chain background
 			let chain_width_grid_spaces = self.chain_width(node_id, network_path);
@@ -234,13 +209,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// The areas covered by the names beside each import and export port, which can be dragged to reorder them or right-clicked for a menu.
-	/// Laid out as the frontend draws them, just past the connector.
 	pub fn import_export_name_bounds(&self, network_path: &[NodeId]) -> Vec<(ImportOrExport, [DVec2; 2])> {
-		// How far past the port's center the name begins
-		const IMPORT_NAME_INSET: f64 = 8.;
-		const EXPORT_NAME_INSET: f64 = 9.;
-		const FONT_SIZE: f64 = 14.;
-
 		if network_path.is_empty() {
 			return Vec::new();
 		}
@@ -261,12 +230,12 @@ impl NodeNetworkInterface {
 
 		let half_row = DVec2::new(0., HALF_GRID_SIZE as f64);
 		let imports = import_centers.into_iter().map(|(import_index, center)| {
-			let name_width = text_width(&self.displayed_import_name(import_index, network_path), FONT_SIZE);
+			let name_width = text_width(&self.displayed_import_name(import_index, network_path), TEXT_SIZE);
 			let name_right = center - DVec2::new(IMPORT_NAME_INSET, 0.);
 			(ImportOrExport::Import(import_index), [name_right - DVec2::new(name_width, 0.) - half_row, name_right + half_row])
 		});
 		let exports = export_centers.into_iter().map(|(export_index, center)| {
-			let name_width = text_width(&self.displayed_export_name(export_index, network_path), FONT_SIZE);
+			let name_width = text_width(&self.displayed_export_name(export_index, network_path), TEXT_SIZE);
 			let name_left = center + DVec2::new(EXPORT_NAME_INSET, 0.);
 			(ImportOrExport::Export(export_index), [name_left - half_row, name_left + DVec2::new(name_width, 0.) + half_row])
 		});
@@ -339,24 +308,19 @@ impl NodeNetworkInterface {
 		Some((1..row_count).find(|&row| first_row_center + import_export_row_offset(row) > y).unwrap_or(row_count))
 	}
 
-	/// The width of a layer in grid units, which covers its thumbnail, its name and its icons. Cached
+	/// The width of a layer in grid units, which covers its thumbnail, its name and its icons, and the width of its name. Cached
 	/// because measuring the name's text is slow.
-	pub(super) fn compute_layer_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
-		const GAP_WIDTH: f64 = 8.;
-		const FONT_SIZE: f64 = 14.;
-		let left_thumbnail_padding = GRID_SIZE as f64 / 2.;
-		let thumbnail_width = 3. * GRID_SIZE as f64;
+	pub(super) fn compute_layer_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> (u32, f64) {
 		let layer_text = self.display_name(node_id, network_path);
 
-		let text_width = text_width(&layer_text, FONT_SIZE);
+		let text_width = text_width(&layer_text, TEXT_SIZE);
 
 		let grip_padding = 4.;
-		let grip_width = 8.;
 		let lock_icon_width = if self.is_locked(node_id, network_path) { GRID_SIZE as f64 } else { 0. };
 		let icon_overhang_width = GRID_SIZE as f64 / 2.;
 
-		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + GAP_WIDTH + text_width + grip_padding + grip_width + lock_icon_width + icon_overhang_width;
-		((layer_width_pixels / 24.).ceil() as u32).max(8)
+		let layer_width_pixels = LAYER_NAME_LEFT + text_width + grip_padding + LAYER_GRIP_WIDTH + lock_icon_width + icon_overhang_width;
+		(((layer_width_pixels / 24.).ceil() as u32).max(8), text_width)
 	}
 	pub fn import_export_position(&self, network_path: &[NodeId]) -> Option<(IVec2, IVec2)> {
 		let Some(all_nodes_bounding_box) = self.all_nodes_bounding_box(network_path) else {
@@ -444,10 +408,4 @@ impl NodeNetworkInterface {
 
 		Some((rounded_import_top_left.as_ivec2(), rounded_export_top_right.as_ivec2()))
 	}
-}
-
-/// How far below the first import or export the one at `index` sits, with a grid cell of space separating the primary from the secondary ones.
-fn import_export_row_offset(index: usize) -> f64 {
-	let rows = if index == 0 { 0 } else { index + 1 };
-	(rows * GRID_SIZE as usize) as f64
 }

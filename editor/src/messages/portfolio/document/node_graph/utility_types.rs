@@ -41,69 +41,27 @@ impl FrontendGraphDataType {
 	}
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FrontendGraphInput {
-	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
 	pub description: String,
-	#[serde(rename = "resolvedType")]
 	pub resolved_type: String,
-	#[serde(rename = "validTypes")]
 	pub valid_types: Vec<String>,
 	/// Whether a wire feeds this input.
 	pub connected: bool,
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FrontendGraphOutput {
-	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
 	pub description: String,
-	#[serde(rename = "resolvedType")]
 	pub resolved_type: String,
 	/// Every type this output could produce given its node's current inputs, or empty where that isn't known.
-	#[serde(rename = "possibleTypes")]
 	pub possible_types: Vec<String>,
 	/// Whether this output feeds at least one wire.
 	pub connected: bool,
-}
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FrontendNode {
-	pub id: graph_craft::document::NodeId,
-	#[serde(rename = "isLayer")]
-	pub is_layer: bool,
-	#[serde(rename = "canBeLayer")]
-	pub can_be_layer: bool,
-	/// Whether the node is a redirect dot, which is a Passthrough node drawn as a small dot bending the wire running through it.
-	#[serde(rename = "isRedirectDot")]
-	pub is_redirect_dot: bool,
-	pub reference: Option<String>,
-	#[serde(rename = "displayName")]
-	pub display_name: String,
-	#[serde(rename = "implementationName")]
-	pub implementation_name: String,
-	#[serde(rename = "primaryInput")]
-	pub primary_input: Option<FrontendGraphInput>,
-	#[serde(rename = "exposedInputs")]
-	pub exposed_inputs: Vec<FrontendGraphInput>,
-	#[serde(rename = "primaryOutput")]
-	pub primary_output: Option<FrontendGraphOutput>,
-	#[serde(rename = "exposedOutputs")]
-	pub exposed_outputs: Vec<FrontendGraphOutput>,
-	#[serde(rename = "primaryInputConnectedToLayer")]
-	pub primary_input_connected_to_layer: bool,
-	#[serde(rename = "primaryOutputConnectedToLayer")]
-	pub primary_output_connected_to_layer: bool,
-	pub position: (i32, i32),
-	pub previewed: bool,
-	pub visible: bool,
-	pub locked: bool,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -131,19 +89,6 @@ pub struct DragStart {
 	/// How many grid cells the drag had come when the nodes were last stored where it put them.
 	#[cfg_attr(feature = "wasm", tsify(type = "[number, number]"))]
 	pub stored: IVec2,
-}
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BoxSelection {
-	#[serde(rename = "startX")]
-	pub start_x: u32,
-	#[serde(rename = "startY")]
-	pub start_y: u32,
-	#[serde(rename = "endX")]
-	pub end_x: u32,
-	#[serde(rename = "endY")]
-	pub end_y: u32,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -178,6 +123,10 @@ pub enum ContextMenuData {
 		exposed: bool,
 		/// Whether any wire is attached to it within the subgraph.
 		connected: bool,
+		description: String,
+		/// Where the description popover points, in node graph coordinates.
+		#[serde(rename = "descriptionAnchor")]
+		description_anchor: (f64, f64),
 	},
 }
 
@@ -194,37 +143,10 @@ pub struct ContextMenuInformation {
 	pub context_menu_data: ContextMenuData,
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
-pub struct NodeGraphErrorDiagnostic {
-	/// The node the error is shown beside, which it follows as the node glides into place.
-	#[serde(rename = "nodeId")]
-	pub node_id: NodeId,
-	pub position: (i32, i32),
-	pub error: String,
-}
-
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeEvaluationError {
 	pub node_path: Vec<NodeId>,
 	pub message: String,
-}
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
-pub struct FrontendClickTargets {
-	#[serde(rename = "nodeClickTargets")]
-	pub node_click_targets: Vec<String>,
-	#[serde(rename = "layerClickTargets")]
-	pub layer_click_targets: Vec<String>,
-	#[serde(rename = "connectorClickTargets")]
-	pub connector_click_targets: Vec<String>,
-	#[serde(rename = "iconClickTargets")]
-	pub icon_click_targets: Vec<String>,
-	#[serde(rename = "allNodesBoundingBox")]
-	pub all_nodes_bounding_box: String,
-	#[serde(rename = "importExportNames")]
-	pub import_export_names: Vec<String>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

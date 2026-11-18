@@ -19,6 +19,7 @@ mod editor_commands {
 	use editor::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 	use editor::messages::input_mapper::utility_types::pointer::{EditorPointerState, ScrollDelta};
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+	use editor::messages::portfolio::document::node_graph::graph_ui::GraphName;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 	use editor::messages::portfolio::ingest::utility_types::DataTransferItem;
@@ -673,11 +674,6 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Set the name for a layer in the network shown by the node graph, which may be a subgraph
-	fn set_layer_name_in_graph(id: u64, name: String) -> Message {
-		DocumentMessage::SetLayerNameInGraph { node_id: NodeId(id), name }.into()
-	}
-
 	/// Translates document (in viewport coords)
 	fn pan_canvas_abort_prepare(x_not_y_axis: bool) -> Message {
 		NavigationMessage::CanvasPanAbortPrepare { x_not_y_axis }.into()
@@ -800,22 +796,13 @@ mod editor_commands {
 		DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer }.into()
 	}
 
-	/// Set the name of an import.
-	fn set_import_name(index: usize, name: String) -> Message {
-		NodeGraphMessage::SetImportExportName {
-			name,
-			index: ImportOrExport::Import(index),
-		}
-		.into()
+	fn begin_import_export_name_edit(is_import: bool, index: usize) -> Message {
+		let name = if is_import { GraphName::Import(index) } else { GraphName::Export(index) };
+		NodeGraphMessage::BeginEditName { name }.into()
 	}
 
-	/// Set the name of an export.
-	fn set_export_name(index: usize, name: String) -> Message {
-		NodeGraphMessage::SetImportExportName {
-			name,
-			index: ImportOrExport::Export(index),
-		}
-		.into()
+	fn end_graph_name_edit(name: Option<String>) -> Message {
+		NodeGraphMessage::EndEditName { name }.into()
 	}
 
 	/// Set the description of an import.

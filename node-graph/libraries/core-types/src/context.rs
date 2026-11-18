@@ -805,6 +805,11 @@ impl OwnedContextImpl {
 		self.varargs = Some(Arc::new([value]));
 		self
 	}
+	pub fn with_varargs<const N: usize>(mut self, values: [Box<dyn AnyHash + Send + Sync>; N]) -> Self {
+		assert!(self.varargs.is_none_or(|value| value.is_empty()));
+		self.varargs = Some(Arc::new(values));
+		self
+	}
 	pub fn with_generations(mut self, generations: Generations) -> Self {
 		self.generations = (!generations.is_empty()).then_some(generations);
 		self

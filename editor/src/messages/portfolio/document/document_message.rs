@@ -211,11 +211,6 @@ pub enum DocumentMessage {
 	SetGraphFadeArtwork {
 		percentage: f64,
 	},
-	/// Renames a layer in the network the node graph is showing, which may be a subgraph.
-	SetLayerNameInGraph {
-		node_id: NodeId,
-		name: String,
-	},
 	SetLayersPanelHoveredLayer {
 		id: Option<NodeId>,
 	},

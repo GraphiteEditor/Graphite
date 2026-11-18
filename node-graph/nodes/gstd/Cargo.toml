@@ -60,6 +60,7 @@ graphene-core = { workspace = true }
 graphic-nodes = { workspace = true }
 repeat-nodes = { workspace = true }
 vectorize-nodes = { workspace = true }
+graph-ui = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }

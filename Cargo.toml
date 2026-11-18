@@ -34,6 +34,7 @@ members = [
 	"node-graph/libraries/*",
 	"node-graph/nodes/*",
 	"node-graph/graph-craft",
+	"node-graph/graph-ui",
 	"node-graph/graphene-cli",
 	"node-graph/nodes/gstd",
 	"node-graph/interpreted-executor",
@@ -111,6 +112,7 @@ vectorize-nodes = { path = "node-graph/nodes/vectorize" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
+graph-ui = { path = "node-graph/graph-ui" }
 document-format = { path = "document/format" }
 document-graph-storage = { path = "document/graph-storage", default-features = false }
 document-container = { path = "document/container" }

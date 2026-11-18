@@ -1,3 +1,4 @@
+use super::document::node_graph::graph_ui::GraphUiPart;
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::history::HistoryMessage;
 use super::persistent_state::PersistentStateMessage;
@@ -163,6 +164,9 @@ pub enum PortfolioMessage {
 		context: OverlayContext,
 	},
 	SubmitActiveGraphRender,
+	UpdateGraphUi {
+		part: GraphUiPart,
+	},
 	SubmitGraphRender {
 		document_id: DocumentId,
 		ignore_hash: bool,

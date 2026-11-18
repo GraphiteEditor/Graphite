@@ -2536,6 +2536,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-ui"
+version = "0.0.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "futures",
+ "glam",
+ "graph-craft",
+ "graphene-application-io",
+ "graphene-hash",
+ "graphene-std",
+ "graphic-types",
+ "interpreted-executor",
+ "node-macro",
+ "preprocessor",
+ "rendering",
+ "text-nodes",
+ "vector-types",
+ "vello_gpu",
+ "wgpu-executor",
+]
+
+[[package]]
 name = "graphene-animation"
 version = "0.0.0"
 dependencies = [
@@ -2665,6 +2688,7 @@ dependencies = [
  "futures",
  "glam",
  "graph-craft",
+ "graph-ui",
  "graphene-application-io",
  "graphene-canvas-utils",
  "graphene-core",

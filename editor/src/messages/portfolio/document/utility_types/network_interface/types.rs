@@ -1173,8 +1173,8 @@ impl From<LegacyNodePosition> for NodePosition {
 /// Cached metadata that should be calculated when creating a node, and should be recalculated when modifying a node property that affects one of the cached fields.
 #[derive(Debug, Default, Clone)]
 pub struct DocumentNodeTransientMetadata {
-	/// Width in grid units from the left edge of the layer's thumbnail to its left end, cached since text measurement is slow. Only loaded for layers.
-	pub(crate) layer_width: TransientCache<u32>,
+	/// Width in grid units from the left edge of the layer's thumbnail to its left end, and the measured width of its name, cached since text measurement is slow. Only loaded for layers.
+	pub(crate) layer_width: TransientCache<(u32, f64)>,
 }
 
 #[derive(Debug, Clone)]

@@ -1,7 +1,7 @@
 //! Times laying out the demo artworks, building their click targets, and hit testing them, as the editor does on demand.
 
 use super::test_support::open_demo;
-use crate::messages::portfolio::document::utility_types::network_interface::{GlideOffsets, InputConnector, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use glam::DVec2;
 use graphene_std::uuid::NodeId;
@@ -69,7 +69,7 @@ fn time_the_layout_click_targets_and_hit_tests() {
 		let start = Instant::now();
 		for _ in 0..REPETITIONS {
 			for input in &inputs {
-				std::hint::black_box(interface.wire_update_from_input(input, GraphWireStyle::default(), &GlideOffsets::default(), &[]));
+				std::hint::black_box(interface.vector_wire_from_input(input, GraphWireStyle::default(), &[]));
 			}
 		}
 		let all_wires = start.elapsed() / REPETITIONS;

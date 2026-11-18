@@ -5,11 +5,9 @@ use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewIm
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::math_expression::MathExpressionCompletions;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, FrontendRemoteCursor, NodeGraphErrorDiagnostic,
-};
+use crate::messages::portfolio::document::node_graph::graph_ui::GraphNameField;
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuInformation, FrontendNodeType, FrontendRemoteCursor};
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
-use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::portfolio::ingest::utility_types::{DataTransfer, IngestAction};
 use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
@@ -65,8 +63,6 @@ pub enum FrontendMessage {
 	SendUIMetadata {
 		#[serde(rename = "nodeDescriptions")]
 		node_descriptions: Vec<(String, String)>,
-		#[serde(rename = "nodeIcons")]
-		node_icons: Vec<(String, IconName)>,
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,
 	},
@@ -121,11 +117,6 @@ pub enum FrontendMessage {
 		preferences: PreferencesMessageHandler,
 	},
 	TriggerTextCommit,
-	/// Asks the frontend to enter inline-rename mode for a layer in the graph view.
-	TriggerEditLayerNameInGraph {
-		#[serde(rename = "nodeId")]
-		node_id: NodeId,
-	},
 	TriggerVisitLink {
 		url: String,
 	},
@@ -158,33 +149,10 @@ pub enum FrontendMessage {
 	ColorPickerStartHistoryTransaction,
 	/// The Rust color picker handler is committing the in-flight undo transaction. The frontend `<ColorPicker />` forwards this as its `commitHistoryTransaction` event.
 	ColorPickerCommitHistoryTransaction,
-	UpdateImportsExports {
-		/// If the primary import is not visible, then it is None.
-		imports: Vec<Option<FrontendGraphOutput>>,
-		/// If the primary export is not visible, then it is None.
-		exports: Vec<Option<FrontendGraphInput>>,
-		/// The primary import location.
-		#[serde(rename = "importPosition")]
-		import_position: (i32, i32),
-		/// The primary export location.
-		#[serde(rename = "exportPosition")]
-		export_position: (i32, i32),
-		/// The document network does not have an add import or export button.
-		#[serde(rename = "addImportExport")]
-		add_import_export: bool,
-	},
-	UpdateInSelectedNetwork {
-		#[serde(rename = "inSelectedNetwork")]
-		in_selected_network: bool,
-	},
 	/// Whether the network shown in the graph lies inside a built-in node, whose contents are read-only until made editable.
 	UpdateNetworkReadOnly {
 		#[serde(rename = "readOnly")]
 		read_only: bool,
-	},
-	UpdateBox {
-		#[serde(rename = "box")]
-		box_selection: Option<BoxSelection>,
 	},
 	UpdateRemoteCursors {
 		cursors: Vec<FrontendRemoteCursor>,
@@ -196,12 +164,16 @@ pub enum FrontendMessage {
 		#[serde(rename = "contextMenuInformation")]
 		context_menu_information: Option<ContextMenuInformation>,
 	},
-	UpdateClickTargets {
-		#[serde(rename = "clickTargets")]
-		click_targets: Option<FrontendClickTargets>,
-	},
 	UpdateGraphViewOverlay {
 		open: bool,
+	},
+	UpdateGraphTooltip {
+		label: String,
+		description: String,
+	},
+	UpdateGraphNameField {
+		field: Option<GraphNameField>,
+		opens: bool,
 	},
 	UpdateWorkspacePanelLayout {
 		#[serde(rename = "panelLayout")]
@@ -228,36 +200,6 @@ pub enum FrontendMessage {
 		widget_id: WidgetId,
 		source: String,
 		result: Option<String>,
-	},
-	UpdateImportReorderIndex {
-		#[serde(rename = "importIndex")]
-		index: Option<usize>,
-	},
-	UpdateExportReorderIndex {
-		#[serde(rename = "exportIndex")]
-		index: Option<usize>,
-	},
-	/// The wire a dragged node would be inserted onto if dropped now, keyed by the node and index of the input it feeds (the max node ID for an export).
-	UpdateWireInsertionPreview {
-		wire: Option<(NodeId, usize)>,
-	},
-	/// How far each node, and the imports and exports, gliding into the place it moved to is drawn from that place, in node graph space.
-	UpdateGlideOffsets {
-		nodes: Vec<(NodeId, (f64, f64))>,
-		imports: (f64, f64),
-		exports: (f64, f64),
-	},
-	/// The connector a press at the pointer would grab, by its center in node graph space.
-	UpdateHoveredConnector {
-		center: Option<(f64, f64)>,
-	},
-	UpdateLayerWidths {
-		#[serde(rename = "layerWidths")]
-		layer_widths: HashMap<NodeId, u32>,
-		#[serde(rename = "chainWidths")]
-		chain_widths: HashMap<NodeId, u32>,
-		#[serde(rename = "hasLeftInputWire")]
-		has_left_input_wire: HashMap<NodeId, bool>,
 	},
 	UpdateDocumentArtwork {
 		svg: String,
@@ -304,25 +246,9 @@ pub enum FrontendMessage {
 		#[serde(rename = "setColorChoice")]
 		set_color_choice: Option<PrimarySecondary>,
 	},
-	UpdateGraphFadeArtwork {
-		percentage: f64,
-	},
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	UpdateNodeGraphNodes {
-		nodes: Vec<FrontendNode>,
-	},
-	UpdateNodeGraphErrorDiagnostics {
-		errors: Vec<NodeGraphErrorDiagnostic>,
-	},
-	UpdateVisibleNodes {
-		nodes: Vec<NodeId>,
-	},
-	UpdateNodeGraphWires {
-		wires: Vec<WirePathUpdate>,
-	},
-	ClearAllNodeGraphWires,
 	UpdateNodeGraphSelection {
 		selected: Vec<NodeId>,
 	},
@@ -339,26 +265,14 @@ pub enum FrontendMessage {
 		height: u32,
 		pixels: serde_bytes::ByteBuf,
 	},
-	UpdateNodeThumbnailCanvases {
+	UpdateNodeThumbnailCanvas {
 		id: NodeId,
-		#[serde(rename = "layersPanelCanvasId")]
-		layers_panel_canvas_id: u64,
-		#[serde(rename = "nodeGraphCanvasId")]
-		node_graph_canvas_id: u64,
+		#[serde(rename = "canvasId")]
+		canvas_id: u64,
 	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<DocumentInfo>,
-	},
-	UpdateWirePathInProgress {
-		#[serde(rename = "wirePath")]
-		wire_path: Option<WirePath>,
-		/// Where the wire meets the connector it's dragged from, in node graph space.
-		#[serde(rename = "draggedFrom")]
-		dragged_from: Option<(f64, f64)>,
-		/// Where the wire's loose end meets a connector it has snapped onto, in node graph space.
-		#[serde(rename = "snappedTo")]
-		snapped_to: Option<(f64, f64)>,
 	},
 	UpdatePlatform {
 		platform: AppWindowPlatform,

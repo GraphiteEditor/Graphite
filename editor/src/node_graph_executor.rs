@@ -11,6 +11,8 @@ use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::color::SRGBA8;
+use graphene_std::graph_ui::GraphUiConfig;
+use graphene_std::graph_ui::scene::{GraphUiScene, GraphUiSceneEdit};
 use graphene_std::list::{Item, List};
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
@@ -27,10 +29,12 @@ mod recompile_tests;
 mod runtime;
 pub use runtime::*;
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub struct ExecutionRequest {
 	execution_id: u64,
 	render_config: RenderConfig,
+	graph_ui_config: Option<GraphUiConfig>,
+	shown_in: Option<DocumentId>,
 }
 
 pub struct ExecutionResponse {
@@ -62,6 +66,7 @@ pub enum ExecutionResult {
 	/// A value computed from provisional data, which is evaluated again once that data is final.
 	Partial(TaggedValue),
 	Fallback(TaggedValue, EvaluationErrors),
+	ArtworkUnchanged(RenderOutputType),
 	Error(EvaluationErrors),
 	Panic(Box<dyn Any + Send>),
 	/// The graph failed to compile, so nothing was evaluated.
@@ -117,6 +122,8 @@ pub struct NodeGraphExecutor {
 	futures: VecDeque<(u64, ExecutionContext)>,
 	pending: Option<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
+	graph_ui_scene: GraphUiScene,
+	graph_ui_shown: bool,
 	/// The document whose network the graph runtime was last sent.
 	node_graph_document: Option<DocumentId>,
 	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
@@ -175,6 +182,8 @@ impl NodeGraphExecutor {
 			pending: None,
 			current_execution_id: 0,
 			node_graph_hash: 0,
+			graph_ui_scene: GraphUiScene::default(),
+			graph_ui_shown: false,
 			node_graph_document: None,
 			previous_node_to_inspect: Vec::new(),
 			inspect_context_overrides: ContextOverrides::default(),
@@ -204,11 +213,38 @@ impl NodeGraphExecutor {
 		self.evaluation_errors.take()
 	}
 
+	#[cfg(test)]
+	pub fn graph_ui_scene(&self) -> &GraphUiScene {
+		&self.graph_ui_scene
+	}
+
+	pub fn graph_ui_shown(&self) -> bool {
+		self.graph_ui_shown
+	}
+
+	pub fn update_graph_ui(&mut self, change: impl FnOnce(&mut GraphUiSceneEdit)) -> bool {
+		let mut edit = std::mem::take(&mut self.graph_ui_scene).edit();
+		change(&mut edit);
+		let (scene, delta) = edit.finish();
+		self.graph_ui_scene = scene;
+
+		let changed = !delta.is_empty();
+		if changed {
+			self.sender.send(GraphRuntimeRequest::GraphUi(delta)).expect("Failed to send the graph UI delta");
+		}
+		changed
+	}
+
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
+	fn queue_execution(&mut self, render_config: RenderConfig, graph_ui_config: Option<GraphUiConfig>, shown_in: Option<DocumentId>) -> u64 {
 		let execution_id = self.current_execution_id;
 		self.current_execution_id += 1;
-		let request = ExecutionRequest { execution_id, render_config };
+		let request = ExecutionRequest {
+			execution_id,
+			render_config,
+			graph_ui_config,
+			shown_in,
+		};
 		self.sender.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
@@ -248,8 +284,9 @@ impl NodeGraphExecutor {
 		}
 
 		let layers = document.layers_in_view.all_in_view();
+		let layers_panel = document.layers_in_view.layers_panel().clone();
 		self.sender
-			.send(GraphRuntimeRequest::ThumbnailsInView { layers, document_id })
+			.send(GraphRuntimeRequest::ThumbnailsInView { layers, layers_panel, document_id })
 			.expect("Failed to send the thumbnails in view");
 	}
 
@@ -333,6 +370,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// Adds an evaluate request for whatever current network is cached.
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn submit_current_node_graph_evaluation(
 		&mut self,
 		document: &mut DocumentMessageHandler,
@@ -341,6 +379,7 @@ impl NodeGraphExecutor {
 		viewport_scale: f64,
 		time: TimingInformation,
 		pointer: DVec2,
+		graph_ui_config: Option<GraphUiConfig>,
 	) -> Result<Message, String> {
 		let viewport = Footprint {
 			transform: document.metadata().document_to_viewport,
@@ -359,7 +398,8 @@ impl NodeGraphExecutor {
 		};
 
 		// Execute the node graph
-		let execution_id = self.queue_execution(render_config);
+		let execution_id = self.queue_execution(render_config, graph_ui_config, Some(document_id));
+		self.graph_ui_shown = graph_ui_config.is_some();
 
 		self.futures.push_back((
 			execution_id,
@@ -386,9 +426,10 @@ impl NodeGraphExecutor {
 		node_to_inspect: Vec<NodeId>,
 		ignore_hash: bool,
 		pointer: DVec2,
+		graph_ui_config: Option<GraphUiConfig>,
 	) -> Result<Message, String> {
 		self.update_node_graph(document, document_id, node_to_inspect, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
+		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer, graph_ui_config)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -426,7 +467,7 @@ impl NodeGraphExecutor {
 		};
 
 		// Execute the node graph
-		let execution_id = self.queue_execution(render_config);
+		let execution_id = self.queue_execution(render_config, None, None);
 
 		self.futures.push_back((
 			execution_id,
@@ -495,7 +536,7 @@ impl NodeGraphExecutor {
 				observations: self.observations(&document.network_interface),
 			}))
 			.map_err(|e| e.to_string())?;
-		let execution_id = self.queue_execution(render_config);
+		let execution_id = self.queue_execution(render_config, None, None);
 		self.futures.push_back((
 			execution_id,
 			ExecutionContext {
@@ -564,16 +605,30 @@ impl NodeGraphExecutor {
 					if let Some(bake_target) = execution_context.measure_fill {
 						if execution_context.document_id == document_id && self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id == document_id) {
 							let measured = observations.remove(&ObservationKey::FillMeasurement);
-							let inspect_result = matches!(result, ExecutionResult::Value(_) | ExecutionResult::Fallback(..)).then_some(measured).flatten();
+							let inspect_result = matches!(result, ExecutionResult::Value(_) | ExecutionResult::Partial(_) | ExecutionResult::Fallback(..))
+								.then_some(measured)
+								.flatten();
 							self.handle_gradient_measurement(document, document_id, bake_target, inspect_result, responses);
 						}
 						continue;
 					}
 
+					let result = match result {
+						ExecutionResult::ArtworkUnchanged(frame) => {
+							self.process_frame(frame, responses);
+							responses.add(DeferMessage::TriggerGraphRun {
+								execution_id,
+								document_id: execution_context.document_id,
+							});
+							continue;
+						}
+						result => result,
+					};
+
 					responses.add(OverlaysMessage::Draw);
 
-					// A pending graph keeps the last frame, and the errors shown with it
-					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending) {
+					// A pending graph keeps the last frame, and the errors shown with it; a provisional frame keeps the errors
+					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending | ExecutionResult::Partial(_)) {
 						let errors = match &result {
 							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => {
 								let in_document = |path: &&[NodeId]| {
@@ -596,7 +651,12 @@ impl NodeGraphExecutor {
 									})
 									.collect()
 							}
-							ExecutionResult::Pending | ExecutionResult::Value(_) | ExecutionResult::Partial(_) | ExecutionResult::Panic(_) | ExecutionResult::Uncompiled => Vec::new(),
+							ExecutionResult::Pending
+							| ExecutionResult::Value(_)
+							| ExecutionResult::Partial(_)
+							| ExecutionResult::ArtworkUnchanged(_)
+							| ExecutionResult::Panic(_)
+							| ExecutionResult::Uncompiled => Vec::new(),
 						};
 						responses.add(NodeGraphMessage::UpdateEvaluationErrors { errors });
 					}
@@ -608,10 +668,15 @@ impl NodeGraphExecutor {
 					let render_status = match result {
 						ExecutionResult::Partial(_) => RenderStatus::Partial,
 						ExecutionResult::Fallback(..) => RenderStatus::Fallback,
-						ExecutionResult::Pending | ExecutionResult::Value(_) | ExecutionResult::Error(_) | ExecutionResult::Panic(_) | ExecutionResult::Uncompiled => RenderStatus::Rendering,
+						ExecutionResult::Pending
+						| ExecutionResult::Value(_)
+						| ExecutionResult::ArtworkUnchanged(_)
+						| ExecutionResult::Error(_)
+						| ExecutionResult::Panic(_)
+						| ExecutionResult::Uncompiled => RenderStatus::Rendering,
 					};
 					let node_graph_output = match result {
-						ExecutionResult::Pending => Ok(None),
+						ExecutionResult::Pending | ExecutionResult::ArtworkUnchanged(_) => Ok(None),
 						ExecutionResult::Value(value) | ExecutionResult::Partial(value) => Ok(Some(value)),
 						ExecutionResult::Fallback(value, _errors) => {
 							#[cfg(test)]
@@ -733,7 +798,7 @@ impl NodeGraphExecutor {
 							});
 
 							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
-							break;
+							continue;
 						}
 						Ok(result) => result,
 					};
@@ -925,7 +990,7 @@ impl NodeGraphExecutor {
 			for_export: false,
 			for_eyedropper: false,
 		};
-		let execution_id = self.queue_execution(render_config);
+		let execution_id = self.queue_execution(render_config, None, None);
 		self.futures.push_back((
 			execution_id,
 			ExecutionContext {
@@ -1018,43 +1083,8 @@ impl NodeGraphExecutor {
 			return;
 		};
 
-		match render_output.data {
-			RenderOutputType::Svg { svg, image_data, .. } => {
-				// The frontend keeps the canvases it was sent until a render stops using them, so only the images it lacks are sent
-				let canvas_ids_in_use: Vec<u64> = image_data.iter().map(|(id, _)| *id).collect();
-				let in_use: HashSet<u64> = canvas_ids_in_use.iter().copied().collect();
-				self.canvas_images_sent.retain(|id| in_use.contains(id));
-
-				// Convert each linear-light image, at its display resolution, into gamma sRGB bytes (the DOM boundary form)
-				let rgba8_bytes = |&color: &_| <[u8; 4]>::from(SRGBA8::from(color));
-				let image_data = image_data
-					.into_iter()
-					.filter(|(id, _)| self.canvas_images_sent.insert(*id))
-					.map(|(id, canvas_image)| {
-						let image = canvas_image.raster.halved(canvas_image.halvings);
-						RasterizedImage {
-							id,
-							width: image.width,
-							height: image.height,
-							pixels: image.data.iter().flat_map(rgba8_bytes).collect::<Vec<u8>>().into(),
-						}
-					})
-					.collect();
-
-				responses.add(FrontendMessage::UpdateImageData { image_data, canvas_ids_in_use });
-				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-			}
-			#[cfg(target_family = "wasm")]
-			RenderOutputType::CanvasFrame { canvas_id, resolution } => {
-				let svg = format!("<svg>{}</svg>", viewport_canvas_placeholder(canvas_id, resolution));
-				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-			}
-			RenderOutputType::Texture { .. } => {}
-			RenderOutputType::Buffer { width, height, .. } => {
-				log::error!("Invalid node graph output type: a {width}×{height} pixel buffer");
-				responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
-				return;
-			}
+		if !self.process_frame(render_output.data, responses) {
+			return;
 		}
 
 		let RenderMetadata {
@@ -1091,6 +1121,48 @@ impl NodeGraphExecutor {
 		responses.add(OverlaysMessage::Draw);
 
 		responses.add(FrontendMessage::UpdateRenderStatus { status: render_status });
+	}
+
+	fn process_frame(&mut self, frame: RenderOutputType, responses: &mut VecDeque<Message>) -> bool {
+		match frame {
+			RenderOutputType::Svg { svg, image_data, .. } => {
+				// The frontend keeps the canvases it was sent until a render stops using them, so only the images it lacks are sent
+				let canvas_ids_in_use: Vec<u64> = image_data.iter().map(|(id, _)| *id).collect();
+				let in_use: HashSet<u64> = canvas_ids_in_use.iter().copied().collect();
+				self.canvas_images_sent.retain(|id| in_use.contains(id));
+
+				// Convert each linear-light image, at its display resolution, into gamma sRGB bytes (the DOM boundary form)
+				let rgba8_bytes = |&color: &_| <[u8; 4]>::from(SRGBA8::from(color));
+				let image_data = image_data
+					.into_iter()
+					.filter(|(id, _)| self.canvas_images_sent.insert(*id))
+					.map(|(id, canvas_image)| {
+						let image = canvas_image.raster.halved(canvas_image.halvings);
+						RasterizedImage {
+							id,
+							width: image.width,
+							height: image.height,
+							pixels: image.data.iter().flat_map(rgba8_bytes).collect::<Vec<u8>>().into(),
+						}
+					})
+					.collect();
+
+				responses.add(FrontendMessage::UpdateImageData { image_data, canvas_ids_in_use });
+				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+			}
+			#[cfg(target_family = "wasm")]
+			RenderOutputType::CanvasFrame { canvas_id, resolution } => {
+				let svg = format!("<svg>{}</svg>", viewport_canvas_placeholder(canvas_id, resolution));
+				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+			}
+			RenderOutputType::Texture { .. } => {}
+			RenderOutputType::Buffer { width, height, .. } => {
+				log::error!("Invalid node graph output type: a {width}×{height} pixel buffer");
+				responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+				return false;
+			}
+		}
+		true
 	}
 
 	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {

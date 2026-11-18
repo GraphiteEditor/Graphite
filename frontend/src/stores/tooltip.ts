@@ -29,7 +29,7 @@ type Listener = { eventName: keyof DocumentEventMap; action(event: Event): void;
 const tooltipEventListeners: Listener[] = [
 	{ eventName: "mouseover", action: onMouseOver },
 	{ eventName: "mousemove", action: onMouseMove },
-	{ eventName: "mouseleave", action: onMouseLeave },
+	{ eventName: "mouseleave", action: closeTooltip },
 	{ eventName: "mousedown", action: closeTooltip },
 	// Heard on the way down, since a floating menu or a field with its menu open stops these from bubbling up
 	{ eventName: "keydown", action: closeTooltip, capture: true },
@@ -38,6 +38,7 @@ const tooltipEventListeners: Listener[] = [
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
+let latestMouseMove: MouseEvent | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<TooltipStoreState> = import.meta.hot?.data?.store || writable<TooltipStoreState>(initialState);
@@ -107,12 +108,29 @@ function onMouseOver(e: MouseEvent) {
 
 // Listen for mouse movements to schedule and position the tooltip, or hide it immediately upon further movement
 function onMouseMove(e: MouseEvent) {
+	latestMouseMove = e;
+
 	// Hide the tooltip now that the cursor has moved
 	update((state) => {
 		state.visible = false;
 		return state;
 	});
 
+	scheduleTooltip(e);
+}
+
+// For an element whose tooltip changes with the part of it under the resting cursor, like the node graph the editor draws, which may learn of that part after the cursor's last move
+export function retargetTooltip(element: Element | undefined) {
+	update((state) => {
+		state.visible = false;
+		state.element = element;
+		return state;
+	});
+
+	if (latestMouseMove) scheduleTooltip(latestMouseMove);
+}
+
+function scheduleTooltip(e: MouseEvent) {
 	// Before we schedule a new future tooltip appearance, we clear the existing one
 	if (tooltipTimeout) clearTimeout(tooltipTimeout);
 
@@ -131,14 +149,11 @@ function onMouseMove(e: MouseEvent) {
 	}, SHOW_TOOLTIP_DELAY_MS);
 }
 
-// Hide tooltip and cancel any pending timeout when the mouse leaves the application window
-function onMouseLeave() {
-	if (tooltipTimeout) clearTimeout(tooltipTimeout);
-	closeTooltip();
-}
-
 // Stop showing a tooltip if the user clicks or presses a key, and require the user to first move out of the element before it can re-appear
 function closeTooltip() {
+	if (tooltipTimeout) clearTimeout(tooltipTimeout);
+	latestMouseMove = undefined;
+
 	update((state) => {
 		state.visible = false;
 		state.element = undefined;

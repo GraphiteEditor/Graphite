@@ -1,4 +1,5 @@
 use super::DocumentHistory;
+use super::node_graph::graph_ui::GraphUiPart;
 use super::node_graph::{document_node_definitions, node_inspector};
 use super::utility_types::error::EditorError;
 use super::utility_types::layers_in_view::LayersInView;
@@ -199,7 +200,7 @@ pub struct DocumentMessageHandler {
 	/// The layer under the pointer in the Layers panel, which gets a hover outline in the viewport.
 	#[serde(skip)]
 	layers_panel_hovered_layer: Option<LayerNodeIdentifier>,
-	/// The layers the frontend shows in view, the only ones it's sent the details and thumbnails of.
+	/// The layers in view in the Layers panel or the node graph, the only ones thumbnails are rendered for.
 	#[serde(skip)]
 	pub layers_in_view: LayersInView,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
@@ -304,8 +305,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let visibility_settings = self.overlays_visibility_settings;
 
 				// Send the overlays message to the overlays message handler
-				self.overlays_message_handler
-					.process_message(message, responses, OverlaysMessageContext { visibility_settings, viewport });
+				self.overlays_message_handler.process_message(
+					message,
+					responses,
+					OverlaysMessageContext {
+						visibility_settings,
+						viewport,
+						graph_open: self.graph_view_overlay_open,
+					},
+				);
 			}
 			DocumentMessage::Inspector(message) => {
 				let context = InspectorMessageContext {
@@ -673,7 +681,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.breadcrumb_network_path.push(node_id);
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				self.network_interface.unload_import_export_ports(&self.breadcrumb_network_path);
-				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
@@ -705,7 +712,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: self.node_graph_handler.selection_before_pointer_down.clone(),
 					});
-					responses.add(FrontendMessage::UpdateBox { box_selection: None });
+					self.node_graph_handler.set_box_selection(None, responses);
 				}
 				// Abort wire in progress of being connected
 				else if self.node_graph_handler.wire_in_progress_from_connector.is_some() {
@@ -737,7 +744,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
 				self.network_interface.unload_import_export_ports(&self.breadcrumb_network_path);
-				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
@@ -793,19 +799,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GraphViewOverlay { open } => {
 				let opened = !self.graph_view_overlay_open && open;
 				self.graph_view_overlay_open = open;
+				self.node_graph_handler.graph_ui.graph_view_toggled(responses);
 
 				responses.add(FrontendMessage::UpdateGraphViewOverlay { open });
-				responses.add(FrontendMessage::UpdateGraphFadeArtwork {
-					percentage: self.graph_fade_artwork_percentage,
-				});
 
 				// Update the tilt menu bar buttons to be disabled when the graph is open
 				responses.add(MenuBarMessage::SendLayout);
 
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
+				responses.add(PortfolioMessage::SubmitActiveGraphRender);
 				if opened {
-					responses.add(NodeGraphMessage::UnloadWires);
 					responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 				}
 				if open {
@@ -1538,6 +1542,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.chain_node_range_selection_reference = Some(node_id);
 			}
 			DocumentMessage::SetActivePanel { active_panel } => {
+				let selection_network_path = self.selection_network_path.clone();
 				match active_panel {
 					PanelType::Document => {
 						if self.graph_view_overlay_open {
@@ -1551,7 +1556,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(InspectorMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
-				responses.add(NodeGraphMessage::UpdateInSelectedNetwork);
+				if self.graph_view_overlay_open && self.selection_network_path != selection_network_path {
+					responses.add(PortfolioMessage::UpdateGraphUi { part: GraphUiPart::All });
+				}
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
 				for layer in self.network_interface.selected_nodes().selected_layers_except_artboards(&self.network_interface) {
@@ -1560,15 +1567,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SetGraphFadeArtwork { percentage } => {
 				self.graph_fade_artwork_percentage = percentage;
-				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
-			}
-			DocumentMessage::SetLayerNameInGraph { node_id, name } => {
-				responses.add(NodeGraphMessage::SetDisplayName {
-					node_id,
-					network_path: self.breadcrumb_network_path.clone(),
-					alias: name,
-					skip_adding_history_step: false,
-				});
+				responses.add(PortfolioMessage::SubmitActiveGraphRender);
 			}
 			DocumentMessage::SetLayersPanelHoveredLayer { id } => {
 				let layer = id.filter(|id| self.network_interface.is_layer(id, &[])).map(LayerNodeIdentifier::new_unchecked);
@@ -2073,6 +2072,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(NodeGraphMessage::UpdateHoveredConnector);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
+					responses.add(PortfolioMessage::SubmitActiveGraphRender);
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						translation: transform.translation.into(),
@@ -2699,7 +2699,6 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SendWires);
 	}
 
@@ -2756,7 +2755,6 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SendWires);
 	}
 
@@ -3179,7 +3177,6 @@ impl DocumentMessageHandler {
 	fn show_installed_interface(&self, responses: &mut VecDeque<Message>) {
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SendWires);
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(OverlaysMessage::Draw);
@@ -5053,7 +5050,7 @@ mod document_message_handler_tests {
 		let document = portfolio.documents.get_mut(&document_id).unwrap();
 		portfolio
 			.executor
-			.submit_node_graph_evaluation(document, document_id, glam::UVec2::ONE, 1., Default::default(), merged, true, DVec2::ZERO)
+			.submit_node_graph_evaluation(document, document_id, glam::UVec2::ONE, 1., Default::default(), merged, true, DVec2::ZERO, None)
 			.unwrap();
 		editor.runtime.update();
 		editor.runtime.run().await;

@@ -9,6 +9,7 @@ pub mod text;
 pub use blending_nodes;
 pub use brush_nodes as brush;
 pub use core_types::*;
+pub use graph_ui;
 pub use graphene_application_io as application_io;
 pub use graphene_core;
 pub use graphene_core::debug;
