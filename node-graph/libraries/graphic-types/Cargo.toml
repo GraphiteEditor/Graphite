@@ -21,6 +21,7 @@ wasm = [
 	"core-types/wasm",
 	"vector-types/wasm",
 	"raster-types/wasm",
+	"tsify",
 	"wasm-bindgen",
 ]
 
@@ -28,6 +29,7 @@ wasm = [
 # Local dependencies
 core-types = { workspace = true }
 graphene-hash = { workspace = true }
+graphene-resource = { workspace = true }
 brush-types = { workspace = true }
 raster-types = { workspace = true, features = ["wgpu"] }
 vector-types = { workspace = true }
@@ -40,4 +42,5 @@ serde_json = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }

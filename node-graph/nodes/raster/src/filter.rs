@@ -1,9 +1,9 @@
-use crate::parallel_rows::fill_rows;
 use bytemuck::{Pod, Zeroable};
 use core_types::color::{Alpha, Color, Pixel, RGB};
 use core_types::context::Ctx;
 use core_types::list::Item;
 use raster_types::Image;
+use raster_types::parallel_rows::fill_rows;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
 
