@@ -1,13 +1,12 @@
+use super::InputMetadata;
 use super::storage_metadata::{input_metadata_entry_from_runtime, position_from_runtime, versioned_reference};
 use super::{DocumentNodePersistentMetadata, LayerPosition, NodePosition, NodeTypePersistentMetadata};
-use super::{InputMetadata, InputPersistentMetadata};
 use document_graph_storage::attr::network as network_attr;
 use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
-use document_graph_storage::{AttributeDelta, AttributeValue, Attributes, Implementation, NoMetadata, NodeMetadataSource, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp, Value};
+use document_graph_storage::{AttributeDelta, AttributeValue, Attributes, Implementation, NoMetadata, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp, Value};
 use document_graph_storage::{
-	convert_input, convert_input_attributes, convert_resource_entry, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs, storage_location_id, storage_node_id,
-	value_resource_ref,
+	convert_input, convert_input_attributes, convert_resource_entry, encode_node_ui_attributes, node_value_resource_refs, storage_location_id, storage_node_id, value_resource_ref,
 };
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
 use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
@@ -48,13 +47,6 @@ pub enum EditorDelta {
 		node_id: NodeId,
 		change: NodeMetadataChange,
 	},
-	/// A node's whole input metadata array, paired with the `SetInputs` that changed the slots it
-	/// indexes. Whole-array for the same reason: an insert shifts every later entry.
-	NodeInputMetadata {
-		network: NetworkLocation,
-		node_id: NodeId,
-		input_metadata: Vec<InputMetadata>,
-	},
 	/// One field of an existing network's metadata.
 	NetworkMetadata {
 		network: NetworkLocation,
@@ -73,18 +65,6 @@ pub enum NodeMetadataChange {
 	DisplayName(String),
 	Locked(bool),
 	Pinned(bool),
-	/// The whole vec, since the encoding is one array-valued attribute rather than a slot each.
-	OutputNames(Vec<String>),
-	/// The whole vec, for the same reason as `OutputNames`.
-	OutputDescriptions(Vec<String>),
-	InputName {
-		index: usize,
-		name: String,
-	},
-	WidgetOverride {
-		index: usize,
-		widget_override: Option<String>,
-	},
 }
 
 /// One field of a network's persistent metadata. The navigation transform and width are absent
@@ -229,7 +209,6 @@ impl EditorDelta {
 			}
 
 			EditorDelta::Graph(RuntimeDelta::SetInputs { network: _, node_id, inputs }) => {
-				// The slots' `ui::*` attributes arrive with the paired input metadata delta
 				let inputs = inputs
 					.iter()
 					.map(|input| {
@@ -255,28 +234,16 @@ impl EditorDelta {
 				ops.extend(node_metadata_ops(storage_node_id(*node_id), change)?);
 			}
 
-			EditorDelta::NodeInputMetadata { network, node_id, input_metadata } => {
-				let location = network;
-				let global_id = storage_node_id(*node_id);
-				let source = InputMetadataSource(input_metadata);
-				let working_node = batch.node(global_id);
-
-				for input_index in 0..input_metadata.len() {
-					let mut encoded = Attributes::new();
-					encode_input_ui_attributes(&mut encoded, &source, *location, *node_id, input_index, TimeStamp::ORIGIN)?;
-					let current = working_node.and_then(|node| node.inputs().get(input_index)).map(|slot| &slot.attributes);
-
-					for delta in ui_attribute_writes(current, &encoded) {
-						ops.push(RegistryDelta::ChangeNodeInputAttribute {
-							id: global_id,
-							index: input_index.try_into().map_err(|_| ConversionError::IndexOverflow(input_index))?,
-							delta,
-						});
-					}
-				}
-			}
-
 			EditorDelta::NetworkMetadata { network, change } => {
+				// A catalog entry's interface is the catalog's, so storage keeps none of it
+				let interface_change = matches!(
+					change,
+					NetworkMetadataChange::ImportMetadata(_) | NetworkMetadataChange::ExportNames(_) | NetworkMetadataChange::ExportDescriptions(_)
+				);
+				if interface_change && network.is_some_and(super::catalog::is_protected) {
+					return Ok(());
+				}
+
 				let delta = match change {
 					NetworkMetadataChange::Reference(reference) => AttributeDelta {
 						key: node_attr::ui::REFERENCE.to_string(),
@@ -341,14 +308,6 @@ fn node_metadata_ops(global_id: document_graph_storage::NodeId, change: &NodeMet
 		id: global_id,
 		delta: AttributeDelta { key: key.to_string(), value },
 	};
-	let input_attribute = |key: &str, index: usize, value: Option<Value>| {
-		Ok::<_, ConversionError>(RegistryDelta::ChangeNodeInputAttribute {
-			id: global_id,
-			index: index.try_into().map_err(|_| ConversionError::IndexOverflow(index))?,
-			delta: AttributeDelta { key: key.to_string(), value },
-		})
-	};
-
 	// The empty string is the runtime's own sentinel for an unset name
 	let flag = |value: bool| value.then_some(Value::Bool(true));
 	let non_empty = |value: &str| (!value.is_empty()).then(|| Value::Str(value.to_string()));
@@ -363,20 +322,6 @@ fn node_metadata_ops(global_id: document_graph_storage::NodeId, change: &NodeMet
 		NodeMetadataChange::DisplayName(display_name) => vec![node_attribute(node_attr::ui::DISPLAY_NAME, non_empty(display_name))],
 		NodeMetadataChange::Locked(locked) => vec![node_attribute(node_attr::ui::LOCKED, flag(*locked))],
 		NodeMetadataChange::Pinned(pinned) => vec![node_attribute(node_attr::ui::PINNED, flag(*pinned))],
-		NodeMetadataChange::OutputNames(output_names) => {
-			let value = (!output_names.is_empty()).then(|| serialize_attribute(node_attr::ui::OUTPUT_NAMES, output_names)).transpose()?;
-			vec![node_attribute(node_attr::ui::OUTPUT_NAMES, value)]
-		}
-		NodeMetadataChange::OutputDescriptions(output_descriptions) => {
-			let any_description = output_descriptions.iter().any(|description| !description.is_empty());
-			let value = any_description.then(|| serialize_attribute(node_attr::ui::OUTPUT_DESCRIPTIONS, output_descriptions)).transpose()?;
-			vec![node_attribute(node_attr::ui::OUTPUT_DESCRIPTIONS, value)]
-		}
-		NodeMetadataChange::InputName { index, name } => vec![input_attribute(node_attr::input::ui::NAME, *index, non_empty(name))?],
-		NodeMetadataChange::WidgetOverride { index, widget_override } => {
-			let value = widget_override.as_deref().and_then(non_empty);
-			vec![input_attribute(node_attr::input::ui::WIDGET_OVERRIDE, *index, value)?]
-		}
 	})
 }
 
@@ -459,9 +404,7 @@ fn stage_conversion(
 		// wrote to its name, lock or pin.
 		match batch.node(id) {
 			Some(held) => {
-				// The swap did not write the slots' `ui::*` attributes, so they carry over to the slots that survive it with
-				// their stamps, tombstones and the held floor, losing to a concurrent write. The other attributes the new implementation
-				// lacks go by tombstone instead.
+				// The attributes the new implementation's slots lack go by tombstone, and the surviving slots keep the held floor
 				let inputs = node
 					.inputs()
 					.iter()
@@ -470,9 +413,7 @@ fn stage_conversion(
 						let mut slot = slot.clone();
 						if let Some(previous) = held.inputs().get(index) {
 							for (key, value) in previous.attributes.iter() {
-								if key.starts_with("ui::") {
-									slot.attributes.insert(key.clone(), value.clone());
-								} else if !value.deleted && !slot.attributes.contains_key(key) {
+								if !value.deleted && !slot.attributes.contains_key(key) {
 									slot.attributes.insert(key.clone(), AttributeValue::deleted(TimeStamp::ORIGIN));
 								}
 							}
@@ -565,19 +506,6 @@ fn construct_metadata_snapshot(
 	encode_node_ui_attributes(&mut encoded, &source, location, node_id, TimeStamp::ORIGIN)?;
 	for delta in ui_attribute_writes(working_node.map(|node| node.attributes()), &encoded) {
 		ops.push(RegistryDelta::ChangeNodeAttribute { id: global_id, delta });
-	}
-
-	for input_index in 0..metadata.input_metadata.len() {
-		let mut encoded = Attributes::new();
-		encode_input_ui_attributes(&mut encoded, &source, location, node_id, input_index, TimeStamp::ORIGIN)?;
-		let current = working_node.and_then(|node| node.inputs().get(input_index)).map(|slot| &slot.attributes);
-		for delta in ui_attribute_writes(current, &encoded) {
-			ops.push(RegistryDelta::ChangeNodeInputAttribute {
-				id: global_id,
-				index: input_index.try_into().map_err(|_| ConversionError::IndexOverflow(input_index))?,
-				delta,
-			});
-		}
 	}
 
 	Ok(())
@@ -839,37 +767,6 @@ fn network_resource_refs(network: &document_graph_storage::Network) -> impl Iter
 	network.exports.iter().filter_map(|slot| slot.target.as_ref().and_then(value_resource_ref))
 }
 
-/// Serves one node's input metadata for encoding a [`EditorDelta::NodeInputMetadata`] delta. Only the
-/// per-input accessors answer, since the node-level ones are never reached: the delta encodes through
-/// `encode_input_ui_attributes` alone.
-struct InputMetadataSource<'a>(&'a [InputMetadata]);
-
-impl InputMetadataSource<'_> {
-	fn persistent(&self, input_index: usize) -> Option<&InputPersistentMetadata> {
-		self.0.get(input_index).map(|metadata| &metadata.persistent_metadata)
-	}
-}
-
-impl NodeMetadataSource for InputMetadataSource<'_> {
-	fn input_name(&self, _network: NetworkLocation, _local_id: NodeId, input_index: usize) -> Option<&str> {
-		Some(self.persistent(input_index)?.input_name.as_str())
-	}
-
-	fn input_description(&self, _network: NetworkLocation, _local_id: NodeId, input_index: usize) -> Option<&str> {
-		Some(self.persistent(input_index)?.input_description.as_str())
-	}
-
-	fn widget_override(&self, _network: NetworkLocation, _local_id: NodeId, input_index: usize) -> Option<&str> {
-		self.persistent(input_index)?.widget_override.as_deref()
-	}
-
-	fn input_data(&self, _network: NetworkLocation, _local_id: NodeId, input_index: usize) -> HashMap<String, Value> {
-		self.persistent(input_index)
-			.map(|metadata| metadata.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
-			.unwrap_or_default()
-	}
-}
-
 /// Serves the metadata copy of the node `node_id` at `location` as the [`document_graph_storage::NodeMetadataSource`] for its own encoding.
 struct MetadataCopySource<'a> {
 	location: NetworkLocation,
@@ -912,38 +809,5 @@ impl document_graph_storage::NodeMetadataSource for MetadataCopySource<'_> {
 
 	fn pinned(&self, network: NetworkLocation, node_id: NodeId) -> bool {
 		self.metadata_for(network, node_id).is_some_and(|metadata| metadata.pinned)
-	}
-
-	fn output_names(&self, network: NetworkLocation, node_id: NodeId) -> Vec<String> {
-		self.metadata_for(network, node_id).map(|metadata| metadata.output_names.clone()).unwrap_or_default()
-	}
-
-	fn output_descriptions(&self, network: NetworkLocation, node_id: NodeId) -> Vec<String> {
-		self.metadata_for(network, node_id).map(|metadata| metadata.output_descriptions.clone()).unwrap_or_default()
-	}
-
-	fn input_name(&self, network: NetworkLocation, node_id: NodeId, input_index: usize) -> Option<&str> {
-		self.metadata_for(network, node_id)
-			.and_then(|metadata| metadata.input_metadata.get(input_index))
-			.map(|input| input.persistent_metadata.input_name.as_str())
-	}
-
-	fn input_description(&self, network: NetworkLocation, node_id: NodeId, input_index: usize) -> Option<&str> {
-		self.metadata_for(network, node_id)
-			.and_then(|metadata| metadata.input_metadata.get(input_index))
-			.map(|input| input.persistent_metadata.input_description.as_str())
-	}
-
-	fn widget_override(&self, network: NetworkLocation, node_id: NodeId, input_index: usize) -> Option<&str> {
-		self.metadata_for(network, node_id)
-			.and_then(|metadata| metadata.input_metadata.get(input_index))
-			.and_then(|input| input.persistent_metadata.widget_override.as_deref())
-	}
-
-	fn input_data(&self, network: NetworkLocation, node_id: NodeId, input_index: usize) -> std::collections::HashMap<String, Value> {
-		self.metadata_for(network, node_id)
-			.and_then(|metadata| metadata.input_metadata.get(input_index))
-			.map(|input| input.persistent_metadata.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
-			.unwrap_or_default()
 	}
 }

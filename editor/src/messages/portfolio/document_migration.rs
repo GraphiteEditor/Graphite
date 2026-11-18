@@ -1019,7 +1019,6 @@ fn legacy_text_node_template() -> Option<NodeTemplate> {
 	let mut template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))?.default_node_template();
 	template.implementation = NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode"));
 	template.inputs.push(NodeInput::value(TaggedValue::Bool(false), false));
-	template.input_metadata.push(Default::default());
 	Some(template)
 }
 
@@ -1227,16 +1226,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		})
 		.collect::<Vec<_>>();
 	for (node_id, network_path, cpu_identifier, inputs) in gpu_twins {
-		let input_metadata = document
-			.network_interface
-			.node_metadata(&node_id, &network_path)
-			.map(|metadata| metadata.persistent_metadata.input_metadata.iter().take(inputs.len()).cloned().collect())
-			.unwrap_or_default();
-
 		let mut node_template = NodeTemplate {
 			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::with_owned_string(cpu_identifier)),
 			inputs,
-			input_metadata,
 			..Default::default()
 		};
 		document.network_interface.replace_implementation(&node_id, &network_path, &mut node_template);
@@ -1278,6 +1270,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 				if *new == graphene_std::math_nodes::math_function::IDENTIFIER {
 					reset_default_display_name(document, node_id, &network_path, "Math f(x)");
+				}
+				if *new == graphene_std::vector::weld::IDENTIFIER {
+					reset_default_display_name(document, node_id, &network_path, "Merge by Distance");
 				}
 			}
 		}
@@ -1594,13 +1589,11 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			let new_reference = DefinitionIdentifier::ProtoNode(new_identifier.clone());
 			let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
 			let mut node_template = definition.default_node_template();
-			let output_names = definition.node_template.output_names.clone();
 
 			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 			let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
 				continue;
 			};
-			document.network_interface.set_output_names(node_id, output_names, network_path);
 			reset_default_display_name(document, node_id, network_path, old_reference);
 
 			if let Some(input) = old_inputs.first() {
@@ -1655,13 +1648,11 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			continue;
 		};
 		let mut node_template = definition.default_node_template();
-		let output_names = definition.node_template.output_names.clone();
 
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
 			continue;
 		};
-		document.network_interface.set_output_names(node_id, output_names, network_path);
 		reset_default_display_name(document, node_id, network_path, old_default_name);
 
 		if let Some(input) = old_inputs.first() {
@@ -1713,14 +1704,11 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::evaluate_path::IDENTIFIER);
 		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
 		let mut node_template = definition.default_node_template();
-		let output_names = definition.node_template.output_names.clone();
 
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
 			continue;
 		};
-		// The old single-output nodes have no output names, so set them to match the new multi-output node's "Position", "Tangent", and "Normal" ports
-		document.network_interface.set_output_names(node_id, output_names, network_path);
 		reset_default_display_name(document, node_id, network_path, if *is_tangent { "Tangent on Path" } else { "Position on Path" });
 
 		// Forward the shared inputs: content, progression, reverse, and parameterized distance
@@ -2993,20 +2981,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		reset_default_display_name(document, node_id, network_path, "Merge by Distance");
 	}
 
-	// A Merge by Distance node saved with its "Algorithm" input takes Weld's input names and descriptions, keeping its inputs
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::weld::IDENTIFIER)
-		&& inputs_count == 3
-		&& document
-			.network_interface
-			.persistent_input_metadata(node_id, 2, network_path)
-			.is_some_and(|metadata| metadata.input_name == "Algorithm")
-	{
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		node_template.inputs = node.inputs.clone();
-		document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-		reset_default_display_name(document, node_id, network_path, "Merge by Distance");
-	}
-
 	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SpatialMergeByDistanceNode")) {
 		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::weld::IDENTIFIER))?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -3035,26 +3009,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		reset_default_display_name(document, node_id, network_path, "Split Segments");
 	}
 
-	// Separate Subpaths and Close Path became Separate Paths and Close Paths, whose inputs take their current names and descriptions
+	// Separate Subpaths and Close Path became Separate Paths and Close Paths, which take their new titles
 	let pluralized = [
 		(graphene_std::vector::separate_paths::IDENTIFIER, "Separate Subpaths"),
 		(graphene_std::vector::close_paths::IDENTIFIER, "Close Path"),
 	];
 	if let Some((_, old_default_name)) = pluralized.iter().find(|(identifier, _)| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		let stored = document
-			.network_interface
-			.persistent_input_metadata(node_id, 0, network_path)
-			.map(|metadata| (metadata.input_name.clone(), metadata.input_description.clone()));
-		let current = node_template
-			.input_metadata
-			.first()
-			.map(|metadata| (metadata.persistent_metadata.input_name.clone(), metadata.persistent_metadata.input_description.clone()));
-		if stored != current {
-			node_template.inputs = node.inputs.clone();
-			document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-		}
-
 		reset_default_display_name(document, node_id, network_path, old_default_name);
 	}
 
@@ -4482,7 +4442,6 @@ mod tests {
 		let executor = || NodeInput::scope("graphene_std::platform_application_io::WgpuExecutorNode");
 		let legacy_node = |identifier: &'static str, inputs: Vec<NodeInput>| NodeTemplate {
 			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
-			input_metadata: inputs.iter().map(|_| ("Value", "").into()).collect(),
 			inputs,
 			..Default::default()
 		};
@@ -5249,21 +5208,15 @@ mod tests {
 		let content = definition.default_node_template().inputs[0].clone();
 		let distance = NodeInput::value(TaggedValue::Number(2.), false);
 
-		// Older nodes stored their title and input names, with any "Algorithm" choice saved here as a placeholder method
+		// Older nodes stored their title, with any "Algorithm" choice saved here as a placeholder method
 		let legacy_node = |identifier: &'static str, display_name: &str, placeholder_method: Option<WeldMethod>| {
 			let mut inputs = vec![content.clone(), distance.clone()];
 			inputs.extend(placeholder_method.map(|method| NodeInput::value(TaggedValue::WeldMethod(method), false)));
-			let input_names: &[&str] = if placeholder_method.is_some() {
-				&["Content", "Distance", "Algorithm"]
-			} else {
-				&["Source", "Distance"]
-			};
 
 			NodeTemplate {
 				implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
 				inputs,
 				display_name: display_name.to_string(),
-				input_metadata: input_names.iter().map(|name| (*name, "").into()).collect(),
 				..Default::default()
 			}
 		};
@@ -5312,6 +5265,24 @@ mod tests {
 		}
 	}
 
+	// A Weld node titled the way Merge by Distance nodes defaulted to keeps its title when its document is opened again
+	#[test]
+	fn a_weld_node_titled_merge_by_distance_keeps_its_title() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+
+		let definition = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::weld::IDENTIFIER)).expect("the Weld definition should exist");
+		let template = NodeTemplate {
+			display_name: "Merge by Distance".into(),
+			..definition.default_node_template()
+		};
+		let mut document = DocumentMessageHandler::default();
+		document.network_interface.insert_node(NodeId(1), template, &[]);
+
+		let opened = load_legacy_document(document.serialize_document(), &HashMapResourceStorage::new(), false).expect("the document should open");
+		assert_eq!(opened.network_interface.display_name(&NodeId(1), &[]), "Merge by Distance");
+	}
+
 	// Cut Segments nodes open as Unweld nodes splitting every anchor, still wired to the node feeding them
 	#[test]
 	fn cut_segments_nodes_open_as_unweld_nodes() {
@@ -5330,7 +5301,6 @@ mod tests {
 			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
 			inputs: vec![content.clone()],
 			display_name: display_name.to_string(),
-			input_metadata: vec![("Content", "").into()],
 			..Default::default()
 		};
 		let (upstream, cut_segments, split_segments) = (NodeId(1), NodeId(2), NodeId(3));
@@ -5394,7 +5364,6 @@ mod tests {
 				"Separate Paths",
 				["core_types::vector::SeparateSubpathsNode", "graphene_core::vector::SeparateSubpathsNode"],
 				"Separate Subpaths",
-				"Content",
 			),
 			(
 				graphene_std::vector::close_paths::IDENTIFIER,
@@ -5402,11 +5371,10 @@ mod tests {
 				"Close Paths",
 				["core_types::vector::ClosePathNode", "graphene_core::vector::ClosePathNode"],
 				"Close Path",
-				"Source",
 			),
 		];
 
-		for (identifier, identifier_name, title, [current_identifier, oldest_identifier], old_title, input_name) in renames {
+		for (identifier, identifier_name, title, [current_identifier, oldest_identifier], old_title) in renames {
 			let definition = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier.clone())).expect("the renamed node's definition should exist");
 
 			// The node under its current identifier and its oldest one, both storing their old title
@@ -5414,7 +5382,6 @@ mod tests {
 				implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(old_identifier)),
 				inputs: definition.default_node_template().inputs,
 				display_name: old_title.to_string(),
-				input_metadata: vec![(input_name, "").into()],
 				..Default::default()
 			};
 			let (upstream, current, oldest) = (NodeId(1), NodeId(2), NodeId(3));
@@ -5563,7 +5530,6 @@ mod tests {
 
 		let legacy_node = |identifier: &'static str, display_name: &str, inputs: Vec<NodeInput>| NodeTemplate {
 			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
-			input_metadata: inputs.iter().map(|_| ("Value", "").into()).collect(),
 			inputs,
 			display_name: display_name.to_string(),
 			..Default::default()
@@ -5684,7 +5650,6 @@ mod tests {
 			];
 			NodeTemplate {
 				implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::vector::CopyToPointsNode")),
-				input_metadata: inputs.iter().map(|_| ("Value", "").into()).collect(),
 				inputs,
 				display_name: "Copy to Points".to_string(),
 				..Default::default()
@@ -5966,7 +5931,6 @@ mod tests {
 			];
 			NodeTemplate {
 				implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::AssignColorsNode")),
-				input_metadata: inputs.iter().map(|_| ("Value", "").into()).collect(),
 				inputs,
 				display_name: "Assign Colors".to_string(),
 				..Default::default()

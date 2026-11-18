@@ -55,9 +55,6 @@ mod tests {
 			display_name: None,
 			locked: false,
 			pinned: false,
-			input_metadata: Vec::new(),
-			output_names: Vec::new(),
-			output_descriptions: Vec::new(),
 		}
 	}
 

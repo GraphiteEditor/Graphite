@@ -72,7 +72,7 @@ impl Catalog {
 	fn catalog_id_of(&self, network: &NodeNetwork, metadata: &NodeNetworkPersistentMetadata) -> Option<NetworkId> {
 		let identifier = metadata.reference.as_deref()?;
 		let (shipped_network, shipped_metadata) = self.inline.get(identifier)?;
-		(shipped_network == network && same_content(shipped_metadata, metadata)).then(|| network_id(identifier.as_bytes()))
+		(shipped_network == network && same_content_as_shipped(shipped_metadata, metadata)).then(|| network_id(identifier.as_bytes()))
 	}
 }
 

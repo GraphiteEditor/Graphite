@@ -13,7 +13,7 @@ use graphene_std::Context;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(from = "NodeTemplateParts", into = "NodeTemplateParts")]
 pub struct NodeTemplate {
-	/// The graph data inputs to the node. Kept the same length as `input_metadata` by [`Self::normalize_input_metadata`] and [`Self::into_parts`].
+	/// The graph data inputs to the node.
 	pub inputs: Vec<NodeInput>,
 	/// Type of the argument which this node can be evaluated with.
 	pub call_argument: Type,
@@ -23,7 +23,8 @@ pub struct NodeTemplate {
 	pub visible: bool,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed in italics.
 	pub display_name: String,
-	/// Metadata to override the Inspector widgets for each input. Kept the same length as `inputs`.
+	/// Metadata to override the Inspector widgets for each input. This and the output names and descriptions are kept only by a definition
+	/// and an inline network, since any other node takes its interface from its definition or the table entry it names.
 	pub input_metadata: Vec<InputMetadata>,
 	pub output_names: Vec<String>,
 	/// Indexed like `output_names`, where a missing or empty entry means the output has no description.
@@ -112,23 +113,20 @@ impl NodeTemplate {
 		} = document_node;
 		let DocumentNodePersistentMetadata {
 			display_name,
-			mut input_metadata,
-			mut output_names,
-			mut output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
 			network_metadata,
 		} = persistent_node_metadata;
 
+		// Only an inline network carries its interface, which belongs to the definition or table entry of any other node
+		let (mut input_metadata, mut output_names, mut output_descriptions) = (Vec::new(), Vec::new(), Vec::new());
 		let implementation = match implementation {
 			DocumentNodeImplementation::Network(network) => {
 				let mut nested_persistent = network_metadata.map(|metadata| metadata.persistent_metadata).unwrap_or_default();
-				if !nested_persistent.import_metadata.is_empty() || !nested_persistent.export_names.is_empty() {
-					input_metadata = std::mem::take(&mut nested_persistent.import_metadata);
-					output_names = std::mem::take(&mut nested_persistent.export_names);
-					output_descriptions = std::mem::take(&mut nested_persistent.export_descriptions);
-				}
+				input_metadata = std::mem::take(&mut nested_persistent.import_metadata);
+				output_names = std::mem::take(&mut nested_persistent.export_names);
+				output_descriptions = std::mem::take(&mut nested_persistent.export_descriptions);
 
 				// Pair each nested node with its metadata by ID, recursively
 				let mut nodes = HashMap::with_capacity(network.nodes.len());
@@ -185,19 +183,15 @@ impl NodeTemplate {
 
 		let (implementation, mut network_metadata) = implementation.into_parts();
 
-		// The stored metadata invariant requires exactly one input metadata entry per input
-		input_metadata.resize_with(inputs.len(), InputMetadata::default);
-
+		// An inline network takes the template's interface, while any other node's belongs to its definition or the table entry it names
 		if let Some(network_metadata) = &mut network_metadata {
+			// The stored metadata invariant requires exactly one input metadata entry per input
+			input_metadata.resize_with(inputs.len(), InputMetadata::default);
+
 			let persistent_metadata = &mut network_metadata.persistent_metadata;
 			persistent_metadata.import_metadata = std::mem::take(&mut input_metadata);
 			persistent_metadata.export_names = std::mem::take(&mut output_names);
 			persistent_metadata.export_descriptions = std::mem::take(&mut output_descriptions);
-		}
-		if matches!(implementation, DocumentNodeImplementation::Definition(_)) {
-			input_metadata.clear();
-			output_names.clear();
-			output_descriptions.clear();
 		}
 
 		let document_node = DocumentNode {
@@ -210,9 +204,6 @@ impl NodeTemplate {
 		};
 		let persistent_node_metadata = DocumentNodePersistentMetadata {
 			display_name,
-			input_metadata,
-			output_names,
-			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -346,6 +337,7 @@ pub fn collect_template_resources(template: &NodeTemplate, out: &mut HashSet<Res
 #[derive(serde::Serialize, serde::Deserialize)]
 struct NodeTemplateParts {
 	document_node: DocumentNode,
+	#[serde(deserialize_with = "deserialize_node_persistent_metadata")]
 	persistent_node_metadata: DocumentNodePersistentMetadata,
 }
 

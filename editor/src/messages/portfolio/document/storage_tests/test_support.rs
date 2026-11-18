@@ -30,8 +30,8 @@ pub fn open_demo(file_name: &str) -> DocumentMessageHandler {
 	document.unwrap_or_else(|| panic!("Failed to open {path}"))
 }
 
-/// Open a demo artwork and describe every subgraph node's outputs, which the demos predate, so a round trip has output descriptions to carry.
-pub fn open_demo_with_output_descriptions(file_name: &str) -> DocumentMessageHandler {
+/// Open a demo artwork, describe every subgraph node's outputs, and name one subgraph node's inputs, which the demos leave blank, so a round trip has an interface to carry.
+pub fn open_demo_with_named_subgraph_interfaces(file_name: &str) -> DocumentMessageHandler {
 	let mut document = open_demo(file_name);
 	let interface = &mut document.network_interface;
 
@@ -44,6 +44,22 @@ pub fn open_demo_with_output_descriptions(file_name: &str) -> DocumentMessageHan
 		let output_descriptions = (0..export_count).map(|index| format!("Output {index} of node {node_id}.")).collect();
 		if let Some(mut node) = interface.node_mut(NodeLocator::new(node_id, &network_path)) {
 			node.set_output_descriptions(output_descriptions);
+		}
+	}
+
+	// Built-in subgraphs take their interface from the catalog, so this forks one into a copy the document stores.
+	// It picks one sharing its catalog entry with another node, so the fork leaves no unused entry behind.
+	let root_nodes = &interface.document_network().nodes;
+	let shared_subgraph = root_nodes.iter().find_map(|(node_id, node)| {
+		let is_built_in = interface.is_read_only(&[*node_id]);
+		let is_shared = root_nodes.values().filter(|other| other.implementation == node.implementation).count() > 1;
+		(is_built_in && is_shared).then_some((*node_id, node.inputs.len()))
+	});
+	if let Some((node_id, import_count)) = shared_subgraph
+		&& let Some(mut node) = interface.node_interface_mut(NodeLocator::new(node_id, &[]))
+	{
+		for index in 0..import_count {
+			node.set_input_name(index, format!("Input {index} of node {node_id}"));
 		}
 	}
 
@@ -134,7 +150,7 @@ pub async fn round_trip_through_gdd(document: &DocumentMessageHandler) -> RoundT
 	let declarations = reopened.declarations(&byte_store).await;
 	let registry = reopened.registry().clone();
 	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, reopened.blobs()).expect("to_runtime_with_full_metadata");
-	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage");
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries);
 	let view_settings = reopened.view_settings().clone();
 
 	RoundTrip { rebuilt, registry, view_settings }

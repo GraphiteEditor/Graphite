@@ -360,10 +360,9 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	let timestamp = TimeStamp::ORIGIN;
 
 	let mut inputs = Vec::with_capacity(doc_node.inputs.len());
-	for (input_index, input) in doc_node.inputs.iter().enumerate() {
+	for input in &doc_node.inputs {
 		let mut input_attrs = convert_input_attributes(input)?;
 		input_attrs.set_floor(timestamp);
-		write_ui_input_attributes(&mut input_attrs, ctx.metadata, network, runtime_node_id, input_index, timestamp)?;
 
 		inputs.push(InputSlot {
 			input: convert_input(input)?,
@@ -420,18 +419,6 @@ pub fn encode_node_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	write_ui_attributes(attributes, metadata, network, runtime_node_id, timestamp)
 }
 
-/// Public form of the per-input ui-attribute encoding, matching `encode_node_ui_attributes`.
-pub fn encode_input_ui_attributes<M: NodeMetadataSource + ?Sized>(
-	attributes: &mut crate::Attributes,
-	metadata: &M,
-	network: NetworkLocation,
-	runtime_node_id: RuntimeNodeId,
-	input_index: usize,
-	timestamp: TimeStamp,
-) -> Result<(), ConversionError> {
-	write_ui_input_attributes(attributes, metadata, network, runtime_node_id, input_index, timestamp)
-}
-
 fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,
 	metadata: &M,
@@ -460,21 +447,6 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 		&& !name.is_empty()
 	{
 		attributes.set(node::ui::DISPLAY_NAME, Value::Str(name.to_string()), timestamp);
-	}
-
-	// One whole-vec attribute; per-slot LWW would be overkill for rename-on-output.
-	let output_names = metadata.output_names(network, runtime_node_id);
-	if !output_names.is_empty() {
-		attributes
-			.set_serialized(node::ui::OUTPUT_NAMES, &output_names, timestamp)
-			.map_err(map_serialization_error(node::ui::OUTPUT_NAMES))?;
-	}
-
-	let output_descriptions = metadata.output_descriptions(network, runtime_node_id);
-	if output_descriptions.iter().any(|description| !description.is_empty()) {
-		attributes
-			.set_serialized(node::ui::OUTPUT_DESCRIPTIONS, &output_descriptions, timestamp)
-			.map_err(map_serialization_error(node::ui::OUTPUT_DESCRIPTIONS))?;
 	}
 
 	Ok(())
@@ -526,33 +498,6 @@ fn write_network_interface_attributes<M: NodeMetadataSource + ?Sized>(attributes
 		attributes
 			.set_serialized(network::EXPORT_DESCRIPTIONS, &export_descriptions, timestamp)
 			.map_err(map_serialization_error(network::EXPORT_DESCRIPTIONS))?;
-	}
-
-	Ok(())
-}
-
-/// Empty strings (the runtime's "unset" sentinel) and absent values are both skipped.
-/// `input_data` entries each get their own `ui::input_data::<sub_key>` attribute for per-key LWW.
-fn write_ui_input_attributes<M: NodeMetadataSource + ?Sized>(
-	attributes: &mut crate::Attributes,
-	metadata: &M,
-	network: NetworkLocation,
-	runtime_node_id: RuntimeNodeId,
-	input_index: usize,
-	timestamp: TimeStamp,
-) -> Result<(), ConversionError> {
-	let non_empty_string = |key: &'static str, value: Option<&str>, attributes: &mut crate::Attributes| {
-		if let Some(value) = value.filter(|s| !s.is_empty()) {
-			attributes.set(key, Value::Str(value.to_string()), timestamp);
-		}
-	};
-
-	non_empty_string(node::input::ui::NAME, metadata.input_name(network, runtime_node_id, input_index), attributes);
-	non_empty_string(node::input::ui::DESCRIPTION, metadata.input_description(network, runtime_node_id, input_index), attributes);
-	non_empty_string(node::input::ui::WIDGET_OVERRIDE, metadata.widget_override(network, runtime_node_id, input_index), attributes);
-
-	for (sub_key, value) in metadata.input_data(network, runtime_node_id, input_index) {
-		attributes.set(&format!("{prefix}{sub_key}", prefix = node::input::ui::DATA_PREFIX), value, timestamp);
 	}
 
 	Ok(())

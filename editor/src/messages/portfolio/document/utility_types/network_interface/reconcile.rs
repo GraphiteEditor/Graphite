@@ -6,10 +6,10 @@ use std::collections::{BTreeSet, HashMap};
 use document_graph_storage::blob::BlobBytes;
 use document_graph_storage::to_runtime::ConversionError;
 use document_graph_storage::{Declarations, NetworkId as StorageNetworkId, NodeId as StorageNodeId, Registry, RuntimeProjection, Touched};
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId, NetworkLocation, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, NetworkId, NetworkLocation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::runtime_delta::RuntimeDelta;
 
-use super::storage_metadata::{InterfaceRebuildError, input_metadata_entry_to_runtime, node_metadata_from_projection};
+use super::storage_metadata::{input_metadata_entry_to_runtime, node_metadata_from_projection};
 use super::{DocumentNodePersistentMetadata, EditorDelta, NetworkMetadataChange, NodeMetadataChange, NodeNetworkInterface};
 
 #[derive(Debug, thiserror::Error)]
@@ -24,8 +24,6 @@ pub enum ReconcileError {
 	ScopeInjectionsChanged(NetworkLocation),
 	#[error(transparent)]
 	Conversion(ConversionError),
-	#[error(transparent)]
-	Metadata(#[from] InterfaceRebuildError),
 }
 
 impl From<ConversionError> for ReconcileError {
@@ -101,6 +99,7 @@ impl NodeNetworkInterface {
 				..Default::default()
 			};
 			self.apply_reconciled(location, vec![EditorDelta::Graph(RuntimeDelta::AddNetwork { id, network: Box::new(added) })], reconciled);
+			self.adopt_catalog_interface(id);
 
 			networks.insert(network);
 			for node in projection.network_nodes(network) {
@@ -144,7 +143,7 @@ impl NodeNetworkInterface {
 		if current_metadata.pinned_node_order != target.metadata.pinned_order {
 			deltas.push(change(NetworkMetadataChange::PinnedOrder(target.metadata.pinned_order.clone())));
 		}
-		// An empty list states nothing, since an older document keeps its interface on the instances
+		// An empty list states nothing, since a catalog entry's interface comes from the catalog rather than storage
 		let import_metadata: Vec<_> = target.metadata.import_metadata.iter().cloned().map(input_metadata_entry_to_runtime).collect();
 		if !import_metadata.is_empty() && current_metadata.import_metadata != import_metadata {
 			deltas.push(change(NetworkMetadataChange::ImportMetadata(import_metadata)));
@@ -185,7 +184,7 @@ impl NodeNetworkInterface {
 				if !self.holds_network(location) {
 					return Err(ReconcileError::NetworkMissing(location));
 				}
-				let (node, metadata) = node_metadata_from_projection(projection.node(id)?)?;
+				let (node, metadata) = node_metadata_from_projection(projection.node(id)?);
 				let deltas = vec![
 					EditorDelta::Graph(RuntimeDelta::AddNode {
 						network: location,
@@ -201,7 +200,7 @@ impl NodeNetworkInterface {
 				self.apply_reconciled(location, deltas, reconciled);
 			}
 			(true, true) => {
-				let (node, metadata) = node_metadata_from_projection(projection.node(id)?)?;
+				let (node, metadata) = node_metadata_from_projection(projection.node(id)?);
 				self.diff_node(location, local_id, node, metadata, reconciled);
 			}
 		}
@@ -293,25 +292,13 @@ fn field_deltas(
 		node_id: local_id,
 		change,
 	};
-	let input_metadata = || EditorDelta::NodeInputMetadata {
-		network: location,
-		node_id: local_id,
-		input_metadata: target_metadata.input_metadata.clone(),
-	};
-
-	// An instance's input metadata belongs to its implementing network
-	let instance = matches!(target.implementation, DocumentNodeImplementation::Definition(_));
-
-	// Slots first, so the metadata indexing them finds the right length
+	// A node's input metadata belongs to what implements it, so only the slots themselves are reconciled here
 	if current.inputs.len() != target.inputs.len() {
 		deltas.push(EditorDelta::Graph(RuntimeDelta::SetInputs {
 			network: location,
 			node_id: local_id,
 			inputs: target.inputs.clone(),
 		}));
-		if !instance {
-			deltas.push(input_metadata());
-		}
 	} else {
 		for (input_index, (held, wanted)) in current.inputs.iter().zip(&target.inputs).enumerate() {
 			if held != wanted {
@@ -322,9 +309,6 @@ fn field_deltas(
 					input: wanted.clone(),
 				}));
 			}
-		}
-		if !instance && current_metadata.input_metadata != target_metadata.input_metadata {
-			deltas.push(input_metadata());
 		}
 	}
 
@@ -354,12 +338,6 @@ fn field_deltas(
 	}
 	if current_metadata.pinned != target_metadata.pinned {
 		deltas.push(metadata(NodeMetadataChange::Pinned(target_metadata.pinned)));
-	}
-	if current_metadata.output_names != target_metadata.output_names {
-		deltas.push(metadata(NodeMetadataChange::OutputNames(target_metadata.output_names.clone())));
-	}
-	if current_metadata.output_descriptions != target_metadata.output_descriptions {
-		deltas.push(metadata(NodeMetadataChange::OutputDescriptions(target_metadata.output_descriptions.clone())));
 	}
 
 	deltas

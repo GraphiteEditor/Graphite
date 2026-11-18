@@ -47,7 +47,7 @@ impl NodeNetworkInterface {
 			EditorDelta::Graph(RuntimeDelta::SetInputs { network, node_id, inputs }) => {
 				let Some(mut node) = self.node_mut_at(*network, *node_id) else { return };
 
-				// The slots are what changed; their metadata follows in the paired delta. Resizing keeps the
+				// The slots are what changed; a table entry's metadata follows in the paired delta. Resizing keeps the
 				// two arrays the same length in the meantime, which the rest of the interface assumes.
 				let mut input_metadata = node.input_metadata().to_vec();
 				input_metadata.resize(inputs.len(), InputMetadata::default());
@@ -90,12 +90,6 @@ impl NodeNetworkInterface {
 				}
 			}
 
-			EditorDelta::NodeInputMetadata { network, node_id, input_metadata } => {
-				if let Some(mut node) = self.node_mut_at(*network, *node_id) {
-					node.set_input_metadata(input_metadata.clone());
-				}
-			}
-
 			EditorDelta::NodeMetadata { network, node_id, change } => {
 				let Some(mut node) = self.node_mut_at(*network, *node_id) else { return };
 				match change {
@@ -103,10 +97,6 @@ impl NodeNetworkInterface {
 					NodeMetadataChange::DisplayName(display_name) => node.set_display_name(display_name.clone()),
 					NodeMetadataChange::Locked(locked) => node.set_locked(*locked),
 					NodeMetadataChange::Pinned(pinned) => node.set_pinned(*pinned),
-					NodeMetadataChange::OutputNames(output_names) => node.set_output_names(output_names.clone()),
-					NodeMetadataChange::OutputDescriptions(output_descriptions) => node.set_output_descriptions(output_descriptions.clone()),
-					NodeMetadataChange::InputName { index, name } => node.set_input_name(*index, name.clone()),
-					NodeMetadataChange::WidgetOverride { index, widget_override } => node.set_widget_override(*index, widget_override.clone()),
 				};
 			}
 

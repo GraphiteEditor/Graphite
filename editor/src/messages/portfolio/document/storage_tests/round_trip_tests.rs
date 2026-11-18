@@ -171,7 +171,7 @@ async fn edit_after_open_commits_cleanly() {
 	let reopened = GddV1::open_in(working, layout).await.expect("open_in");
 	let declarations = reopened.declarations(&byte_store).await;
 	let (rebuilt_network, node_entries, network_entries) = reopened.registry().to_runtime_with_full_metadata(&declarations, reopened.blobs()).expect("to_runtime");
-	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage");
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries);
 
 	// Install the rebuilt interface + reopened storage and finalize like the editor's open path does.
 	{
@@ -452,7 +452,7 @@ async fn per_network_navigation_round_trips_via_session_not_registry() {
 	let reopened = GddV1::open_in(working, layout).await.expect("open_in");
 	let declarations = reopened.declarations(&byte_store).await;
 	let (rebuilt_network, node_entries, network_entries) = reopened.registry().to_runtime_with_full_metadata(&declarations, reopened.blobs()).expect("to_runtime");
-	let mut rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries.clone()).expect("build_interface_from_storage");
+	let mut rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries.clone());
 
 	let reopened_ids = network_ids_from_entries(&network_entries);
 	apply_network_view_settings(&mut rebuilt, &reopened_ids, reopened.network_view_settings());
