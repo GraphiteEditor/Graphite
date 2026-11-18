@@ -2,7 +2,7 @@ use super::{
 	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeLocator, NodeNetworkInterface, NodeNetworkTemplate, NodePersistentMetadata, NodePosition, NodeTemplate,
 	NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionStatus,
 };
-use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
+use crate::consts::{GRID_SIZE, STACK_VERTICAL_GAP, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
@@ -1075,6 +1075,49 @@ async fn move_layer_to_stack_builds_the_layer_stack() {
 	assert!(network_interface.is_stack(&second, &[]), "A layer below a sibling should be stack positioned");
 
 	assert_invariants(&editor, "after moving two layers into an artboard");
+}
+
+#[tokio::test]
+async fn moving_a_closed_up_layer_up_closes_up_the_stack_above_it_and_then_moves_all_of_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+
+	let first = editor.create_node_by_name_at(merge_definition(), 0, 30).await;
+	let second = editor.create_node_by_name_at(merge_definition(), 0, 40).await;
+	let third = editor.create_node_by_name_at(merge_definition(), 0, 50).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let artboard_layer = LayerNodeIdentifier::new(artboard, network_interface);
+	for (insert_index, layer) in [first, second, third].into_iter().enumerate() {
+		network_interface.set_to_node_or_layer(&layer, &[], true);
+		network_interface.move_layer_to_stack(LayerNodeIdentifier::new(layer, network_interface), artboard_layer, insert_index, &[]);
+	}
+
+	// Two rows open between the first and second layer, while the third is closed up under the second, and the first has room below the artboard
+	network_interface.shift_node(&first, IVec2::new(0, 2), &[]);
+	network_interface.shift_node(&second, IVec2::new(0, 2), &[]);
+	let positions = |network_interface: &NodeNetworkInterface| [first, second, third].map(|layer| network_interface.position(&layer, &[]).expect("every layer is drawn"));
+	let [first_start, second_start, third_start] = positions(network_interface);
+	assert_eq!(third_start.y - second_start.y, STACK_VERTICAL_GAP, "fixture is wrong");
+	assert_eq!(second_start.y - first_start.y, STACK_VERTICAL_GAP + 2, "fixture is wrong");
+
+	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![third]);
+	let moved_up = |rows: i32, position: IVec2| position - IVec2::new(0, rows);
+
+	// The second layer moves up in place of the third, which it carries, until it closes up under the first
+	for rows in 1..=2 {
+		network_interface.shift_selected_nodes(Direction::Up, false, &[]);
+		assert_eq!(positions(network_interface), [first_start, moved_up(rows, second_start), moved_up(rows, third_start)]);
+	}
+
+	// Then the whole stack moves up from its top
+	network_interface.shift_selected_nodes(Direction::Up, false, &[]);
+	assert_eq!(positions(network_interface), [moved_up(1, first_start), moved_up(3, second_start), moved_up(3, third_start)]);
+
+	assert_invariants(&editor, "after closing up a stack by moving its bottom layer up");
 }
 
 #[tokio::test]
