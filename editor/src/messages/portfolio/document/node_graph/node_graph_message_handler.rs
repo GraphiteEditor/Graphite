@@ -944,6 +944,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// Abort dragging a node
 					if self.drag_start.is_some() {
 						self.drag_start = None;
+						network_interface.release_held_nodes(selection_network_path);
 						self.select_if_not_dragged = None;
 						self.nodes_added_in_drag = false;
 						self.clear_wire_insertion_preview(responses);
@@ -1685,6 +1686,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				self.drag_start = None;
+				network_interface.release_held_nodes(selection_network_path);
 				self.begin_dragging = false;
 				self.nodes_added_in_drag = false;
 				self.clear_wire_insertion_preview(responses);
@@ -2155,6 +2157,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// The shift can also move the nodes placed relative to them and the imports and exports, so everything it moves glides to where it lands
 				let positions_before = (glide && graph_view_overlay_open).then(|| Self::glide_positions(network_interface, selection_network_path));
 
+				if dragging && let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) {
+					let dragged_nodes = selected_nodes.selected_nodes().copied().collect();
+					network_interface.hold_nodes(dragged_nodes, selection_network_path);
+				}
 				network_interface.shift_selected_nodes(direction, self.keep_upstream_in_place, selection_network_path);
 
 				if let Some(positions_before) = positions_before {

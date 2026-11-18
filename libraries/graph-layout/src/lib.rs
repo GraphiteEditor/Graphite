@@ -38,6 +38,8 @@ pub struct Node {
 	pub chainable: bool,
 	/// Whether the node is a point wires are routed through, like a redirect dot, which takes no room and is never moved to make room.
 	pub waypoint: bool,
+	/// Whether the user is moving the node, so the connections to its owner and to the nodes it owns are drawn as stored.
+	pub held: bool,
 	/// The width of a layer's name in pixels, measured by the caller.
 	pub name_width: f64,
 	pub locked: bool,
@@ -347,7 +349,7 @@ fn stored_offset(graph: &Graph, node: usize, owner: u32) -> IVec2 {
 /// each is moved left of it if it would cover it, or below it when it feeds a layer's stack input, then down past the
 /// outlines of those taken before it. A link in a chain is never moved, so a chain stays whole and gives way only at
 /// its end, and a waypoint stays where it is put. A node stored closer to another of its readers is left out, so it neither
-/// moves nor takes room in its owner's outline.
+/// moves nor takes room in its owner's outline, and the connections of a held node are never drawn longer.
 fn elongations(graph: &Graph, forest: &Forest) -> Vec<IVec2> {
 	let offsets = &forest.offsets;
 	let node_count = graph.nodes.len();
@@ -378,7 +380,8 @@ fn elongations(graph: &Graph, forest: &Forest) -> Vec<IVec2> {
 			let mut contour = std::mem::take(&mut contours[child]).moved(offsets[child]);
 			let mut elongation = IVec2::ZERO;
 
-			if !graph.nodes[child].waypoint && !chain_links[child] {
+			let held = graph.nodes[child].held || graph.nodes[node].held;
+			if !graph.nodes[child].waypoint && !chain_links[child] && !held {
 				let feeds_stack = graph.nodes[node].is_layer && forest.owner_inputs[child] == 0;
 				let own_clearance = match own {
 					None => IVec2::ZERO,
@@ -492,6 +495,7 @@ mod tests {
 			outputs: 1,
 			chainable: true,
 			waypoint: false,
+			held: false,
 			name_width: 60.,
 			locked: false,
 		}
@@ -584,6 +588,16 @@ mod tests {
 		assert_eq!(layout.positions[4], IVec2::new(30, 13 + 4));
 		assert_eq!(layout.elongations[4], IVec2::new(0, 4));
 		assert_eq!(layout.positions[5], layout.positions[4] - IVec2::new(CHAIN_WIDTH, 0));
+	}
+
+	#[test]
+	fn a_held_layer_stays_where_it_is_stored() {
+		let mut graph = stack_with_tall_content(1, 0);
+		graph.nodes[4].held = true;
+		let layout = layout(&graph);
+
+		assert_eq!(layout.positions[4], IVec2::new(30, 13));
+		assert_eq!(layout.elongations[4], IVec2::ZERO);
 	}
 
 	#[test]
@@ -816,6 +830,7 @@ mod phase_timing {
 			outputs: 1,
 			chainable: true,
 			waypoint: false,
+			held: false,
 			name_width: 60.,
 			locked: false,
 		}

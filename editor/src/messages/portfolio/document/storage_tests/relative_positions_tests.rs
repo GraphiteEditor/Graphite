@@ -1,6 +1,7 @@
 //! Opening a document converts the absolute, chained, and stacked positions of nodes other nodes read to positions relative to them.
 
 use super::test_support::{node_paths, open_demo};
+use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeLocator, NodeNetworkInterface};
 use glam::IVec2;
 use graphene_std::uuid::NodeId;
@@ -111,4 +112,30 @@ fn count_the_nodes_fitting_moves_in_each_demo() {
 			}
 		}
 	}
+}
+
+#[test]
+fn a_dragged_layer_moves_one_row_per_step_through_content_it_would_otherwise_clear() {
+	let mut document = open_demo("changing-seasons.graphite");
+	let interface = &mut document.network_interface;
+	let node_ids: Vec<NodeId> = interface.document_network().nodes.keys().copied().collect();
+	let Some(solid_backdrop) = node_ids.into_iter().find(|node_id| interface.display_name(node_id, &[]) == "Solid Backdrop") else {
+		panic!("changing-seasons has a Solid Backdrop layer");
+	};
+	let start = interface.position(&solid_backdrop, &[]).expect("the layer is drawn");
+
+	interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![solid_backdrop]);
+	interface.hold_nodes([solid_backdrop].into(), &[]);
+	assert_eq!(interface.position(&solid_backdrop, &[]), Some(start), "Holding the layer should not move it");
+
+	let steps = [Direction::Down; 10].into_iter().chain([Direction::Up; 10]);
+	let mut expected = start;
+	for direction in steps {
+		interface.shift_selected_nodes(direction, false, &[]);
+		expected += if direction == Direction::Down { IVec2::Y } else { IVec2::NEG_Y };
+		assert_eq!(interface.position(&solid_backdrop, &[]), Some(expected), "A held layer should move one row per step");
+	}
+
+	interface.release_held_nodes(&[]);
+	assert_eq!(interface.position(&solid_backdrop, &[]), Some(start), "Released where it started, the layer should stay there");
 }
