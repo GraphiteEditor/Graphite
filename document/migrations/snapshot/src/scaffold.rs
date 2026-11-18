@@ -1,6 +1,6 @@
 //! Scaffolds node migrations into `migration-nodes`, one file per step, in a module per node crate.
 
-use crate::lineage::{MigrationStep, find_migrations};
+use crate::lineage::{MigrationStep, find_all_migrations};
 use crate::nodes::{NodeSource, find_nodes};
 use convert_case::{Case, Casing};
 use std::path::{Path, PathBuf};
@@ -18,7 +18,7 @@ pub(crate) fn scaffold(workspace: &Path, command: &str, arguments: &[String]) ->
 
 	match (command, arguments) {
 		("new", []) => {
-			let steps = missing_steps(&nodes, &find_migrations(&migrations)?);
+			let steps = missing_steps(&nodes, &find_all_migrations(workspace, &MIGRATION_CRATES)?);
 			if steps.is_empty() {
 				println!("Every node version already has a migration leading to it");
 				return Ok(());
@@ -35,7 +35,7 @@ pub(crate) fn scaffold(workspace: &Path, command: &str, arguments: &[String]) ->
 				));
 			}
 
-			let steps = missing_steps(std::slice::from_ref(node), &find_migrations(&migrations)?);
+			let steps = missing_steps(std::slice::from_ref(node), &find_all_migrations(workspace, &MIGRATION_CRATES)?);
 			if steps.is_empty() {
 				return Err(format!("migrations up to `{}`@{} already exist", node.identifier, node.version));
 			}
@@ -242,6 +242,7 @@ fn declare_module(file: &Path, module: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::lineage::find_migrations;
 
 	/// A workspace with one node crate and an empty `migration-nodes`, removed on drop.
 	struct Workspace(PathBuf);
@@ -327,6 +328,22 @@ mod tests {
 		let found = find_migrations(&workspace.0.join(MIGRATIONS)).unwrap();
 		let nodes = find_nodes(&workspace.0.join(NODE_CRATES)).unwrap();
 		assert!(missing_steps(&nodes, &found).is_empty());
+	}
+
+	#[test]
+	fn a_version_reached_from_a_compiled_migration_needs_no_step() {
+		let workspace = Workspace::new("compiled");
+		let compiled = workspace.0.join("document/migrations/compiled/src");
+		std::fs::create_dir_all(&compiled).unwrap();
+		std::fs::write(
+			compiled.join("lib.rs"),
+			"#[migration(\"old::Node\"@1 => \"blending_nodes::OpacityNode\"@2)]\npub fn opacity_from_node(inputs: &mut Inputs) {}\n",
+		)
+		.unwrap();
+
+		scaffold(&workspace.0, "new", &[]).unwrap();
+		assert!(!workspace.0.join(MIGRATIONS).join("blending_nodes/opacity_v1.rs").exists());
+		assert!(workspace.read("legacy/brighten_v1.rs").contains("\"legacy::adjust::BrightenNode\"@1 => @2"));
 	}
 
 	#[test]

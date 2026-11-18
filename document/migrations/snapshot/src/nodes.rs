@@ -12,7 +12,7 @@ pub(crate) struct NodeSource {
 	pub version: u32,
 	pub function: String,
 	pub file: PathBuf,
-	/// The parameters and output as written, without their attributes. Comparing it tells whether stored inputs still fit.
+	/// The parameters and output as written, without their attributes or `#[data]` fields. Comparing it tells whether stored inputs still fit.
 	pub signature: String,
 }
 
@@ -131,7 +131,10 @@ fn node_source(function: &syn::ItemFn, file: &Path, module_path: &[String]) -> O
 	}
 
 	let function_name = function.sig.ident.to_string();
-	let parameters = function.sig.inputs.iter().map(|parameter| match parameter {
+
+	// A `#[data]` field is the node's own state rather than a stored input, so documents don't notice it changing
+	let is_data_field = |parameter: &&syn::FnArg| matches!(parameter, syn::FnArg::Typed(typed) if typed.attrs.iter().any(|attribute| attribute.path().is_ident("data")));
+	let parameters = function.sig.inputs.iter().filter(|parameter| !is_data_field(parameter)).map(|parameter| match parameter {
 		syn::FnArg::Typed(typed) => {
 			let (pattern, ty) = (&typed.pat, &typed.ty);
 			quote::quote!(#pattern: #ty).to_string()
@@ -148,4 +151,24 @@ fn node_source(function: &syn::ItemFn, file: &Path, module_path: &[String]) -> O
 		file: file.to_path_buf(),
 		signature,
 	})
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn data_fields_are_left_out_of_the_signature() {
+		let function: syn::ItemFn = syn::parse_quote! {
+			#[node_macro::node(category("Raster"))]
+			fn lookup(_: impl Ctx, image: Item<Color>, #[data] cache: Cache) -> Item<Color> {
+				image
+			}
+		};
+		let node = node_source(&function, Path::new("lib.rs"), &["raster_nodes".to_string()]).expect("the function is a node");
+
+		assert_eq!(node.identifier, "raster_nodes::LookupNode");
+		assert!(!node.signature.contains("cache"), "{}", node.signature);
+		assert!(node.signature.contains("image"), "{}", node.signature);
+	}
 }
