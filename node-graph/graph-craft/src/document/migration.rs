@@ -2,12 +2,11 @@ use super::*;
 
 // TODO: Eventually remove this document upgrade code
 #[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
-/// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
+/// Represents the implementation of a node, which can be a nested [`NodeNetwork`] or a proto [`ProtoNodeIdentifier`].
 pub enum OldDocumentNodeImplementation {
 	Network(OldNodeNetwork),
 	#[serde(alias = "Unresolved")]
 	ProtoNode(ProtoNodeIdentifier),
-	Extract,
 }
 // TODO: Eventually remove this document upgrade code
 #[derive(Debug, serde::Deserialize)]

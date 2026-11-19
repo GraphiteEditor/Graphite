@@ -453,7 +453,7 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		let DocumentNodeImplementation::Network(mut network) = std::mem::replace(implementation, DocumentNodeImplementation::Extract) else {
+		let DocumentNodeImplementation::Network(mut network) = std::mem::take(implementation) else {
 			return;
 		};
 		let mut metadata = network_metadata.take().unwrap_or_default();

@@ -218,11 +218,14 @@ fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Result<Item<Raster<CPU>>
 	Ok(Item::new_from_element(Raster::new_cpu(image)))
 }
 
-/// Renders a view of the input graphic within an area defined by the *Footprint*.
-#[node_macro::node(category(""), placeholder = pending_raster)]
+/// Renders a view of the input graphics within an area defined by the *Footprint*, producing a raster image.
+#[node_macro::node(category("Raster"), icon("NodeRasterize"), placeholder = pending_raster)]
 async fn rasterize(
 	_: impl Ctx,
+	/// The graphics to render as an image.
 	data: List<Graphic>,
+	/// The area of the document to render, and the resolution to render it at.
+	#[default(0., 0., 1000., 1000.)]
 	footprint: Item<Footprint>,
 	#[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>,
 ) -> Result<List<Raster<CPU>>, NodeError> {

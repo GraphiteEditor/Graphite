@@ -4,37 +4,6 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 use core_types::{Context, ProtoNodeIdentifier, concrete};
 
 #[test]
-fn extract_node() {
-	let passthrough_node = DocumentNode {
-		inputs: vec![],
-		implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
-		..Default::default()
-	};
-	// TODO: Extend test cases to test nested network
-	let mut extraction_network = NodeNetwork {
-		exports: vec![NodeInput::node(NodeId(1), 0)],
-		nodes: [
-			passthrough_node.clone(),
-			DocumentNode {
-				inputs: vec![NodeInput::node(NodeId(0), 0)],
-				implementation: DocumentNodeImplementation::Extract,
-				..Default::default()
-			},
-		]
-		.into_iter()
-		.enumerate()
-		.map(|(id, node)| (NodeId(id as u64), node))
-		.collect(),
-		..Default::default()
-	};
-	extraction_network.resolve_extract_nodes();
-	assert_eq!(extraction_network.nodes.len(), 1);
-	let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
-	assert_eq!(inputs.len(), 1);
-	assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(network), ..) if network == &passthrough_node));
-}
-
-#[test]
 fn resolve_proto_node_add() {
 	let document_node = DocumentNode {
 		inputs: vec![NodeInput::node(NodeId(0), 0)],

@@ -17,7 +17,7 @@ pub struct NodeTemplate {
 	pub inputs: Vec<NodeInput>,
 	/// Type of the argument which this node can be evaluated with.
 	pub call_argument: Type,
-	/// A nested network of templates, a proto node identifier, or the Extract tag.
+	/// A nested network of templates, a definitions table entry, or a proto node identifier.
 	pub implementation: NodeTemplateImplementation,
 	/// Represents the eye icon for hiding/showing the node in the graph UI.
 	pub visible: bool,
@@ -75,7 +75,6 @@ pub enum NodeTemplateImplementation {
 	Network(NodeNetworkTemplate),
 	Definition(NetworkId),
 	ProtoNode(ProtoNodeIdentifier),
-	Extract,
 }
 
 impl Default for NodeTemplateImplementation {
@@ -147,7 +146,6 @@ impl NodeTemplate {
 			}
 			DocumentNodeImplementation::Definition(id) => NodeTemplateImplementation::Definition(id),
 			DocumentNodeImplementation::ProtoNode(identifier) => NodeTemplateImplementation::ProtoNode(identifier),
-			DocumentNodeImplementation::Extract => NodeTemplateImplementation::Extract,
 		};
 
 		NodeTemplate {
@@ -217,7 +215,7 @@ impl NodeTemplate {
 		match &self.implementation {
 			NodeTemplateImplementation::Definition(id) => named.push(*id),
 			NodeTemplateImplementation::Network(network_template) => network_template.nodes.values().for_each(|nested_template| nested_template.named_definitions(named)),
-			NodeTemplateImplementation::ProtoNode(_) | NodeTemplateImplementation::Extract => {}
+			NodeTemplateImplementation::ProtoNode(_) => {}
 		}
 	}
 
@@ -230,7 +228,7 @@ impl NodeTemplate {
 				}
 			}
 			NodeTemplateImplementation::Network(network_template) => network_template.nodes.values_mut().for_each(|nested_template| nested_template.rename_definitions(renamed)),
-			NodeTemplateImplementation::ProtoNode(_) | NodeTemplateImplementation::Extract => {}
+			NodeTemplateImplementation::ProtoNode(_) => {}
 		}
 	}
 
@@ -308,7 +306,6 @@ impl NodeTemplateImplementation {
 			}
 			NodeTemplateImplementation::Definition(id) => (DocumentNodeImplementation::Definition(id), None),
 			NodeTemplateImplementation::ProtoNode(identifier) => (DocumentNodeImplementation::ProtoNode(identifier), None),
-			NodeTemplateImplementation::Extract => (DocumentNodeImplementation::Extract, None),
 		}
 	}
 }
