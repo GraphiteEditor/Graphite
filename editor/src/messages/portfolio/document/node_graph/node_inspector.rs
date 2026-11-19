@@ -20,6 +20,7 @@ use graph_craft::application_io::resource::{DataSource, Resource, ResourceId};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete, item};
+use graphene_std::RadialBlurMethod;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::{
@@ -455,6 +456,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<MaskMode>(x) => enum_choice::<MaskMode>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<MinimumMaximumMode>(x) => enum_choice::<MinimumMaximumMode>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<BevelStyle>(x) => enum_choice::<BevelStyle>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<RadialBlurMethod>(x) => enum_choice::<RadialBlurMethod>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<BevelDirection>(x) => enum_choice::<BevelDirection>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<BevelTechnique>(x) => enum_choice::<BevelTechnique>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<NoiseDistribution>(x) => enum_choice::<NoiseDistribution>().for_socket(default_info).inspector_row(),

@@ -12,6 +12,7 @@ pub mod layer_blending;
 pub mod mandelbrot;
 pub mod masks;
 pub mod raster_effects;
+pub mod resample_kernels;
 pub mod value_effects;
 
 pub use kernel::*;

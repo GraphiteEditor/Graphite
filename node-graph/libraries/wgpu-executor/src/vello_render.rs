@@ -375,6 +375,7 @@ impl EffectsRenderer for RenderContext<'_> {
 		fill: f32,
 		opacity: f32,
 		effect_to_pixels: DAffine2,
+		frame: Option<graphic_types::resampling::EffectFrame>,
 		capture: Option<EffectCapture>,
 		draw_paint: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
 		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
@@ -405,6 +406,7 @@ impl EffectsRenderer for RenderContext<'_> {
 			fill,
 			opacity,
 			effect_to_pixels,
+			frame,
 			&paint_textures,
 			capture,
 		);

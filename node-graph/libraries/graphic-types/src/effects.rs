@@ -7,6 +7,7 @@ use crate::adjustment::Adjustment;
 use crate::filters::{Convolution, NoiseDistribution};
 use crate::masks::{MaskMode, mask_feather_sigma};
 use crate::parameters::{ParameterVisitor, ReadParameters, WriteParameters};
+use crate::resampling::RadialBlurMethod;
 use core_types::ATTR_TRANSFORM;
 use core_types::Color;
 use core_types::blending::BlendMode;
@@ -65,6 +66,10 @@ pub enum EffectKind {
 	AddNoise,
 	/// Shows a random scattering of the content fully opaque and hides the rest, more where it's more opaque.
 	Dissolve,
+	/// Smears the content along a line, as if it moved while being captured.
+	MotionBlur,
+	/// Smears the content around a center or toward it.
+	RadialBlur,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
 	Desaturate,
 	GammaCorrection,
@@ -110,6 +115,8 @@ impl std::fmt::Display for EffectKind {
 			Self::HighPass => "High Pass",
 			Self::AddNoise => "Add Noise",
 			Self::Dissolve => "Dissolve",
+			Self::MotionBlur => "Motion Blur",
+			Self::RadialBlur => "Radial Blur",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
 			Self::MakeOpaque => "Make Opaque",
@@ -455,6 +462,7 @@ impl Effects {
 	}
 
 	/// How far past the content the effects together can paint, in the effect space of a run of them.
+	/// It leaves out what [`Effects::reach_around`] adds from the content's bounds and what it paints past its frame, for the effects relative to its extent.
 	pub fn reach(&self) -> f64 {
 		self.operations().map(|operation| operation.painted_reach()).sum()
 	}
@@ -985,6 +993,25 @@ pub enum EffectOperation {
 		opacity: f64,
 		seed: i64,
 	},
+	MotionBlur {
+		/// The direction of the line, in degrees counterclockwise from the right.
+		angle: f64,
+		/// How long the line each point is smeared along is.
+		distance: f64,
+		/// Whether to blend the colors with their gamma encoding rather than in linear light.
+		gamma: bool,
+	},
+	/// Centered relative to the content's frame.
+	RadialBlur {
+		/// Whether the content spins around the center or zooms toward it.
+		method: RadialBlurMethod,
+		/// How far the blur smears, by the degrees of a spin or twice the percentage of the distance to the center of a zoom, up to 360.
+		amount: f64,
+		/// The point the blur spins around or zooms toward, as a percentage of the frame's size away from its middle.
+		center: DVec2,
+		/// Whether to blend the colors with their gamma encoding rather than in linear light.
+		gamma: bool,
+	},
 	Adjustment(Adjustment),
 }
 
@@ -1030,6 +1057,8 @@ impl EffectOperation {
 			Self::HighPass { .. } => EffectKind::HighPass,
 			Self::AddNoise { .. } => EffectKind::AddNoise,
 			Self::Dissolve { .. } => EffectKind::Dissolve,
+			Self::MotionBlur { .. } => EffectKind::MotionBlur,
+			Self::RadialBlur { .. } => EffectKind::RadialBlur,
 			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
 	}
@@ -1073,6 +1102,8 @@ impl EffectOperation {
 				..
 			} => (highlight_color.a() <= 0. && shadow_color.a() <= 0.) || (*size <= 0. && gloss_contour.is_identity()),
 			Self::PaintOverlay { opacity, .. } => *opacity <= 0.,
+			Self::MotionBlur { distance, .. } => *distance <= 0.,
+			Self::RadialBlur { amount, .. } => *amount <= 0.,
 			Self::Adjustment(Adjustment::ColorOverlay { color, opacity, .. }) => color.a() <= 0. || *opacity <= 0.,
 			Self::Mask { density, .. } => *density <= 0.,
 			Self::Feather { distance } => *distance <= 0.,
@@ -1093,7 +1124,7 @@ impl EffectOperation {
 	/// Whether this operation reads the pixels around each one of the image the effects before it leave, like a blur, rather than casting from the content's shape or changing each pixel alone.
 	pub fn reads_pixels_around(&self) -> bool {
 		match self {
-			Self::Blur { .. } => true,
+			Self::Blur { .. } | Self::MotionBlur { .. } | Self::RadialBlur { .. } => true,
 			Self::ConvolutionKernel { .. } | Self::Emboss { .. } | Self::FindEdges | Self::MinimumMaximum { .. } | Self::Sharpen { .. } | Self::HighPass { .. } => true,
 			// Cast from the content's shape, reading a mask's own image or a feather's map, or changing each pixel alone
 			Self::DropShadow { .. }
@@ -1162,6 +1193,10 @@ impl EffectOperation {
 			// The Sobel taps' diagonal, which a rotation can turn along an axis, plus two pixels for rounding and copies between pixels
 			Self::FindEdges => std::f64::consts::SQRT_2 + 2.,
 			Self::MinimumMaximum { radius, .. } => radius.max(0.).ceil() + 1.,
+			// The line reaches half its length each way, past which its box leans half a pixel and its shears interpolate two pixels
+			Self::MotionBlur { distance, .. } => distance.max(0.) / 2. + 3.,
+			// It reaches farther from larger content, which `Effects::reach_around` measures
+			Self::RadialBlur { .. } => 0.,
 			Self::PaintOverlay { .. } | Self::AddNoise { .. } | Self::Dissolve { .. } | Self::Adjustment(_) => 0.,
 		}
 	}
@@ -1246,6 +1281,8 @@ impl EffectOperation {
 			Self::Sharpen { amount, radius, threshold, .. } => [amount, radius, threshold].into_iter().for_each(finite),
 			Self::AddNoise { amount, .. } => finite(amount),
 			Self::Dissolve { opacity, .. } => finite(opacity),
+			Self::MotionBlur { angle, distance, .. } => [angle, distance].into_iter().for_each(finite),
+			Self::RadialBlur { amount, center, .. } => [amount, &mut center.x, &mut center.y].into_iter().for_each(finite),
 			Self::PaintOverlay { .. } | Self::ConvolutionKernel { .. } | Self::FindEdges | Self::Adjustment(_) => {}
 		}
 		self
@@ -1375,6 +1412,17 @@ impl EffectOperation {
 				seed: 0,
 			},
 			EffectKind::Dissolve => Self::Dissolve { opacity: 0., seed: 0 },
+			EffectKind::MotionBlur => Self::MotionBlur {
+				angle: 0.,
+				distance: 0.,
+				gamma: false,
+			},
+			EffectKind::RadialBlur => Self::RadialBlur {
+				method: RadialBlurMethod::default(),
+				amount: 0.,
+				center: DVec2::ZERO,
+				gamma: false,
+			},
 			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
 			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
 			EffectKind::MakeOpaque => Self::Adjustment(Adjustment::MakeOpaque),
@@ -1634,6 +1682,17 @@ impl EffectOperation {
 				visitor.parameter("opacity", opacity, 50.);
 				visitor.parameter("seed", seed, 0);
 			}
+			Self::MotionBlur { angle, distance, gamma } => {
+				visitor.parameter("angle", angle, 0.);
+				visitor.parameter("distance", distance, 10.);
+				visitor.parameter("gamma", gamma, false);
+			}
+			Self::RadialBlur { method, amount, center, gamma } => {
+				visitor.parameter("method", method, RadialBlurMethod::default());
+				visitor.parameter("amount", amount, 10.);
+				visitor.parameter("center", center, DVec2::ZERO);
+				visitor.parameter("gamma", gamma, false);
+			}
 			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
@@ -1795,6 +1854,18 @@ mod tests {
 				seed: 7,
 			},
 			EffectOperation::Dissolve { opacity: 25., seed: 3 },
+			EffectOperation::MotionBlur {
+				angle: -30.,
+				distance: 25.5,
+				gamma: true,
+			},
+			EffectOperation::RadialBlur {
+				method: RadialBlurMethod::Zoom,
+				amount: 40.,
+				center: DVec2::new(10., -25.),
+				gamma: false,
+			},
+			EffectOperation::default_for(EffectKind::RadialBlur),
 		];
 
 		for operation in operations {

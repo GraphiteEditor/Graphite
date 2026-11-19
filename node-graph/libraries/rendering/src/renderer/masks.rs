@@ -134,7 +134,7 @@ pub(super) fn masked_extent(effects: &Effects, placement: DAffine2) -> Option<[D
 			break;
 		}
 
-		let reach = 3. * svg_feather_sigma(feather, length_scale) + nested_effects_reach(&mask, placement, EffectOperation::painted_reach);
+		let reach = 3. * svg_feather_sigma(feather, length_scale) + nested_effects_reach(&mask, placement, |_| true);
 		let [min, max] = [min - reach, max + reach];
 		extent = Some(match extent {
 			// Masks that don't overlap leave an empty extent at the first one's corner
@@ -184,7 +184,7 @@ pub(super) fn write_endless_content_mask(render: &mut SvgRender, effects: &Effec
 		let sigma = svg_feather_sigma(feather, length_scale);
 		let region = match drawn_bounding_box(&mask, DAffine2::IDENTITY) {
 			RenderBoundingBox::Rectangle([min, max]) => {
-				let reach = 3. * sigma + nested_effects_reach(&mask, DAffine2::IDENTITY, EffectOperation::painted_reach);
+				let reach = 3. * sigma + nested_effects_reach(&mask, DAffine2::IDENTITY, |_| true);
 				[min - reach, max + reach]
 			}
 			_ => [DVec2::splat(-ENDLESS_EXTENT), DVec2::splat(ENDLESS_EXTENT)],

@@ -30,6 +30,7 @@ use graphic_types::filters::is_random_field_filter;
 use graphic_types::generator::GeneratorPattern;
 use graphic_types::masks::{MaskMode, masked_radius_blur_levels};
 use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::resampling::frame_of_bounds;
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
@@ -234,14 +235,15 @@ struct ItemCompositing<'a> {
 }
 
 impl ItemCompositing<'_> {
-	/// How far the effects reach past the content along each axis of the space it's drawn in.
-	fn reach(&self) -> DVec2 {
-		self.effects.map_or(DVec2::ZERO, |(effects, _)| effects.reach_along_axes(self.content_transform))
+	/// How far the effects reach past content with these `bounds` in the space it's drawn in, along each of that space's axes, farther for larger content with effects relative to its extent.
+	/// The content's `overhang` is how far it already paints past its frame there, as a group's nested effects do.
+	fn reach_around(&self, [min, max]: [DVec2; 2], overhang: f64) -> DVec2 {
+		self.effects.map_or(DVec2::ZERO, |(effects, _)| effects.reach_around(self.content_transform, max - min, overhang))
 	}
 
-	/// How far the effects reach past the content along each axis of the content's own space.
-	fn reach_in_content_space(&self) -> DVec2 {
-		self.effects.map_or(DVec2::ZERO, |(effects, _)| effects.reach_along_axes(DAffine2::IDENTITY))
+	/// Like [`Self::reach_around`], along each axis of the content's own space, in which it has these `bounds`.
+	fn reach_around_in_content_space(&self, [min, max]: [DVec2; 2]) -> DVec2 {
+		self.effects.map_or(DVec2::ZERO, |(effects, _)| effects.reach_around(DAffine2::IDENTITY, max - min, 0.))
 	}
 
 	/// This compositing for content clipped by the content beneath it, if `clipped`, which flattens every effect into the content's image so the clip cuts the whole result.
@@ -319,12 +321,17 @@ impl ItemCompositing<'_> {
 
 	/// Draws the content `draw` draws through the effects group, given the content's bounds in the scene's space. Rendering a split scene calls `draw` again for each part.
 	/// `transform` maps the space the content's item is placed in, where the effects' drawn paints are placed too, into the scene's space.
+	/// The `frame` places the unit square on the content's bounds in its own space, carried into the scene's space, for effects relative to the content's extent.
+	/// The content's `overhang` is how far it already paints past its frame, in document units, as a group's nested effects do.
+	#[expect(clippy::too_many_arguments)]
 	fn draw_with_effects(
 		&self,
 		scene: &mut VelloSceneBuilder,
 		transform: DAffine2,
 		render_params: &RenderParams,
 		bounds: impl FnOnce() -> RenderBoundingBox,
+		frame: impl FnOnce() -> Option<DAffine2>,
+		overhang: f64,
 		mut draw: impl FnMut(&mut VelloSceneBuilder),
 	) {
 		let Some((effects, fill)) = self.effects else { return draw(scene) };
@@ -411,7 +418,8 @@ impl ItemCompositing<'_> {
 			false => (1., BlendMode::Normal, false),
 		};
 		let bounds = bounds.map(|[min, max]| kurbo::Rect::new(min.x, min.y, max.x, max.y));
-		draw_effect_runs(scene, effects, &runs, fill, compositing, self.content_transform, bounds, &draw_paint, &mut draw);
+		let frame = effects.take_frame().then(frame).flatten().map(|frame| (frame, overhang));
+		draw_effect_runs(scene, effects, &runs, fill, compositing, self.content_transform, bounds, frame, &draw_paint, &mut draw);
 	}
 
 	/// The opacity for content drawn without the effects group, as SVG draws content its filter can't apply to.
@@ -457,7 +465,8 @@ impl ItemCompositing<'_> {
 
 	/// Whether SVG filters can carry out every one of the effects, rather than leaving some undone.
 	fn svg_expresses_effects(&self) -> bool {
-		self.effects.is_none_or(|(effects, _)| effects.operations().all(|operation| svg_expresses(&operation)))
+		self.effects
+			.is_none_or(|(effects, _)| effects.operations().all(|operation| operation.changes_nothing() || svg_expresses(&operation)))
 	}
 
 	/// A vector's solid `fill` and `stroke` paints with the leading adjustments carried out on their colors, sparing the content an effects group or an SVG filter
@@ -734,6 +743,7 @@ fn draw_effect_runs(
 	(opacity, blend_mode, layered): (f32, BlendMode, bool),
 	content_transform: DAffine2,
 	bounds: Option<kurbo::Rect>,
+	frame: Option<(DAffine2, f64)>,
 	draw_paint: &dyn Fn(usize, &mut VelloSceneBuilder),
 	draw: &mut dyn FnMut(&mut VelloSceneBuilder),
 ) {
@@ -746,20 +756,17 @@ fn draw_effect_runs(
 	let mut draw_run_paint = |index: usize, scene: &mut VelloSceneBuilder| draw_paint(paints_before + index, scene);
 
 	if earlier.is_empty() {
-		return scene.draw_effects(&run, fill, opacity, blend_mode, layered, bounds, space, &mut draw_run_paint, draw);
+		return scene.draw_effects(&run, fill, opacity, blend_mode, layered, bounds, space, frame, &mut draw_run_paint, draw);
 	}
 
 	// The runs before this one paint past the content, which this run then reaches from
-	let earlier_reach: DVec2 = (earlier.iter())
-		.map(|(stamped_transform, rows)| {
-			let reach: f64 = effects.operations_in(rows.clone()).map(|operation| operation.painted_reach()).sum();
-			reach * spans_along_axes(effect_space(content_transform, *stamped_transform).matrix2)
-		})
-		.sum();
+	let size = bounds.map_or(DVec2::ZERO, |bounds| DVec2::new(bounds.width(), bounds.height()));
+	let earlier_reach = effects.run(0..rows.start).reach_around(content_transform, size, frame.map_or(0., |(_, overhang)| overhang));
 	let earlier_bounds = bounds.map(|bounds| bounds.inflate(earlier_reach.x, earlier_reach.y));
-	scene.draw_effects(&run, 1., opacity, blend_mode, layered, earlier_bounds, space, &mut draw_run_paint, &mut |scene| {
+	let earlier_frame = frame.map(|(frame, overhang)| (frame, overhang + earlier_reach.max_element()));
+	scene.draw_effects(&run, 1., opacity, blend_mode, layered, earlier_bounds, space, earlier_frame, &mut draw_run_paint, &mut |scene| {
 		let flattened = (1., BlendMode::Normal, false);
-		draw_effect_runs(scene, effects, earlier, fill, flattened, content_transform, bounds, draw_paint, draw)
+		draw_effect_runs(scene, effects, earlier, fill, flattened, content_transform, bounds, frame, draw_paint, draw)
 	});
 }
 
@@ -820,57 +827,71 @@ fn continued_masked_radius_blur_map(map: &Graphic, bounds: [DVec2; 2]) -> Option
 	}
 }
 
-/// How far the effects of the items nested anywhere inside `graphic`, which `transform` places in the document, reach past its bounds along the document's axes,
-/// measuring how far each effect reaches by `reach` (like [`EffectOperation::painted_reach`]).
-fn nested_effects_reach(graphic: &Graphic, transform: DAffine2, reach: fn(&EffectOperation) -> f64) -> DVec2 {
-	fn item_reach<T>(item: &Item<T>, transform: DAffine2, reach: fn(&EffectOperation) -> f64) -> DVec2 {
-		let content_transform = transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
-		item.attribute::<Effects>(ATTR_EFFECTS)
-			.map_or(DVec2::ZERO, |effects| effects.reach_along_axes_by(content_transform, reach))
+/// How far `effects`, on content that `content_transform` places in the document, reach past it along the document's axes, counting those that `counts` accepts,
+/// given how far the content already paints past its frame (its `overhang`). The content's `bounds` are found only for effects relative to its extent, which need their size.
+fn effects_reach_around(effects: &Effects, content_transform: DAffine2, bounds: impl FnOnce() -> RenderBoundingBox, overhang: f64, counts: fn(&EffectOperation) -> bool) -> DVec2 {
+	let size = match effects.reach_depends_on_size().then(bounds) {
+		Some(RenderBoundingBox::Rectangle([min, max])) => max - min,
+		_ => DVec2::ZERO,
+	};
+	effects.reach_around_by(content_transform, size, overhang, counts)
+}
+
+/// How far the effects of the items nested anywhere inside `graphic`, which `transform` places in the document, reach past its bounds along the document's axes, counting those that `counts` accepts.
+/// Each item's effects take the size of its bounds (a list's whole bounds for its leaves), and how far the effects nested in it already paint past them.
+fn nested_effects_reach(graphic: &Graphic, transform: DAffine2, counts: fn(&EffectOperation) -> bool) -> DVec2 {
+	fn placed<T>(item: &Item<T>) -> (Option<&Effects>, DAffine2) {
+		(item.attribute(ATTR_EFFECTS), item.attribute_cloned_or_default(ATTR_TRANSFORM))
 	}
-	fn list_reach<T>(list: &List<T>, transform: DAffine2, reach: fn(&EffectOperation) -> f64, nested: impl Fn(&T, DAffine2) -> DVec2) -> DVec2 {
+	fn leaves_reach<T>(list: &List<T>, leaf_reach: impl Fn((Option<&Effects>, DAffine2)) -> DVec2) -> DVec2 {
 		(0..list.len())
-			.map(|index| {
-				let content_transform = transform * list.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index);
-				let own = list
-					.attribute::<Effects>(ATTR_EFFECTS, index)
-					.map_or(DVec2::ZERO, |effects| effects.reach_along_axes_by(content_transform, reach));
-				own + list.element(index).map_or(DVec2::ZERO, |element| nested(element, content_transform))
-			})
+			.map(|index| leaf_reach((list.attribute(ATTR_EFFECTS, index), list.attribute_cloned_or_default(ATTR_TRANSFORM, index))))
 			.fold(DVec2::ZERO, DVec2::max)
 	}
-	fn none<T>(_: &T, _: DAffine2) -> DVec2 {
-		DVec2::ZERO
-	}
+
+	// Found once for all of a list's leaves measuring from them
+	let whole_bounds = std::cell::OnceCell::new();
+	let whole_bounds = || *whole_bounds.get_or_init(|| drawn_bounding_box(graphic, transform));
+	let leaf_reach =
+		|(effects, item_transform): (Option<&Effects>, DAffine2)| effects.map_or(DVec2::ZERO, |effects| effects_reach_around(effects, transform * item_transform, whole_bounds, 0., counts));
+	let group_reach = |element: &Graphic, effects: Option<&Effects>, content_transform: DAffine2| {
+		let nested = nested_effects_reach(element, content_transform, counts);
+		let own = effects.map_or(DVec2::ZERO, |effects| {
+			effects_reach_around(effects, content_transform, || drawn_bounding_box(element, content_transform), nested.max_element(), counts)
+		});
+		own + nested
+	};
 
 	match graphic {
 		Graphic::None(_) | Graphic::NoneList(_) | Graphic::StrokeList(_) => DVec2::ZERO,
-		Graphic::Graphic(item) => {
-			let content_transform = transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
-			item_reach(item, transform, reach) + nested_effects_reach(item.element(), content_transform, reach)
-		}
-		Graphic::Vector(item) => item_reach(item, transform, reach),
-		Graphic::RasterCPU(item) => item_reach(item, transform, reach),
-		Graphic::RasterGPU(item) => item_reach(item, transform, reach),
-		Graphic::Color(item) => item_reach(item, transform, reach),
-		Graphic::Gradient(item) => item_reach(item, transform, reach),
-		Graphic::Generator(item) => item_reach(item, transform, reach),
-		Graphic::Text(item) => item_reach(item, transform, reach),
-		Graphic::GraphicList(list) => list_reach(list, transform, reach, |nested, content_transform| nested_effects_reach(nested, content_transform, reach)),
-		Graphic::VectorList(list) => list_reach(list, transform, reach, none),
-		Graphic::RasterCPUList(list) => list_reach(list, transform, reach, none),
-		Graphic::RasterGPUList(list) => list_reach(list, transform, reach, none),
-		Graphic::ColorList(list) => list_reach(list, transform, reach, none),
-		Graphic::GradientList(list) => list_reach(list, transform, reach, none),
-		Graphic::GeneratorList(list) => list_reach(list, transform, reach, none),
-		Graphic::TextList(list) => list_reach(list, transform, reach, none),
+		Graphic::Graphic(item) => group_reach(item.element(), item.attribute(ATTR_EFFECTS), transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM)),
+		Graphic::Vector(item) => leaf_reach(placed(item)),
+		Graphic::RasterCPU(item) => leaf_reach(placed(item)),
+		Graphic::RasterGPU(item) => leaf_reach(placed(item)),
+		Graphic::Color(item) => leaf_reach(placed(item)),
+		Graphic::Gradient(item) => leaf_reach(placed(item)),
+		Graphic::Generator(item) => leaf_reach(placed(item)),
+		Graphic::Text(item) => leaf_reach(placed(item)),
+		Graphic::GraphicList(list) => (0..list.len())
+			.filter_map(|index| {
+				let content_transform = transform * list.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index);
+				Some(group_reach(list.element(index)?, list.attribute(ATTR_EFFECTS, index), content_transform))
+			})
+			.fold(DVec2::ZERO, DVec2::max),
+		Graphic::VectorList(list) => leaves_reach(list, leaf_reach),
+		Graphic::RasterCPUList(list) => leaves_reach(list, leaf_reach),
+		Graphic::RasterGPUList(list) => leaves_reach(list, leaf_reach),
+		Graphic::ColorList(list) => leaves_reach(list, leaf_reach),
+		Graphic::GradientList(list) => leaves_reach(list, leaf_reach),
+		Graphic::GeneratorList(list) => leaves_reach(list, leaf_reach),
+		Graphic::TextList(list) => leaves_reach(list, leaf_reach),
 	}
 }
 
 /// The bounds of the items in `list`, as [`graphic_list_bounding_box`] finds them, each grown by how far its effects and those nested anywhere inside it paint past it.
-/// Without `maps_resolved`, as in an SVG with no GPU to render its maps and images, only the effects SVG then draws past the content count (see [`svg_drawn_reach`]).
+/// Without `maps_resolved`, as in an SVG with no GPU to render its maps and images, only the effects SVG then draws past the content count (see [`svg_draws_past_content`]).
 pub fn graphic_list_painted_bounds(list: &List<Graphic>, maps_resolved: bool) -> RenderBoundingBox {
-	let reach: fn(&EffectOperation) -> f64 = if maps_resolved { EffectOperation::painted_reach } else { svg_drawn_reach };
+	let counts: fn(&EffectOperation) -> bool = if maps_resolved { |_| true } else { svg_draws_past_content };
 
 	let item_bounds = |index| {
 		let element = list.element(index)?;
@@ -879,10 +900,11 @@ pub fn graphic_list_painted_bounds(list: &List<Graphic>, maps_resolved: bool) ->
 			return None;
 		};
 
-		let own_reach = list
-			.attribute::<Effects>(ATTR_EFFECTS, index)
-			.map_or(DVec2::ZERO, |effects| effects.reach_along_axes_by(transform, reach));
-		let reach = own_reach + nested_effects_reach(element, transform, reach);
+		let nested = nested_effects_reach(element, transform, counts);
+		let own = (list.attribute::<Effects>(ATTR_EFFECTS, index)).map_or(DVec2::ZERO, |effects| {
+			effects_reach_around(effects, transform, || drawn_bounding_box(element, transform), nested.max_element(), counts)
+		});
+		let reach = own + nested;
 		Some([min - reach, max + reach])
 	};
 
@@ -913,12 +935,16 @@ fn svg_runs(effects: &Effects) -> Vec<(DAffine2, Range<usize>)> {
 	runs
 }
 
-/// How far an effect that SVG draws without the GPU's maps paints past the content, in its effect space, which only the blurs and Minimum (growing the coverage) do.
-fn svg_drawn_reach(operation: &EffectOperation) -> f64 {
-	match operation {
-		EffectOperation::Blur { .. } | EffectOperation::MinimumMaximum { .. } => operation.painted_reach(),
-		_ => 0.,
-	}
+/// Whether SVG draws the effect past the content without the GPU's maps, which only the blurs and Minimum (growing the coverage) do.
+fn svg_draws_past_content(operation: &EffectOperation) -> bool {
+	matches!(
+		operation,
+		EffectOperation::Blur { .. }
+			| EffectOperation::MinimumMaximum {
+				mode: graphic_types::MinimumMaximumMode::Minimum,
+				..
+			}
+	)
 }
 
 /// Wraps an item's SVG `content` in its effects' groups, if it has effects SVG carries out: one for each layer the last run draws, applying the layer's filter, the item's opacity, and the layer's blend mode.
@@ -1089,8 +1115,8 @@ struct DeferredMarkup {
 }
 
 /// Opens markup standing in for an image the GPU renders of an item, if SVG filters can't carry out all its effects, which [`finish_deferred_markup`] then closes.
-/// `bounds` gives the content's extent in the current user space.
-fn start_deferred_markup(render: &mut SvgRender, render_params: &RenderParams, compositing: &ItemCompositing, bounds: impl FnOnce() -> RenderBoundingBox) -> Option<DeferredMarkup> {
+/// `bounds` gives the content's extent in the current user space, and `overhang` how far it already paints past its frame there, as a group's nested effects do.
+fn start_deferred_markup(render: &mut SvgRender, render_params: &RenderParams, compositing: &ItemCompositing, bounds: impl FnOnce() -> RenderBoundingBox, overhang: f64) -> Option<DeferredMarkup> {
 	// Masks and paints are nested markup no image can replace, and content inside deferred content is in its image already.
 	// TODO: Paints (patterns) whose effects need the GPU's maps then draw wrongly or not at all, unlike Vello. Embed a GPU render of such a paint,
 	// filled in by `svg_readback.rs` like its images, maps, and planned generators (see the values and renders plan's boundary work).
@@ -1100,8 +1126,8 @@ fn start_deferred_markup(render: &mut SvgRender, render_params: &RenderParams, c
 	}
 	let RenderBoundingBox::Rectangle([min, max]) = bounds() else { return None };
 
-	// The image covers how far the effects reach past the content, measured in this user space
-	let reach = compositing.reach();
+	// The image covers how far the effects reach past the content, measured in this user space, where effects relative to its extent take its size
+	let reach = compositing.reach_around([min, max], overhang);
 
 	let id = generate_uuid();
 	render.leaf_node(deferred_image::image_markers(id).0);
@@ -1143,6 +1169,8 @@ fn finish_deferred_markup(
 fn svg_expresses(operation: &EffectOperation) -> bool {
 	match operation {
 		EffectOperation::Adjustment(adjustment) => svg_expresses_adjustment(adjustment),
+		// No primitive blurs along a line or arc
+		EffectOperation::MotionBlur { .. } | EffectOperation::RadialBlur { .. } => false,
 		_ => true,
 	}
 }
@@ -1881,6 +1909,8 @@ fn write_svg_effects_filter_on_lattice(
 				full = primitives.filter(&full, &operation, pixel_exact, forked, map_capture(0));
 				continue;
 			}
+			// The whole item becomes an image the GPU renders, which replaces this filter
+			EffectOperation::MotionBlur { .. } | EffectOperation::RadialBlur { .. } => continue,
 		};
 
 		for (plane, within, color, blend_mode) in planes {
@@ -2802,7 +2832,7 @@ fn masker_region(masker: &Graphic, transform: DAffine2) -> Option<[DVec2; 2]> {
 		return None;
 	};
 
-	let reach = nested_effects_reach(masker, transform, EffectOperation::painted_reach);
+	let reach = nested_effects_reach(masker, transform, |_| true);
 	Some([min - reach, max + reach])
 }
 
@@ -2859,7 +2889,7 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 		let effects = compositing.effects.map(|(effects, _)| effects);
 		let bounds = || match drawn_bounding_box(element, transform) {
 			RenderBoundingBox::Rectangle([min, max]) => {
-				let nested_reach = nested_effects_reach(element, transform, EffectOperation::painted_reach);
+				let nested_reach = nested_effects_reach(element, transform, |_| true);
 				RenderBoundingBox::Rectangle([min - nested_reach, max + nested_reach])
 			}
 			// Masks can give content without edges, like a color layer, the edges its effects need
@@ -2879,7 +2909,12 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 		let endless_masked = endless_mask.is_some();
 
 		render_svg_within_mask(render, endless_mask, blend_mode, |render| {
-			let deferred = start_deferred_markup(render, render_params, &compositing, bounds);
+			// Found only for effects taking the content's frame, the only ones measuring from what's painted past it
+			let nested_reach = match effects {
+				Some(effects) if effects.take_frame() => nested_effects_reach(element, transform, |_| true),
+				_ => DVec2::ZERO,
+			};
+			let deferred = start_deferred_markup(render, render_params, &compositing, bounds, nested_reach.max_element());
 			let filters = compositing.svg_filters(render, render_params, bounds, |keeps| Graphic::Graphic(Box::new(effects_content(item, element.clone(), keeps))));
 			let filtered = filters.is_some();
 
@@ -2908,8 +2943,17 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 					|render| {
 						let (parent_transform, parent_reach) = (render.transform, render.ancestors_reach);
 						render.transform = parent_transform * transform;
-						if filtered {
-							render.ancestors_reach += compositing.effects.map_or(0., |(effects, _)| effects.read_reach(render.transform));
+						if filtered && let Some((effects, _)) = compositing.effects {
+							// Measured in the document, where effects relative to the content's extent take its size there
+							let size = match effects.take_frame().then(bounds) {
+								Some(RenderBoundingBox::Rectangle(content_bounds)) => {
+									let [min, max] = (parent_transform * Quad::from_box(content_bounds)).bounding_box();
+									max - min
+								}
+								_ => DVec2::ZERO,
+							};
+							let overhang = (nested_reach * spans_along_axes(parent_transform.matrix2)).max_element();
+							render.ancestors_reach += effects.read_reach_around(render.transform, size, overhang);
 						}
 						element.render_svg(render, render_params);
 						(render.transform, render.ancestors_reach) = (parent_transform, parent_reach);
@@ -2968,11 +3012,11 @@ fn render_graphic_item_to_vello<'a>(
 
 	// The layers and effects group also cover how far the effects nested inside reach past the content
 	let nested_reach = match bounds {
-		RenderBoundingBox::Rectangle(_) => nested_effects_reach(element, transform, EffectOperation::painted_reach),
+		RenderBoundingBox::Rectangle(_) => nested_effects_reach(element, transform, |_| true),
 		_ => DVec2::ZERO,
 	};
 	let layer_rect = match bounds {
-		RenderBoundingBox::Rectangle(bounds) => Some(inflate_bounds(bounds, compositing.reach() + nested_reach)),
+		RenderBoundingBox::Rectangle(bounds) => Some(inflate_bounds(bounds, compositing.reach_around(bounds, nested_reach.max_element()) + nested_reach)),
 		_ => None,
 	};
 
@@ -2993,8 +3037,15 @@ fn render_graphic_item_to_vello<'a>(
 		RenderBoundingBox::Rectangle(bounds) => rect_bounds(inflate_bounds(bounds, nested_reach)),
 		bounds => bounds,
 	};
+	// The frame is the group's bounds in its own space, without what nested effects reach past them
+	let frame = || match drawn_bounding_box(element, DAffine2::IDENTITY) {
+		RenderBoundingBox::Rectangle(bounds) => Some(frame_of_bounds(bounds, transform)),
+		_ => None,
+	};
 	let draw_content = |scene: &mut VelloSceneBuilder| {
-		compositing.draw_with_effects(scene, parent_transform, render_params, effects_bounds, |scene| element.render_to_vello(scene, transform, render_params));
+		compositing.draw_with_effects(scene, parent_transform, render_params, effects_bounds, frame, nested_reach.max_element(), |scene| {
+			element.render_to_vello(scene, transform, render_params)
+		});
 	};
 
 	if next_clips && mask_element_and_transform.is_none() {
@@ -3047,8 +3098,11 @@ fn collect_graphic_item_metadata(item: ItemRef<'_, Graphic>, metadata: &mut Rend
 	footprint.transform *= item_transform;
 
 	if let Some(layer) = item.layer() {
-		let own_reach = item.attribute::<Effects>(ATTR_EFFECTS).map_or(DVec2::ZERO, |effects| effects.reach_along_axes(footprint.transform));
-		let reach = (own_reach + nested_effects_reach(element, footprint.transform, EffectOperation::painted_reach)).max_element();
+		let nested = nested_effects_reach(element, footprint.transform, |_| true);
+		let own = (item.attribute::<Effects>(ATTR_EFFECTS)).map_or(DVec2::ZERO, |effects| {
+			effects_reach_around(effects, footprint.transform, || drawn_bounding_box(element, footprint.transform), nested.max_element(), |_| true)
+		});
+		let reach = (own + nested).max_element();
 		if reach > 0. {
 			metadata.effects_reach.insert(layer, reach);
 		}
@@ -3873,7 +3927,7 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 				.stroke_inclusive_bounding_box_with_transform(paths, item_transform, stroke.as_ref())
 				.map_or(RenderBoundingBox::None, RenderBoundingBox::Rectangle)
 		};
-		let deferred = start_deferred_markup(render, render_params, &compositing, bounds);
+		let deferred = start_deferred_markup(render, render_params, &compositing, bounds, 0.);
 		// The filter's maps are of the effects that remain after those folded into the paints, which it numbers them by, and the folded ones keep alpha
 		let filters = compositing.svg_filters(render, render_params, bounds, |keeps| {
 			let mut content = effects_content(item, vector.clone(), keeps);
@@ -3992,9 +4046,17 @@ fn render_vector_item_to_vello(
 	let can_draw_aligned_stroke =
 		!stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && contours.iter().all(|p| matches!(p.elements().last(), Some(PathEl::ClosePath)));
 
+	// How far the effects paint past the content, measured from its stroked size in its own space only for effects relative to its extent, since expanding the stroke is costly
+	let sized_by_stroke = compositing.effects.is_some_and(|(effects, _)| effects.reach_depends_on_size());
+	let sized_bounds = sized_by_stroke
+		.then(|| element.stroke_inclusive_bounding_box_with_transform(element_paths, DAffine2::IDENTITY, stroke))
+		.flatten()
+		.unwrap_or(layer_bounds);
+	let effects_reach = compositing.reach_around((multiplied_transform * Quad::from_box(sized_bounds)).bounding_box(), 0.);
+
 	// Vello only culls after expanding strokes and flattening paths, so an item outside the scene is skipped before any of that work
 	let stroke_inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true)).max(get_outline_styles(render_params).0.width);
-	if !overlaps_scene(scene, layer_bounds, multiplied_transform, stroke_inflation, element_transform, compositing.reach().length()) {
+	if !overlaps_scene(scene, layer_bounds, multiplied_transform, stroke_inflation, element_transform, effects_reach.length()) {
 		if next_clips && clip_masker.is_none() {
 			*clip_masker = Some(vector_clipping_base(element, item));
 		} else if clip_masker.is_some() && !next_clips {
@@ -4025,7 +4087,7 @@ fn render_vector_item_to_vello(
 	});
 
 	// The layers also cover what the effects paint past the content
-	let effects_inflation = compositing.reach_in_content_space();
+	let effects_inflation = compositing.reach_around_in_content_space(sized_bounds);
 	let layer_rect_with_effects = |layer_rect: kurbo::Rect| layer_rect.inflate(effects_inflation.x, effects_inflation.y);
 
 	if needs_blend_layer && let Some((layer_affine, layer_rect)) = layer_geometry {
@@ -4226,7 +4288,12 @@ fn render_vector_item_to_vello(
 				let bounds = element.stroke_inclusive_bounding_box_with_transform(element_paths, multiplied_transform, stroke_params.as_ref());
 				bounds.map_or(RenderBoundingBox::None, RenderBoundingBox::Rectangle)
 			};
-			compositing.draw_with_effects(scene, parent_transform, render_params, effects_bounds, |scene| {
+			// The frame is the shape's bounds in its own space, carried through its transform
+			let frame = || {
+				let bounds = element.stroke_inclusive_bounding_box_with_transform(element_paths, DAffine2::IDENTITY, stroke_params.as_ref())?;
+				Some(frame_of_bounds(bounds, multiplied_transform))
+			};
+			compositing.draw_with_effects(scene, parent_transform, render_params, effects_bounds, frame, 0., |scene| {
 				if use_layer {
 					let cloned_element = element.clone();
 
@@ -4627,7 +4694,7 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 	};
 
 	let bounds = || RenderBoundingBox::Rectangle((transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
-	let deferred = start_deferred_markup(render, render_params, &compositing, bounds);
+	let deferred = start_deferred_markup(render, render_params, &compositing, bounds, 0.);
 	// The filter's maps are of the adjusted image with the effects that remain, which the filter numbers them by
 	let filters = compositing.svg_filters(render, render_params, bounds, |keeps| {
 		let mut content = effects_content(item, image.clone(), keeps);
@@ -4760,7 +4827,7 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 		&& let RenderBoundingBox::Rectangle(bounds) = whole_bounds()
 	{
 		let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-		let rect = inflate_bounds(bounds, compositing.reach());
+		let rect = inflate_bounds(bounds, compositing.reach_around(bounds, 0.));
 		scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &rect);
 		layer = true;
 	}
@@ -4780,7 +4847,8 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 	let sampler = peniko::ImageSampler::new().with_extend(peniko::Extend::Pad);
 
 	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
-	compositing.draw_with_effects(scene, transform, render_params, item_bounds, |scene| {
+	let frame = || Some(transform * transform_attribute);
+	compositing.draw_with_effects(scene, transform, render_params, item_bounds, frame, 0., |scene| {
 		scene.draw_raster(image.clone(), adjustments.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
 	});
 
@@ -4823,7 +4891,7 @@ fn render_generator_item_svg(item: ItemRef<'_, Generator>, render: &mut SvgRende
 	let bounds = (image_transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box();
 
 	// The generator has no bounds, so paints without a placement of their own stay unfitted, as for a color or gradient
-	let deferred = start_deferred_markup(render, render_params, &compositing, || RenderBoundingBox::Rectangle(bounds));
+	let deferred = start_deferred_markup(render, render_params, &compositing, || RenderBoundingBox::Rectangle(bounds), 0.);
 	let filters = compositing.svg_filters_within(render, render_params, bounds, None, |keeps| {
 		let mut content = effects_content(item, generator, keeps);
 		content.set_attribute(ATTR_EFFECTS, compositing.effects.map(|(effects, _)| effects.clone()).unwrap_or_default());
@@ -4907,6 +4975,8 @@ fn render_generator_item_to_vello(item: ItemRef<'_, Generator>, scene: &mut Vell
 		transform,
 		render_params,
 		|| bounds,
+		|| None,
+		0.,
 		|scene| scene.draw_generator(&pattern, kurbo::Affine::new(local_to_scene.to_cols_array())),
 	);
 
@@ -5038,7 +5108,7 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut V
 		&& let RenderBoundingBox::Rectangle(bounds) = whole_bounds()
 	{
 		let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-		let rect = inflate_bounds(bounds, compositing.reach());
+		let rect = inflate_bounds(bounds, compositing.reach_around(bounds, 0.));
 		scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &rect);
 		layer = true;
 	}
@@ -5061,7 +5131,8 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut V
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
 
 	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
-	compositing.draw_with_effects(scene, transform, render_params, item_bounds, |scene| {
+	let frame = || Some(transform * transform_attribute);
+	compositing.draw_with_effects(scene, transform, render_params, item_bounds, frame, 0., |scene| {
 		scene.draw_texture(raster.texture.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
 	});
 
@@ -5107,7 +5178,7 @@ fn render_color_item_svg(item: ItemRef<'_, Color>, render: &mut SvgRender, rende
 	if let Some(extent) = extent {
 		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 		let bounds = || RenderBoundingBox::Rectangle(extent);
-		let deferred = start_deferred_markup(render, render_params, &compositing, bounds);
+		let deferred = start_deferred_markup(render, render_params, &compositing, bounds, 0.);
 		let filters = compositing.svg_filters_within(render, render_params, extent, None, |keeps| Graphic::Color(effects_content(item, color, keeps)));
 
 		// Without filters, as in an effect space that collapses, the color takes its opacity and blend mode as if its masks left it without edges
@@ -5310,7 +5381,7 @@ fn draw_through_endless_masks(
 		placement: compositing.placement,
 		content_transform: compositing.content_transform,
 	};
-	masking.draw_with_effects(scene, parent_transform, render_params, || RenderBoundingBox::Infinite, draw);
+	masking.draw_with_effects(scene, parent_transform, render_params, || RenderBoundingBox::Infinite, || None, 0., draw);
 }
 
 /// Draws an endless item through its effects group, for leading masks that give it edges (see [`masks::masked_extent`]), filters reading its details, or random field filters (see [`endless_field_effects`]),
@@ -5327,7 +5398,7 @@ fn draw_endless_item_with_effects(
 	if layer {
 		scene.push_viewport_layer(peniko::BlendMode::new(blend_mode.to_peniko(), peniko::Compose::SrcOver), compositing.opacity);
 	}
-	compositing.draw_with_effects(scene, parent_transform, render_params, || RenderBoundingBox::Infinite, draw);
+	compositing.draw_with_effects(scene, parent_transform, render_params, || RenderBoundingBox::Infinite, || None, 0., draw);
 	if layer {
 		scene.pop_layer();
 	}
@@ -5461,7 +5532,7 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 	if let Some(extent) = extent.filter(|_| thumbnail_rect.is_none()) {
 		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 		let bounds = || RenderBoundingBox::Rectangle(extent);
-		let deferred = start_deferred_markup(render, render_params, &compositing, bounds);
+		let deferred = start_deferred_markup(render, render_params, &compositing, bounds, 0.);
 		let filters = compositing.svg_filters_within(render, render_params, extent, None, |keeps| Graphic::Gradient(effects_content(item, source_gradient.clone(), keeps)));
 
 		// Without filters, as in an effect space that collapses, the gradient takes its opacity and blend mode as if its masks left it without edges
@@ -6067,7 +6138,7 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 		return;
 	}
 
-	let deferred = start_deferred_markup(render, render_params, &compositing, || layout_bounds);
+	let deferred = start_deferred_markup(render, render_params, &compositing, || layout_bounds, 0.);
 	let filters = compositing.svg_filters(render, render_params, || layout_bounds, |keeps| Graphic::Text(effects_content(item, text.clone(), keeps)));
 	let filtered = filters.is_some();
 
@@ -6153,18 +6224,23 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBu
 	text_nodes::TextContext::with_thread_local(|ctx| {
 		let Some(layout) = ctx.layout_text(text, &font, typesetting) else { return };
 
-		let transformed_bounds = || {
+		// The layout's bounds in the text's own space, padded so glyphs reaching past their lines stay within them
+		let layout_bounds = || {
 			let alignment_width = max_width.map(|w| w as f32).unwrap_or_else(|| layout.full_width());
 			let padding = font_size;
-			let bounds = kurbo::Rect::new(-padding, -padding, alignment_width as f64 + padding, layout.height() as f64 + padding);
-			affine.transform_rect_bbox(bounds)
+			[DVec2::splat(-padding), DVec2::new(alignment_width as f64 + padding, layout.height() as f64 + padding)]
+		};
+		let transformed_bounds = || {
+			let [min, max] = layout_bounds();
+			affine.transform_rect_bbox(kurbo::Rect::new(min.x, min.y, max.x, max.y))
 		};
 
 		let needs_layer = !compositing.effects_draw_compositing() && (opacity < 1. || blend_mode_attr != BlendMode::default());
 		if needs_layer {
 			let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
-			let reach = compositing.reach();
-			scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &transformed_bounds().inflate(reach.x, reach.y));
+			let bounds = transformed_bounds();
+			let reach = compositing.reach_around([DVec2::new(bounds.x0, bounds.y0), DVec2::new(bounds.x1, bounds.y1)], 0.);
+			scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &bounds.inflate(reach.x, reach.y));
 		}
 
 		let tilt_tan = letter_tilt.to_radians().tan();
@@ -6174,6 +6250,8 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBu
 			transform,
 			render_params,
 			|| rect_bounds(transformed_bounds()),
+			|| Some(frame_of_bounds(layout_bounds(), transform * item_transform)),
+			0.,
 			|scene| {
 				text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
 					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
@@ -6767,6 +6845,7 @@ mod tests {
 				_: f32,
 				_: f32,
 				_: DAffine2,
+				_: Option<graphic_types::resampling::EffectFrame>,
 				_: Option<graphic_types::effects::EffectCapture>,
 				_: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
 				_: &mut dyn FnMut(&mut VelloSceneBuilder),
@@ -6945,6 +7024,140 @@ mod tests {
 		);
 	}
 
+	/// Records the size of each effects group's region a Vello scene renders, drawing nothing.
+	struct RegionSizes(Vec<glam::UVec2>);
+
+	impl crate::vello_scene_builder::EffectsRenderer for RegionSizes {
+		fn renders_effects(&self) -> bool {
+			true
+		}
+
+		fn render_effects(
+			&mut self,
+			size: glam::UVec2,
+			_: kurbo::Affine,
+			_: &Effects,
+			_: &EffectLayers,
+			_: f32,
+			_: f32,
+			_: DAffine2,
+			_: Option<graphic_types::resampling::EffectFrame>,
+			_: Option<graphic_types::effects::EffectCapture>,
+			_: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
+			_: &mut dyn FnMut(&mut VelloSceneBuilder),
+		) -> Vec<(wgpu::Texture, BlendMode)> {
+			self.0.push(size);
+			Vec::new()
+		}
+	}
+
+	#[test]
+	fn svg_images_of_effects_relative_to_the_extent_reach_by_the_contents_size_in_the_document() {
+		// A zoom blur, which no filter expresses, on a square 10 across in a group scaled 2 times, so it's 20 across in the document
+		let zoom = graphic_types::EffectOperation::RadialBlur {
+			method: graphic_types::RadialBlurMethod::Zoom,
+			amount: 100.,
+			center: DVec2::ZERO,
+			gamma: false,
+		};
+		let group = Item::new_from_element(Graphic::VectorList(orange_square(std::slice::from_ref(&zoom), 1., 1.))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(2.)));
+		let mut render = SvgRender::new();
+		List::new_from_item(group).render_svg(
+			&mut render,
+			&RenderParams {
+				for_export: true,
+				..Default::default()
+			},
+		);
+
+		// The image covers how far the smear reaches from content that size, carried into the group's space at half the length
+		let [image] = &render.deferred_images[..] else {
+			panic!("expected the square's image, got {}", render.deferred_images.len())
+		};
+		let reach = Effects::from_operations([zoom]).reach_around(DAffine2::IDENTITY, DVec2::splat(20.), 0.).x / 2.;
+		assert!((image.bounds[1].x - (10. + reach)).abs() < 1e-6, "{:?} for {reach}", image.bounds);
+	}
+
+	#[test]
+	fn vello_keeps_a_vector_with_effects_reaching_into_the_scene_from_its_stroke() {
+		use graphic_types::vector_types::vector::style::Stroke;
+		use kurbo::Shape;
+
+		// A zoom blur smears farther from larger content, and a line's round-capped stroke 40 wide reaches 20 past each end
+		let zoom = graphic_types::EffectOperation::RadialBlur {
+			method: graphic_types::RadialBlurMethod::Zoom,
+			amount: 200.,
+			center: DVec2::ZERO,
+			gamma: false,
+		};
+		let effects = Effects::from_operations([zoom]);
+		let reach = |size| effects.reach_around(DAffine2::IDENTITY, size, 0.).x;
+		let (contour_reach, stroked_reach) = (reach(DVec2::new(200., 0.)), reach(DVec2::new(240., 40.)));
+		assert!(stroked_reach > contour_reach + 10., "{contour_reach} and {stroked_reach}");
+
+		// A line 200 long left of the scene by more than the smear reaches from its contour but less than it reaches from its stroke
+		let mut stroke = Stroke::new(40.);
+		(stroke.cap, stroke.join) = (StrokeCap::Round, StrokeJoin::Round);
+		let gap = (contour_reach + stroked_reach) / 2.;
+		let mut line = Vector::item_from_bezpath(&kurbo::Line::new((-100., 0.), (100., 0.)).to_path(0.1));
+		line.set_attribute(
+			ATTR_APPEARANCE,
+			Appearance::new_single(Coverage::new_stroke(&stroke), Graphic::ColorList(List::new_from_element(Color::WHITE))),
+		);
+		line.set_attribute(ATTR_EFFECTS, effects);
+		line.set_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(-120. - gap, 50.)));
+
+		// So it's drawn through its effects group rather than culled
+		let mut region_sizes = RegionSizes(Vec::new());
+		let mut scene = VelloSceneBuilder::new(100, 100, kurbo::Affine::IDENTITY, 4096).with_effects_renderer(&mut region_sizes);
+		List::new_from_item(line).render_to_vello(&mut scene, DAffine2::IDENTITY, &RenderParams::default());
+		drop(scene);
+		assert_eq!(region_sizes.0.len(), 1, "the line is culled");
+	}
+
+	#[test]
+	fn vello_finds_the_frame_of_content_only_for_effects_that_take_it() {
+		/// Records whether each effects group a Vello scene renders comes with its content's frame, drawing nothing.
+		struct FramesGiven(Vec<bool>);
+
+		impl crate::vello_scene_builder::EffectsRenderer for FramesGiven {
+			fn renders_effects(&self) -> bool {
+				true
+			}
+
+			fn render_effects(
+				&mut self,
+				_: glam::UVec2,
+				_: kurbo::Affine,
+				_: &Effects,
+				_: &EffectLayers,
+				_: f32,
+				_: f32,
+				_: DAffine2,
+				frame: Option<graphic_types::resampling::EffectFrame>,
+				_: Option<graphic_types::effects::EffectCapture>,
+				_: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
+				_: &mut dyn FnMut(&mut VelloSceneBuilder),
+			) -> Vec<(wgpu::Texture, BlendMode)> {
+				self.0.push(frame.is_some());
+				Vec::new()
+			}
+		}
+
+		// A shadow alone measures nothing from the frame, a motion blur measures its shears from it, and a blur that changes nothing is left out
+		let motion_blur = |distance: f64| graphic_types::EffectOperation::MotionBlur { angle: 0., distance, gamma: false };
+		let shadow = drop_shadow(180., 3., 2.);
+		let cases = [(vec![shadow.clone()], false), (vec![shadow.clone(), motion_blur(4.)], true), (vec![shadow, motion_blur(0.)], false)];
+
+		for (effects, takes_frame) in cases {
+			let mut frames_given = FramesGiven(Vec::new());
+			let mut scene = VelloSceneBuilder::new(100, 100, kurbo::Affine::IDENTITY, 4096).with_effects_renderer(&mut frames_given);
+			orange_square(&effects, 1., 1.).render_to_vello(&mut scene, DAffine2::IDENTITY, &RenderParams::default());
+			drop(scene);
+			assert_eq!(frames_given.0, [takes_frame], "{effects:?}");
+		}
+	}
+
 	#[test]
 	fn lists_paint_as_far_as_the_effects_nested_anywhere_inside_them_paint() {
 		use graphic_types::EffectOperation;
@@ -7018,6 +7231,32 @@ mod tests {
 		let covered = layout.placement.transform.matrix2.x_axis.x;
 		assert!((covered - expected).abs() <= 1., "{covered} for {expected}");
 		assert!(layout.size.x == layout.size.y && layout.size.x <= 10, "{}", layout.size);
+	}
+
+	#[test]
+	fn svg_maps_cover_past_the_view_as_far_as_a_group_filter_reads_without_painting() {
+		// An unsharp mask paints nothing past its content, yet reads around each pixel of a shadow's map inside its group
+		let unsharp_mask = graphic_types::EffectOperation::Sharpen {
+			amount: 100.,
+			radius: 4.,
+			threshold: 0.,
+			edges_only: false,
+		};
+		let mut group = Item::new_from_element(Graphic::VectorList(orange_square(&[drop_shadow(180., 30., 10.)], 1., 1.)));
+		group.set_attribute(ATTR_EFFECTS, Effects::from_operations([unsharp_mask.clone()]));
+		let mut render = SvgRender::new();
+		List::new_from_item(group).render_svg(
+			&mut render,
+			&RenderParams {
+				for_export: true,
+				..Default::default()
+			},
+		);
+
+		let [map] = &render.effect_maps[..] else {
+			panic!("expected one map, got {}", render.effect_maps.len())
+		};
+		assert!((map.margin - unsharp_mask.reach()).abs() < 1e-9, "{} for {}", map.margin, unsharp_mask.reach());
 	}
 
 	#[test]
@@ -7517,6 +7756,45 @@ mod tests {
 		deferred_image::substitute_deferred_image(&mut svg, &mut Vec::new(), &layout.placement, &Raster::new_cpu(Image::new(14, 14, Color::BLACK)));
 		assert!(!svg.contains(&opening) && !svg.contains(&closing), "{svg}");
 		assert!(svg.contains(r#"opacity="0.5""#) && svg.contains("matrix(14,0,0,14,0,0)"), "{svg}");
+	}
+
+	#[test]
+	fn deferred_images_inside_scaled_groups_cover_how_far_effects_relative_to_the_content_reach() {
+		use graphic_types::raster_types::Image;
+		use graphic_types::resampling::{RadialBlur, RadialBlurMethod};
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+
+		// A spin on an image 10 units square inside a group scaled 5 times, so the image spans 50 units of the document
+		let mut image = Item::new_from_element(Raster::new_cpu(Image::new(2, 2, Color::WHITE))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(10.)));
+		let spin = EffectOperation::RadialBlur {
+			method: RadialBlurMethod::Spin,
+			amount: 90.,
+			center: DVec2::ZERO,
+			gamma: false,
+		};
+		stamp_effect(&mut image, Effect::new(&spin));
+		let group = Item::new_from_element(Graphic::RasterCPU(Box::new(image))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(5.)));
+
+		let mut render = SvgRender::new();
+		List::new_from_item(group).render_svg(
+			&mut render,
+			&RenderParams {
+				for_export: true,
+				..Default::default()
+			},
+		);
+
+		// The spin carries the corners as far as its size in the document says, a fifth of that in the group's units
+		let [deferred] = &render.deferred_images[..] else {
+			panic!("expected one deferred image, got {}", render.deferred_images.len())
+		};
+		let reach = RadialBlur::new(RadialBlurMethod::Spin, 90., DVec2::ZERO, DVec2::splat(50.)).reach(25. * std::f64::consts::SQRT_2) / 5.;
+		let expected = [DVec2::splat(-reach), DVec2::splat(10. + reach)];
+		assert!(
+			(deferred.bounds[0] - expected[0]).length() < 1e-9 && (deferred.bounds[1] - expected[1]).length() < 1e-9,
+			"{:?}",
+			deferred.bounds
+		);
 	}
 
 	#[test]

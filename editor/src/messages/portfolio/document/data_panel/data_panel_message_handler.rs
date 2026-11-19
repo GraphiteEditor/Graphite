@@ -7,6 +7,7 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use crate::node_graph_executor::InspectedContext;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
+use graphene_std::RadialBlurMethod;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
@@ -1271,6 +1272,7 @@ impl_table_item_layout_for_choice_enum!(
 	BevelDirection,
 	BevelTechnique,
 	BevelStyle,
+	RadialBlurMethod,
 	EffectKind,
 	Generator,
 	GlowSource,
@@ -1462,6 +1464,7 @@ macro_rules! known_item_types {
 			BevelStyle,
 			BevelDirection,
 			BevelTechnique,
+			RadialBlurMethod,
 			DashPattern,
 			BoxCorners,
 			TransferCurve,

@@ -5,6 +5,7 @@ use graphic_types::effect_layers::EffectLayers;
 use graphic_types::effects::EffectCapture;
 use graphic_types::generator::GeneratorPattern;
 use graphic_types::raster_types::{CPU, Raster, Texture};
+use graphic_types::resampling::EffectFrame;
 use graphic_types::{Adjustment, EffectOperation, Effects};
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape, Stroke};
 use std::borrow::Cow;
@@ -56,6 +57,7 @@ pub trait EffectsRenderer: Send {
 	/// Renders the content `draw` draws, and each of the effects' drawn paints `draw_paint` draws by index, placed by `view` in premultiplied textures of `size`,
 	/// returning one for each of the `layers` that `effects` carried out on it draw, with the mode it blends by.
 	/// `effect_to_pixels` places the effects' space on the texture's pixels, `fill` fades the content but not the shadows and glows cast from it, and `opacity` fades the layers.
+	/// The `frame`, in the texture's pixels, is what effects relative to the content's extent take as their own.
 	/// With a `capture`, the only texture instead holds that effect's coverage, as black with it in alpha.
 	#[expect(clippy::too_many_arguments)]
 	fn render_effects(
@@ -67,6 +69,7 @@ pub trait EffectsRenderer: Send {
 		fill: f32,
 		opacity: f32,
 		effect_to_pixels: DAffine2,
+		frame: Option<EffectFrame>,
 		capture: Option<EffectCapture>,
 		draw_paint: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
 		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
@@ -401,6 +404,8 @@ impl<'a> VelloSceneBuilder<'a> {
 	/// Draws the content `draw` draws with `effects` carried out on it in their `effect_space` (placed in the space of the drawn content), within `bounds` in that space (or everywhere for `None`),
 	/// drawing again for each part of a split render. `draw_paint` draws each of the effects' drawn paints by its index among them, and `fill` fades the content but not the shadows and glows cast from it.
 	/// The content blends by `blend_mode` and the effects by their own modes, each faded by `opacity`, onto what lies beneath, or with every effect flattened into the content's image if not `layered`.
+	/// The `frame` places the unit square on the content's bounds in its own space, carried through its transform into the space of the drawn content, for effects relative to the content's extent.
+	/// It comes with how far the content already paints past it in document units (its overhang), as a group's nested effects do, which those effects carry along.
 	#[expect(clippy::too_many_arguments)]
 	pub fn draw_effects(
 		&mut self,
@@ -411,6 +416,7 @@ impl<'a> VelloSceneBuilder<'a> {
 		layered: bool,
 		bounds: Option<Rect>,
 		effect_space: DAffine2,
+		frame: Option<(DAffine2, f64)>,
 		draw_paint: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
 		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
 	) {
@@ -440,8 +446,16 @@ impl<'a> VelloSceneBuilder<'a> {
 		};
 		let device_to_frame = frame_to_device.inverse();
 		let document_to_frame = Affine::new(device_to_frame.to_cols_array()) * self.view;
+
+		// Effects relative to the content's extent paint farther from larger content, measured in their effect space, and others read past what they paint, like a kernel or a mask's feather
+		let (effect_frame, overhang) = (frame.map(|(frame, _)| frame), frame.map_or(0., |(_, overhang)| overhang));
+		let read_beyond_painted = effects.required_reach() - effects.reach();
+		let reach = match bounds {
+			Some(bounds) => effects.run_reach_around(effect_space.matrix2, DVec2::new(bounds.width(), bounds.height()), overhang) + read_beyond_painted,
+			None => effects.required_reach(),
+		};
 		let length_scale = lengths_to_frame.determinant().abs().sqrt();
-		let (reach, working_reach) = (effects.required_reach() * length_scale, effects.working_reach() * length_scale);
+		let (reach, working_reach) = (reach * length_scale, (reach + effects.working_reach() - effects.required_reach()) * length_scale);
 
 		// The content and what its effects read past it, reaching into the viewport and rounded out to whole pixels of the frame.
 		// Past the view, what they read without painting or reading around each pixel (like a mask's feather) is kept as far as it fits without lowering the resolution.
@@ -452,10 +466,23 @@ impl<'a> VelloSceneBuilder<'a> {
 		let max_area = MAX_EFFECTS_AREA_PER_VIEWPORT_AREA * viewport.area();
 		let painted_region = content_bounds.inflate(working_reach, working_reach).intersect(viewport_in_frame.inflate(reach, reach));
 		let read_past_view = reach + growth_that_fits(painted_region, max_area, max_size as f64).min(working_reach - reach).max(0.);
-		let region = content_bounds
+		let mut region = content_bounds
 			.inflate(working_reach, working_reach)
 			.intersect(viewport_in_frame.inflate(read_past_view, read_past_view))
 			.expand();
+
+		// Effects relative to the content's extent take its frame, measured in their effect space, from which some read beyond the region
+		let effect_to_frame = device_to_frame * effect_to_device;
+		let effect_frame = effect_frame.and_then(|frame| EffectFrame::new(effect_space.inverse() * frame, effect_to_frame));
+		let visible = content_bounds.inflate(reach, reach).intersect(viewport_in_frame);
+		let corners = |rect: Rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)];
+		if let Some([min, max]) = effects.source_region(corners(visible), effect_frame.as_ref(), lengths_to_frame) {
+			if !(visible.width() > 0. && visible.height() > 0.) {
+				return;
+			}
+			region = Rect::new(min.x, min.y, max.x, max.y).intersect(content_bounds.inflate(working_reach, working_reach)).expand();
+		}
+
 		if !(region.width() > 0. && region.height() > 0.) {
 			return;
 		}
@@ -467,10 +494,12 @@ impl<'a> VelloSceneBuilder<'a> {
 		let size = UVec2::new(size_along(region.width()), size_along(region.height()));
 		let origin = region.origin().to_vec2();
 
-		let content_view = Affine::scale(resolution) * Affine::translate(-origin) * document_to_frame;
+		let frame_to_pixels = Affine::scale(resolution) * Affine::translate(-origin);
+		let content_view = frame_to_pixels * document_to_frame;
 		let effect_to_pixels = DAffine2::from_cols_array(&content_view.as_coeffs()) * effect_space;
+		let effect_frame = effect_frame.map(|frame| frame.placed(DAffine2::from_cols_array(&frame_to_pixels.as_coeffs())));
 		let Some(renderer) = self.effects_renderer.as_deref_mut() else { return };
-		let results = renderer.render_effects(size, content_view, effects, &layers, fill, opacity, effect_to_pixels, capture, draw_paint, draw);
+		let results = renderer.render_effects(size, content_view, effects, &layers, fill, opacity, effect_to_pixels, effect_frame, capture, draw_paint, draw);
 
 		// Draw each layer where the content was, blended onto what lies beneath, except a captured coverage, which is drawn as it is
 		let area = Rect::new(0., 0., size.x as f64, size.y as f64);

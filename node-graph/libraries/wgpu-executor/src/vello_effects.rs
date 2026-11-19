@@ -9,14 +9,17 @@ use glam::{DAffine2, DVec2, UVec2};
 use graphic_types::effect_layers::{EffectLayers, EffectPiece, LayerPart, PiecePlace, is_pixel_filter};
 use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GRADIENT_TABLE_SIZE, GlowFill, OutlineFill, bevel_light, contour_gradient_span, grow_and_tent, outline_extents, shadow_offset};
 use graphic_types::masks::{mask_feather_sigma, masked_radius_blur_levels};
+use graphic_types::resampling::{EffectFrame, RadialBlur};
 use graphic_types::{Adjustment, BevelDirection, BevelStyle, BevelTechnique, EffectOperation, Effects, GlowSource, GlowTechnique};
 use raster_kernels::effect_kernels::{BlurKernel, MAX_DIRECT_BOX_RADIUS, NEGLIGIBLE_LENGTH, chamfer_passes};
+use raster_kernels::resample_kernels::MotionBlurShear;
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 use wgpu::util::DeviceExt;
 
 mod filters;
 mod masks;
+mod resample;
 mod styles;
 
 /// The format of the images the passes produce, with the precision to keep soft gradients smooth.
@@ -134,13 +137,14 @@ impl EffectPasses {
 			log::warn!("This GPU can't render into the formats layer effects need, so content draws without its effects");
 		}
 
-		// The filters', styles', and masks' passes live in files of their own, sharing this one's bindings and helpers
+		// The filters', resampling, styles', and masks' passes live in files of their own, sharing this one's bindings and helpers
 		let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some("vello_effects.wgsl"),
 			source: wgpu::ShaderSource::Wgsl(
 				concat!(
 					include_str!("vello_effects.wgsl"),
 					include_str!("vello_effects/filters.wgsl"),
+					include_str!("vello_resample.wgsl"),
 					include_str!("vello_styles.wgsl"),
 					include_str!("vello_masks.wgsl")
 				)
@@ -221,6 +225,7 @@ impl EffectPasses {
 
 	/// Carries out `effects` on `content`, a texture of premultiplied pixels, returning each of the `layers` they draw in a pooled texture of [`WORKING_FORMAT`] the same size, with the mode it blends by.
 	/// `effect_to_pixels` places the effects' space on the texture's pixels, `fill` fades the content but not the shadows and glows cast from it, and `opacity` fades the layers.
+	/// The `frame`, in the texture's pixels, is what effects relative to the content's extent take as their own.
 	/// `paints` holds the effects' drawn paints in order, each rendered over the same pixels as the content.
 	/// With a `capture`, the only result is instead that effect's coverage, as black with it in alpha, or the share [`EffectCapture::THROUGH_MASK`] names.
 	#[expect(clippy::too_many_arguments)]
@@ -235,6 +240,7 @@ impl EffectPasses {
 		fill: f32,
 		opacity: f32,
 		effect_to_pixels: DAffine2,
+		frame: Option<EffectFrame>,
 		paints: &[wgpu::Texture],
 		capture: Option<EffectCapture>,
 	) -> Vec<(wgpu::Texture, BlendMode)> {
@@ -711,6 +717,26 @@ impl EffectPasses {
 					recorder.filter(content, &mut full, &mut filled, operation, effect_to_pixels, captured_plane, &mut |recorder, plane, map| {
 						capture_plane(recorder, plane, map, true)
 					});
+				}
+				EffectOperation::MotionBlur { angle, distance, gamma } => {
+					let anchor = frame.map_or(DVec2::ZERO, |frame| frame.to_pixels.translation);
+					let Some(shear) = MotionBlurShear::new(angle, distance, lengths_to_pixels, anchor) else {
+						continue;
+					};
+
+					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
+					let unblurred = full.take().unwrap_or_else(|| recorder.scale(content, 1.));
+					full = Some(recorder.motion_blur(unblurred, &shear, !gamma));
+					filled = filled.map(|filled| recorder.motion_blur(filled, &shear, !gamma));
+				}
+				EffectOperation::RadialBlur { method, amount, center, gamma } => {
+					let Some(frame) = &frame else { continue };
+					let blur = RadialBlur::new(method, amount, center, frame.size);
+
+					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
+					let unblurred = full.take().unwrap_or_else(|| recorder.scale(content, 1.));
+					full = Some(recorder.radial_blur(unblurred, &blur, frame, length_scale, !gamma));
+					filled = filled.map(|filled| recorder.radial_blur(filled, &blur, frame, length_scale, !gamma));
 				}
 				EffectOperation::Adjustment(_) => {
 					// A run of adjustments is carried out from its first row, in a pass for each standalone step and one for the steps between them
@@ -1616,9 +1642,8 @@ impl PassRecorder<'_> {
 		self.textures.drawn_passes.push("adjust");
 	}
 
-	/// Blurs `texture` by `kernel` along both axes, in linear light if `linear`.
-	/// Kernels too wide for one pass run on a texture halved enough times for them to fit, then doubled back to full size. O(width × height) per pass.
-	fn blur(&mut self, texture: wgpu::Texture, kernel: BlurKernel, linear: bool) -> wgpu::Texture {
+	/// Carries out `operation` on `texture`, in linear light if `linear`.
+	fn in_light(&mut self, texture: wgpu::Texture, linear: bool, operation: impl FnOnce(&mut Self, wgpu::Texture) -> wgpu::Texture) -> wgpu::Texture {
 		let format = texture.format();
 		let mut texture = texture;
 
@@ -1626,42 +1651,51 @@ impl PassRecorder<'_> {
 			let decoded = self.run("decode_to_linear", format, self.size, &texture, None, None, Parameters::default());
 			self.replace(&mut texture, decoded);
 		}
-
-		let levels = kernel.levels();
-		let size = self.size;
-		let level_size = |level: u32| UVec2::new(size.x.div_ceil(1 << level), size.y.div_ceil(1 << level));
-
-		for level in 1..=levels {
-			let halved = self.run("resample", format, level_size(level), &texture, None, None, Parameters::default());
-			self.replace(&mut texture, halved);
-		}
-
-		let taps = kernel_taps(kernel, levels);
-		let mut tap_array = [[0.; 4]; PARAMETER_TAPS];
-		tap_array[..taps.len()].copy_from_slice(&taps);
-		for axis in [DVec2::X, DVec2::Y] {
-			let step = axis / level_size(levels).as_dvec2();
-			let parameters = Parameters {
-				step: [step.x as f32, step.y as f32],
-				tap_count: taps.len() as u32,
-				taps: tap_array,
-				..Default::default()
-			};
-			let convolved = self.run("convolve", format, level_size(levels), &texture, None, None, parameters);
-			self.replace(&mut texture, convolved);
-		}
-
-		for level in (0..levels).rev() {
-			let doubled = self.run("resample", format, level_size(level), &texture, None, None, Parameters::default());
-			self.replace(&mut texture, doubled);
-		}
-
+		let mut texture = operation(self, texture);
 		if linear {
 			let encoded = self.run("encode_to_gamma", format, self.size, &texture, None, None, Parameters::default());
 			self.replace(&mut texture, encoded);
 		}
 
 		texture
+	}
+
+	/// Blurs `texture` by `kernel` along both axes, in linear light if `linear`.
+	/// Kernels too wide for one pass run on a texture halved enough times for them to fit, then doubled back to full size. O(width × height) per pass.
+	fn blur(&mut self, texture: wgpu::Texture, kernel: BlurKernel, linear: bool) -> wgpu::Texture {
+		self.in_light(texture, linear, |recorder, mut texture| {
+			let format = texture.format();
+			let levels = kernel.levels();
+			let size = recorder.size;
+			let level_size = |level: u32| UVec2::new(size.x.div_ceil(1 << level), size.y.div_ceil(1 << level));
+
+			for level in 1..=levels {
+				let halved = recorder.run("resample", format, level_size(level), &texture, None, None, Parameters::default());
+				recorder.replace(&mut texture, halved);
+			}
+
+			let taps = kernel_taps(kernel, levels);
+			let mut tap_array = [[0.; 4]; PARAMETER_TAPS];
+			tap_array[..taps.len()].copy_from_slice(&taps);
+			for axis in [DVec2::X, DVec2::Y] {
+				let step = axis / level_size(levels).as_dvec2();
+				let parameters = Parameters {
+					step: [step.x as f32, step.y as f32],
+					tap_count: taps.len() as u32,
+					taps: tap_array,
+					..Default::default()
+				};
+				let convolved = recorder.run("convolve", format, level_size(levels), &texture, None, None, parameters);
+				recorder.replace(&mut texture, convolved);
+			}
+
+			for level in (0..levels).rev() {
+				let doubled = recorder.run("resample", format, level_size(level), &texture, None, None, Parameters::default());
+				recorder.replace(&mut texture, doubled);
+			}
+
+			texture
+		})
 	}
 }
 
@@ -1802,7 +1836,7 @@ mod tests {
 		let apply = |textures: &mut EffectTextures, effects: &Effects| {
 			textures.drawn_passes.clear();
 			let layers = EffectLayers::plan(effects, BlendMode::Normal, 1., false);
-			let results = passes.apply(&context.device, &queue, textures, &content, effects, &layers, 1., 1., DAffine2::IDENTITY, &[], None);
+			let results = passes.apply(&context.device, &queue, textures, &content, effects, &layers, 1., 1., DAffine2::IDENTITY, None, &[], None);
 			results.into_iter().for_each(|(result, _)| textures.release(result));
 		};
 		let draw = |textures: &mut EffectTextures| {
@@ -1824,7 +1858,7 @@ mod tests {
 			textures.drawn_passes.clear();
 			let effects = Effects::from_operations(operations);
 			let layers = EffectLayers::plan(&effects, BlendMode::Normal, fill, false);
-			let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, fill, 1., DAffine2::IDENTITY, &[], None);
+			let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, fill, 1., DAffine2::IDENTITY, None, &[], None);
 			results.into_iter().for_each(|(result, _)| textures.release(result));
 			textures.drawn_passes.clone()
 		};
@@ -1868,7 +1902,7 @@ mod tests {
 		let mut drawn = |layered: bool| {
 			textures.drawn_passes.clear();
 			let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., layered);
-			let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, 1., 1., DAffine2::IDENTITY, &[], None);
+			let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, 1., 1., DAffine2::IDENTITY, None, &[], None);
 			results.into_iter().for_each(|(result, _)| textures.release(result));
 			textures.drawn_passes.clone()
 		};
@@ -1890,7 +1924,7 @@ mod tests {
 		let content = textures.acquire(&context.device, UVec2::splat(16), wgpu::TextureFormat::Rgba8Unorm);
 		let queue = context.queue.lock();
 		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., false);
-		let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, 1., 1., DAffine2::IDENTITY, &[], None);
+		let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, 1., 1., DAffine2::IDENTITY, None, &[], None);
 		results.into_iter().for_each(|(result, _)| textures.release(result));
 
 		let drawn = |label: &str| textures.drawn_passes.iter().filter(|&&drawn| drawn == label).count();
