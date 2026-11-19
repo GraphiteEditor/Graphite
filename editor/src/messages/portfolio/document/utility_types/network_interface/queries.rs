@@ -802,7 +802,7 @@ impl NodeNetworkInterface {
 		self.query(network_path, "reference", |view| view.reference(node_id)).flatten()
 	}
 
-	/// The icon of the node's definition, or the Custom Node icon when its definition has none or can't be found.
+	/// The icon of the node's definition, or the generic subgraph icon when its definition has none or can't be found.
 	pub fn node_icon(&self, node_id: &NodeId, network_path: &[NodeId]) -> &'static str {
 		self.reference(node_id, network_path)
 			.and_then(|reference| resolve_document_node_type(&reference)?.icon)
@@ -875,16 +875,16 @@ impl NodeNetworkInterface {
 		node.set_widget_override(index, widget_override);
 	}
 
-	/// Returns the display name of the node. If the display name is empty, it will return "Untitled Node" or "Untitled Layer" depending on the node type.
+	/// The display name of the node, falling back to "Untitled Layer" or the implementation name when unnamed.
 	pub fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		self.query(network_path, "display_name", |view| Ok(view.display_name(node_id)))
-			.unwrap_or_else(|| "Custom Node".to_string())
+			.unwrap_or_else(|| "Subgraph".to_string())
 	}
 
 	/// The uneditable name in the Inspector which represents the function name of the node implementation.
 	pub fn implementation_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		self.query(network_path, "implementation_name", |view| Ok(view.implementation_name(node_id)))
-			.unwrap_or_else(|| "Custom Node".to_string())
+			.unwrap_or_else(|| "Subgraph".to_string())
 	}
 
 	pub fn is_locked(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {

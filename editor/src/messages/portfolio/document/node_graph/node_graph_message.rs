@@ -45,6 +45,11 @@ pub enum NodeGraphMessage {
 		xy: Option<(i32, i32)>,
 		add_transaction: bool,
 	},
+	/// Adds a subgraph with nothing in it, at the given grid position or else in view, and selects it.
+	CreateEmptySubgraph {
+		node_id: Option<NodeId>,
+		xy: Option<(i32, i32)>,
+	},
 	CreateWire {
 		output_connector: OutputConnector,
 		input_connector: InputConnector,
@@ -383,6 +388,7 @@ impl NodeGraphMessage {
 			| Self::SetImportExportDescriptionImpl { .. } => Some(breadcrumb_network_path),
 			Self::AddNodes { .. }
 			| Self::CreateNodeFromContextMenu { .. }
+			| Self::CreateEmptySubgraph { .. }
 			| Self::CreateWire { .. }
 			| Self::CreateWires { .. }
 			| Self::ConnectUpstreamOutputToInput { .. }

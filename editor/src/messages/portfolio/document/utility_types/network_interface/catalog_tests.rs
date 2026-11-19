@@ -1,4 +1,4 @@
-use super::template::NodeTemplateImplementation;
+use super::template::{NodeTemplate, NodeTemplateImplementation};
 use super::{InputConnector, OutputConnector, catalog};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{network_node_identifiers, resolve_network_node_type};
 use crate::messages::portfolio::document::storage_tests::test_support::round_trip_through_gdd;
@@ -308,7 +308,7 @@ async fn undoing_the_unlock_of_an_open_catalog_node_shows_it_read_only_again() {
 async fn undoing_the_creation_of_an_open_subgraph_leaves_it() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
-	let subgraph = editor.create_node_by_name(DefinitionIdentifier::Network("Custom Node".to_string())).await;
+	let subgraph = editor.create_empty_subgraph_at(0, 0).await;
 	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: subgraph }).await;
 	assert_eq!(editor.active_document().breadcrumb_network_path(), [subgraph]);
 
@@ -349,7 +349,7 @@ async fn a_subgraph_holding_a_catalog_node_pastes_into_a_document_without_it() {
 	let custom = NodeId::new();
 	let blend = NodeId::new();
 	let interface = &mut editor.active_document_mut().network_interface;
-	interface.insert_node(custom, resolve_network_node_type("Custom Node").expect("Custom Node").default_node_template(), &[]);
+	interface.insert_node(custom, NodeTemplate::empty_subgraph(), &[]);
 	interface.insert_node(blend, resolve_network_node_type("Blend").expect("Blend").default_node_template(), &[custom]);
 	let DocumentNodeImplementation::Definition(shipped) = interface.document_node(&blend, &[custom]).expect("the Blend").implementation else {
 		panic!("the Blend should name a table entry")

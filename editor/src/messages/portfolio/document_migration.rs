@@ -1295,7 +1295,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	}
 
 	// The "Transform" wrapper network was replaced with the `transform` proto node directly. Convert old `Network("Transform")` instances to the proto node, forwarding the 5 user-facing inputs (Value, Translation, Rotation, Scale, Skew) and dropping the legacy migration sentinels (Origin Offset, Scale Appearance) at indices 5 and 6 if present.
-	// Some old documents store it as a Custom Node subgraph with no reference, where a Monitor feeds the Transform proto node. Those are converted the same way.
+	// Some old documents store it as a subgraph with no reference, where a Monitor feeds the Transform proto node. Those are converted the same way.
 	// Pre-pass for the same reason as the Brush migration above: replacing the outer Transform's network impl orphans its child paths.
 	let transform_layers: Vec<(NodeId, Vec<NodeId>, usize)> = document
 		.network_interface
@@ -1770,6 +1770,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			.then_some(*node_id)
 		})
 		.collect();
+
+	migrate_custom_node_subgraphs(document);
 
 	// Apply upgrades to each unmodified node, except those inside the read-only built-in subgraphs
 	let nodes = document
@@ -4045,6 +4047,25 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	Some(())
 }
 
+/// Gives each subgraph made from the removed Custom Node definition, from the catalog or by merging selected nodes, no reference and no default name, like one made with the New Custom Node button.
+/// Instances can share a definitions table entry holding the reference, so all of them are found before any is changed.
+fn migrate_custom_node_subgraphs(document: &mut DocumentMessageHandler) {
+	let custom_node = Some(DefinitionIdentifier::Network("Custom Node".into()));
+	let subgraphs: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter(|(node_id, _, path)| document.network_interface.reference(node_id, path) == custom_node)
+		.map(|(node_id, _, path)| (*node_id, path))
+		.collect();
+
+	for (node_id, network_path) in subgraphs {
+		reset_default_display_name(document, &node_id, &network_path, "Custom Node");
+		reset_default_display_name(document, &node_id, &network_path, "Untitled Node");
+		document.network_interface.set_reference(&node_id, &network_path, None);
+	}
+}
+
 /// Splits each removed Math f(…) node by the kind of string it held, into Math Aggregate or Math Formula.
 fn migrate_math_f_nodes(document: &mut DocumentMessageHandler) {
 	let math_f_nodes: Vec<(NodeId, Vec<NodeId>)> = document
@@ -4595,6 +4616,45 @@ mod tests {
 		let (opened, errors) = capture_logged_errors(|| load_legacy_document(serialized, &HashMapResourceStorage::new(), true));
 		opened.expect("the document should open");
 		assert!(errors.is_empty(), "opening the document logged errors: {errors:?}");
+	}
+
+	#[tokio::test]
+	async fn opening_custom_node_subgraphs_drops_their_reference_and_default_names() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplateImplementation;
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let from_catalog = editor.create_empty_subgraph_at(0, 0).await;
+		let document = editor.active_document_mut();
+		let Some(DocumentNodeImplementation::Definition(shared)) = document.network_interface.implementation(&from_catalog, &[]).cloned() else {
+			panic!("the subgraph should name a definitions table entry")
+		};
+
+		// A second instance of the same table entry, named as Merge Selected Nodes named the subgraphs it made
+		let from_merging = NodeId::new();
+		let instance = NodeTemplate {
+			implementation: NodeTemplateImplementation::Definition(shared),
+			..Default::default()
+		};
+		document.network_interface.insert_node(from_merging, instance, &[]);
+		document.network_interface.set_reference(&from_catalog, &[], Some("Custom Node".into()));
+		document.network_interface.set_display_name(&from_catalog, "Custom Node".into(), &[]);
+		document.network_interface.set_display_name(&from_merging, "Untitled Node".into(), &[]);
+		let serialized = document.serialize_document();
+
+		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
+		let interface = &opened.network_interface;
+		for node_id in [from_catalog, from_merging] {
+			assert!(
+				matches!(interface.implementation(&node_id, &[]), Some(DocumentNodeImplementation::Definition(_))),
+				"the subgraph should still exist"
+			);
+			assert_eq!(interface.reference(&node_id, &[]), None);
+			assert_eq!(interface.display_name(&node_id, &[]), "Subgraph");
+		}
 	}
 
 	#[tokio::test]

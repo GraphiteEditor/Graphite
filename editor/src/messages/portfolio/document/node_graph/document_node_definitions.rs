@@ -140,18 +140,6 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<HashMap<DefinitionIdentifier, 
 fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 	let custom = vec![
 		DocumentNodeDefinition {
-			identifier: "Custom Node",
-			version: 1,
-			category: "Routing",
-			icon: Some("NodeCustomNode"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate::default()),
-				..Default::default()
-			},
-			description: Cow::Borrowed("An empty node network you can use to create your own custom nodes."),
-			inspector: None,
-		},
-		DocumentNodeDefinition {
 			identifier: "Merge",
 			version: 1,
 			category: "Graphic",

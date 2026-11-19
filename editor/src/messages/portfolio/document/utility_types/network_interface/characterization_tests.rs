@@ -3119,7 +3119,7 @@ async fn imports_and_exports_keep_just_a_grid_cell_from_a_dot() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let subgraph = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
+	let subgraph = editor.create_empty_subgraph_at(0, 0).await;
 	let path = [subgraph];
 	editor.enter_editable_network(subgraph).await;
 
@@ -3506,7 +3506,7 @@ async fn a_press_right_after_dragging_a_wire_out_of_an_output_drags_another_wire
 
 /// Opens a new subgraph with one node inside, which is all that lies between its import and its export.
 async fn subgraph_holding_one_node(editor: &mut EditorTestUtils) -> (NodeId, NodeId) {
-	let subgraph = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
+	let subgraph = editor.create_empty_subgraph_at(0, 0).await;
 	editor.enter_editable_network(subgraph).await;
 	editor.handle_message(NodeGraphMessage::AddImport).await;
 	editor.handle_message(NodeGraphMessage::AddPrimaryExport).await;
@@ -4042,17 +4042,29 @@ async fn a_session_preview_of_a_removed_node_is_dropped() {
 }
 
 #[tokio::test]
+async fn a_new_subgraph_is_its_own_definition() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let subgraph = editor.create_empty_subgraph_at(0, 0).await;
+	let network_interface = &editor.active_document().network_interface;
+	assert!(matches!(network_interface.implementation(&subgraph, &[]), Some(DocumentNodeImplementation::Definition(_))));
+	assert_eq!(network_interface.reference(&subgraph, &[]), None, "it shouldn't name a catalog definition");
+	assert_eq!(network_interface.display_name(&subgraph, &[]), "Subgraph");
+}
+
+#[tokio::test]
 async fn cannot_preview_node_without_outputs() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let custom_node = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
+	let subgraph = editor.create_empty_subgraph_at(0, 0).await;
 	let network_interface = &mut editor.active_document_mut().network_interface;
 
-	assert_eq!(network_interface.number_of_outputs(&custom_node, &[]), 0);
+	assert_eq!(network_interface.number_of_outputs(&subgraph, &[]), 0);
 
 	// Attempting to toggle preview on a node without outputs should not enable previewing
-	network_interface.toggle_preview(custom_node, &[]);
+	network_interface.toggle_preview(subgraph, &[]);
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
 }
 

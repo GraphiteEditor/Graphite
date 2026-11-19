@@ -32,7 +32,7 @@ pub struct DocumentNodeDefinition {
 }
 ```
 
-Only the definitions of nodes built from a nested network, such as the empty "Custom Node", are written by hand in that file. A node implemented as a single proto-node has its definition generated from the metadata the `node` macro records about its function signature (see [Creating a new node](#creating-a-new-node)), keyed by the proto-node identifier, which for the Opacity node is `graphene_std::blending_nodes::opacity::IDENTIFIER`.
+Only the definitions of built-in nodes made from a nested network are written by hand in that file. A node implemented as a single proto-node has its definition generated from the metadata the `node` macro records about its function signature (see [Creating a new node](#creating-a-new-node)), keyed by the proto-node identifier, which for the Opacity node is `graphene_std::blending_nodes::opacity::IDENTIFIER`.
 
 ## Inspector
 

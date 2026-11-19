@@ -423,6 +423,17 @@ impl EditorTestUtils {
 		self.create_node(node_type, Some((x, y))).await
 	}
 
+	/// Adds an empty subgraph at the grid position, as the graph's New Custom Node button does.
+	pub async fn create_empty_subgraph_at(&mut self, x: i32, y: i32) -> NodeId {
+		let node_id = NodeId::new();
+		self.handle_message(NodeGraphMessage::CreateEmptySubgraph {
+			node_id: Some(node_id),
+			xy: Some((x, y)),
+		})
+		.await;
+		node_id
+	}
+
 	async fn create_node(&mut self, node_type: DefinitionIdentifier, xy: Option<(i32, i32)>) -> NodeId {
 		let node_id = NodeId::new();
 		self.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
