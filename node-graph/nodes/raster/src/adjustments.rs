@@ -1474,6 +1474,7 @@ mod tests {
 		// A red shadow cast beside a white square by light from its left, which desaturating after the shadow turns gray
 		let shadow = EffectOperation::DropShadow {
 			color: Color::RED,
+			blend_mode: core_types::blending::BlendMode::Normal,
 			angle: 180.,
 			distance: 4.,
 			spread: 0.,

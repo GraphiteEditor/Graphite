@@ -2375,6 +2375,24 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 5;
 	}
 
+	// 'Drop Shadow', 'Inner Shadow', and 'Outer Glow' gained a blend mode after their color, set to Normal to keep compositing them as before
+	use graphene_std::blending_nodes::effects::{drop_shadow, inner_shadow, outer_glow};
+	let lacks_blend_mode = |identifier: ProtoNodeIdentifier, count: usize| reference == DefinitionIdentifier::ProtoNode(identifier) && inputs_count == count;
+	if lacks_blend_mode(drop_shadow::IDENTIFIER, 8) || lacks_blend_mode(inner_shadow::IDENTIFIER, 7) || lacks_blend_mode(outer_glow::IDENTIFIER, 7) {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (index, input) in old_inputs.into_iter().enumerate() {
+			let index = if index < 2 { index } else { index + 1 };
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+		let normal = NodeInput::value(TaggedValue::BlendMode(graphene_std::blending::BlendMode::Normal), false);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), normal, network_path);
+
+		inputs_count += 1;
+	}
+
 	// Upgrade the legacy 4-input Fill node (content, fill: Fill, _backup_color, _backup_gradient: Gradient) to the value-model
 	// 7-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_form, _has_transform, _transform).
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 4 {
@@ -5714,6 +5732,54 @@ mod tests {
 			assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(mix_colors::IDENTIFIER), "{}", identifier.as_str());
 			assert_eq!(node.inputs[0], color_input(under), "{} should take the under color first", identifier.as_str());
 			assert_eq!(node.inputs[1], color_input(over), "{} should take the over color second", identifier.as_str());
+		}
+	}
+
+	#[test]
+	fn shadows_and_glows_from_before_their_blend_mode_open_blending_normally() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+		use graphene_std::blending::BlendMode;
+		use graphene_std::blending_nodes::effects::{drop_shadow, inner_shadow, outer_glow};
+
+		let saved_nodes = [(drop_shadow::IDENTIFIER, 8), (inner_shadow::IDENTIFIER, 7), (outer_glow::IDENTIFIER, 7)];
+		let template = |identifier: &ProtoNodeIdentifier| {
+			let definition = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier.clone())).expect("the definition should exist");
+			definition.default_node_template()
+		};
+
+		// Each node as saved before the blend mode, with each number marked by its index so the shift shows
+		let mut document = DocumentMessageHandler::default();
+		for (index, (identifier, count)) in saved_nodes.iter().enumerate() {
+			let mut inputs = template(identifier).inputs;
+			inputs.remove(2);
+			inputs.truncate(*count);
+			for (input_index, input) in inputs.iter_mut().enumerate() {
+				if matches!(input.as_value(), Some(TaggedValue::Number(_))) {
+					*input = NodeInput::value(TaggedValue::Number(input_index as f64), false);
+				}
+			}
+
+			let node_template = NodeTemplate {
+				implementation: NodeTemplateImplementation::ProtoNode(identifier.clone()),
+				inputs,
+				..Default::default()
+			};
+			document.network_interface.insert_node(NodeId(index as u64 + 1), node_template, &[]);
+		}
+
+		let opened = load_legacy_document(document.serialize_document(), &HashMapResourceStorage::new(), false).expect("the document should open");
+
+		for (index, (identifier, count)) in saved_nodes.iter().enumerate() {
+			let node = opened.network_interface.document_node(&NodeId(index as u64 + 1), &[]).expect("the node should still exist");
+			let name = identifier.as_str();
+			assert_eq!(node.inputs.len(), template(identifier).inputs.len(), "{name} should take the current shape");
+			assert_eq!(node.inputs[2], NodeInput::value(TaggedValue::BlendMode(BlendMode::Normal), false), "{name} should blend normally");
+			for (input_index, input) in node.inputs.iter().enumerate().take(count + 1).skip(3) {
+				if let Some(TaggedValue::Number(number)) = input.as_value() {
+					assert_eq!(*number, (input_index - 1) as f64, "{name} should move its input {} past the blend mode", input_index - 1);
+				}
+			}
 		}
 	}
 

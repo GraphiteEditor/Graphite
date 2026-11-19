@@ -1779,11 +1779,24 @@ fn apply_blend_mode(foreground: vec4<f32>, background: vec4<f32>, mode: u32) -> 
 	}
 }
 
-// The blend mode (x) and opacity (y), then the color
+// The blend mode (x) and opacity (y), then the color, mixed over in gamma, matching `overlay_paint`
 fn color_overlay(color: vec4<f32>, at: u32) -> vec4<f32> {
 	let settings = step_texel(at);
 	let paint = step_texel(at + 1u);
-	let overlay = apply_blend_mode(paint, color, u32(settings.x));
+	let blended = blend_gamma(color.rgb, to_gamma(paint).rgb, u32(settings.x));
 
-	return vec4<f32>(color.rgb + (overlay.rgb - color.rgb) * (settings.y * paint.a), color.a);
+	return vec4<f32>(color.rgb + (blended - color.rgb) * (settings.y * paint.a), color.a);
+}
+
+// The blend mode's mix of straight gamma-encoded `backdrop` and `paint` colors, matching `blend_gamma`
+fn blend_gamma(backdrop: vec3<f32>, paint: vec3<f32>, mode: u32) -> vec3<f32> {
+	switch mode {
+		// The component modes encode the colors they're given themselves
+		case BLEND_HUE, BLEND_SATURATION, BLEND_COLOR, BLEND_LUMINOSITY: {
+			return to_gamma(apply_blend_mode(from_gamma(vec4<f32>(paint, 1.)), from_gamma(vec4<f32>(backdrop, 1.)), mode)).rgb;
+		}
+		default: {
+			return apply_blend_mode(vec4<f32>(paint, 1.), vec4<f32>(backdrop, 1.), mode).rgb;
+		}
+	}
 }

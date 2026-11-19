@@ -74,7 +74,7 @@ fn marked_span(svg: &str, opening: &str, closing: &str) -> Option<std::ops::Rang
 pub struct EffectMap {
 	/// Names the markers around the placeholder in the SVG, which the map replaces.
 	pub id: u64,
-	/// The item with its effects, but without its opacity and blend mode, which don't touch its effects' coverages.
+	/// The item with its effects, keeping its opacity and blend mode when its effects are layered, since they set how strongly the content knocks out the pieces.
 	pub content: Graphic,
 	pub render_params: RenderParams,
 	pub capture: EffectCapture,
@@ -249,9 +249,12 @@ impl DeferredImage {
 }
 
 /// Replaces the markup standing in for an item of deferred content in `svg` with the `image` the GPU rendered of it, adding the image to `image_data` if it's drawn to a canvas.
+/// Markup repeated in each layer of an ancestor's effects stands in for the content once in each.
 pub fn substitute_deferred_image(svg: &mut String, image_data: &mut Vec<(u64, CanvasImage)>, placement: &DeferredImagePlacement, image: &Raster<CPU>) {
 	let (opening, closing) = image_markers(placement.id);
-	let Some(span) = marked_span(svg, &opening, &closing) else { return };
+	if marked_span(svg, &opening, &closing).is_none() {
+		return;
+	}
 
 	let mut render = SvgRender::new();
 	render.transform = placement.user_to_document;
@@ -262,6 +265,9 @@ pub fn substitute_deferred_image(svg: &mut String, image_data: &mut Vec<(u64, Ca
 	};
 	render_raster_cpu_image_svg(image, placement.transform, placement.opacity, placement.blend_mode, &mut render, &render_params);
 
-	svg.replace_range(span, &render.svg.to_svg_string());
+	let markup = render.svg.to_svg_string();
+	while let Some(span) = marked_span(svg, &opening, &closing) {
+		svg.replace_range(span, &markup);
+	}
 	image_data.extend(render.image_data);
 }

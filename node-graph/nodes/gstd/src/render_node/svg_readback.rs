@@ -99,6 +99,7 @@ impl SvgReadbackSlot {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use core_types::blending::BlendMode;
 	use core_types::list::{Item, List};
 	use core_types::runtime::{AsyncRuntime, Spawn, Task};
 	use core_types::{ATTR_TRANSFORM, Color};
@@ -127,6 +128,7 @@ mod tests {
 	fn deferred_svg() -> SvgRenderOutput {
 		let shadow = EffectOperation::DropShadow {
 			color: Color::BLACK,
+			blend_mode: BlendMode::default(),
 			angle: 180.,
 			distance: 4.,
 			spread: 0.,

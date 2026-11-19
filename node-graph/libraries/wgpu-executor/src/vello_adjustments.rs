@@ -107,7 +107,7 @@ fn step_function(kind: StepKind) -> (&'static str, Option<[Encoding; 2]>) {
 		StepKind::ColorBalance => ("color_balance", Some([Gamma, Gamma])),
 		StepKind::PhotoFilter => ("photo_filter", Some([Gamma, Gamma])),
 		StepKind::ColorLookup => ("color_lookup", Some([Gamma, Gamma])),
-		StepKind::ColorOverlay => ("color_overlay", Some([Linear, Linear])),
+		StepKind::ColorOverlay => ("color_overlay", Some([Gamma, Gamma])),
 	}
 }
 

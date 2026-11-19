@@ -42,7 +42,8 @@ impl BlendModeExt for BlendMode {
 			BlendMode::Saturation => peniko::Mix::Saturation,
 			BlendMode::Color => peniko::Mix::Color,
 			BlendMode::Luminosity => peniko::Mix::Luminosity,
-			_ => todo!(),
+			// Like SVG, the modes that layers can't blend by fall back to normal
+			_ => peniko::Mix::Normal,
 		}
 	}
 }

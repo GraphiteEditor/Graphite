@@ -7,7 +7,7 @@ struct Parameters {
 	step: vec2<f32>,
 	// How far a silhouette is cast, in normalized coordinates
 	offset: vec2<f32>,
-	// The factor the scale pass multiplies by, or the fill the content is faded by
+	// A pass's scalar setting, like a scale factor, fill, opacity, or knockout cover, described where it reads it
 	amount: f32,
 	tap_count: u32,
 	// The premultiplied color a silhouette is tinted
@@ -279,8 +279,9 @@ fn accumulate(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> 
 	return tinted + beneath * (1. - tinted.a);
 }
 
-// Places a tinted silhouette over the image, within the content at full strength so it stays visible over a faded fill. With `values.y` 1, `secondary` is already tinted.
-// Otherwise the tint is the color mixed with the content's own by the blend mode numbered `values.x`, in gamma, matching the CPU's `composite_within_by_mode`.
+// Places a tinted part of an interior piece within the full-strength `content`'s share of each pixel of the image (`source`), matching the CPU's `composite_in_share`.
+// It mixes with the image's own colors by the blend mode numbered `values.x` in gamma, and with `values.y` 1, `secondary` is already tinted.
+// `values.z` picks the part: 0 the whole piece, 1 the part blending with the content, or 2 that part for a piece whose part over the content takes what its fill lets show through, at opacity `amount`.
 @fragment
 fn composite_within(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let pixel = vec2<i32>(position.xy);
@@ -289,13 +290,54 @@ fn composite_within(@builtin(position) position: vec4<f32>) -> @location(0) vec4
 	if parameters.values.y > 0.5 {
 		tinted = textureLoad(secondary, pixel, 0);
 	}
-	let full_content = textureLoad(content, pixel, 0);
-
-	let mode = u32(parameters.values.x);
-	if mode != 0u && full_content.a > 0. && parameters.color.a > 0. {
-		tinted = vec4<f32>(blend_gamma(full_content.rgb / full_content.a, parameters.color.rgb / parameters.color.a, mode) * tinted.a, tinted.a);
+	let share = textureLoad(content, pixel, 0).a;
+	if tinted.a <= 0. {
+		return image;
 	}
-	return tinted * full_content.a + image * (1. - tinted.a);
+
+	// The paint blended with the image's own straight color, weighted by how much of the share the image covers
+	let color = tinted.rgb / tinted.a;
+	var blended = vec3<f32>(0.);
+	if image.a > 0. {
+		blended = blend_gamma(image.rgb / image.a, color, u32(parameters.values.x)) * image.a;
+	}
+
+	var strength = tinted.a;
+	var plain = 0.;
+	let part = u32(parameters.values.z);
+	if part == 0u {
+		plain = share - image.a;
+	} else if part == 2u {
+		strength *= 1. - parameters.amount * through_share(share, image.a, parameters.amount);
+	}
+	return vec4<f32>((1. - strength) * image.rgb + strength * (plain * color + blended), image.a + strength * plain);
+}
+
+// The share of a pixel within the content of full-strength alpha `share` that what lies beneath shows through, given the content's layer's alpha, drawn at `opacity`
+fn through_share(share: f32, layer_alpha: f32, opacity: f32) -> f32 {
+	let shown = 1. - opacity * layer_alpha;
+	return select(0., clamp((share - layer_alpha) / shown, 0., 1.), shown > 1e-6);
+}
+
+// A tinted part of an interior piece (`source`) cut to the share of each pixel within the full-strength `content` that what lies beneath shows through,
+// given the content's finished layer (`secondary`) drawn at opacity `amount`. With `values.x` 1, it's the share alone, in alpha.
+@fragment
+fn through_mask(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let share = through_share(textureLoad(content, pixel, 0).a, textureLoad(secondary, pixel, 0).a, parameters.amount);
+	if parameters.values.x > 0.5 {
+		return vec4<f32>(0., 0., 0., share);
+	}
+	return textureLoad(source, pixel, 0) * share;
+}
+
+// Hides what lies beneath (`source`) behind the full-strength `content` where the content's finished layer (`secondary`) covers it, at `amount` times its alpha.
+// That layer shows what's beneath through 1 - amount × its alpha, of which only 1 - the content's alpha may show this.
+@fragment
+fn knock_out_by_layer(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let shown = (1. - textureLoad(content, pixel, 0).a) / max(1. - parameters.amount * textureLoad(secondary, pixel, 0).a, 1e-6);
+	return textureLoad(source, pixel, 0) * min(shown, 1.);
 }
 
 // A chiseled bevel's height from 0 to 1, from the distances in from the edge (`source`) and out from it (`secondary`), matching the CPU's `bevel_height`.
@@ -350,28 +392,7 @@ fn composite_beneath(@builtin(position) position: vec4<f32>) -> @location(0) vec
 	return image + beneath * (1. - image.a);
 }
 
-// The image (source) with the paint (secondary input) mixed over its colors by the blend mode in `values.x`, as much as the paint's alpha times `amount`, keeping the image's alpha
-@fragment
-fn paint_overlay(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-	let pixel = vec2<i32>(position.xy);
-	let image = textureLoad(source, pixel, 0);
-	let paint = textureLoad(secondary, pixel, 0);
-	if image.a <= 0. {
-		return vec4<f32>(0.);
-	}
-	if paint.a <= 0. {
-		return image;
-	}
-
-	// The blend modes work on straight linear colors, as the CPU's do
-	let backdrop = srgb_to_linear(image.rgb / image.a);
-	let blended = blend(backdrop, srgb_to_linear(paint.rgb / paint.a), u32(parameters.values.x));
-	let mixed = mix(backdrop, blended, parameters.amount * paint.a);
-
-	return vec4<f32>(linear_to_srgb(mixed) * image.a, image.a);
-}
-
-// The paint mixed with the backdrop by a blend mode, numbered in the order `BlendMode` declares them, matching `apply_blend_mode`
+// The paint mixed with the backdrop by a blend mode besides the component ones, numbered in the order `BlendMode` declares them
 fn blend(backdrop: vec3<f32>, paint: vec3<f32>, mode: u32) -> vec3<f32> {
 	let average = vec3<f32>(1. / 3.);
 	switch mode {
@@ -381,10 +402,6 @@ fn blend(backdrop: vec3<f32>, paint: vec3<f32>, mode: u32) -> vec3<f32> {
 		}
 		case 10u: {
 			return select(paint, backdrop, dot(backdrop, average) >= dot(paint, average));
-		}
-		// The component modes are defined on gamma-encoded channels
-		case 22u, 23u, 24u, 25u: {
-			return srgb_to_linear(blend_components(clamp(linear_to_srgb(backdrop), vec3<f32>(0.), vec3<f32>(1.)), clamp(linear_to_srgb(paint), vec3<f32>(0.), vec3<f32>(1.)), mode));
 		}
 		default: {
 			return vec3<f32>(blend_channel(backdrop.r, paint.r, mode), blend_channel(backdrop.g, paint.g, mode), blend_channel(backdrop.b, paint.b, mode));
@@ -622,4 +639,17 @@ fn linear_to_srgb(linear: vec3<f32>) -> vec3<f32> {
 	let low = linear * 12.92;
 	let high = 1.055 * pow(linear, vec3<f32>(1. / 2.4)) - 0.055;
 	return select(high, low, linear <= vec3<f32>(0.0031308));
+}
+
+// The premultiplied color everywhere, as a solid paint overlay paints
+@fragment
+fn flood(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	return parameters.color;
+}
+
+// A tinted image cut to the full-strength `content`, for a piece within the content drawn in a layer of its own
+@fragment
+fn mask_within(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	return textureLoad(source, pixel, 0) * textureLoad(content, pixel, 0).a;
 }
