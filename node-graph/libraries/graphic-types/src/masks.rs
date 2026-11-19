@@ -60,3 +60,63 @@ pub fn feather_parts(distance: f64) -> (f64, f64) {
 	let distance = distance.max(0.);
 	(distance / 2., distance / 6.)
 }
+
+/// The most levels a masked radius blur interpolates between down to a document pixel, enough to halve from a radius of 1000 document pixels to one.
+pub const MASKED_RADIUS_BLUR_MAX_LEVELS: usize = 12;
+
+/// The most levels finer than a document pixel that a masked radius blur adds when zoomed in, enough to reach an output pixel at a zoom of 25600%.
+pub const MASKED_RADIUS_BLUR_MAX_FINER_LEVELS: usize = 8;
+
+/// The radii, in document pixels, of the blurs a masked radius blur of `radius` interpolates between: none, then the radius halved while it spans a document pixel, or an output pixel at more `pixels_per_length` than one.
+/// Each is a Gaussian's standard deviation or a box's half width. Levels a factor of 2 apart interpolate into what reads as one blur, and under a pixel a blur hardly differs from none.
+pub fn masked_radius_blur_levels(radius: f64, pixels_per_length: f64) -> Vec<f64> {
+	let finest = 1. / pixels_per_length.max(1.);
+
+	let (mut blurred, mut finer) = (vec![radius.max(0.)], 0);
+	loop {
+		let next = blurred[0] / 2.;
+		let coarse = next >= 1. && blurred.len() + 1 < MASKED_RADIUS_BLUR_MAX_LEVELS;
+		let fine = (finest..1.).contains(&next) && finer < MASKED_RADIUS_BLUR_MAX_FINER_LEVELS;
+		if !(coarse || fine) {
+			break;
+		}
+
+		finer += fine as usize;
+		blurred.insert(0, next);
+	}
+	std::iter::once(0.).chain(blurred).collect()
+}
+
+/// The 8-bit code of a masked radius blur map's luminance at a pixel, given as premultiplied gamma-encoded channels, which picks the pixel's interpolation between blurs.
+pub fn masked_radius_blur_code(channels: [f32; 4]) -> u8 {
+	(mask_coverage(channels, MaskMode::Luminance) * 255.).round() as u8
+}
+
+/// For a masked radius blur map's luminance as an 8-bit `code`, the level below it among the `levels` (from [`masked_radius_blur_levels`]) and how many of 255 parts of the interpolation the level above takes, the rest going to the level below.
+///
+/// Each pixel of a masked radius blur is the sum of its levels (its content blurred by Gaussians or boxes of their radii) weighed by their parts, on premultiplied gamma-encoded channels.
+/// The map value's fraction of the full radius falls between two levels. The parts are linear in the radius from no blur to the first level, and linear in its logarithm between blurred levels.
+/// On opaque hard edges, between Gaussian levels a factor of 2 apart, that strays at most about 20 of 255 sRGB levels from a true Gaussian of the map value's radius, against about 32 for the sum in linear light.
+/// Summing in gamma, even when the levels blur in linear light, is deliberate: a power space near 2.7 strays only about 12, but SVG would need a 256-entry table per level for it, where gamma costs nothing.
+pub fn masked_radius_blur_interpolation(code: u8, levels: &[f64]) -> (usize, u32) {
+	let Some(&radius) = levels.last().filter(|_| levels.len() >= 2) else { return (0, 0) };
+	let length = code as f64 / 255. * radius;
+	let below = (0..levels.len() - 1).rev().find(|&level| length >= levels[level]).unwrap_or(0);
+	let (low, high) = (levels[below], levels[below + 1]);
+
+	let share = match low > 0. {
+		true => (length / low).log2() / (high / low).log2(),
+		false => length / high,
+	};
+	(below, (share * 255.).round().clamp(0., 255.) as u32)
+}
+
+/// How many of 255 parts of a masked radius blur's interpolation the `level` takes for the map luminance `code`, as [`masked_radius_blur_interpolation`] gives them.
+pub fn masked_radius_blur_weight(level: usize, code: u8, levels: &[f64]) -> u32 {
+	let (below, above_parts) = masked_radius_blur_interpolation(code, levels);
+	match level {
+		_ if level == below => 255 - above_parts,
+		_ if level == below + 1 => above_parts,
+		_ => 0,
+	}
+}

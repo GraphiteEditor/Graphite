@@ -6,7 +6,7 @@ use crate::blending::blend_gamma;
 use crate::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, Plane};
 use crate::generators::pattern_sampler;
 use crate::layer_blending::blend_layer;
-use crate::masks::{feather_strength, mask_strength, masked};
+use crate::masks::{feather_strength, mask_strength, masked, masked_radius_blur, masked_radius_blur_codes};
 use crate::value_effects::{adjustments, evaluate_gradient_effects, filled_color};
 use core_types::FallibleVec2Operations;
 use core_types::blending::BlendMode;
@@ -19,10 +19,11 @@ use graphic_types::Graphic;
 use graphic_types::adjustment::Adjustment;
 use graphic_types::effect_layers::{EffectLayers, LayerPart, PiecePlace};
 use graphic_types::effects::{
-	BevelDirection, BevelStyle, BevelTechnique, EffectCapture, EffectOperation, Effects, GlowFill, GlowSource, GlowTechnique, OutlineFill, bevel_light, contour_gradient_span, effect_space,
-	fitted_paint, grow_and_tent, outline_extents, precise_falloff, shadow_offset, shape_strength, spans_along_axes,
+	BevelDirection, BevelStyle, BevelTechnique, EffectCapture, EffectOperation, Effects, GlowFill, GlowSource, GlowTechnique, OutlineFill, bevel_light, continued_map_pixels, contour_gradient_span,
+	effect_space, fitted_paint, grow_and_tent, outline_extents, precise_falloff, shadow_offset, shape_strength, spans_along_axes,
 };
 use graphic_types::generator::GeneratorPattern;
+use graphic_types::masks::masked_radius_blur_levels;
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Image, Raster};
 use std::collections::HashMap;
@@ -66,6 +67,33 @@ pub fn adjusted_raster(raster: &Raster<CPU>, adjustments: &[Adjustment]) -> Rast
 		adjustments.iter().for_each(|adjustment| adjust_colors(adjustment, &mut image.data));
 		Raster::new_cpu(image)
 	})
+}
+
+/// The pixels a masked radius blur's image map continues past its edges with, and the opacity fading them: the image with its own adjustments carried out, since they act on each pixel alone.
+/// `None` for a map with other effects, or with adjustments changing alpha that its fill would fade first, which can't continue that way.
+pub fn continued_map_raster(item: &Item<Raster<CPU>>) -> Option<(Raster<CPU>, f32)> {
+	let fill = item.attribute_cloned_or::<f64>(ATTR_OPACITY_FILL, 1.);
+	let opacity = (item.attribute_cloned_or::<f64>(ATTR_OPACITY, 1.) * fill) as f32;
+	let adjustments = item.attribute::<Effects>(ATTR_EFFECTS).map_or(Some(Vec::new()), |effects| {
+		(effects.operations().filter(|operation| !operation.changes_nothing()))
+			.map(|operation| match operation {
+				EffectOperation::Adjustment(adjustment) if !matches!(adjustment, Adjustment::ColorOverlay { .. }) => Some(adjustment),
+				_ => None,
+			})
+			.collect::<Option<Vec<_>>>()
+	})?;
+
+	// A fill fades the image before its adjustments, so with one, only those keeping alpha commute with it
+	if fill < 1. && !adjustments.iter().all(crate::adjustments::preserves_alpha) {
+		return None;
+	}
+
+	let raster = if adjustments.is_empty() {
+		item.element().clone()
+	} else {
+		adjusted_raster(item.element(), &adjustments)
+	};
+	Some((raster, opacity))
 }
 
 /// The image of the `effects` carried out on `raster`, which `transform` places in the document, with the transform placing that larger image.
@@ -172,7 +200,7 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 		let knockout_fill = if layered { 1. } else { run_fill };
 
 		match *operation {
-			EffectOperation::Blur { radius, box_blur, gamma } => {
+			EffectOperation::Blur { radius, box_blur, gamma, .. } if !operation.varies_blur_radius() => {
 				let radius = radius * pixels_per_length;
 				if radius.max_element() < NEGLIGIBLE_LENGTH {
 					continue;
@@ -185,6 +213,23 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				};
 				full = blur(full, kernels, !gamma);
 				filled = filled.map(|filled| blur(filled, kernels, !gamma));
+			}
+			// A blur varying its radius by its radius mask
+			EffectOperation::Blur { radius, box_blur, gamma, .. } => {
+				if (radius * pixels_per_length).max_element() < NEGLIGIBLE_LENGTH {
+					continue;
+				}
+				let Some(map_colors) = drawn_paint_colors(operation, transform, size, effect_to_pixels, (margin_x, margin_y), full.width, full.height) else {
+					continue;
+				};
+				merge_beneath(&mut full, &mut filled, &mut beneath);
+
+				let codes = masked_radius_blur_codes(&map_colors);
+				// The levels are chosen at the GPU's scale, so both renderers blur by the same ones
+				let length_scale = effect_to_pixels.determinant().abs().sqrt();
+				let levels: Vec<DVec2> = masked_radius_blur_levels(radius, length_scale).into_iter().map(|level| level * pixels_per_length).collect();
+				full = masked_radius_blur(&full, &codes, &levels, box_blur, !gamma);
+				filled = filled.map(|filled| masked_radius_blur(&filled, &codes, &levels, box_blur, !gamma));
 			}
 			EffectOperation::DropShadow {
 				color,
@@ -566,7 +611,7 @@ fn transferred(transfer: fn(f32) -> f32) -> impl Fn([f32; 4]) -> [f32; 4] + Sync
 }
 
 /// Blurs premultiplied gamma-encoded pixels by a kernel along each axis, in linear light if `linear`.
-fn blur(plane: Plane<[f32; 4]>, (horizontal, vertical): (BlurKernel, BlurKernel), linear: bool) -> Plane<[f32; 4]> {
+pub(crate) fn blur(plane: Plane<[f32; 4]>, (horizontal, vertical): (BlurKernel, BlurKernel), linear: bool) -> Plane<[f32; 4]> {
 	match linear {
 		true => plane.map(transferred(srgb_to_linear)).blurred(horizontal, vertical).map(transferred(linear_to_srgb)),
 		false => plane.blurred(horizontal, vertical),
@@ -931,11 +976,33 @@ fn drawn_paint_colors(operation: &EffectOperation, transform: DAffine2, size: DV
 	if !placement.matrix2.determinant().is_normal() {
 		return None;
 	}
-	// TODO: The CPU can't draw vector, text, GPU image, or effected group paints, so pixel-reading nodes get their content unmasked, unpainted, or untextured.
-	// Fix by porting this baking's callers to read Vello's renders back to the CPU, then deleting this baking.
-	let Some(sample_paint) = paint_sampler(fitted.as_ref().unwrap_or(paint)) else {
-		log::warn!("An effect's paint is left out of the pixels, since only the renderers can draw a graphic of its kind");
-		return None;
+
+	// A blur's radius mask image continues its edge pixels across the whole image, as the GPU pads it, so it blurs everything the effects before it paint past the content
+	let continued = match paint {
+		Graphic::RasterCPU(map) if matches!(operation, EffectOperation::Blur { .. }) => {
+			let size = DVec2::new(map.element().width as f64, map.element().height as f64);
+			continued_map_pixels(paint, size, content_bounds).zip(continued_map_raster(map))
+		}
+		_ => None,
+	};
+	let sample_paint: Box<dyn Fn(DVec2) -> Color + Sync + '_> = match continued {
+		Some((map_pixels, (raster, opacity))) => {
+			let to_pixels = map_pixels.inverse();
+			let last_center = DVec2::new(raster.width as f64, raster.height as f64) - 0.5;
+			Box::new(move |point| {
+				let color = sample_bilinear_gamma(&raster, to_pixels.transform_point2(point).clamp(DVec2::splat(0.5), last_center));
+				color.with_alpha(color.a() * opacity)
+			})
+		}
+		// TODO: The CPU can't draw vector, text, GPU image, or effected group paints, so pixel-reading nodes get their content unmasked, unpainted, untextured, or unblurred.
+		// Fix by porting this baking's callers to read Vello's renders back to the CPU, then deleting this baking.
+		None => match paint_sampler(fitted.as_ref().unwrap_or(paint)) {
+			Some(sample_paint) => sample_paint,
+			None => {
+				log::warn!("An effect's paint is left out of the pixels, since only the renderers can draw a graphic of its kind");
+				return None;
+			}
+		},
 	};
 
 	// The paint at each pixel's center, in the space the paint is placed in
@@ -1126,6 +1193,70 @@ mod tests {
 		let paint = Graphic::from(image);
 		let Some(sample) = paint_sampler(&paint) else { panic!("the CPU draws images") };
 		assert!((sample(DVec2::splat(0.5)).a() - 0.5).abs() < 1e-6, "{:?}", sample(DVec2::splat(0.5)));
+	}
+
+	#[test]
+	fn blurs_without_a_radius_mask_drawing_something_blur_evenly() {
+		let blurred = |radius_mask: Option<Graphic>| {
+			let mut row = graphic_types::Effect::new(&EffectOperation::Blur {
+				radius_mask: Graphic::default(),
+				radius: 3.,
+				box_blur: false,
+				gamma: false,
+			});
+			if let Some(radius_mask) = radius_mask {
+				row.0.set_attribute("radius_mask", radius_mask);
+			}
+			let mut item = Item::new_from_element(Raster::new_cpu(Image::new(20, 20, Color::WHITE))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(20.)));
+			graphic_types::stamp_effect(&mut item, row);
+			evaluate_raster_effects(item)
+		};
+
+		// A radius mask left out of the row, and those the row carries that draw nothing, give the very same even blur
+		let plain = blurred(None);
+		let no_pixels = Graphic::from(Item::new_from_element(Raster::new_cpu(Image::new(0, 0, Color::WHITE))));
+		for radius_mask in [Graphic::default(), Graphic::GraphicList(core_types::list::List::new()), no_pixels] {
+			assert!(blurred(Some(radius_mask)) == plain, "a radius mask drawing nothing changes the blur");
+		}
+	}
+
+	#[test]
+	fn a_blurs_radius_mask_image_blurs_everything_the_effects_before_it_paint() {
+		// A hard shadow cast 30 pixels right of content 20 wide, far past the blur's own reach of 9
+		let shadow = EffectOperation::DropShadow {
+			color: Color::BLACK,
+			blend_mode: BlendMode::Normal,
+			angle: 180.,
+			distance: 30.,
+			spread: 0.,
+			size: 0.,
+			contour: Default::default(),
+			knockout: false,
+		};
+
+		// A coarse white map, and a fine one 1024 pixels across the content, where 512 of its pixels past its side reach only 10 pixels past the content
+		for (map_width, map_height) in [(2, 2), (1024, 1)] {
+			let white = Graphic::from(Item::new_from_element(Raster::new_cpu(Image::new(map_width, map_height, Color::WHITE))));
+			let blur = EffectOperation::Blur {
+				radius_mask: white,
+				radius: 3.,
+				box_blur: false,
+				gamma: false,
+			};
+			let mut item = Item::new_from_element(Raster::new_cpu(Image::new(20, 20, Color::WHITE))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(20.)));
+			for operation in [&shadow, &blur] {
+				graphic_types::stamp_effect(&mut item, graphic_types::Effect::new(operation));
+			}
+			let evaluated = evaluate_raster_effects(item);
+			let raster = evaluated.element();
+			let (width, height) = (raster.width as usize, raster.height as usize);
+			let alpha = |x: usize| raster.data[(height / 2) * width + x].a();
+
+			// The white map blurs everywhere, so the shadow's far edge is soft
+			let far_edge = (width - 20) / 2 + 50;
+			let soft = (far_edge - 4..far_edge + 4).filter(|&x| (0.05..0.95).contains(&alpha(x))).count();
+			assert!(soft >= 4, "only {soft} pixels soften the shadow's far edge with a map {map_width} by {map_height}");
+		}
 	}
 
 	#[test]

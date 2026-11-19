@@ -19,19 +19,7 @@ pub(crate) fn single_graphic(graphics: List<Graphic>) -> Option<Graphic> {
 		}
 		_ => Graphic::GraphicList(graphics),
 	};
-	(!draws_nothing(&graphic)).then_some(graphic)
-}
-
-/// Whether a graphic draws nothing at all, such as an empty list or an image without pixels.
-fn draws_nothing(graphic: &Graphic) -> bool {
-	let no_pixels = |raster: &Raster<CPU>| raster.width == 0 || raster.height == 0;
-	match graphic {
-		Graphic::Graphic(item) => draws_nothing(item.element()),
-		Graphic::GraphicList(list) => list.iter_element_values().all(draws_nothing),
-		Graphic::RasterCPU(item) => no_pixels(item.element()),
-		Graphic::RasterCPUList(list) => list.iter_element_values().all(no_pixels),
-		graphic => graphic.is_empty(),
-	}
+	(!graphic.draws_nothing()).then_some(graphic)
 }
 
 /// Hides the input graphics where the mask graphic is dark or transparent, showing them where it is white or opaque.
@@ -43,7 +31,7 @@ fn mask<T>(
 	/// The content to mask.
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
-	/// The graphics whose brightness or opacity shows the content, together as one. A gradient or image without its own placement stretches across the content.
+	/// The graphics that show the content by their brightness or opacity, together as one. A gradient or image without its own placement stretches across the content.
 	///
 	/// The mask moves with the content when it is transformed afterward.
 	#[expose]

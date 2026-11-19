@@ -1,7 +1,7 @@
 use crate::deferred_image::{self, DeferredImage, EffectMap};
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
-use crate::vello_scene_builder::VelloSceneBuilder;
+use crate::vello_scene_builder::{SceneImage, VelloSceneBuilder};
 use core_types::CacheHash;
 use core_types::FallibleVec2Operations;
 use core_types::blending::{BlendMode, blend_colors};
@@ -27,6 +27,7 @@ use graphene_resource::Resource;
 use graphic_types::effect_layers::{EffectLayers, LayerPart, PiecePlace, is_pixel_filter, piece_blend_mode};
 use graphic_types::effects::{EffectCapture, GlowFill, effect_space, spans_along_axes};
 use graphic_types::generator::GeneratorPattern;
+use graphic_types::masks::{MaskMode, masked_radius_blur_levels};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
@@ -35,9 +36,10 @@ use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, Stroke
 use graphic_types::vector_types::vector::{
 	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
 };
-use graphic_types::{Adjustment, Appearance, Artboard, BevelStyle, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Generator, Graphic, Vector, fitted_paint};
+use graphic_types::{Adjustment, Appearance, Artboard, BevelStyle, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Generator, Graphic, Vector, continued_map_pixels, fitted_paint};
 use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape};
 use num_traits::Zero;
+use raster_kernels::effect_kernels::NEGLIGIBLE_LENGTH;
 use raster_kernels::raster_effects::adjusted_raster;
 use raster_kernels::value_effects::{adjusted_color, adjusted_gradient, adjustments, filled_color};
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -339,24 +341,46 @@ impl ItemCompositing<'_> {
 
 		// A paint fitted to the content's bounds is placed in the scene's space they're measured in, and one following the content by the content's placement
 		let paint_params = render_params.for_pattern();
-		let paints: Vec<(Graphic, DAffine2)> = (effects.runs().into_iter())
+		// An image placed in the scene by the first, continued past its edges by the second, and faded by the third
+		type ContinuedImage = Option<(DAffine2, peniko::Extend, f32)>;
+		let paints: Vec<(Graphic, DAffine2, ContinuedImage)> = (effects.runs().into_iter())
 			.flat_map(|(stamped_transform, rows)| {
 				let length_spans = spans_along_axes(effect_space(self.content_transform, stamped_transform).matrix2);
 				effects.operations_in(rows).map(move |operation| (operation, length_spans))
 			})
 			.filter_map(|(operation, length_spans)| {
 				let paint = operation.drawn_paint()?;
-				Some(match bounds.and_then(|bounds| fitted_paint(paint, operation.drawn_paint_bounds(bounds, length_spans))) {
-					Some(fitted) => (fitted, DAffine2::IDENTITY),
-					None if operation.drawn_paint_follows_content() => (paint.clone(), transform * self.placement),
-					None => (paint.clone(), transform),
+
+				// A blur's radius mask image continues its edge pixels past the content, blurring what earlier effects painted there
+				if let EffectOperation::Blur { .. } = operation
+					&& let Some((image, pixels, opacity)) = bounds.and_then(|bounds| continued_masked_radius_blur_map(paint, bounds))
+				{
+					return Some((image, DAffine2::IDENTITY, Some((pixels, peniko::Extend::Pad, opacity))));
+				}
+
+				let fitted = bounds.and_then(|bounds| fitted_paint(paint, operation.drawn_paint_bounds(bounds, length_spans)));
+
+				Some(match fitted {
+					Some(fitted) => (fitted, DAffine2::IDENTITY, None),
+					None if operation.drawn_paint_follows_content() => (paint.clone(), transform * self.placement, None),
+					None => (paint.clone(), transform, None),
 				})
 			})
 			.collect();
 		let draw_paint = |index: usize, scene: &mut VelloSceneBuilder| {
-			if let Some((paint, transform)) = paints.get(index) {
-				paint.render_to_vello(scene, *transform, &paint_params);
+			let Some((paint, transform, continued)) = paints.get(index) else { return };
+			if let Some((pixels_to_scene, extend, opacity)) = continued {
+				let image = match paint {
+					Graphic::RasterCPU(map) => SceneImage::Raster {
+						raster: map.element().clone(),
+						adjustments: Vec::new(),
+					},
+					Graphic::RasterGPU(map) => SceneImage::Texture(map.element().texture.clone()),
+					_ => return,
+				};
+				return scene.draw_image_continued(image, kurbo::Affine::new(pixels_to_scene.to_cols_array()), *extend, *opacity);
 			}
+			paint.render_to_vello(scene, *transform, &paint_params);
 		};
 
 		// A capture names an effect by its place in the whole list, which falls in one run, so the runs after that one are left out of its map.
@@ -491,12 +515,17 @@ impl ItemCompositing<'_> {
 		let (effects, fill) = self.effects?;
 
 		// Each run's filter measures in its effect space, which a group's transform sets up unless the content is only moved since the effects were stamped
-		let runs = effects.runs();
+		let runs = svg_runs(effects);
 		let spaces: Vec<DAffine2> = runs.iter().map(|(stamped_transform, _)| effect_space(self.content_transform, *stamped_transform)).collect();
 		if spaces.iter().any(|space| !space.matrix2.determinant().is_normal()) {
 			return None;
 		}
 		let transformed = spaces.len() > 1 || spaces.iter().any(|space| space.matrix2 != DMat2::IDENTITY);
+
+		// The fill fades the first of the effects' runs after its splits flatten together, so it fades the last of them
+		let faded_run = runs
+			.first()
+			.map_or(0, |(first, _)| runs.iter().take_while(|(stamped_transform, _)| stamped_transform == first).count() - 1);
 
 		// Masks leading or trailing the other effects become SVG's own masks around the filters, which carry out those between.
 		// SVG's own masks measure in the user space, so effects measuring in a space of their own leave every mask to the filters.
@@ -559,7 +588,7 @@ impl ItemCompositing<'_> {
 			let user_to_space = if transformed { space.inverse() } else { DAffine2::IDENTITY };
 			let to_space = if index == 0 { user_to_space } else { user_to_space * region_to_space };
 			let content_bounds = (to_space * Quad::from_box(region)).bounding_box();
-			let run_fill = if index == 0 { fill } else { 1. };
+			let run_fill = if index == faded_run { fill } else { 1. };
 
 			// Only the last run draws layers, in the item's opacity and blend mode, while those within it flatten into its content
 			let run = effects.run(rows.clone());
@@ -569,6 +598,10 @@ impl ItemCompositing<'_> {
 				false => (EffectLayers::plan(&run, BlendMode::Normal, run_fill, false), 1.),
 			};
 			let paints = paints_in(render, rows, *space, user_to_space);
+
+			// The screen pixels a length in the filter's user space spans, by the canvas images' scale
+			let space_to_document = if transformed { render.transform * *space } else { render.transform };
+			let pixels_per_length = render_params.canvas_image_scale * space_to_document.matrix2.determinant().abs().sqrt();
 
 			// The filters carry out the effects between the native masks, so with only masks at a full fill there are none
 			let run_filtered = filtered.start.clamp(rows.start, rows.end) - rows.start..filtered.end.clamp(rows.start, rows.end) - rows.start;
@@ -586,6 +619,7 @@ impl ItemCompositing<'_> {
 						rows.start,
 						&paints,
 						run_filtered.clone(),
+						pixels_per_length,
 					)
 					.map(Some),
 					false => Some(None),
@@ -594,7 +628,6 @@ impl ItemCompositing<'_> {
 			if !transformed {
 				[leading_mask, trailing_mask] = masks::write_native_masks(&mut render.svg_defs, effects, [leading_masks.clone(), trailing_masks.clone()], &paints, bounds);
 			}
-			let space_to_document = if transformed { render.transform * *space } else { render.transform };
 
 			// A paint's markup is embedded as an image, where no map can reach its placeholders, and deferred content's image already covers its effects
 			let maps: Vec<(SvgEffectMap, [DVec2; 2])> = (filters.iter().flatten()).flat_map(|filter| filter.maps.iter().map(|map| (map.clone(), filter.region))).collect();
@@ -759,6 +792,27 @@ struct FoldedPaints {
 	remaining_effects: Effects,
 }
 
+/// A masked radius blur's image `map` as the image continuing its edge pixels past the content's `bounds`, with the transform placing its pixels and the opacity fading it, if it can continue.
+/// A CPU image takes its own adjustments into its pixels (see [`raster_kernels::raster_effects::continued_map_raster`]), and a GPU image continues only as its plain pixels.
+fn continued_masked_radius_blur_map(map: &Graphic, bounds: [DVec2; 2]) -> Option<(Graphic, DAffine2, f32)> {
+	match map {
+		Graphic::RasterCPU(item) => {
+			let size = DVec2::new(item.element().width as f64, item.element().height as f64);
+			let pixels = continued_map_pixels(map, size, bounds)?;
+			let (raster, opacity) = raster_kernels::raster_effects::continued_map_raster(item)?;
+			Some((Graphic::RasterCPU(Box::new(Item::new_from_element(raster))), pixels, opacity))
+		}
+		Graphic::RasterGPU(item) => {
+			let size = DVec2::new(item.element().texture.width() as f64, item.element().texture.height() as f64);
+			let plain = item.attribute::<Effects>(ATTR_EFFECTS).is_none_or(Effects::change_nothing);
+			let opacity = (item.attribute_cloned_or::<f64>(ATTR_OPACITY, 1.) * item.attribute_cloned_or::<f64>(ATTR_OPACITY_FILL, 1.)) as f32;
+			let pixels = plain.then(|| continued_map_pixels(map, size, bounds)).flatten()?;
+			Some((map.clone(), pixels, opacity))
+		}
+		_ => None,
+	}
+}
+
 /// How far the effects of the items nested anywhere inside `graphic`, which `transform` places in the document, reach past its bounds along the document's axes,
 /// measuring how far each effect reaches by `reach` (like [`EffectOperation::painted_reach`]).
 fn nested_effects_reach(graphic: &Graphic, transform: DAffine2, reach: fn(&EffectOperation) -> f64) -> DVec2 {
@@ -829,6 +883,26 @@ pub fn graphic_list_painted_bounds(list: &List<Graphic>, maps_resolved: bool) ->
 		Some(bounds) => RenderBoundingBox::Rectangle(bounds),
 		None => graphic_list_bounding_box(list, DAffine2::IDENTITY),
 	}
+}
+
+/// The effects' runs (see [`Effects::runs`]), split before each blur varying its radius with other effects before it in its run, which it flattens anyway.
+/// One reads its input once per level, and browsers redo a filter's input for each read, so a fresh source keeps chained ones from multiplying the work.
+fn svg_runs(effects: &Effects) -> Vec<(DAffine2, Range<usize>)> {
+	let operations: Vec<EffectOperation> = effects.operations().collect();
+
+	let mut runs = Vec::new();
+	for (stamped_transform, rows) in effects.runs() {
+		let mut start = rows.start;
+		for index in rows.start + 1..rows.end {
+			let masked_radius_blur = operations[index].varies_blur_radius() && !operations[index].changes_nothing();
+			if masked_radius_blur && operations[start..index].iter().any(|operation| !operation.changes_nothing()) {
+				runs.push((stamped_transform, start..index));
+				start = index;
+			}
+		}
+		runs.push((stamped_transform, start..rows.end));
+	}
+	runs
 }
 
 /// How far an effect that SVG draws without the GPU's maps paints past the content, in its effect space, which only the blurs do.
@@ -1406,15 +1480,20 @@ struct SvgEffectsFilter {
 	maps: Vec<SvgEffectMap>,
 }
 
-/// The drawn paint of an effect that SVG draws as markup, which is any but a bevel's texture, since that only shapes the maps.
+/// The drawn paint of an effect that SVG draws as markup, which is any but a bevel's texture or a radius mask markup can't draw (see [`masks::radius_mask_draws_as_markup`]), since SVG takes those through the GPU's maps.
 fn svg_drawn_paint(operation: &EffectOperation) -> Option<&Graphic> {
-	operation.drawn_paint().filter(|_| !matches!(operation, EffectOperation::BevelAndEmboss { .. }))
+	let paint = operation.drawn_paint()?;
+	match operation {
+		EffectOperation::BevelAndEmboss { .. } => None,
+		EffectOperation::Blur { radius_mask, .. } if !masks::radius_mask_draws_as_markup(radius_mask) => None,
+		_ => Some(paint),
+	}
 }
 
 /// Writes an SVG filter into `svg_defs` that carries out a run of `effects` like the GPU passes do, in a user space that is their effect space, giving the layer at `layer` among their `layers` drawn at `opacity`.
 /// `bounds` is the content's extent in that space, and `capture_offset` is the run's place in its item's list, which numbers the maps' captures. `None` if there's no such layer.
-/// `paints` holds the markup of the effects' drawn paints in order, other than bevels' textures (see [`svg_drawn_paint`]), and the filter carries out only the effects in the `filtered` range.
-/// Shadows and glows shaped for PSD interop measure distances no filter can, so the filter takes their coverages as maps the GPU renders.
+/// `paints` holds the markup of the effects' drawn paints in order, other than those SVG takes through the GPU's maps (see [`svg_drawn_paint`]), and the filter carries out only the effects in the `filtered` range.
+/// Shadows and glows shaped for PSD interop measure distances no filter can, so the filter takes their coverages as maps the GPU renders. A length in the user space spans `pixels_per_length` output pixels.
 #[expect(clippy::too_many_arguments)]
 fn write_svg_effects_filter(
 	svg_defs: &mut String,
@@ -1427,6 +1506,7 @@ fn write_svg_effects_filter(
 	capture_offset: usize,
 	paints: &[String],
 	filtered: std::ops::Range<usize>,
+	pixels_per_length: f64,
 ) -> Option<SvgEffectsFilter> {
 	use graphic_types::EffectOperation;
 	use graphic_types::effects::{OutlineFill, outline_extents};
@@ -1493,9 +1573,9 @@ fn write_svg_effects_filter(
 		let mut band_colors: Option<OutlineBandColors> = None;
 
 		let planes = match operation {
-			EffectOperation::Blur { radius, box_blur, gamma } => {
+			EffectOperation::Blur { radius, box_blur, gamma, .. } if !operation.varies_blur_radius() => {
 				let radius = DVec2::splat(radius);
-				if radius.max_element() < 0.01 || !(shows_content || cuts_within) {
+				if radius.max_element() * pixels_per_length.max(1.) < NEGLIGIBLE_LENGTH || !(shows_content || cuts_within) {
 					continue;
 				}
 
@@ -1508,6 +1588,27 @@ fn write_svg_effects_filter(
 
 				filled = filled.map(|filled| primitives.push("feGaussianBlur", &attributes(&filled), ""));
 				full = primitives.push("feGaussianBlur", &attributes(&full), "");
+				continue;
+			}
+			// A blur varying its radius by its radius mask
+			EffectOperation::Blur { radius, box_blur, gamma, .. } => {
+				if radius * pixels_per_length.max(1.) < NEGLIGIBLE_LENGTH || !(shows_content || cuts_within) {
+					continue;
+				}
+				primitives.merge_beneath(&mut full, &mut filled, beneath.take());
+
+				// The radius mask's luminance as the 8-bit codes the GPU interpolates between levels by, from its markup, or the GPU's map where markup can't draw it
+				let luminance = match paint_markup {
+					Some(markup) => {
+						let image = primitives.paint_image(markup, region);
+						primitives.mask_coverage(&image, MaskMode::Luminance)
+					}
+					None => primitives.map(map_capture(0)),
+				};
+				let levels = masked_radius_blur_levels(radius, pixels_per_length);
+				let weights = primitives.masked_radius_blur_weights(&luminance, &levels);
+				filled = filled.map(|filled| primitives.masked_radius_blur(&filled, &weights, &levels, box_blur, gamma));
+				full = primitives.masked_radius_blur(&full, &weights, &levels, box_blur, gamma);
 				continue;
 			}
 			EffectOperation::DropShadow { color, .. } => shade(BENEATH, Some(color), BlendMode::Normal),
@@ -5962,9 +6063,14 @@ mod tests {
 
 	/// Writes the filters of each layer `effects` draw on content blending normally, in order, as a run starting at `capture_offset` in its item's list.
 	fn write_filters(defs: &mut String, effects: &Effects, fill: f32, bounds: [DVec2; 2], capture_offset: usize, paints: &[String]) -> Vec<SvgEffectsFilter> {
+		write_filters_at(defs, effects, fill, bounds, capture_offset, paints, 1.)
+	}
+
+	/// Like [`write_filters`], with a length in the filters' user space spanning `pixels_per_length` output pixels.
+	fn write_filters_at(defs: &mut String, effects: &Effects, fill: f32, bounds: [DVec2; 2], capture_offset: usize, paints: &[String], pixels_per_length: f64) -> Vec<SvgEffectsFilter> {
 		let layers = EffectLayers::plan(effects, BlendMode::Normal, fill, true);
 		(0..layers.layers.len())
-			.filter_map(|layer| write_svg_effects_filter(defs, effects, &layers, layer, fill, 1., bounds, capture_offset, paints, 0..effects.len()))
+			.filter_map(|layer| write_svg_effects_filter(defs, effects, &layers, layer, fill, 1., bounds, capture_offset, paints, 0..effects.len(), pixels_per_length))
 			.collect()
 	}
 
@@ -6016,6 +6122,7 @@ mod tests {
 		use graphic_types::{Effect, EffectOperation, stamp_effect};
 
 		let blur = EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 3.,
 			box_blur: false,
 			gamma: false,
@@ -6090,6 +6197,7 @@ mod tests {
 		use graphic_types::EffectOperation;
 
 		let blur = EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 3.,
 			box_blur: false,
 			gamma: false,
@@ -6372,6 +6480,7 @@ mod tests {
 		// Within a group blurring it, the shadow blends in a layer of its own beside the content's
 		let mut group = Item::new_from_element(Graphic::VectorList(orange_square(&[red_shadow], 1., 1.)));
 		let blur = graphic_types::EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 2.,
 			box_blur: false,
 			gamma: false,
@@ -6498,6 +6607,7 @@ mod tests {
 	#[test]
 	fn svg_maps_cover_past_the_view_as_far_as_the_filters_reading_them_reach() {
 		let blur = graphic_types::EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 4.,
 			box_blur: false,
 			gamma: false,
@@ -6538,6 +6648,7 @@ mod tests {
 	#[test]
 	fn svg_maps_of_a_mask_graphic_cover_past_the_view_as_far_as_its_feather_and_the_groups_around_it_read() {
 		let blur = graphic_types::EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 4.,
 			box_blur: false,
 			gamma: false,
@@ -6552,6 +6663,7 @@ mod tests {
 			invert: false,
 		};
 		let blur_after = graphic_types::EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 2.,
 			box_blur: false,
 			gamma: false,
@@ -6624,6 +6736,7 @@ mod tests {
 			operation
 		};
 		let blur = EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 2.,
 			box_blur: false,
 			gamma: false,
@@ -6639,7 +6752,7 @@ mod tests {
 		// Over content in a mode of its own, a layer of only an inner shadow keeps the flattened shadow a later blur merges into the content's alpha it cuts to
 		let effects = Effects::from_operations([red(graphic_types::EffectKind::DropShadow), blur, red(graphic_types::EffectKind::InnerShadow)]);
 		let layers = EffectLayers::plan(&effects, BlendMode::Overlay, 1., true);
-		let within_layer = write_svg_effects_filter(&mut String::new(), &effects, &layers, 1, 1., 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &[], 0..effects.len());
+		let within_layer = write_svg_effects_filter(&mut String::new(), &effects, &layers, 1, 1., 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &[], 0..effects.len(), 1.);
 		assert_eq!(within_layer.as_ref().map(captures), Some(vec![(0, 0), (2, 0)]));
 	}
 
@@ -6783,6 +6896,7 @@ mod tests {
 		use kurbo::Shape;
 
 		let blur = graphic_types::EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 10.,
 			box_blur: false,
 			gamma: false,
@@ -6845,6 +6959,7 @@ mod tests {
 		stamp_effect(
 			&mut item,
 			Effect::new(&EffectOperation::Blur {
+				radius_mask: Graphic::default(),
 				radius: 1.,
 				box_blur: false,
 				gamma: false,
@@ -6945,6 +7060,7 @@ mod tests {
 			invert: true,
 		};
 		let blur = || EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 3.,
 			box_blur: false,
 			gamma: false,
@@ -6961,7 +7077,7 @@ mod tests {
 		let paints = vec![r#"<rect width="10" height="10" fill="white" />"#.to_string(); 4];
 		let bounds = [DVec2::ZERO, DVec2::splat(10.)];
 		let mut defs = String::new();
-		write_svg_effects_filter(&mut defs, &effects, &layers, 0, 1., 1., bounds, 0, &paints, leading.end..trailing.start).unwrap();
+		write_svg_effects_filter(&mut defs, &effects, &layers, 0, 1., 1., bounds, 0, &paints, leading.end..trailing.start, 1.).unwrap();
 		assert_eq!(defs.matches("<feImage").count(), 1, "{defs}");
 		assert!(defs.contains(r#"type="luminanceToAlpha""#) && defs.contains(r#"stdDeviation="2 2""#), "{defs}");
 		assert!(defs.contains(r#"<feFuncA type="linear" slope="-0.5" intercept="1" />"#), "{defs}");
@@ -7071,7 +7187,7 @@ mod tests {
 		let effects = Effects::from_operations([overlaying, mask]);
 		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 0.5, true);
 		let mut defs = String::new();
-		let filter = write_svg_effects_filter(&mut defs, &effects, &layers, 0, 0.5, 1., bounds, 0, &paints, 0..1).expect("the content's layer comes first");
+		let filter = write_svg_effects_filter(&mut defs, &effects, &layers, 0, 0.5, 1., bounds, 0, &paints, 0..1, 1.).expect("the content's layer comes first");
 		assert!(filter.maps.iter().any(|map| map.capture == EffectCapture { index: 1, plane: 0 }), "{defs}");
 		assert!(!defs.contains("<feImage"), "{defs}");
 	}
@@ -7090,6 +7206,7 @@ mod tests {
 			invert,
 		};
 		let blur = EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 2.,
 			box_blur: false,
 			gamma: false,
@@ -7206,6 +7323,166 @@ mod tests {
 			.try_into()
 			.unwrap_or_else(|_| panic!("a feather draws one layer"));
 		assert_eq!(filter.maps[0].capture, EffectCapture { index: 2, plane: 0 });
+	}
+
+	#[test]
+	fn svg_masked_radius_blurs_interpolate_their_levels_by_the_luminance_of_their_radius_mask() {
+		use graphic_types::EffectOperation;
+		use graphic_types::masks::{masked_radius_blur_levels, masked_radius_blur_weight};
+
+		let masked_radius_blur = |box_blur: bool| {
+			Effects::from_operations([EffectOperation::Blur {
+				radius_mask: Graphic::from(Color::WHITE),
+				radius: 16.,
+				box_blur,
+				gamma: false,
+			}])
+		};
+		let paints = [String::new()];
+		let write = |defs: &mut String, effects: &Effects, pixels_per_length: f64| {
+			let [filter] = write_filters_at(defs, effects, 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &paints, pixels_per_length)
+				.try_into()
+				.unwrap_or_else(|_| panic!("a blur draws one layer"));
+			filter
+		};
+		let deviations = |defs: &str| -> Vec<f64> { (defs.split(r#"stdDeviation=""#).skip(1)).filter_map(|rest| rest.split(' ').next()?.parse().ok()).collect() };
+
+		// The levels past the sharp first one are Gaussians each twice the last, from a document pixel up to the radius, interpolated by tables of the radius mask's luminance codes
+		let mut defs = String::new();
+		let filter = write(&mut defs, &masked_radius_blur(false), 1.);
+		let levels = masked_radius_blur_levels(16., 1.);
+		assert_eq!(levels, [0., 1., 2., 4., 8., 16.]);
+		assert!(filter.maps.is_empty() && defs.contains(r#"type="luminanceToAlpha""#), "{defs}");
+		assert_eq!(deviations(&defs), levels[1..], "{defs}");
+		assert_eq!(defs.matches(r#"<feFuncA type="table""#).count(), levels.len(), "{defs}");
+
+		// Zoomed in, finer levels reach down to an output pixel, and zoomed out, the levels stay as they are
+		let mut zoomed_defs = String::new();
+		write(&mut zoomed_defs, &masked_radius_blur(false), 4.);
+		assert_eq!(deviations(&zoomed_defs), [0.25, 0.5, 1., 2., 4., 8., 16.], "{zoomed_defs}");
+		assert_eq!(masked_radius_blur_levels(16., 0.25), levels);
+
+		// A box blur's levels are boxes of those half widths, which SVG blurs as Gaussians of the same variance like an even box blur
+		let mut box_defs = String::new();
+		write(&mut box_defs, &masked_radius_blur(true), 1.);
+		let box_deviations = deviations(&box_defs);
+		assert_eq!(box_deviations.len(), levels.len() - 1, "{box_defs}");
+		for (deviation, half_width) in box_deviations.into_iter().zip(&levels[1..]) {
+			assert!((deviation - (half_width * (half_width + 1.) / 3.).sqrt()).abs() < 1e-9, "{box_defs}");
+		}
+
+		// A larger radius or zoom halves further, and every luminance code's parts across the levels add up to the whole, with none of the sharp level for a white map
+		for (radius, pixels_per_length) in [(0.5, 1.), (16., 1.), (100., 1.), (0.5, 8.), (16., 3.), (100., 1e9)] {
+			let levels = masked_radius_blur_levels(radius, pixels_per_length);
+			assert!(levels[1] >= 1. / pixels_per_length || levels.len() == 2, "{levels:?}");
+			for code in 0..=255 {
+				let parts: u32 = (0..levels.len()).map(|level| masked_radius_blur_weight(level, code, &levels)).sum();
+				assert_eq!(parts, 255);
+			}
+			assert_eq!(masked_radius_blur_weight(0, 255, &levels), 0);
+		}
+	}
+
+	#[test]
+	fn svg_masked_radius_blurs_draw_their_radius_mask_as_markup_unless_only_the_gpu_can() {
+		use graphic_types::raster_types::Image;
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+
+		let export = RenderParams {
+			for_export: true,
+			..Default::default()
+		};
+		let blur = |radius_mask: Graphic| EffectOperation::Blur {
+			radius_mask,
+			radius: 8.,
+			box_blur: false,
+			gamma: false,
+		};
+		let render_item = |item: Item<Vector>| {
+			let mut render = SvgRender::new();
+			List::new_from_item(item).render_svg(&mut render, &export);
+			(render.svg_defs, render.effect_maps.len())
+		};
+		let render = |radius_mask: Graphic| render_item(orange_square_item(&[blur(radius_mask)], 1., 1.));
+
+		// Each render generates its own IDs, whose long runs of digits this leaves out
+		let without_ids = |markup: &str| {
+			let mut kept = String::new();
+			let mut digits = String::new();
+			for character in markup.chars().map(Some).chain([None]) {
+				if let Some(digit) = character.filter(char::is_ascii_digit) {
+					digits.push(digit);
+					continue;
+				}
+				if digits.len() < 8 {
+					kept.push_str(&digits);
+				}
+				digits.clear();
+				kept.extend(character);
+			}
+			kept
+		};
+
+		// No radius mask, left out of the row or carried as one drawing nothing, blurs evenly with neither markup nor map
+		let (plain_defs, plain_maps) = render(Graphic::default());
+		assert_eq!(plain_maps, 0, "{plain_defs}");
+		assert!(plain_defs.contains(r#"stdDeviation="8 8""#) && !plain_defs.contains("<feImage"), "{plain_defs}");
+		for empty in [Graphic::default(), Graphic::GraphicList(List::new())] {
+			let mut row = Effect::new(&blur(Graphic::default()));
+			row.0.set_attribute("radius_mask", empty);
+			let mut item = orange_square_item(&[], 1., 1.);
+			stamp_effect(&mut item, row);
+			let (defs, maps) = render_item(item);
+			assert_eq!((without_ids(&defs), maps), (without_ids(&plain_defs), plain_maps));
+		}
+
+		let mut circle = Vector::item_from_bezpath(&kurbo::Circle::new((5., 5.), 4.).to_path(0.1));
+		circle.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(Color::WHITE))));
+		let gradient = Graphic::from(Gradient::from(vec![Color::BLACK, Color::WHITE]));
+
+		// A vector or gradient is embedded as markup, its luminance taken over black like the GPU's codes, with no map
+		for radius_mask in [Graphic::Vector(Box::new(circle.clone())), gradient] {
+			let (defs, maps) = render(radius_mask);
+			assert_eq!(maps, 0, "{defs}");
+			assert!(defs.contains(r#"<feImage href="data:image/svg+xml"#) && defs.contains(r#"type="luminanceToAlpha""#), "{defs}");
+			assert!(!defs.contains("<!--effect-map-"), "{defs}");
+		}
+
+		// An image without its own placement, which continues past the content, and a graphic with effects SVG takes through maps of their own both take the GPU's map
+		let unplaced_image = Graphic::from(Item::new_from_element(Raster::new_cpu(Image::new(2, 2, Color::WHITE))));
+		let shadowed = Graphic::Vector(Box::new(circle.with_attribute(ATTR_EFFECTS, Effects::from_operations([drop_shadow(180., 3., 0.)]))));
+		for radius_mask in [unplaced_image, shadowed] {
+			let (defs, maps) = render(radius_mask);
+			assert_eq!(maps, 1, "{defs}");
+			assert!(defs.contains("<!--effect-map-") && !defs.contains("luminanceToAlpha"), "{defs}");
+		}
+	}
+
+	#[test]
+	fn svg_masked_radius_blurs_after_other_effects_start_filters_of_their_own() {
+		use graphic_types::EffectOperation;
+
+		let masked_radius_blur = |radius: f64| EffectOperation::Blur {
+			radius_mask: Graphic::from(Color::WHITE),
+			radius,
+			box_blur: false,
+			gamma: false,
+		};
+		let blur = |radius: f64| EffectOperation::Blur {
+			radius_mask: Graphic::default(),
+			radius,
+			box_blur: false,
+			gamma: false,
+		};
+		let rows_of = |effects: Vec<EffectOperation>| svg_runs(&Effects::from_operations(effects)).into_iter().map(|(_, rows)| rows).collect::<Vec<_>>();
+
+		// Each of a chain reads a fresh source rather than the levels of the one before
+		assert_eq!(rows_of(vec![masked_radius_blur(8.), masked_radius_blur(8.), masked_radius_blur(8.)]), [0..1, 1..2, 2..3]);
+		assert_eq!(rows_of(vec![blur(2.), masked_radius_blur(8.), blur(2.)]), [0..1, 1..3]);
+
+		// Rows changing nothing, before it or as it, split nothing
+		assert_eq!(rows_of(vec![blur(0.), masked_radius_blur(8.)]).len(), 1);
+		assert_eq!(rows_of(vec![blur(2.), masked_radius_blur(0.)]).len(), 1);
 	}
 
 	#[test]

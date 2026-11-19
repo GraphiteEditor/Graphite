@@ -300,6 +300,31 @@ impl<'a> VelloSceneBuilder<'a> {
 		self.draw_image_source(source, sampler, transform * texture_to_image, texture_size);
 	}
 
+	/// Draws an image's pixels, which `pixels_to_scene` places, across the whole view, continued past its edges by `extend` and faded by `opacity`.
+	pub fn draw_image_continued(&mut self, image: SceneImage, pixels_to_scene: Affine, extend: peniko::Extend, opacity: f32) {
+		let Some((source, texture_to_image, _)) = self.image_source(image) else {
+			return;
+		};
+		let pixels_to_device = self.view * pixels_to_scene;
+		if pixels_to_device.determinant() == 0. {
+			return;
+		}
+
+		if opacity < 1. {
+			self.push_viewport_layer(peniko::BlendMode::default(), opacity);
+		}
+		self.scene.set_transform(Affine::IDENTITY);
+		self.scene.set_paint(PaintType::Image(Image {
+			image: source,
+			sampler: peniko::ImageSampler::new().with_extend(extend),
+		}));
+		self.scene.set_paint_transform(pixels_to_device * texture_to_image);
+		self.scene.fill_rect(&Rect::new(0., 0., self.width() as f64, self.height() as f64));
+		if opacity < 1. {
+			self.pop_layer();
+		}
+	}
+
 	/// Draws a GPU texture's rectangle of pixels, from the origin to its width and height, placed by `transform`.
 	pub fn draw_texture(&mut self, texture: Texture, sampler: peniko::ImageSampler, transform: Affine) {
 		let Some((source, texture_to_image, texture_size)) = self.image_source(SceneImage::Texture(texture)) else {

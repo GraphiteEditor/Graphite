@@ -325,7 +325,7 @@ mod tests {
 
 	#[test]
 	fn channels_stay_aligned_when_effects_grow_only_one() {
-		use graphic_types::{Effect, EffectOperation, stamp_effect};
+		use graphic_types::{Effect, EffectOperation, Graphic, stamp_effect};
 
 		let gray = |value: f32| {
 			let image = Image::new(8, 8, Color::from_rgbaf32_unchecked(value, value, value, 1.));
@@ -337,6 +337,7 @@ mod tests {
 		stamp_effect(
 			&mut red,
 			Effect::new(&EffectOperation::Blur {
+				radius_mask: Graphic::default(),
 				radius: 1.,
 				box_blur: false,
 				gamma: false,

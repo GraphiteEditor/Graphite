@@ -25,7 +25,7 @@ use vector_types::{Gradient, GradientSettings};
 /// The image operation an [`Effect`] carries out.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, CacheHash)]
 pub enum EffectKind {
-	/// Softens the content by blurring it.
+	/// Softens the content by blurring it, evenly or more where its radius mask is brighter.
 	#[default]
 	Blur,
 	/// Casts the content's silhouette as a soft shadow beneath it.
@@ -323,6 +323,18 @@ pub fn linked_to_content(graphic: Graphic, placement: DAffine2) -> Graphic {
 	Graphic::Graphic(Box::new(Item::new_from_element(graphic).with_attribute(ATTR_TRANSFORM, placement.inverse())))
 }
 
+/// For a masked radius blur's map that is an image of `size` pixels without its own placement, the transform placing its pixels across `content_bounds`, past which its edge pixels continue.
+/// Past its edges a map is transparent and blurs nothing, so an image stretched across the content would otherwise cut its blur off at the content's edges.
+pub fn continued_map_pixels(map: &Graphic, size: DVec2, content_bounds: [DVec2; 2]) -> Option<DAffine2> {
+	let image = matches!(map, Graphic::RasterCPU(_) | Graphic::RasterGPU(_));
+	let has_pixels = size.min_element() > 0.;
+	if !image || !is_unplaced_paint(map) || !has_pixels {
+		return None;
+	}
+
+	Some(DAffine2::from_translation(content_bounds[0]) * DAffine2::from_scale((content_bounds[1] - content_bounds[0]) / size))
+}
+
 /// One image operation of an [`Effects`] list: an [`EffectKind`] plus its parameters, carried as attributes on the inner item.
 /// Each parameter's attribute is named after the input of the node that stamps the kind. Attributes the kind doesn't take are ignored.
 #[derive(Clone, Debug, Default, PartialEq, CacheHash)]
@@ -444,16 +456,20 @@ impl Effects {
 			transforms.for_each(|transform| *transform = rebased_stamped_transform(*transform, baked));
 		}
 
-		// A mask's graphic lies in the content's own space, which `baked` now places within the geometry
+		// A graphic following the content (see `EffectOperation::drawn_paint_follows_content`) lies in its own space, which `baked` now places within the geometry
 		if baked == DAffine2::IDENTITY || !baked.matrix2.determinant().is_normal() {
 			return;
 		}
 		for effect in self.0.iter_element_values_mut() {
-			if effect.kind() == EffectKind::Mask
-				&& let Some(mask) = effect.0.attribute_mut::<Graphic>("mask")
-				&& !is_unplaced_paint(mask)
+			let key = match effect.kind() {
+				EffectKind::Mask => "mask",
+				EffectKind::Blur => "radius_mask",
+				_ => continue,
+			};
+			if let Some(graphic) = effect.0.attribute_mut::<Graphic>(key)
+				&& !is_unplaced_paint(graphic)
 			{
-				*mask = Graphic::Graphic(Box::new(Item::new_from_element(std::mem::take(mask)).with_attribute(ATTR_TRANSFORM, baked)));
+				*graphic = Graphic::Graphic(Box::new(Item::new_from_element(std::mem::take(graphic)).with_attribute(ATTR_TRANSFORM, baked)));
 			}
 		}
 	}
@@ -726,8 +742,12 @@ pub fn rebased_stamped_transform(stamped_transform: DAffine2, baked: DAffine2) -
 /// An effect's parameters decoded from its row, the form that renderers carry it out from. Lengths are in its [`effect_space`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum EffectOperation {
+	/// Blurs the content after what lies beneath it joins it, evenly or by the interpolation between blurs [`crate::masks::masked_radius_blur_interpolation`] defines.
 	Blur {
-		/// The standard deviation of the Gaussian, or the half width of the box.
+		/// Lies in the content's own space, so it moves with the content, with its luminance setting each point's fraction of the radius.
+		/// One that draws nothing, the default, blurs the whole content by the radius.
+		radius_mask: Graphic,
+		/// The standard deviation of the Gaussian, or the half width of the box, where the radius mask is white.
 		radius: f64,
 		/// Whether to average a box of pixels rather than weighting them by a Gaussian.
 		box_blur: bool,
@@ -917,6 +937,11 @@ impl EffectOperation {
 		}
 	}
 
+	/// Whether this is a blur varying its radius by a radius mask that draws something, rather than blurring the whole content evenly.
+	pub fn varies_blur_radius(&self) -> bool {
+		matches!(self, Self::Blur { radius_mask, .. } if !radius_mask.draws_nothing())
+	}
+
 	/// Whether this operation reads the pixels around each one of the image the effects before it leave, like a blur, rather than casting from the content's shape or changing each pixel alone.
 	pub fn reads_pixels_around(&self) -> bool {
 		match self {
@@ -969,7 +994,7 @@ impl EffectOperation {
 		}
 	}
 
-	/// The graphic this operation paints with that renderers draw over the content's pixels on their own: a paint overlay's paint, an outline's drawn paint, a bevel's texture, or a mask's graphic.
+	/// The graphic this operation paints with that renderers draw over the content's pixels on their own: a paint overlay's paint, an outline's drawn paint, a bevel's texture, a mask's graphic, or a blur's radius mask.
 	/// An operation that changes nothing draws none, since renderers skip it.
 	pub fn drawn_paint(&self) -> Option<&Graphic> {
 		if self.changes_nothing() {
@@ -984,6 +1009,7 @@ impl EffectOperation {
 			},
 			Self::BevelAndEmboss { texture, .. } => (!matches!(texture, Graphic::None(_) | Graphic::NoneList(_))).then_some(texture),
 			Self::Mask { mask, .. } => Some(mask),
+			Self::Blur { radius_mask, .. } => self.varies_blur_radius().then_some(radius_mask),
 			_ => None,
 		}
 	}
@@ -991,7 +1017,7 @@ impl EffectOperation {
 	/// Whether the graphic this operation draws with is placed in the content's own space, so it moves with the content, rather than in the space the content's item is placed in.
 	/// The nodes stamping such operations express the graphic relative to the content's placement at that time with [`linked_to_content`].
 	pub fn drawn_paint_follows_content(&self) -> bool {
-		matches!(self, Self::Mask { .. })
+		matches!(self, Self::Mask { .. } | Self::Blur { .. })
 	}
 
 	/// The bounds a drawn paint without its own placement is fitted to, given the content's bounds and the length a document pixel spans along each of their axes.
@@ -1052,6 +1078,7 @@ impl EffectOperation {
 	fn placeholder(kind: EffectKind) -> Self {
 		match kind {
 			EffectKind::Blur => Self::Blur {
+				radius_mask: Graphic::default(),
 				radius: 0.,
 				box_blur: false,
 				gamma: false,
@@ -1189,8 +1216,9 @@ impl EffectOperation {
 		let glow_color = Color::from(SRGBA8::new(0xff, 0xff, 0xbe, 0xbf));
 
 		match self {
-			Self::Blur { radius, box_blur, gamma } => {
+			Self::Blur { radius_mask, radius, box_blur, gamma } => {
 				visitor.parameter("radius", radius, 0.);
+				visitor.parameter("radius_mask", radius_mask, Graphic::default());
 				visitor.parameter("box_blur", box_blur, false);
 				visitor.parameter("gamma", gamma, false);
 			}
@@ -1364,6 +1392,7 @@ mod tests {
 	fn rows_round_trip_their_operations_eliding_defaults() {
 		let operations = [
 			EffectOperation::Blur {
+				radius_mask: Graphic::default(),
 				radius: 6.,
 				box_blur: true,
 				gamma: false,
@@ -1462,6 +1491,12 @@ mod tests {
 				invert: true,
 			},
 			EffectOperation::Feather { distance: 4.5 },
+			EffectOperation::Blur {
+				radius_mask: Graphic::from(Color::WHITE),
+				radius: 7.5,
+				box_blur: true,
+				gamma: true,
+			},
 			EffectOperation::Adjustment(Adjustment::ColorOverlay {
 				color: Color::GREEN,
 				blend_mode: BlendMode::Screen,
@@ -1492,6 +1527,36 @@ mod tests {
 
 		let default_row = Effect::new(&EffectOperation::default_for(EffectKind::DropShadow));
 		assert_eq!(default_row.0.attributes().iter_any().count(), 0, "a default operation stamps no parameters");
+	}
+
+	#[test]
+	fn a_blur_row_without_a_radius_mask_decodes_as_an_even_blur() {
+		let blur = |radius_mask: Graphic| EffectOperation::Blur {
+			radius_mask,
+			radius: 5.,
+			box_blur: false,
+			gamma: false,
+		};
+
+		// An empty radius mask is elided from the row, which reads back as empty
+		let row = Effect::new(&blur(Graphic::default()));
+		assert!(row.0.attribute::<Graphic>("radius_mask").is_none());
+		assert_eq!(row.operation(), blur(Graphic::default()));
+
+		// So the row decodes the same as one carrying an empty radius mask, or one that draws nothing, all blurring evenly with nothing drawn
+		let mut carrying_empty = row.clone();
+		carrying_empty.0.set_attribute("radius_mask", Graphic::default());
+		let mut carrying_nothing = row.clone();
+		carrying_nothing.0.set_attribute("radius_mask", Graphic::GraphicList(List::new()));
+		for row in [row, carrying_empty, carrying_nothing] {
+			let operation = row.operation();
+			assert!(!operation.varies_blur_radius() && operation.drawn_paint().is_none(), "{operation:?}");
+		}
+
+		// A radius mask drawing something varies the blur and draws as its paint
+		let masked = blur(Graphic::from(Color::WHITE));
+		assert!(Effect::new(&masked).0.attribute::<Graphic>("radius_mask").is_some());
+		assert!(masked.varies_blur_radius() && masked.drawn_paint() == Some(&Graphic::from(Color::WHITE)));
 	}
 
 	#[test]
@@ -1633,6 +1698,7 @@ mod tests {
 	#[test]
 	fn runs_join_effects_stamped_rounding_apart_and_those_changing_nothing() {
 		let blur = |radius: f64| EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius,
 			box_blur: false,
 			gamma: false,
@@ -1778,9 +1844,23 @@ mod tests {
 		let placement = DAffine2::from_scale_angle_translation(DVec2::splat(2.), 0.5, DVec2::new(200., 100.));
 		let drawn_at = DAffine2::from_translation(DVec2::new(5., 7.));
 		let mask = Graphic::Graphic(Box::new(Item::new_from_element(Graphic::default()).with_attribute(ATTR_TRANSFORM, drawn_at)));
-		let mut effects = masked_by(linked_to_content(mask, placement));
+		let mut effects = masked_by(linked_to_content(mask.clone(), placement));
 		effects.rebase_stamped_transforms(placement);
 		assert!(nested_placement(&mask_of(&effects)).abs_diff_eq(drawn_at, 1e-9));
+
+		// A blur's radius mask follows the content the same way
+		let blur = EffectOperation::Blur {
+			radius_mask: linked_to_content(mask, placement),
+			radius: 4.,
+			box_blur: false,
+			gamma: false,
+		};
+		let mut effects = Effects::from_operations([blur]);
+		effects.rebase_stamped_transforms(placement);
+		let Some(EffectOperation::Blur { radius_mask, .. }) = effects.operations().next() else {
+			panic!("the row should stay a blur")
+		};
+		assert!(nested_placement(&radius_mask).abs_diff_eq(drawn_at, 1e-9));
 
 		// A gradient without its own placement stretches across the content wherever it lies, so it's left as it is
 		let unplaced = Graphic::Gradient(Item::new_from_element(Gradient::default()));

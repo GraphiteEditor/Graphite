@@ -1,10 +1,10 @@
-//! The CPU twins of the GPU passes that mask content by another graphic and feather it toward its edges.
+//! The CPU twins of the GPU passes that mask, feather, and blur content by a radius mask.
 
 use crate::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, Plane};
-use crate::raster_effects::premultiplied_gamma_channels;
+use crate::raster_effects::{blur, premultiplied_gamma_channels};
 use core_types::Color;
 use glam::DVec2;
-use graphic_types::masks::{FEATHER_FOOTPRINT_ALPHA, MaskMode, feather_parts, mask_coverage, mask_density_line, mask_feather_sigma};
+use graphic_types::masks::{FEATHER_FOOTPRINT_ALPHA, MaskMode, feather_parts, mask_coverage, mask_density_line, mask_feather_sigma, masked_radius_blur_code, masked_radius_blur_interpolation};
 use raster_types::parallel_rows::fill_rows;
 
 /// How much the mask shows the content at each pixel, from 0 to 1, given the `colors` its graphic draws over a plane of `width` by `height` pixels.
@@ -71,6 +71,65 @@ pub(crate) fn feather_strength(full: &Plane<[f32; 4]>, distance: f64) -> Plane<f
 		true => eroded.blurred(BlurKernel::Gaussian { sigma }, BlurKernel::Gaussian { sigma }),
 		false => eroded,
 	}
+}
+
+/// The 8-bit luminance code of each of a masked radius blur map's `colors`, taken from 8-bit channels as the GPU renders the map: straight, then premultiplied.
+pub(crate) fn masked_radius_blur_codes(colors: &[Color]) -> Vec<u8> {
+	let eight_bit = |channel: f32| (channel.clamp(0., 1.) * 255.).round() / 255.;
+	colors
+		.iter()
+		.map(|&color| {
+			let [red, green, blue, alpha] = color.to_gamma_srgb_channels().map(eight_bit);
+			masked_radius_blur_code([eight_bit(red * alpha), eight_bit(green * alpha), eight_bit(blue * alpha), alpha])
+		})
+		.collect()
+}
+
+/// The premultiplied gamma-encoded `image` blurred by the interpolation between `levels` (from `masked_radius_blur_levels`, here in pixels along each axis) each pixel's map luminance `codes` picks, matching the GPU's `masked_radius_blur`.
+/// The levels are boxes if `box_blur` and Gaussians otherwise, blurring in linear light if `linear`. O(width × height) for each of the levels.
+pub(crate) fn masked_radius_blur(image: &Plane<[f32; 4]>, codes: &[u8], levels: &[DVec2], box_blur: bool, linear: bool) -> Plane<[f32; 4]> {
+	// Each code's level below and share of the level above, the same for every level and at any scale
+	let lengths: Vec<f64> = levels.iter().map(|level| level.max_element()).collect();
+	let interpolations: Vec<(usize, f32)> = (0..=255_u8)
+		.map(|code| {
+			let (below, above_parts) = masked_radius_blur_interpolation(code, &lengths);
+			(below, above_parts as f32 / 255.)
+		})
+		.collect();
+
+	// Only the levels some pixel takes a share of are blurred, so a map of one luminance blurs once or twice
+	let mut weighed = vec![false; levels.len()];
+	for &code in codes {
+		let (below, above_share) = interpolations[code as usize];
+		weighed[below] |= above_share < 1.;
+		if let Some(above) = weighed.get_mut(below + 1) {
+			*above |= above_share > 0.;
+		}
+	}
+
+	let mut sum = Plane::<[f32; 4]>::new(image.width, image.height);
+	let kernel = |length: f64| match box_blur {
+		true => BlurKernel::Box { radius: length },
+		false => BlurKernel::Gaussian { sigma: length },
+	};
+	for (index, &length) in levels.iter().enumerate().filter(|&(index, _)| weighed[index]) {
+		let blurred = match length.max_element() >= NEGLIGIBLE_LENGTH {
+			true => blur(image.clone(), (kernel(length.x), kernel(length.y)), linear),
+			false => image.clone(),
+		};
+
+		let weight = |(below, above_share): (usize, f32)| match index {
+			_ if index == below => 1. - above_share,
+			_ if index == below + 1 => above_share,
+			_ => 0.,
+		};
+		// Summed in gamma on purpose (see `masked_radius_blur_interpolation`)
+		for ((sum, pixel), &code) in sum.data.iter_mut().zip(&blurred.data).zip(codes) {
+			let weight = weight(interpolations[code as usize]);
+			*sum = std::array::from_fn(|channel| sum[channel] + pixel[channel] * weight);
+		}
+	}
+	sum
 }
 
 #[cfg(test)]
