@@ -152,7 +152,7 @@ fn inner_shadow<T>(
 	content
 }
 
-/// A glow's or outline's paint with its own effects carried out, if it's a color or gradient.
+/// A glow's, outline's, or bevel texture's paint with its own effects carried out, if it's a color or gradient.
 fn glow_paint(paint: Item<Graphic>) -> Graphic {
 	match paint_with_envelope_effects(paint) {
 		Graphic::Color(color) => Graphic::Color(evaluate_color_effects(color)),
@@ -364,7 +364,7 @@ fn outline<T>(
 }
 
 /// Raises the input graphics into a lit relief, with highlights on the slopes facing the light and shadows on those facing away.
-#[node_macro::node(name("Bevel & Emboss"), category("Raster: Effect"), icon("NodeBevelAndEmboss"))]
+#[node_macro::node(name("Bevel & Emboss"), category("Raster: Effect"), icon("NodeBevelAndEmboss"), version(2))]
 fn bevel_and_emboss<T>(
 	_: impl Ctx,
 	/// The content to raise.
@@ -397,6 +397,7 @@ fn bevel_and_emboss<T>(
 	#[soft(..16)]
 	soften: Item<f64>,
 	/// The direction the light comes from.
+	#[widget(ParsedWidgetOverride::Custom = "wrapping_range_slider")]
 	#[unit("°")]
 	#[range]
 	#[soft(-180..180)]
@@ -420,6 +421,28 @@ fn bevel_and_emboss<T>(
 	/// How the shadow mixes with the colors beneath it.
 	#[default(BlendMode::Multiply)]
 	shadow_blend_mode: Item<BlendMode>,
+	/// A graphic with lightness that sinks the surface into a relief, like a pattern pressed into it. A gradient or image without its own placement stretches across the content.
+	texture: Item<Graphic>,
+	/// How deep the texture's lightest parts sink, as a share of the slope's width, or how high they rise when negative.
+	#[unit("%")]
+	#[range]
+	#[soft(-1000..1000)]
+	#[default(100.)]
+	texture_depth: Item<f64>,
+	/// How much of the slope the slope contour spans: down from the top of an inner bevel, or up from the foot of an outer one. An emboss's always spans its whole slope. At 100%, a straight one leaves the slope as it is.
+	#[unit("%")]
+	#[range]
+	#[hard(1..100)]
+	#[default(100.)]
+	slope_range: Item<f64>,
+	/// Samples the gloss contour across each pixel, smoothing its steep parts.
+	gloss_antialiased: Item<bool>,
+	/// Samples the slope contour across each pixel, smoothing its steep parts.
+	slope_antialiased: Item<bool>,
+	/// Reshapes how lit the slope is, from where it faces away from the light to where it faces it, for glossy or metallic sheens.
+	gloss_contour: Item<TransferCurve>,
+	/// Reshapes the slope's profile, for ridges, grooves, and rounded or stepped edges.
+	slope_contour: Item<TransferCurve>,
 ) -> Item<T> {
 	let mut content = content;
 	stamp_effect(
@@ -437,6 +460,13 @@ fn bevel_and_emboss<T>(
 			highlight_blend_mode: *highlight_blend_mode.element(),
 			shadow_color: evaluate_color_effects(shadow_color).into_element(),
 			shadow_blend_mode: *shadow_blend_mode.element(),
+			texture: glow_paint(texture),
+			texture_depth: *texture_depth.element(),
+			slope_range: *slope_range.element(),
+			gloss_antialiased: *gloss_antialiased.element(),
+			slope_antialiased: *slope_antialiased.element(),
+			gloss_contour: gloss_contour.into_element(),
+			slope_contour: slope_contour.into_element(),
 		}),
 	);
 	content

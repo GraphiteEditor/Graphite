@@ -1,5 +1,6 @@
 //! Migrations of the nodes in `blending_nodes`.
 
+mod bevel_and_emboss_v1;
 mod drop_shadow_v1;
 mod inner_glow_v1;
 mod inner_shadow_v1;

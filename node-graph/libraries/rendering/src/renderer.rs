@@ -476,13 +476,14 @@ impl ItemCompositing<'_> {
 		}
 		let transformed = spaces.len() > 1 || spaces.iter().any(|space| space.matrix2 != DMat2::IDENTITY);
 
-		// The effects' drawn paints, as markup in a run's effect space, where the content's bounds fit those without a placement
+		// The effects' drawn paints, as markup in a run's effect space, where the content's bounds fit those without a placement. A bevel's texture only shapes the maps, so it needs none.
 		let paint_params = render_params.for_pattern();
 		let user_to_document = render.transform;
 		let paints_in = |rows: &Range<usize>, space: DAffine2, user_to_space: DAffine2| -> Vec<String> {
 			let length_spans = spans_along_axes(space.matrix2);
 			effects
 				.operations_in(rows.clone())
+				.filter(|operation| !matches!(operation, EffectOperation::BevelAndEmboss { .. }))
 				.filter_map(|operation| {
 					let paint = operation.drawn_paint()?;
 					Some(fitted_paint(paint, operation.drawn_paint_bounds(bounds, length_spans)).unwrap_or_else(|| paint.clone()))
@@ -1279,7 +1280,7 @@ struct SvgEffectsFilter {
 
 /// Writes an SVG filter into `svg_defs` that carries out a run of `effects` like the GPU passes do, in a user space that is their effect space, giving the layer at `layer` among their `layers` drawn at `opacity`,
 /// or `None` if there's no such layer. `bounds` is the content's extent in that space, and `capture_offset` is the run's place in its item's list, which numbers the maps' captures.
-/// `paints` holds the markup of the effects' drawn paints, in order.
+/// `paints` holds the markup of the effects' drawn paints in order, other than bevels' textures.
 /// Shadows and glows shaped for PSD interop measure distances no filter can, so the filter takes their coverages as maps the GPU renders.
 #[expect(clippy::too_many_arguments)]
 fn write_svg_effects_filter(
@@ -1404,9 +1405,10 @@ fn write_svg_effects_filter(
 				highlight_blend_mode,
 				shadow_color,
 				shadow_blend_mode,
+				ref gloss_contour,
 				..
 			} => {
-				if size <= 0. {
+				if size <= 0. && gloss_contour.is_identity() {
 					continue;
 				}
 				let inside = (style != BevelStyle::OuterBevel).then_some([(0, true, Some(highlight_color), highlight_blend_mode), (1, true, Some(shadow_color), shadow_blend_mode)]);

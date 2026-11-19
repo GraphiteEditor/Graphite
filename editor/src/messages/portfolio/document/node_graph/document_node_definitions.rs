@@ -873,6 +873,46 @@ fn static_input_inspector() -> InputInspector {
 		}),
 	);
 	map.insert(
+		// A range slider for a periodic number like an angle, whose soft bounds span one period, wrapping a typed number past either end back into them
+		"wrapping_range_slider".to_string(),
+		Box::new(|node_id, index, context| {
+			// The field is cloned so the lock is released before building the row below, which locks the node metadata again
+			let field = context
+				.network_interface
+				.implementation(&node_id, context.selection_network_path)
+				.and_then(|implementation| if let DocumentNodeImplementation::ProtoNode(id) = implementation { Some(id) } else { None })
+				.and_then(|proto_node_identifier| registry::NODE_METADATA.lock().ok()?.get(proto_node_identifier)?.fields.get(index).cloned());
+
+			let mut number_input = NumberInput::default().mode_increment();
+			let mut period = None;
+			if let Some(field) = field {
+				if let Some(unit) = field.unit {
+					number_input = number_input.unit(unit);
+				}
+				if let Some(display_decimal_places) = field.number_display_decimal_places {
+					number_input = number_input.display_decimal_places(display_decimal_places);
+				}
+				if let Some(number_step) = field.number_step {
+					number_input = number_input.step(number_step);
+				}
+				period = field.number_soft_min.zip(field.number_soft_max);
+			}
+
+			let parameter_widgets_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			let row = match period {
+				Some((min, max)) if min.is_finite() && max.is_finite() && min < max => {
+					let default = node_inspector::definition_default_number(&parameter_widgets_info);
+					node_inspector::wrapping_range_slider_widget(parameter_widgets_info, number_input, SliderRange { min, max, default })
+				}
+				_ => {
+					log::error!("A wrapping range slider needs finite soft bounds at both ends");
+					node_inspector::number_widget(parameter_widgets_info, number_input)
+				}
+			};
+			Ok(vec![LayoutGroup::row(row)])
+		}),
+	);
+	map.insert(
 		// A type-witness input, whose stored value's type selects the node's row: the dropdown lists the types the rows accept there
 		"type_choice".to_string(),
 		Box::new(|node_id, index, context| Ok(vec![node_inspector::type_choice_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context))])),

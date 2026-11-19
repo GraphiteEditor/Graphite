@@ -11,7 +11,7 @@ use core_types::blending::BlendMode;
 use core_types::color::SRGBA8;
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_EFFECTS, ATTR_OPACITY, ATTR_OPACITY_FILL, Item, List};
-use core_types::transfer_curve::TransferCurve;
+use core_types::transfer_curve::{TransferCurve, TransferCurveEvaluator};
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2, DVec3};
 use std::borrow::Cow;
@@ -223,12 +223,61 @@ pub fn bevel_light(angle: f64, altitude: f64, lengths_to_target: DMat2) -> DVec3
 	(across * altitude.cos()).extend(altitude.sin())
 }
 
-/// How much a bevel's surface sloping up by `gradient` (its rise per unit along each axis) is lit past a flat surface's brightness by the `light`, and how much it falls short, each from 0 to 1.
-pub fn bevel_lighting(gradient: DVec2, light: DVec3) -> (f64, f64) {
-	let lit = (-gradient).extend(1.).normalize().dot(light);
-	let highlight = if light.z < 1. { (lit - light.z) / (1. - light.z) } else { 0. };
-	let shadow = if light.z > 0. { (light.z - lit) / light.z } else { 0. };
+/// How lit a bevel's surface sloping up by `gradient` (its rise per unit along each axis) is by the `light`, from 0 facing away from it to 1 facing it.
+pub fn bevel_lit(gradient: DVec2, light: DVec3) -> f64 {
+	(-gradient).extend(1.).normalize().dot(light).clamp(0., 1.)
+}
+
+/// A bevel's highlight and shadow from 0 to 1, from how much brighter its surface is lit (after its gloss contour) than a flat surface's brightness `light_z`, negative where it's darker.
+/// For PSD interop, the flat brightness stays as it is under a gloss contour, so a curve that moves it shades even flat ground.
+pub fn bevel_lighting(brighter: f64, light_z: f64) -> (f64, f64) {
+	let highlight = if light_z < 1. { brighter / (1. - light_z) } else { 0. };
+	let shadow = if light_z > 0. { -brighter / light_z } else { 0. };
 	(highlight.clamp(0., 1.), shadow.clamp(0., 1.))
+}
+
+/// For PSD interop, under a gloss contour or a texture a bevel's highlight and shadow beneath the content reach no more than its height before its contour divided by this,
+/// so the flat ground they shade ends at the slopes' foot. It's the same as [`GRADIENT_GLOW_FADE`].
+pub const BEVEL_FOOT_FADE: f64 = 0.12;
+
+/// For PSD interop, the offsets from each pixel toward its right and lower neighbors at which an antialiased contour samples it, nine in all.
+pub const ANTIALIASED_CONTOUR_OFFSETS: [f64; 3] = [0., 1. / 3., 2. / 3.];
+
+/// Where a bevel's height `t` (0 at the foot of its slope and 1 on its top) falls along its contour, given the `range` percentage of the slope the contour spans.
+/// For PSD interop, an inner bevel's contour spans the range down from the top, an outer bevel's spans it up from the foot, and an emboss's spans the whole slope.
+pub fn slope_contour_input(t: f64, style: BevelStyle, range: f64) -> f64 {
+	let range = range.clamp(1., 100.) / 100.;
+	match style {
+		BevelStyle::InnerBevel => 1. - (1. - t) / range,
+		BevelStyle::OuterBevel => t / range,
+		BevelStyle::Emboss | BevelStyle::PillowEmboss => t,
+	}
+}
+
+/// Whether a bevel's contour reshapes its slopes, as any curve does, and a straight one does when it spans part of an inner or outer bevel's slopes.
+pub fn slope_contour_reshapes(contour: &TransferCurve, style: BevelStyle, range: f64) -> bool {
+	!contour.is_identity() || (range < 100. && matches!(style, BevelStyle::InnerBevel | BevelStyle::OuterBevel))
+}
+
+/// The slopes a bevel's contour continues along past its start and its end, for PSD interop, measured across its first and last steps of 1/255 within the curve's 0 to 1.
+pub fn contour_end_slopes(contour: &TransferCurveEvaluator) -> (f64, f64) {
+	let step = 1. / 255.;
+	let at = |x: f64| contour.evaluate(x).clamp(0., 1.);
+	((at(step) - at(0.)) / step, (at(1.) - at(1. - step)) / step)
+}
+
+/// A bevel's contour at `x`, from 0 to 1 within the curve, and continued past its ends along the `slopes` of [`contour_end_slopes`].
+pub fn extended_contour(contour: &TransferCurveEvaluator, (start_slope, end_slope): (f64, f64), x: f64) -> f64 {
+	match x {
+		x if x < 0. => contour.evaluate(0.).clamp(0., 1.) + start_slope * x,
+		x if x > 1. => contour.evaluate(1.).clamp(0., 1.) + end_slope * (x - 1.),
+		x => contour.evaluate(x).clamp(0., 1.),
+	}
+}
+
+/// How much a texture's color sinks a bevel's surface, from its premultiplied gamma-encoded channels: their luma, so a transparent texture leaves it flat.
+pub fn texture_gray([red, green, blue, _]: [f32; 4]) -> f32 {
+	0.299 * red + 0.587 * green + 0.114 * blue
 }
 
 /// An effect's drawn paint with its unit square fitted to `content_bounds`, the extent it fills in the space it's drawn in, if it's a gradient or image without its own placement.
@@ -712,6 +761,7 @@ pub enum EffectOperation {
 		depth: f64,
 		direction: BevelDirection,
 		/// How wide the slopes are.
+		/// For PSD interop, an importer maps a Smooth inner bevel's Size 0 (a one-pixel step at any depth) to Size 0.5 at Depth 200%.
 		size: f64,
 		/// How much the highlights and shadows are blurred.
 		soften: f64,
@@ -727,6 +777,20 @@ pub enum EffectOperation {
 		shadow_color: Color,
 		/// How the shadow mixes with the colors beneath it.
 		shadow_blend_mode: BlendMode,
+		/// A graphic with lightness that sinks the surface, or none.
+		texture: Graphic,
+		/// The percentage of the slopes' width that the texture's lightest parts sink by, raising them when negative.
+		texture_depth: f64,
+		/// The percentage of the slopes the slope contour spans.
+		slope_range: f64,
+		/// Whether the gloss contour is sampled across each pixel, smoothing its steep parts.
+		gloss_antialiased: bool,
+		/// Whether the slope contour is sampled across each pixel, smoothing its steep parts.
+		slope_antialiased: bool,
+		/// Reshapes how lit the slopes are, from facing away from the light to facing it.
+		gloss_contour: TransferCurve,
+		/// Reshapes the slopes' profile.
+		slope_contour: TransferCurve,
 	},
 	/// Paints over the content with a paint other than a solid color, since a solid one decodes into the color overlay adjustment instead.
 	PaintOverlay {
@@ -767,9 +831,14 @@ impl EffectOperation {
 			Self::DropShadow { color, .. } | Self::InnerShadow { color, .. } | Self::Satin { color, .. } => color.a() <= 0.,
 			Self::OuterGlow { color, .. } | Self::InnerGlow { color, .. } => GlowFill::of(color).is_none_or(|fill| fill.is_invisible()),
 			Self::Outline { paint, weight, contour_gradient, .. } => *weight <= 0. || OutlineFill::of(paint, *contour_gradient).is_none_or(|fill| fill.is_invisible()),
+			// A gloss contour shades even flat ground, so a bevel without slopes still draws it
 			Self::BevelAndEmboss {
-				highlight_color, shadow_color, size, ..
-			} => (highlight_color.a() <= 0. && shadow_color.a() <= 0.) || *size <= 0.,
+				highlight_color,
+				shadow_color,
+				size,
+				gloss_contour,
+				..
+			} => (highlight_color.a() <= 0. && shadow_color.a() <= 0.) || (*size <= 0. && gloss_contour.is_identity()),
 			Self::PaintOverlay { opacity, .. } => *opacity <= 0.,
 			Self::Adjustment(Adjustment::ColorOverlay { color, opacity, .. }) => color.a() <= 0. || *opacity <= 0.,
 			Self::Adjustment(_) => false,
@@ -808,7 +877,7 @@ impl EffectOperation {
 		}
 	}
 
-	/// The graphic this operation paints with that renderers draw over the content's pixels on their own: a paint overlay's paint, or an outline's drawn paint.
+	/// The graphic this operation paints with that renderers draw over the content's pixels on their own: a paint overlay's paint, an outline's drawn paint, or a bevel's texture.
 	/// An operation that changes nothing draws none, since renderers skip it.
 	pub fn drawn_paint(&self) -> Option<&Graphic> {
 		if self.changes_nothing() {
@@ -821,6 +890,7 @@ impl EffectOperation {
 				OutlineFill::Drawn(paint) => Some(paint),
 				_ => None,
 			},
+			Self::BevelAndEmboss { texture, .. } => (!matches!(texture, Graphic::None(_) | Graphic::NoneList(_))).then_some(texture),
 			_ => None,
 		}
 	}
@@ -863,8 +933,15 @@ impl EffectOperation {
 			Self::Satin { angle, distance, size, .. } => [angle, distance, size].into_iter().for_each(finite),
 			Self::Outline { weight, .. } => finite(weight),
 			Self::BevelAndEmboss {
-				depth, size, soften, angle, altitude, ..
-			} => [depth, size, soften, angle, altitude].into_iter().for_each(finite),
+				depth,
+				size,
+				soften,
+				angle,
+				altitude,
+				slope_range,
+				texture_depth,
+				..
+			} => [depth, size, soften, angle, altitude, slope_range, texture_depth].into_iter().for_each(finite),
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => {}
 		}
 		self
@@ -945,6 +1022,13 @@ impl EffectOperation {
 				highlight_blend_mode: BlendMode::default(),
 				shadow_color: Color::TRANSPARENT,
 				shadow_blend_mode: BlendMode::default(),
+				texture: Graphic::default(),
+				texture_depth: 0.,
+				slope_range: 0.,
+				gloss_antialiased: false,
+				slope_antialiased: false,
+				gloss_contour: TransferCurve::default(),
+				slope_contour: TransferCurve::default(),
 			},
 			EffectKind::PaintOverlay => Self::PaintOverlay {
 				paint: Graphic::default(),
@@ -1116,6 +1200,13 @@ impl EffectOperation {
 				highlight_blend_mode,
 				shadow_color,
 				shadow_blend_mode,
+				texture,
+				texture_depth,
+				slope_range,
+				gloss_antialiased,
+				slope_antialiased,
+				gloss_contour,
+				slope_contour,
 			} => {
 				visitor.parameter("style", style, BevelStyle::default());
 				visitor.parameter("technique", technique, BevelTechnique::default());
@@ -1129,6 +1220,13 @@ impl EffectOperation {
 				visitor.parameter("highlight_blend_mode", highlight_blend_mode, BlendMode::Screen);
 				visitor.parameter("shadow_color", shadow_color, Color::from(SRGBA8::new(0, 0, 0, 0xbf)));
 				visitor.parameter("shadow_blend_mode", shadow_blend_mode, BlendMode::Multiply);
+				visitor.parameter("texture", texture, Graphic::default());
+				visitor.parameter("texture_depth", texture_depth, 100.);
+				visitor.parameter("slope_range", slope_range, 100.);
+				visitor.parameter("gloss_antialiased", gloss_antialiased, false);
+				visitor.parameter("slope_antialiased", slope_antialiased, false);
+				visitor.parameter("gloss_contour", gloss_contour, TransferCurve::default());
+				visitor.parameter("slope_contour", slope_contour, TransferCurve::default());
 			}
 			Self::PaintOverlay { paint, blend_mode, opacity } => {
 				visitor.parameter("paint", paint, Graphic::from(Color::BLACK));
@@ -1222,6 +1320,13 @@ mod tests {
 				highlight_blend_mode: BlendMode::Overlay,
 				shadow_color: Color::BLUE,
 				shadow_blend_mode: BlendMode::Normal,
+				gloss_contour: TransferCurve::new(vec![DVec2::ZERO, DVec2::new(0.5, 1.), DVec2::X]),
+				gloss_antialiased: true,
+				slope_contour: TransferCurve::new(vec![DVec2::ZERO, DVec2::new(0.5, 0.25), DVec2::ONE]),
+				slope_antialiased: true,
+				slope_range: 50.,
+				texture: Graphic::from(Gradient::default()),
+				texture_depth: -250.,
 			},
 			EffectOperation::PaintOverlay {
 				paint: Graphic::from(Gradient::new([0., 1.].map(|position| GradientStop {
@@ -1345,6 +1450,27 @@ mod tests {
 			outline.drawn_paint_bounds([DVec2::ZERO, DVec2::splat(10.)], DVec2::new(2., 0.5)),
 			[DVec2::new(-8., -2.), DVec2::new(18., 12.)]
 		);
+	}
+
+	#[test]
+	fn bevel_contours_continue_straight_past_their_ends() {
+		// Inner and outer bevels map the range down from the top and up from the foot, while an emboss maps its whole slope
+		assert_eq!(slope_contour_input(0.75, BevelStyle::InnerBevel, 50.), 0.5);
+		assert_eq!(slope_contour_input(0.25, BevelStyle::OuterBevel, 50.), 0.5);
+		assert_eq!(slope_contour_input(0.3, BevelStyle::Emboss, 25.), 0.3);
+
+		// A curve dipping below 0 near its start is held flat there, and so continues flat before it
+		let dipping = TransferCurve::new(vec![DVec2::ZERO, DVec2::new(0.75, 0.), DVec2::ONE]).evaluator();
+		let slopes = contour_end_slopes(&dipping);
+		assert_eq!(slopes.0, 0.);
+		assert_eq!(extended_contour(&dipping, slopes, -0.5), 0.);
+
+		// A straight contour continues along its slope either way, and meets its ends there
+		let straight = TransferCurve::default().evaluator();
+		let slopes = contour_end_slopes(&straight);
+		for x in [-0.5, 0., 1., 1.5] {
+			assert!((extended_contour(&straight, slopes, x) - x).abs() < 1e-6, "the straight contour at {x}");
+		}
 	}
 
 	#[test]
