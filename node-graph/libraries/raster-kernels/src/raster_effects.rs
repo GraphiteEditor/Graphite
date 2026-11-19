@@ -545,7 +545,7 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				full = adjust(&full, adjustment);
 				filled = filled.map(|filled| adjust(&filled, adjustment));
 			}
-			EffectOperation::ConvolutionKernel { .. } => {
+			EffectOperation::ConvolutionKernel { .. } | EffectOperation::Emboss { .. } | EffectOperation::FindEdges | EffectOperation::MinimumMaximum { .. } => {
 				merge_beneath(&mut full, &mut filled, &mut beneath);
 				// The fill fades the content after the filter, so the full-strength content decides which of the fill's pixels are visible
 				filled = filled.map(|filled| crate::filter_kernels::filter(filled, Some(&full), operation, effect_to_pixels));

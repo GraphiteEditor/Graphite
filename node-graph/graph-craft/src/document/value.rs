@@ -542,6 +542,7 @@ tagged_value! {
 	GlowTechnique(graphic_types::GlowTechnique),
 	GlowSource(graphic_types::GlowSource),
 	MaskMode(graphic_types::MaskMode),
+	MinimumMaximumMode(graphic_types::MinimumMaximumMode),
 	BevelStyle(graphic_types::BevelStyle),
 	BevelDirection(graphic_types::BevelDirection),
 	BevelTechnique(graphic_types::BevelTechnique),

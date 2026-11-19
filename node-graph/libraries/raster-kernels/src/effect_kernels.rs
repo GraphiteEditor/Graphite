@@ -193,7 +193,7 @@ impl<T: Sample> Plane<T> {
 	}
 
 	/// The plane with its rows and columns swapped, so a horizontal operation can work vertically. O(width × height).
-	fn transposed(&self) -> Self {
+	pub(crate) fn transposed(&self) -> Self {
 		let mut transposed = Self::new(self.height, self.width);
 		fill_rows(&mut transposed.data, self.height, |x, row| {
 			row.iter_mut().enumerate().for_each(|(y, target)| *target = self.data[y * self.width + x]);

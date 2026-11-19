@@ -379,7 +379,14 @@ fn pieces(index: usize, operation: &EffectOperation) -> Vec<(EffectPiece, BlendM
 		}
 		EffectOperation::PaintOverlay { blend_mode, .. } => vec![piece(0, Within, None, *blend_mode)],
 		EffectOperation::Adjustment(Adjustment::ColorOverlay { color, blend_mode, .. }) => vec![piece(0, Within, Some(*color), *blend_mode)],
-		EffectOperation::Blur { .. } | EffectOperation::Mask { .. } | EffectOperation::Feather { .. } | EffectOperation::ConvolutionKernel { .. } | EffectOperation::Adjustment(_) => Vec::new(),
+		EffectOperation::Blur { .. }
+		| EffectOperation::Mask { .. }
+		| EffectOperation::Feather { .. }
+		| EffectOperation::ConvolutionKernel { .. }
+		| EffectOperation::Emboss { .. }
+		| EffectOperation::FindEdges
+		| EffectOperation::MinimumMaximum { .. }
+		| EffectOperation::Adjustment(_) => Vec::new(),
 	};
 	pieces.into_iter().flatten().collect()
 }

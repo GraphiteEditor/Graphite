@@ -82,6 +82,7 @@ pub enum Adjustment {
 		/// Percent.
 		opacity: f64,
 	},
+	Solarize,
 }
 
 impl Adjustment {
@@ -107,6 +108,7 @@ impl Adjustment {
 			Self::PhotoFilter { .. } => EffectKind::PhotoFilter,
 			Self::ColorLookup { .. } => EffectKind::ColorLookup,
 			Self::ColorOverlay { .. } => EffectKind::PaintOverlay,
+			Self::Solarize => EffectKind::Solarize,
 		}
 	}
 
@@ -123,6 +125,7 @@ impl Adjustment {
 				| Self::Posterize { .. }
 				| Self::Exposure { .. }
 				| Self::ColorBalance(_)
+				| Self::Solarize
 		)
 	}
 
@@ -134,7 +137,7 @@ impl Adjustment {
 				visitor.parameter("gamma", gamma, 2.2);
 				visitor.parameter("inverse", inverse, false);
 			}
-			Self::MakeOpaque | Self::Invert => {}
+			Self::MakeOpaque | Self::Invert | Self::Solarize => {}
 			Self::BrightnessContrast {
 				brightness,
 				contrast,

@@ -912,10 +912,10 @@ fn svg_runs(effects: &Effects) -> Vec<(DAffine2, Range<usize>)> {
 	runs
 }
 
-/// How far an effect that SVG draws without the GPU's maps paints past the content, in its effect space, which only the blurs do.
+/// How far an effect that SVG draws without the GPU's maps paints past the content, in its effect space, which only the blurs and Minimum (growing the coverage) do.
 fn svg_drawn_reach(operation: &EffectOperation) -> f64 {
 	match operation {
-		EffectOperation::Blur { .. } => operation.painted_reach(),
+		EffectOperation::Blur { .. } | EffectOperation::MinimumMaximum { .. } => operation.painted_reach(),
 		_ => 0.,
 	}
 }
@@ -1497,9 +1497,10 @@ struct SvgEffectMap {
 	result: String,
 }
 
-/// The region of the user space an item's effects cover, being the content's `bounds` grown by how far the effects reach past it, with `length_scale` the user space's units along each axis per unit of the effects' lengths.
+/// The region of the user space an item's effects cover, being the content's `bounds` grown by how far the effects reach past it and SVG's filters read past that (see [`filters::svg_region_reach_beyond`]),
+/// with `length_scale` the user space's units along each axis per unit of the effects' lengths.
 fn svg_effects_region(effects: &Effects, bounds: [DVec2; 2], length_scale: DVec2) -> [DVec2; 2] {
-	let reach = effects.working_reach() * length_scale;
+	let reach = (effects.working_reach() + filters::svg_region_reach_beyond(effects)) * length_scale;
 	[bounds[0] - reach, bounds[1] + reach]
 }
 
@@ -1836,27 +1837,29 @@ fn write_svg_effects_filter_on_lattice(
 				full = primitives.adjust(&full, adjustment);
 				continue;
 			}
-			EffectOperation::ConvolutionKernel { .. } => {
+			EffectOperation::ConvolutionKernel { .. } | EffectOperation::Emboss { .. } | EffectOperation::FindEdges | EffectOperation::MinimumMaximum { .. } => {
 				if !(shows_content || cuts_within) {
 					continue;
 				}
 				primitives.merge_beneath(&mut full, &mut filled, beneath.take());
 
-				// It keeps the content's coverage, which is all a layer cutting its pieces within the content reads
-				if !shows_content {
+				// Those keeping the content's coverage leave alone all a layer cutting its pieces within the content reads
+				let changes_coverage = matches!(operation, EffectOperation::MinimumMaximum { .. });
+				if !shows_content && !changes_coverage {
 					continue;
 				}
 
 				// Filters run natively only where the fill doesn't fork the content, and those reading their input many times start their own filter so chains don't multiply the cost
 				let native = pixel_exact && filled.is_none();
-				if native && full != "SourceGraphic" && primitives.reads_input_often(&operation) {
+				if filled.is_none() && full != "SourceGraphic" && primitives.reads_input_often(&operation, native) {
 					primitives.push("feOffset", &format!(r#"in="{full}""#), "");
 					earlier_filters.push(std::mem::take(&mut primitives.markup));
 					full = "SourceGraphic".to_string();
 				}
 
-				filled = filled.map(|filled| primitives.filter(&filled, &operation, native, map_capture(1)));
-				full = primitives.filter(&full, &operation, native, map_capture(0));
+				let forked = filled.is_some();
+				filled = filled.map(|filled| primitives.filter(&filled, &operation, pixel_exact, forked, map_capture(1)));
+				full = primitives.filter(&full, &operation, pixel_exact, forked, map_capture(0));
 				continue;
 			}
 		};
@@ -6779,8 +6782,20 @@ mod tests {
 		let square_grown_by = |reach: f64| RenderBoundingBox::Rectangle([DVec2::splat(-reach), DVec2::splat(10. + reach)]);
 		assert_eq!(graphic_list_painted_bounds(&in_group(std::slice::from_ref(&shadow)), true), square_grown_by(shadow.reach()));
 
-		// An SVG with no GPU leaves the shadow out, so it frames the square alone
+		// An SVG with no GPU leaves the shadow out, so it frames the square alone, but it draws a Minimum's grown coverage past the square on its own
 		assert_eq!(graphic_list_painted_bounds(&in_group(std::slice::from_ref(&shadow)), false), square_grown_by(0.));
+		let minimum = EffectOperation::MinimumMaximum {
+			radius: 3.,
+			mode: graphic_types::MinimumMaximumMode::Minimum,
+		};
+		assert_eq!(graphic_list_painted_bounds(&in_group(std::slice::from_ref(&minimum)), false), square_grown_by(minimum.reach()));
+
+		// A Maximum shrinks the coverage, so it paints nothing past the square
+		let maximum = EffectOperation::MinimumMaximum {
+			radius: 3.,
+			mode: graphic_types::MinimumMaximumMode::Maximum,
+		};
+		assert_eq!(graphic_list_painted_bounds(&in_group(std::slice::from_ref(&maximum)), true), square_grown_by(0.));
 
 		// Each item grows by its own reach, so a plain square far from the shadowed one isn't padded by its shadow
 		let mut list = in_group(std::slice::from_ref(&shadow));

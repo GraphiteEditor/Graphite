@@ -29,11 +29,12 @@ pub enum StepKind {
 	PhotoFilter,
 	ColorLookup,
 	ColorOverlay,
+	Solarize,
 }
 
 impl StepKind {
 	/// Every kind, in the order of their codes.
-	pub const ALL: [StepKind; 20] = [
+	pub const ALL: [StepKind; 21] = [
 		StepKind::Desaturate,
 		StepKind::GammaCorrection,
 		StepKind::MakeOpaque,
@@ -54,6 +55,7 @@ impl StepKind {
 		StepKind::PhotoFilter,
 		StepKind::ColorLookup,
 		StepKind::ColorOverlay,
+		StepKind::Solarize,
 	];
 
 	/// The number a step's header holds for its kind, which the shader picks the step's function by.
@@ -266,6 +268,7 @@ mod tests {
 				blend_mode: Default::default(),
 				opacity: 50.,
 			},
+			Adjustment::Solarize,
 		];
 		let steps = AdjustmentSteps::encode(&run.iter().collect::<Vec<_>>());
 

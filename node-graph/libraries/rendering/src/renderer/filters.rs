@@ -2,9 +2,9 @@
 
 use super::SvgFilterPrimitives;
 use glam::DVec2;
-use graphic_types::EffectOperation;
 use graphic_types::effects::EffectCapture;
-use graphic_types::filters::{Convolution, fill_shifts};
+use graphic_types::filters::{Convolution, Surroundings, fill_shifts};
+use graphic_types::{EffectOperation, Effects, MinimumMaximumMode};
 use raster_kernels::effect_kernels::{MAX_DIRECT_BOX_RADIUS, box_weight};
 use std::collections::BTreeMap;
 
@@ -49,31 +49,64 @@ impl LatticeKernel {
 	}
 }
 
+/// How much farther than the effects reach an SVG filter's region must extend, in document pixels, since a minimum's erosion of the colors reads past the region as black.
+pub(super) fn svg_region_reach_beyond(effects: &Effects) -> f64 {
+	effects
+		.operations()
+		.map(|operation| match operation {
+			EffectOperation::MinimumMaximum {
+				radius,
+				mode: MinimumMaximumMode::Minimum,
+			} => radius.max(0.).ceil(),
+			_ => 0.,
+		})
+		.sum()
+}
+
 impl SvgFilterPrimitives {
 	/// The image with a filter effect carried out on it, in a user space of one unit to a pixel of its effect space, or as it is for any other operation.
-	/// Unless the filter runs `native`ly, which it does only where one user unit is one device pixel, it takes its result as the map the GPU renders for `capture`.
-	pub(super) fn filter(&mut self, image: &str, operation: &EffectOperation, native: bool, capture: EffectCapture) -> String {
-		let Some(convolution) = operation.convolution() else { return image.to_string() };
+	/// A filter on the pixel lattice runs natively only where one user unit is one device pixel (`pixel_exact`), and otherwise takes its result as the map the GPU renders for `capture`.
+	/// Where the fill `forked` the content into two planes, no filter reading its input many times runs natively, since the filter can't split to keep chains of them from multiplying.
+	pub(super) fn filter(&mut self, image: &str, operation: &EffectOperation, pixel_exact: bool, forked: bool, capture: EffectCapture) -> String {
+		let native = pixel_exact && !forked;
+		if let Some(convolution) = operation.convolution() {
+			return match native.then(|| LatticeKernel::new(&convolution)).flatten() {
+				Some(kernel) => {
+					let convolved = self.convolve(image, &convolution, &kernel);
+					self.uncover(&convolved, image, convolution.surroundings)
+				}
+				None => self.uncovered_map(image, capture, convolution.surroundings),
+			};
+		}
 
-		match native.then(|| LatticeKernel::new(&convolution)).flatten() {
-			Some(kernel) => {
-				let convolved = self.convolve(image, &convolution, &kernel);
-				self.uncover(&convolved, image)
-			}
-			None => self.uncovered_map(image, capture),
+		match *operation {
+			// The Euclidean length of the gradient loses too much precision through the 8-bit results between primitives
+			EffectOperation::FindEdges => self.uncovered_map(image, capture, Surroundings::Matted(1.)),
+			EffectOperation::MinimumMaximum { .. } if forked => self.map_standing_in(capture, "feOffset", &format!(r#"in="{image}""#)),
+			EffectOperation::MinimumMaximum { radius, mode } => self.neighborhood_extreme(image, radius, mode == MinimumMaximumMode::Maximum),
+			_ => image.to_string(),
 		}
 	}
 
-	/// The opaque colors of the map the GPU renders for `capture` given the image's coverage, matching the GPU's `uncover`, or the image as it is until the map resolves.
-	/// Placing the map atop the image reads the image only once, so chains of filters taking maps stay linear in a browser that redoes a filter's input for each read.
-	fn uncovered_map(&mut self, image: &str, capture: EffectCapture) -> String {
-		let map = self.map(capture);
-		self.push("feComposite", &format!(r#"in="{map}" in2="{image}" operator="atop""#), "")
+	/// The map the GPU renders for `capture` given the image's coverage, matching the GPU's `uncover`, or the image as it is until the map resolves.
+	/// It reads the image only once, so chains of filters taking maps stay linear in a browser that redoes a filter's input for each read.
+	/// Continued colors' maps are opaque and placed atop the image, while matted ones hold the whole result, since lifting off the gray isn't a composite.
+	fn uncovered_map(&mut self, image: &str, capture: EffectCapture, surroundings: Surroundings) -> String {
+		match surroundings {
+			Surroundings::Continued => {
+				let map = self.map(capture);
+				self.push("feComposite", &format!(r#"in="{map}" in2="{image}" operator="atop""#), "")
+			}
+			Surroundings::Matted(_) => self.map_standing_in(capture, "feOffset", &format!(r#"in="{image}""#)),
+		}
 	}
 
-	/// Whether the filter natively reads its input more than a few times, so a chain of them in one filter would multiply their cost.
-	pub(super) fn reads_input_often(&self, operation: &EffectOperation) -> bool {
-		operation.convolution().is_some_and(|convolution| LatticeKernel::new(&convolution).is_some())
+	/// Whether the filter reads its input more than a few times (natively, for those on the pixel lattice), so a chain of them in one filter would multiply their cost.
+	pub(super) fn reads_input_often(&self, operation: &EffectOperation, native: bool) -> bool {
+		match operation.convolution() {
+			Some(convolution) => native && LatticeKernel::new(&convolution).is_some(),
+			None => matches!(operation, EffectOperation::MinimumMaximum { .. }),
+		}
 	}
 
 	/// The image's straight colors as the filters read them, opaque where there's one, with faint pixels taking the nearest visible color within `reach` document pixels.
@@ -99,9 +132,12 @@ impl SvgFilterPrimitives {
 		self.push("feMerge", "", &nodes)
 	}
 
-	/// The opaque colors of the image convolved by an `feConvolveMatrix` of the `kernel` over its visible colors, as the GPU's `convolve` describes.
+	/// The opaque colors of the image convolved by an `feConvolveMatrix` of the `kernel` over the colors its surroundings describe, as the GPU's `convolve` does.
 	fn convolve(&mut self, image: &str, convolution: &Convolution, kernel: &LatticeKernel) -> String {
-		let colors = self.visible_colors(image, convolution.reach());
+		let colors = match convolution.surroundings {
+			Surroundings::Continued => self.visible_colors(image, convolution.reach()),
+			Surroundings::Matted(gray) => self.over_gray(image, gray),
+		};
 
 		let ([columns, rows], [target_x, target_y]) = (kernel.order, kernel.target);
 		let matrix = kernel.matrix.iter().map(f64::to_string).collect::<Vec<_>>().join(" ");
@@ -112,9 +148,56 @@ impl SvgFilterPrimitives {
 		self.push("feConvolveMatrix", &attributes, "")
 	}
 
-	/// Filtered opaque straight `colors` given the image's coverage, matching the GPU's `uncover`.
-	fn uncover(&mut self, colors: &str, image: &str) -> String {
-		self.push("feComposite", &format!(r#"in="{colors}" in2="{image}" operator="in""#), "")
+	/// The image composited over an opaque gray of level `gray`.
+	fn over_gray(&mut self, image: &str, gray: f64) -> String {
+		let percent = gray * 100.;
+		let flood = self.push("feFlood", &format!(r#"flood-color="rgb({percent}%, {percent}%, {percent}%)" flood-opacity="1""#), "");
+		self.push("feComposite", &format!(r#"in="{image}" in2="{flood}" operator="over""#), "")
+	}
+
+	/// Filtered opaque `colors` given the image's coverage, as their `surroundings` describe, matching the GPU's `uncover`.
+	fn uncover(&mut self, colors: &str, image: &str, surroundings: Surroundings) -> String {
+		let Surroundings::Matted(gray) = surroundings else {
+			return self.push("feComposite", &format!(r#"in="{colors}" in2="{image}" operator="in""#), "");
+		};
+		// The gray over the share the image leaves uncovered, taken off the opaque colors, which leaves the image's coverage as alpha and clamps as the GPU does
+		let values = format!("0 0 0 0 {gray} 0 0 0 0 {gray} 0 0 0 0 {gray} 0 0 0 -1 1");
+		let uncovered_gray = self.push("feColorMatrix", &format!(r#"in="{image}" type="matrix" values="{values}""#), "");
+		self.push("feComposite", &format!(r#"in="{colors}" in2="{uncovered_gray}" operator="arithmetic" k2="1" k3="-1""#), "")
+	}
+
+	/// The image with each pixel's color the lightest (or with `maximum` false, the darkest) in the square of `radius` document pixels around it,
+	/// and its coverage the opposite extreme, matching the GPU's `neighborhood_extreme`, by `feMorphology` of the opaque colors and of the coverage.
+	fn neighborhood_extreme(&mut self, image: &str, radius: f64, maximum: bool) -> String {
+		let radius = radius.max(0.);
+		let (colors_operator, coverage_operator) = if maximum { ("dilate", "erode") } else { ("erode", "dilate") };
+
+		let extreme_within = |primitives: &mut Self, whole_radius: f64| {
+			if whole_radius <= 0. {
+				return image.to_string();
+			}
+			let radius = format!(r#"radius="{whole_radius} {whole_radius}""#);
+
+			// The maximum spreads every covered pixel's straight color made opaque, and the minimum the colors matted over white, lifted back off within the grown coverage
+			let colors = match maximum {
+				true => primitives.push("feColorMatrix", &format!(r#"in="{image}" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 255 0""#), ""),
+				false => primitives.over_gray(image, 1.),
+			};
+			let colors = primitives.push("feMorphology", &format!(r#"in="{colors}" operator="{colors_operator}" {radius}"#), "");
+			let coverage = primitives.push("feMorphology", &format!(r#"in="{image}" operator="{coverage_operator}" {radius}"#), "");
+			match maximum {
+				true => primitives.push("feComposite", &format!(r#"in="{colors}" in2="{coverage}" operator="in""#), ""),
+				false => primitives.uncover(&colors, &coverage, Surroundings::Matted(1.)),
+			}
+		};
+
+		let near = extreme_within(self, radius.floor());
+		let fraction = radius.fract();
+		if fraction <= 0. {
+			return near;
+		}
+		let far = extreme_within(self, radius.ceil());
+		self.push("feComposite", &format!(r#"in="{near}" in2="{far}" operator="arithmetic" k2="{}" k3="{fraction}""#, 1. - fraction), "")
 	}
 
 	/// The image box blurred by a half width of `radius` user units in the color `space` ("sRGB" or "linearRGB"), weighing pixels as the GPU's box does (see [`box_weight`]).
@@ -154,7 +237,7 @@ mod tests {
 	use glam::DVec2;
 	use graphic_types::effect_layers::EffectLayers;
 	use graphic_types::effects::EffectCapture;
-	use graphic_types::{EffectOperation, Effects};
+	use graphic_types::{EffectOperation, Effects, MinimumMaximumMode};
 
 	fn convolution_kernel(text: &str, scale: f64, offset: f64) -> EffectOperation {
 		EffectOperation::convolution_kernel(text, Some(scale), offset)
@@ -353,5 +436,67 @@ mod tests {
 			assert!(!filter.maps.is_empty(), "{defs}");
 			assert_eq!(most_reads_of_a_result(&defs), 1, "{defs}");
 		}
+	}
+
+	#[test]
+	fn chained_minimums_and_maximums_read_each_result_once_where_the_fill_forks_the_content() {
+		// Natively each reads its input twice, or four times for a fractional radius, so where the fill keeps the filter from splitting they take the GPU's results
+		let minimum_maximum = |radius, mode| EffectOperation::MinimumMaximum { radius, mode };
+		let operations = [1.5, 1., 2.5].map(|radius| minimum_maximum(radius, MinimumMaximumMode::Minimum));
+		let effects = Effects::from_operations(operations.into_iter().chain([minimum_maximum(1.5, MinimumMaximumMode::Maximum)]));
+		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 0.5, true);
+		let mut defs = String::new();
+		let filter = write_svg_effects_filter_on_lattice(&mut defs, &effects, &layers, 0, 0.5, 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &[], 0..effects.len(), 1., true).unwrap();
+		assert_eq!(filter.maps.len(), 8, "both planes of each take a map: {defs}");
+		assert_eq!(most_reads_of_a_result(&defs), 1, "{defs}");
+	}
+
+	#[test]
+	fn stylize_filters_matte_morph_and_map_where_svg_cant_reach() {
+		// Emboss convolves the content over middle gray, then lifts the gray back off within the coverage in one step
+		let (emboss, _) = filter(vec![EffectOperation::Emboss { angle: 0., height: 2., amount: 100. }], true);
+		assert!(emboss.contains(r#"flood-color="rgb(50%, 50%, 50%)""#), "{emboss}");
+		assert!(emboss.contains(r#"order="3 1" kernelMatrix="1 0 -1" divisor="1" bias="0.5" targetX="1" targetY="0""#), "{emboss}");
+		assert!(emboss.contains(r#"values="0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 -1 1""#), "{emboss}");
+		assert!(emboss.contains(r#"operator="arithmetic" k2="1" k3="-1""#), "{emboss}");
+
+		// Off the pixel lattice, its whole result comes from the GPU, with the content standing in as it is until the map resolves
+		let (emboss, maps) = filter(vec![EffectOperation::Emboss { angle: 0., height: 2., amount: 100. }], false);
+		assert_eq!(maps, 1);
+		assert!(!emboss.contains("feConvolveMatrix") && emboss.contains(r#"--><feOffset in="SourceGraphic""#), "{emboss}");
+
+		// Find Edges takes its whole result as a map too, for the fill and the content each
+		let mut defs = String::new();
+		let effects = Effects::from_operations([EffectOperation::FindEdges]);
+		let find_edges = write_svg_effects_filter(&mut defs, &effects, &one_layer(&effects), 0, 0.5, 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &[], 0..effects.len(), 1.).unwrap();
+		let planes: Vec<usize> = find_edges.maps.iter().map(|map| map.capture.plane).collect();
+		assert_eq!(planes, [1, 0], "the fill and the content each take their own");
+		assert!(!defs.contains("-1 1\""), "nothing lifts white off the maps: {defs}");
+
+		// A fractional radius mixes the morphologies of the whole radii around it
+		let maximum = EffectOperation::MinimumMaximum {
+			radius: 1.25,
+			mode: MinimumMaximumMode::Maximum,
+		};
+		let (maximum, _) = filter(vec![maximum], true);
+		assert!(
+			maximum.contains(r#"operator="dilate" radius="1 1""#) && maximum.contains(r#"operator="erode" radius="2 2""#),
+			"{maximum}"
+		);
+		assert!(maximum.contains(r#"operator="arithmetic" k2="0.75" k3="0.25""#), "{maximum}");
+
+		// The maximum spreads every covered pixel's color, and the minimum lifts white back off its colors within the grown coverage, in a region grown for its erosion
+		assert!(maximum.contains(r#"values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 255 0""#), "{maximum}");
+		let mut defs = String::new();
+		let effects = Effects::from_operations([EffectOperation::MinimumMaximum {
+			radius: 2.,
+			mode: MinimumMaximumMode::Minimum,
+		}]);
+		let minimum = write_svg_effects_filter(&mut defs, &effects, &one_layer(&effects), 0, 1., 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &[], 0..effects.len(), 1.).unwrap();
+		assert!(
+			defs.contains(r#"operator="dilate" radius="2 2""#) && defs.contains(r#"values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 -1 1""#),
+			"{defs}"
+		);
+		assert_eq!(minimum.region, [DVec2::splat(-5.), DVec2::splat(15.)]);
 	}
 }
