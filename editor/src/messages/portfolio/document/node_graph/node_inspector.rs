@@ -40,7 +40,7 @@ use graphene_std::vector::style::{
 	build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
-use graphene_std::{Artboard, BevelDirection, BevelStyle, BevelTechnique, GlowSource, GlowTechnique, Graphic, MaskMode, MinimumMaximumMode, Vector};
+use graphene_std::{Artboard, BevelDirection, BevelStyle, BevelTechnique, GlowSource, GlowTechnique, Graphic, MaskMode, MinimumMaximumMode, NoiseDistribution, Vector};
 use graphene_std::{NodeParameter, ParameterRef};
 use math_parser::parser::{MessagePart, ParseError};
 use std::path::PathBuf;
@@ -457,6 +457,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<BevelStyle>(x) => enum_choice::<BevelStyle>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<BevelDirection>(x) => enum_choice::<BevelDirection>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<BevelTechnique>(x) => enum_choice::<BevelTechnique>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<NoiseDistribution>(x) => enum_choice::<NoiseDistribution>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).inspector_row(),

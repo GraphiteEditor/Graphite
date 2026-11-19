@@ -4,7 +4,7 @@
 
 use crate::Graphic;
 use crate::adjustment::Adjustment;
-use crate::filters::Convolution;
+use crate::filters::{Convolution, NoiseDistribution};
 use crate::masks::{MaskMode, mask_feather_sigma};
 use crate::parameters::{ParameterVisitor, ReadParameters, WriteParameters};
 use core_types::ATTR_TRANSFORM;
@@ -61,6 +61,10 @@ pub enum EffectKind {
 	Sharpen,
 	/// Keeps how much each pixel differs from a blur of those around it, around middle gray.
 	HighPass,
+	/// Scatters random offsets across the colors, fixed in place on the content.
+	AddNoise,
+	/// Shows a random scattering of the content fully opaque and hides the rest, more where it's more opaque.
+	Dissolve,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
 	Desaturate,
 	GammaCorrection,
@@ -104,6 +108,8 @@ impl std::fmt::Display for EffectKind {
 			Self::MinimumMaximum => "Minimum/Maximum",
 			Self::Sharpen => "Sharpen",
 			Self::HighPass => "High Pass",
+			Self::AddNoise => "Add Noise",
+			Self::Dissolve => "Dissolve",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
 			Self::MakeOpaque => "Make Opaque",
@@ -519,6 +525,12 @@ impl Effects {
 			true => Cow::Borrowed(self),
 			false => Cow::Owned(Effects(rows.filter_map(|index| self.0.clone_item(index)).collect())),
 		}
+	}
+
+	/// The effects with operations that `keep` accepts, in order, each still stamped where it was.
+	pub fn keeping(&self, keep: impl Fn(&EffectOperation) -> bool) -> Self {
+		let kept = self.effects().enumerate().filter(|(_, effect)| keep(&effect.operation())).map(|(index, _)| index);
+		Effects(kept.filter_map(|index| self.0.clone_item(index)).collect())
 	}
 
 	/// How far past the content the effects together can paint along each axis of the space `content_transform` places the content in.
@@ -960,6 +972,19 @@ pub enum EffectOperation {
 	HighPass {
 		radius: f64,
 	},
+	AddNoise {
+		/// Percent of full brightness.
+		amount: f64,
+		distribution: NoiseDistribution,
+		/// Whether each pixel's colors all take the same offset, so only their brightness changes.
+		monochromatic: bool,
+		seed: i64,
+	},
+	Dissolve {
+		/// Percent of the content that shows where it's fully opaque.
+		opacity: f64,
+		seed: i64,
+	},
 	Adjustment(Adjustment),
 }
 
@@ -1003,6 +1028,8 @@ impl EffectOperation {
 			Self::MinimumMaximum { .. } => EffectKind::MinimumMaximum,
 			Self::Sharpen { .. } => EffectKind::Sharpen,
 			Self::HighPass { .. } => EffectKind::HighPass,
+			Self::AddNoise { .. } => EffectKind::AddNoise,
+			Self::Dissolve { .. } => EffectKind::Dissolve,
 			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
 	}
@@ -1050,7 +1077,8 @@ impl EffectOperation {
 			Self::Mask { density, .. } => *density <= 0.,
 			Self::Feather { distance } => *distance <= 0.,
 			Self::ConvolutionKernel { .. } => self.convolution().is_none(),
-			Self::Emboss { .. } | Self::FindEdges | Self::HighPass { .. } | Self::Adjustment(_) => false,
+			Self::Emboss { .. } | Self::FindEdges | Self::HighPass { .. } | Self::Dissolve { .. } | Self::Adjustment(_) => false,
+			Self::AddNoise { amount, .. } => *amount <= 0.,
 			// The four neighbors lie a fixed distance away, so only the blur needs a radius
 			Self::Sharpen { amount, radius, edges_only, .. } => *amount <= 0. || (!*edges_only && *radius <= 0.),
 			Self::MinimumMaximum { radius, .. } => *radius <= 0.,
@@ -1076,7 +1104,7 @@ impl EffectOperation {
 			| Self::Outline { .. }
 			| Self::BevelAndEmboss { .. }
 			| Self::Feather { .. } => false,
-			Self::PaintOverlay { .. } | Self::Mask { .. } | Self::Adjustment(_) => false,
+			Self::PaintOverlay { .. } | Self::Mask { .. } | Self::AddNoise { .. } | Self::Dissolve { .. } | Self::Adjustment(_) => false,
 		}
 	}
 
@@ -1134,7 +1162,7 @@ impl EffectOperation {
 			// The Sobel taps' diagonal, which a rotation can turn along an axis, plus two pixels for rounding and copies between pixels
 			Self::FindEdges => std::f64::consts::SQRT_2 + 2.,
 			Self::MinimumMaximum { radius, .. } => radius.max(0.).ceil() + 1.,
-			Self::PaintOverlay { .. } | Self::Adjustment(_) => 0.,
+			Self::PaintOverlay { .. } | Self::AddNoise { .. } | Self::Dissolve { .. } | Self::Adjustment(_) => 0.,
 		}
 	}
 
@@ -1216,6 +1244,8 @@ impl EffectOperation {
 			Self::Emboss { angle, height, amount } => [angle, height, amount].into_iter().for_each(finite),
 			Self::MinimumMaximum { radius, .. } | Self::HighPass { radius } => finite(radius),
 			Self::Sharpen { amount, radius, threshold, .. } => [amount, radius, threshold].into_iter().for_each(finite),
+			Self::AddNoise { amount, .. } => finite(amount),
+			Self::Dissolve { opacity, .. } => finite(opacity),
 			Self::PaintOverlay { .. } | Self::ConvolutionKernel { .. } | Self::FindEdges | Self::Adjustment(_) => {}
 		}
 		self
@@ -1338,6 +1368,13 @@ impl EffectOperation {
 				edges_only: false,
 			},
 			EffectKind::HighPass => Self::HighPass { radius: 0. },
+			EffectKind::AddNoise => Self::AddNoise {
+				amount: 0.,
+				distribution: NoiseDistribution::default(),
+				monochromatic: false,
+				seed: 0,
+			},
+			EffectKind::Dissolve => Self::Dissolve { opacity: 0., seed: 0 },
 			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
 			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
 			EffectKind::MakeOpaque => Self::Adjustment(Adjustment::MakeOpaque),
@@ -1582,6 +1619,21 @@ impl EffectOperation {
 				visitor.parameter("edges_only", edges_only, false);
 			}
 			Self::HighPass { radius } => visitor.parameter("radius", radius, 10.),
+			Self::AddNoise {
+				amount,
+				distribution,
+				monochromatic,
+				seed,
+			} => {
+				visitor.parameter("amount", amount, 12.5);
+				visitor.parameter("distribution", distribution, NoiseDistribution::default());
+				visitor.parameter("monochromatic", monochromatic, false);
+				visitor.parameter("seed", seed, 0);
+			}
+			Self::Dissolve { opacity, seed } => {
+				visitor.parameter("opacity", opacity, 50.);
+				visitor.parameter("seed", seed, 0);
+			}
 			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
@@ -1736,6 +1788,13 @@ mod tests {
 				threshold: 0.,
 				edges_only: true,
 			},
+			EffectOperation::AddNoise {
+				amount: 40.,
+				distribution: NoiseDistribution::Gaussian,
+				monochromatic: true,
+				seed: 7,
+			},
+			EffectOperation::Dissolve { opacity: 25., seed: 3 },
 		];
 
 		for operation in operations {

@@ -404,7 +404,7 @@ impl EffectsRenderer for RenderContext<'_> {
 			layers,
 			fill,
 			opacity,
-			effect_to_pixels.matrix2,
+			effect_to_pixels,
 			&paint_textures,
 			capture,
 		);

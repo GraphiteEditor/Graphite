@@ -1,7 +1,9 @@
 //! The definitions the filter effects share across renderers: each pixel filter as weighted copies of the content shifted by document lengths, which the CPU, GPU, and SVG each carry out.
 
 use crate::effects::{EffectOperation, Effects};
-use glam::DVec2;
+use core_types::graphene_hash::CacheHash;
+use dyn_any::DynAny;
+use glam::{DAffine2, DMat2, DVec2, IVec2, UVec2};
 
 /// The most rows or columns a kernel takes, beyond which those around its center are kept, so its 65,025 weights at most keep each render within reach.
 pub const MAX_KERNEL_SIDE: usize = 255;
@@ -154,7 +156,7 @@ fn kept_weights(weights: &[f64], columns: usize) -> impl Iterator<Item = (DVec2,
 	})
 }
 
-/// Whether the operation is a pixel filter, which reads the content's details and edges.
+/// Whether the operation is a pixel filter, which processes the pixels of the content and everything drawn with it so far.
 pub fn is_filter(operation: &EffectOperation) -> bool {
 	matches!(
 		operation,
@@ -164,12 +166,25 @@ pub fn is_filter(operation: &EffectOperation) -> bool {
 			| EffectOperation::MinimumMaximum { .. }
 			| EffectOperation::Sharpen { .. }
 			| EffectOperation::HighPass { .. }
+			| EffectOperation::AddNoise { .. }
+			| EffectOperation::Dissolve { .. }
 	)
 }
 
-/// Whether any of the effects is a pixel filter that changes something, which reads endless content with details, like a gradient, over the area in view.
+/// Whether the operation is a pixel filter reading the pixels around each one, its details and edges, rather than only the pixel itself and a random field.
+pub fn reads_neighbors(operation: &EffectOperation) -> bool {
+	is_filter(operation) && !is_random_field_filter(operation)
+}
+
+/// Whether the operation is a pixel filter combining each pixel with a random field fixed to the content, which changes endless content as much as any other.
+pub fn is_random_field_filter(operation: &EffectOperation) -> bool {
+	matches!(operation, EffectOperation::AddNoise { .. } | EffectOperation::Dissolve { .. })
+}
+
+/// Whether any of the effects is a pixel filter reading the pixels around each one that changes something, which reads endless content over the area in view.
+/// The random field filters change endless content without its neighbors (see [`is_random_field_filter`]).
 pub fn has_filters(effects: &Effects) -> bool {
-	effects.operations().any(|operation| is_filter(&operation) && !operation.changes_nothing())
+	effects.operations().any(|operation| reads_neighbors(&operation) && !operation.changes_nothing())
 }
 
 /// For PSD interop, the shifts Find Edges reads its Sobel gradient from, in document pixels, with their weights across and down.
@@ -260,6 +275,111 @@ pub fn fill_shifts(reach: i32) -> Vec<[i32; 2]> {
 	let mut shifts: Vec<[i32; 2]> = (-reach..=reach).flat_map(|y| (-reach..=reach).map(move |x| [x, y])).collect();
 	shifts.sort_by_key(|&[x, y]| (x * x + y * y, -y, -x));
 	shifts
+}
+
+/// How the random offsets Add Noise gives the colors are spread.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum NoiseDistribution {
+	/// Every offset up to the amount is equally likely.
+	#[default]
+	Uniform,
+	/// Offsets cluster around none, with the amount as their standard deviation, so most are subtle and a few reach well past it.
+	Gaussian,
+}
+
+/// For PSD interop, how many standard deviations Gaussian noise reaches, where its tails are cut off.
+pub const GAUSSIAN_NOISE_LIMIT: f32 = 3.5;
+
+/// The random fields a seed gives, each hashed apart so the fields of one seed are unrelated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RandomField {
+	/// Add Noise's offset for each color, or for Gaussian noise its first uniform value.
+	NoiseOffsets,
+	/// Gaussian noise's second uniform value for each color, its angle.
+	NoiseAngles,
+	/// Dissolve's two thresholds, for the opacity and for the coverage.
+	Dissolve,
+}
+
+impl RandomField {
+	/// The value hashed with each cell for this field of the `seed`.
+	pub fn seed(self, seed: i64) -> u32 {
+		(seed as u32).wrapping_mul(4).wrapping_add(self as u32)
+	}
+}
+
+/// The largest offset Add Noise of `amount` (a fraction) gives a color, as a fraction of full brightness, past which every color would be pushed to black or white anyway.
+pub fn noise_extent(amount: f64, distribution: NoiseDistribution) -> f64 {
+	let deviations = match distribution {
+		NoiseDistribution::Uniform => 1.,
+		NoiseDistribution::Gaussian => GAUSSIAN_NOISE_LIMIT as f64,
+	};
+	(amount.max(0.) * deviations).min(1.)
+}
+
+/// The most samples a pixel takes of a random field along each of its axes, which it takes when it spans that many cells or more.
+pub const MAX_FIELD_SAMPLES_PER_AXIS: u32 = 4;
+
+/// Where each pixel of a render reads a random field of one value per cell, the unit squares of the effect space, which fixes it to the content.
+/// A pixel no larger than a cell reads the one under its center. A larger one averages samples spread across it, as a downsample of the field at full size would.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FieldSampling {
+	/// The cell at the render's origin, kept apart from the rest of the way to it so 32-bit math on a GPU stays precise far from the effect space's origin.
+	pub origin_cell: IVec2,
+	/// The rest of the way from the origin's cell to the origin.
+	pub origin_fraction: DVec2,
+	/// A step of one pixel along each axis, in cells.
+	pub pixel_axes: DMat2,
+	/// How many samples are taken along each of a pixel's axes.
+	pub counts: UVec2,
+	/// How far apart the outermost samples are along each axis, in pixels, so each lands near the middle of a cell of its own.
+	pub spreads: DVec2,
+	/// For pixels spanning more cells than they sample, how much less an average of them all would deviate from the field's mean than the samples' average does.
+	pub deviation_scale: f64,
+}
+
+impl FieldSampling {
+	/// The sampling of a render with its pixels placed in the effect space by `pixels_to_effect`.
+	pub fn new(pixels_to_effect: DAffine2) -> Self {
+		let origin = pixels_to_effect.translation;
+		let origin_cell = origin.floor();
+		let pixel_axes = pixels_to_effect.matrix2;
+
+		// A pixel spanning a cell give or take rounding takes one sample
+		let spans = DVec2::new(pixel_axes.x_axis.length(), pixel_axes.y_axis.length());
+		let counts = spans.map(|span| (span - 1e-3).ceil().clamp(1., MAX_FIELD_SAMPLES_PER_AXIS as f64));
+		let spread = |span: f64, count: f64| if count > 1. { (span - 1.) / span * count / (count - 1.) } else { 0. };
+
+		Self {
+			origin_cell: origin_cell.as_ivec2(),
+			origin_fraction: origin - origin_cell,
+			pixel_axes,
+			counts: counts.as_uvec2(),
+			spreads: DVec2::new(spread(spans.x, counts.x), spread(spans.y, counts.y)),
+			deviation_scale: (counts / spans).min(DVec2::ONE).element_product().sqrt(),
+		}
+	}
+
+	/// The cell under the point `offset` pixels from the middle of the pixel at `pixel` (its column and row).
+	fn cell_at(&self, pixel: [usize; 2], offset: DVec2) -> IVec2 {
+		let position = DVec2::new(pixel[0] as f64, pixel[1] as f64) + 0.5 + offset;
+		self.origin_cell.wrapping_add((self.origin_fraction + self.pixel_axes * position).floor().as_ivec2())
+	}
+
+	/// The cell under the middle of the pixel at `pixel`.
+	pub fn center_cell(&self, pixel: [usize; 2]) -> IVec2 {
+		self.cell_at(pixel, DVec2::ZERO)
+	}
+
+	/// The cells the pixel at `pixel` samples, row by row.
+	pub fn sample_cells(&self, pixel: [usize; 2]) -> impl Iterator<Item = IVec2> + '_ {
+		let place = |index: u32, count: u32, spread: f64| ((index as f64 + 0.5) / count as f64 - 0.5) * spread;
+		(0..self.counts.y)
+			.flat_map(move |row| (0..self.counts.x).map(move |column| self.cell_at(pixel, DVec2::new(place(column, self.counts.x, self.spreads.x), place(row, self.counts.y, self.spreads.y)))))
+	}
 }
 
 #[cfg(test)]

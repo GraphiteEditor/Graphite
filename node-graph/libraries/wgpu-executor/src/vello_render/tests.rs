@@ -806,6 +806,114 @@ fn convolution_kernels_filter_endless_gradients_and_colors() {
 }
 
 #[test]
+fn random_fields_match_the_cpu_zoomed_out_and_away_from_the_origin() {
+	use core_types::list::Item;
+	use core_types::{ATTR_TRANSFORM, Color as GraphicColor};
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{Effect, EffectOperation, Graphic, NoiseDistribution, stamp_effect};
+	use raster_kernels::evaluate_raster_effects;
+	use rendering::{Render, RenderParams};
+
+	let Some(executor) = executor() else { return };
+
+	// A raster whose pixels each span two document pixels, far out on the negative side of the origin, rendered one texel per pixel, so each takes four samples
+	let (width, origin) = (32, glam::DVec2::new(-1000., -600.));
+	let placement = DAffine2::from_translation(origin) * DAffine2::from_scale(glam::DVec2::splat(2. * width as f64));
+	let view = DAffine2::from_scale(glam::DVec2::splat(0.5)) * DAffine2::from_translation(-origin);
+	let noise = |amount, distribution, monochromatic| EffectOperation::AddNoise {
+		amount,
+		distribution,
+		monochromatic,
+		seed: 11,
+	};
+	let operations = [
+		noise(40., NoiseDistribution::Uniform, false),
+		noise(20., NoiseDistribution::Gaussian, true),
+		EffectOperation::Dissolve { opacity: 60., seed: 4 },
+	];
+
+	for operation in operations {
+		let image = Image::new(width, width, GraphicColor::from_gamma_srgb_channels(0.4, 0.6, 0.5, 1.));
+		let mut item = Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, placement);
+		stamp_effect(&mut item, Effect::new(&operation));
+
+		let graphic = Graphic::RasterCPU(Box::new(item.clone()));
+		let gpu = {
+			let _turn = take_turn();
+			let texture = executor
+				.render_vello(UVec2::splat(width), view, &mut |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default()))
+				.expect("the render succeeds");
+			executor.read_texture_pixels(&texture).expect("the render reads back")
+		};
+
+		// Compared premultiplied, so a nearly transparent pixel's color can't dominate
+		let evaluated = evaluate_raster_effects(item);
+		let mut worst = 0;
+		for (cpu, gpu) in evaluated.element().data.iter().zip(gpu.as_chunks::<4>().0) {
+			let [red, green, blue, alpha] = cpu.to_gamma_srgb_channels();
+			let cpu = [red * alpha, green * alpha, blue * alpha, alpha].map(|channel| channel * 255.);
+			let gpu_alpha = gpu[3] as f32 / 255.;
+			for channel in 0..4 {
+				let gpu_channel = if channel == 3 { gpu[3] as f32 } else { gpu[channel] as f32 * gpu_alpha };
+				worst = worst.max((cpu[channel] - gpu_channel).abs().round() as u32);
+			}
+		}
+		assert!(worst <= 2, "{operation:?} differs from the GPU by up to {worst} levels");
+	}
+}
+
+#[test]
+fn random_fields_stay_in_place_far_from_the_origin() {
+	use core_types::list::{ATTR_EFFECTS, Item, List};
+	use glam::DVec2;
+	use graphic_types::{EffectOperation, Effects, Graphic, NoiseDistribution};
+	use rendering::{Render, RenderParams};
+
+	// Noise over an endless color whose cells lie past where 32-bit floats hold every integer, rendered there and a pixel further right
+	let size = UVec2::splat(16);
+	let noise = EffectOperation::AddNoise {
+		amount: 40.,
+		distribution: NoiseDistribution::Uniform,
+		monochromatic: false,
+		seed: 3,
+	};
+	let color = Item::new_from_element(core_types::Color::from_gamma_srgb_channels(0.5, 0.5, 0.5, 1.)).with_attribute(ATTR_EFFECTS, Effects::from_operations([noise]));
+	let graphic = Graphic::ColorList(List::new_from_item(color));
+	let render_at = |x: f64| {
+		render(size, |scene| {
+			graphic.render_to_vello(scene, DAffine2::from_translation(-DVec2::new(x, 16_777_219.)), &RenderParams::default())
+		})
+	};
+	let Some(placed) = render_at(33_554_433.) else { return };
+	let Some(moved) = render_at(33_554_434.) else { return };
+
+	// Each pixel of the second render shows the cell the next pixel of the first one does
+	for y in 0..size.y {
+		for x in 0..size.x - 1 {
+			assert_eq!(pixel(&moved, size, x, y), pixel(&placed, size, x + 1, y), "at ({x}, {y})");
+		}
+	}
+}
+
+#[test]
+fn random_fields_change_endless_colors() {
+	use core_types::list::{ATTR_EFFECTS, Item, List};
+	use graphic_types::{EffectOperation, Effects, Graphic};
+	use rendering::{Render, RenderParams};
+
+	let size = UVec2::splat(16);
+	let effects = Effects::from_operations([EffectOperation::Dissolve { opacity: 50., seed: 0 }]);
+	let color = Item::new_from_element(core_types::Color::from_gamma_srgb_channels(0.8, 0.2, 0.4, 1.)).with_attribute(ATTR_EFFECTS, effects);
+	let graphic = Graphic::ColorList(List::new_from_item(color));
+	let Some(pixels) = render(size, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default())) else {
+		return;
+	};
+
+	let shown = pixels.iter().filter(|pixel| pixel[3] == 255).count();
+	assert!(shown > 64 && shown < 192 && pixels.iter().all(|pixel| pixel[3] == 0 || pixel[3] == 255), "{shown} of 256 shown");
+}
+
+#[test]
 fn filters_carry_out_over_endless_colors() {
 	use core_types::list::{ATTR_EFFECTS, Item, List};
 	use graphic_types::{EffectOperation, Effects, Graphic};
@@ -1358,7 +1466,7 @@ fn gpu_effect_texels(effects: &graphic_types::Effects, texels: &[[half::f16; 4]]
 
 	let mut textures = crate::vello_effects::EffectTextures::default();
 	let layers = graphic_types::effect_layers::EffectLayers::plan(effects, BlendMode::Normal, 1., false);
-	let results = effect_passes.apply(device, &queue, &mut textures, &content, effects, &layers, 1., 1., glam::DMat2::IDENTITY, &paints, None);
+	let results = effect_passes.apply(device, &queue, &mut textures, &content, effects, &layers, 1., 1., DAffine2::IDENTITY, &paints, None);
 	let (result, _) = results.into_iter().next()?;
 	drop(queue);
 
@@ -1989,7 +2097,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 	use graphic_types::raster_types::{Image, Raster};
 	use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientStop};
 	use graphic_types::vector_types::vector::style::StrokeAlign;
-	use graphic_types::{BevelDirection, BevelStyle, BevelTechnique, Effect, EffectOperation, GlowSource, GlowTechnique, Graphic, MaskMode, stamp_effect};
+	use graphic_types::{BevelDirection, BevelStyle, BevelTechnique, Effect, EffectOperation, GlowSource, GlowTechnique, Graphic, MaskMode, NoiseDistribution, stamp_effect};
 	use raster_kernels::evaluate_raster_effects;
 
 	let size = UVec2::new(160, 160);
@@ -2535,6 +2643,20 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		vec![blur(2., false, false), edges_only(200., 0.)],
 		vec![blur(2., false, false), unsharp(150., 0., 0.)],
 	]);
+	let noise = |amount, distribution, monochromatic| EffectOperation::AddNoise {
+		amount,
+		distribution,
+		monochromatic,
+		seed: 5,
+	};
+	paint_cases.extend([
+		checkered(noise(30., NoiseDistribution::Uniform, false)),
+		checkered(noise(20., NoiseDistribution::Gaussian, true)),
+		checkered(EffectOperation::Dissolve { opacity: 60., seed: 2 }),
+		// Past full brightness, and with the fill fading the coverage that Dissolve thresholds
+		vec![noise(400., NoiseDistribution::Gaussian, false)],
+		vec![EffectOperation::Dissolve { opacity: 100., seed: 9 }],
+	]);
 
 	for effects in cases.into_iter().chain(paint_cases).chain(mask_cases) {
 		for fill in [1., 0.5] {
@@ -2730,7 +2852,7 @@ fn gpu_adjusted_texels(run: &[graphic_types::Adjustment], texels: &[[half::f16; 
 	let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
 	let mut textures = crate::vello_effects::EffectTextures::default();
 	let layers = graphic_types::effect_layers::EffectLayers::plan(&effects, core_types::blending::BlendMode::Normal, fill, false);
-	let results = effect_passes.apply(device, &queue, &mut textures, &content, &effects, &layers, fill, 1., glam::DMat2::IDENTITY, &[], None);
+	let results = effect_passes.apply(device, &queue, &mut textures, &content, &effects, &layers, fill, 1., DAffine2::IDENTITY, &[], None);
 	let (adjusted, _) = results.into_iter().next().expect("the adjustments draw one layer");
 	drop(queue);
 

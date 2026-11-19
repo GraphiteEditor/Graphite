@@ -22,6 +22,7 @@ pub use effects::{
 	BevelDirection, BevelStyle, BevelTechnique, Effect, EffectKind, EffectOperation, Effects, GlowSource, GlowTechnique, MinimumMaximumMode, continued_map_pixels, fitted_paint, linked_to_content,
 	paint_with_envelope_effects, stamp_effect, stamped_transform,
 };
+pub use filters::NoiseDistribution;
 pub use generator::Generator;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 pub use masks::MaskMode;

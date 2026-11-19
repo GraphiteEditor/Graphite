@@ -546,6 +546,7 @@ tagged_value! {
 	BevelStyle(graphic_types::BevelStyle),
 	BevelDirection(graphic_types::BevelDirection),
 	BevelTechnique(graphic_types::BevelTechnique),
+	NoiseDistribution(graphic_types::NoiseDistribution),
 	GridType(vector::misc::GridType),
 	GridTopology(vector::misc::GridTopology),
 	ArcType(vector::misc::ArcType),
