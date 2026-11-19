@@ -40,6 +40,11 @@ const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	// The `GradientStops` type was renamed to `Gradient`; stale stored output names are cleared so the display falls back to the live type name
 	("\"output_names\":[\"GradientStops\"]", "\"output_names\":[\"\"]"),
 	("vector_types::gradient::GradientStops", "vector_types::gradient::Gradient"),
+	// The removed Extract node, which output its input node as data, becomes a Passthrough of its input
+	(
+		"\"implementation\":\"Extract\"",
+		"\"implementation\":{\"ProtoNode\":{\"name\":\"graphene_core::ops::PassthroughNode\"}}",
+	),
 ];
 
 pub struct NodeReplacement<'a> {
@@ -4330,9 +4335,8 @@ mod tests {
 			..Default::default()
 		};
 		let footprint_input = NodeInput::value(TaggedValue::Footprint(footprint), false);
-		document.network_interface.set_input(&InputConnector::node_at_index(node_id, 1), footprint_input.clone(), &[]);
 
-		// Save the node as the network that drew into a browser canvas
+		// Save the node as the network that drew into a browser canvas, which took only the artwork and footprint
 		let canvas_network = NodeNetworkTemplate {
 			exports: vec![NodeInput::node(NodeId(0), 0)],
 			nodes: [(
@@ -4348,10 +4352,12 @@ mod tests {
 			..Default::default()
 		};
 		let mut legacy = NodeTemplate {
+			inputs: vec![NodeInput::type_default(list!(graphic_types::Graphic), true), footprint_input.clone()],
 			implementation: NodeTemplateImplementation::Network(canvas_network),
 			..Default::default()
 		};
 		document.network_interface.replace_implementation(&node_id, &[], &mut legacy);
+		document.network_interface.replace_inputs(&node_id, &[], &mut legacy);
 		document.network_interface.set_reference(&node_id, &[], Some("Rasterize".into()));
 		let serialized = document.serialize_document();
 
@@ -4363,6 +4369,29 @@ mod tests {
 			Some(&footprint_input),
 			"the footprint should carry over"
 		);
+		let definition_inputs = resolve_proto_node_type(rasterize::IDENTIFIER).expect("Rasterize should have a definition").node_template.inputs.len();
+		assert_eq!(interface.number_of_inputs(&node_id, &[]), definition_inputs, "the node should gain the inputs the compiler fills in");
+	}
+
+	#[tokio::test]
+	async fn opening_a_document_with_the_removed_extract_node_turns_it_into_a_passthrough() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+		use graphene_std::ops::passthrough;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let node_id = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(passthrough::IDENTIFIER), 0, 0).await;
+
+		// The document as saved when this node was an Extract node, which stored only the tag as its implementation
+		let passthrough_implementation = serde_json::to_string(&DocumentNodeImplementation::ProtoNode(passthrough::IDENTIFIER)).unwrap();
+		let serialized = editor.active_document().serialize_document();
+		assert_eq!(serialized.matches(&passthrough_implementation).count(), 1, "the node's implementation should be saved once");
+		let serialized = serialized.replace(&passthrough_implementation, "\"Extract\"");
+
+		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
+		assert_eq!(opened.network_interface.reference(&node_id, &[]), Some(DefinitionIdentifier::ProtoNode(passthrough::IDENTIFIER)));
 	}
 
 	#[tokio::test]

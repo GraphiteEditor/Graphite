@@ -1248,9 +1248,6 @@ impl NodeNetworkInterface {
 						nested_path.push(node_id);
 						stack.push((nested_path, old_network));
 					}
-					OldDocumentNodeImplementation::Extract => {
-						node.implementation = DocumentNodeImplementation::Extract;
-					}
 				}
 
 				nested_network.nodes.insert(node_id, node);

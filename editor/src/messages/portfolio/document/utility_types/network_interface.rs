@@ -508,19 +508,6 @@ mod network_interface_tests {
 	}
 
 	#[test]
-	fn an_extract_node_shows_its_definition_signature() {
-		use super::*;
-
-		let definition = resolve_document_node_type(&DefinitionIdentifier::Network("Extract".into())).expect("Extract should have a definition");
-		let mut interface = NodeNetworkInterface::default();
-		interface.insert_node(NodeId(1), definition.default_node_template(), &[]);
-
-		let expected = &definition.node_template.input_metadata[0].persistent_metadata;
-		let shown = interface.displayed_input_name_and_description(&NodeId(1), 0, &[]);
-		assert_eq!(shown, (expected.input_name.clone(), expected.input_description.clone()));
-	}
-
-	#[test]
 	fn interface_edits_through_one_instance_reach_every_instance() {
 		use super::*;
 

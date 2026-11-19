@@ -17,8 +17,6 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::{concrete, list};
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType};
-#[allow(unused_imports)]
-use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::*;
 use std::collections::{HashMap, VecDeque};
@@ -590,51 +588,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				..Default::default()
 			},
 			description: Cow::Borrowed("Loads an image from a given URL."),
-			inspector: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Rasterize",
-			version: 1,
-			category: "Raster",
-			icon: Some("NodeRasterize"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
-				inputs: vec![
-					NodeInput::type_default(list!(Vector), true),
-					NodeInput::value(
-						TaggedValue::Footprint(Footprint {
-							transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
-							resolution: UVec2::new(1000, 1000),
-							..Default::default()
-						}),
-						false,
-					),
-				],
-				input_metadata: vec![
-					("Artwork", "The graphics to render as an image.").into(),
-					("Footprint", "The area of the document to render, and the resolution to render it at.").into(),
-				],
-				output_names: vec!["Canvas".to_string()],
-				output_descriptions: vec!["The rendered image.".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("Renders a view of the input graphics within an area defined by the *Footprint*, producing a raster image."),
-			inspector: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Extract",
-			version: 1,
-			category: "",
-			icon: None,
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Extract,
-				inputs: vec![NodeInput::type_default(concrete!(DocumentNode), true)],
-				input_metadata: vec![("Node", "The node to output as data rather than evaluating it.").into()],
-				output_names: vec!["Document Node".to_string()],
-				output_descriptions: vec!["The connected node itself, as data.".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("Outputs the connected node itself as data, rather than the result of evaluating it."),
 			inspector: None,
 		},
 		DocumentNodeDefinition {
@@ -1495,10 +1448,6 @@ impl InputTypeConstraint {
 				}
 				result_accepted
 			}
-			NodeTemplateImplementation::Extract => {
-				warn!("Input types for extract node {name} not supported");
-				Self::All
-			}
 			NodeTemplateImplementation::Definition(_) => {
 				warn!("Input types for definition node {name} not supported");
 				Self::All
@@ -1609,6 +1558,38 @@ mod test {
 	use super::{DOCUMENT_NODE_TYPES, DefinitionIdentifier, resolve_network_node_type};
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::document::NodeId;
+
+	#[test]
+	fn rasterize_defaults_to_a_1000_px_square_at_full_resolution() {
+		use glam::{DAffine2, UVec2};
+		use graph_craft::document::value::TaggedValue;
+		use graphene_std::platform_application_io::rasterize;
+
+		let definition = super::resolve_proto_node_definition(&rasterize::IDENTIFIER).expect("Rasterize should have a definition");
+		let footprint = definition.node_template.input(rasterize::FootprintInput).and_then(|input| input.as_value());
+
+		let expected = Footprint {
+			transform: DAffine2::from_scale(DVec2::splat(1000.)),
+			resolution: UVec2::splat(1000),
+			..Default::default()
+		};
+		assert_eq!(footprint, Some(&TaggedValue::Footprint(expected)));
+	}
+
+	// The executor input the compiler fills in has no type yet, which mustn't rule out every implementation
+	#[tokio::test]
+	async fn a_new_rasterize_node_offers_types_for_its_artwork() {
+		use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+		use graphene_std::platform_application_io::rasterize;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let node_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(rasterize::IDENTIFIER)).await;
+
+		let interface = &editor.active_document().network_interface;
+		let artwork_types = interface.potential_valid_input_types(&InputConnector::node_at_index(node_id, 0), &[]);
+		assert!(!artwork_types.is_empty(), "the artwork input should accept the types Rasterize is implemented for");
+	}
 
 	// Guards the embedded Map body chain (Read Vector -> Extract Transform -> Decompose Translation -> As Vector) against registry drift
 	#[tokio::test]

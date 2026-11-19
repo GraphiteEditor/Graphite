@@ -49,7 +49,7 @@ impl Catalog {
 			if !matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
 				continue;
 			}
-			let DocumentNodeImplementation::Network(nested) = std::mem::replace(&mut node.implementation, DocumentNodeImplementation::Extract) else {
+			let DocumentNodeImplementation::Network(nested) = std::mem::take(&mut node.implementation) else {
 				continue;
 			};
 			let node_metadata = metadata.persistent_metadata.node_metadata.entry(*node_id).or_default();

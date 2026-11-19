@@ -228,8 +228,6 @@ impl NodeNetworkInterface {
 								_ => true,
 							}
 					}),
-
-					DocumentNodeImplementation::Extract => false,
 				}
 			}
 			InputConnector::Export(_) => false,
@@ -385,10 +383,6 @@ impl NodeNetworkInterface {
 				.implementations_matching_inputs(proto_node_identifier, node_id, Some(*input_index), network_path)
 				.filter_map(|node_io| node_io.inputs.get(*input_index).cloned())
 				.collect::<Vec<_>>(),
-			DocumentNodeImplementation::Extract => {
-				log::error!("Input types for extract node not supported");
-				Vec::new()
-			}
 		}
 	}
 
@@ -558,6 +552,11 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// Whether the input is a scope the compiler supplies, which has no type of its own until then, so type matching skips it.
+	fn is_scope_input(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> bool {
+		matches!(self.input_from_connector(&InputConnector::node_at_index(*node_id, index), network_path), Some(NodeInput::Scope(_)))
+	}
+
 	/// The registry implementations of a proto node whose inputs accept the node's current input types, ignoring `disregarded_input_index`.
 	fn implementations_matching_inputs<'a>(
 		&'a self,
@@ -576,7 +575,8 @@ impl NodeNetworkInterface {
 		let number_of_inputs = self.number_of_inputs(node_id, network_path);
 		let conversions = input_conversions(proto_node_identifier);
 		implementations.into_iter().flat_map(|implementations| implementations.keys()).filter(move |node_io| {
-			(0..number_of_inputs).filter(|index| Some(*index) != disregarded_input_index).all(|index| {
+			let checked = |index: &usize| Some(*index) != disregarded_input_index && !self.is_scope_input(node_id, *index, network_path);
+			(0..number_of_inputs).filter(checked).all(|index| {
 				let input_type = self.input_type_not_invalid(&InputConnector::node_at_index(*node_id, index), network_path);
 				// TODO: Fix type checking for different call arguments
 				// For example a node input of (Footprint) -> Vector would not be compatible with a node that is called with () and returns Vector
@@ -615,7 +615,8 @@ impl NodeNetworkInterface {
 									return None;
 								}
 
-								let valid_inputs = (0..node_io.inputs.len()).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
+								let checked = |iterator_index: &usize| iterator_index != input_index && !self.is_scope_input(node_id, *iterator_index, network_path);
+								let valid_inputs = (0..node_io.inputs.len()).filter(checked).all(|iterator_index| {
 									let input_type = self.input_type_not_invalid(&InputConnector::node_at_index(*node_id, iterator_index), network_path);
 									match input_type.compiled_nested_type() {
 										Some(input_type) => node_io.inputs.get(iterator_index).is_some_and(|node_io_input_type| node_io_input_type.nested_type() == input_type),
@@ -626,7 +627,6 @@ impl NodeNetworkInterface {
 							})
 							.collect::<Vec<_>>()
 					}
-					DocumentNodeImplementation::Extract => Vec::new(),
 				}
 			}
 			InputConnector::Export(export_index) => {
@@ -700,7 +700,6 @@ impl NodeNetworkInterface {
 							None => TypeSource::Unknown,
 						}
 					}
-					DocumentNodeImplementation::Extract => TypeSource::Compiled(concrete!(())),
 				}
 			}
 			OutputConnector::Import(import_index) => {

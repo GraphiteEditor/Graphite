@@ -148,7 +148,7 @@ impl Preprocessor {
 					continue;
 				}
 				DocumentNodeImplementation::ProtoNode(proto_node_identifier) => proto_node_identifier.clone(),
-				DocumentNodeImplementation::Extract | DocumentNodeImplementation::Definition(_) => continue,
+				DocumentNodeImplementation::Definition(_) => continue,
 			};
 			let compile_metadata = node.compile_metadata.take().or_else(|| self.compile_metadata.get(&identifier).copied());
 

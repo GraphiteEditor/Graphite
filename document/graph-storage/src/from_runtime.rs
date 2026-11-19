@@ -38,8 +38,6 @@ pub fn storage_node_id(id: RuntimeNodeId) -> NodeId {
 pub enum ConversionError {
 	#[error("Failed to serialize value: {0}")]
 	SerializationError(String),
-	#[error("Unsupported node implementation type")]
-	UnsupportedImplementation,
 	#[error("Invalid network structure: {0}")]
 	InvalidNetwork(String),
 	#[error("Index {0} exceeds the storage format's u32 range")]
@@ -574,8 +572,6 @@ fn convert_implementation<M: NodeMetadataSource + ?Sized>(
 		}
 		DocumentNodeImplementation::Network(_) => return Err(ConversionError::InvalidNetwork("Inline networks must be lifted into the definitions table".into())),
 		DocumentNodeImplementation::Definition(id) => Implementation::Network(storage_network_id(*id)),
-		// TODO: Support Extract in the Registry format.
-		DocumentNodeImplementation::Extract => return Err(ConversionError::UnsupportedImplementation),
 	})
 }
 

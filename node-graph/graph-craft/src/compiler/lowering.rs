@@ -1,7 +1,5 @@
-use crate::document::value::TaggedValue;
 use crate::document::*;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
-use core_types::{ProtoNodeIdentifier, generic};
 
 impl DocumentNode {
 	pub(crate) fn resolve_proto_node(self) -> ProtoNode {
@@ -35,44 +33,6 @@ impl DocumentNode {
 }
 
 impl NodeNetwork {
-	/// Converts the `DocumentNode`s with a `DocumentNodeImplementation::Extract` into a `ClonedNode` that returns
-	/// the `DocumentNode` specified by the single `NodeInput::Node`.
-	/// The referenced node is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
-	pub fn resolve_extract_nodes(&mut self) {
-		let mut extraction_nodes = self
-			.nodes
-			.iter()
-			.filter(|(_, node)| matches!(node.implementation, DocumentNodeImplementation::Extract))
-			.map(|(id, node)| (*id, node.clone()))
-			.collect::<Vec<_>>();
-		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
-
-		for (_, node) in &mut extraction_nodes {
-			assert_eq!(node.inputs.len(), 1);
-			let NodeInput::Node { node_id, output_index, .. } = node.inputs.pop().unwrap() else {
-				panic!("Extract node has no input, inputs: {:?}", node.inputs);
-			};
-			assert_eq!(output_index, 0);
-			// TODO: check if we can read lambda checking?
-			let mut input_node = self.nodes.remove(&node_id).unwrap();
-			node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode"));
-			if let Some(input) = input_node.inputs.get_mut(0) {
-				*input = match &input {
-					NodeInput::Node { .. } => NodeInput::import(generic!(T), 0),
-					ni => NodeInput::import(ni.ty(), 0),
-				};
-			}
-
-			for input in input_node.inputs.iter_mut() {
-				if let NodeInput::Node { .. } = input {
-					*input = NodeInput::import(generic!(T), 0)
-				}
-			}
-			node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node), false)];
-		}
-		self.nodes.extend(extraction_nodes);
-	}
-
 	/// Creates a proto network for evaluating each output of this network.
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
 		#[cfg(test)]

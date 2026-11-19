@@ -107,14 +107,12 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		Ok(network_metadata.persistent_metadata.reference.clone().map(DefinitionIdentifier::Network))
 	}
 
-	/// The definition of a proto or Extract node `node_id`, which owns its signature rather than the node itself.
+	/// The definition of a proto node `node_id`, which owns its signature rather than the node itself.
 	fn definition_template(&self, node_id: &NodeId) -> Result<Option<&'static NodeTemplate>, NetworkError> {
-		let definition = match self.implementation(node_id)? {
-			DocumentNodeImplementation::ProtoNode(identifier) => resolve_proto_node_definition(identifier),
-			DocumentNodeImplementation::Extract => resolve_document_node_type(&DefinitionIdentifier::Network("Extract".into())),
-			_ => None,
+		let DocumentNodeImplementation::ProtoNode(identifier) = self.implementation(node_id)? else {
+			return Ok(None);
 		};
-		Ok(definition.map(|definition| &definition.node_template))
+		Ok(resolve_proto_node_definition(identifier).map(|definition| &definition.node_template))
 	}
 
 	/// The node's input metadata, from its definition or else the network a subgraph names.
