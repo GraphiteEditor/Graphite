@@ -3,7 +3,7 @@
 use super::SvgFilterPrimitives;
 use glam::DVec2;
 use graphic_types::effects::EffectCapture;
-use graphic_types::filters::{Convolution, Surroundings, fill_shifts};
+use graphic_types::filters::{AVERAGE_VISIBILITY_RAMP, Convolution, HIGH_PASS_GRAY, Surroundings, UnsharpBlur, fill_shifts, unsharp, unsharp_change};
 use graphic_types::{EffectOperation, Effects, MinimumMaximumMode};
 use raster_kernels::effect_kernels::{MAX_DIRECT_BOX_RADIUS, box_weight};
 use std::collections::BTreeMap;
@@ -69,20 +69,32 @@ impl SvgFilterPrimitives {
 	/// Where the fill `forked` the content into two planes, no filter reading its input many times runs natively, since the filter can't split to keep chains of them from multiplying.
 	pub(super) fn filter(&mut self, image: &str, operation: &EffectOperation, pixel_exact: bool, forked: bool, capture: EffectCapture) -> String {
 		let native = pixel_exact && !forked;
+
 		if let Some(convolution) = operation.convolution() {
 			return match native.then(|| LatticeKernel::new(&convolution)).flatten() {
 				Some(kernel) => {
+					let coverage = convolution.weighs_coverage.then(|| self.convolve_coverage(image, &kernel));
 					let convolved = self.convolve(image, &convolution, &kernel);
-					self.uncover(&convolved, image, convolution.surroundings)
+					self.uncover(&convolved, coverage.as_deref().unwrap_or(image), convolution.surroundings)
 				}
+				// A kernel weighing the coverage too gives the colors the coverage it weighs, so the whole result comes as the map
+				None if convolution.weighs_coverage => self.map_showing(capture, image),
 				None => self.uncovered_map(image, capture, convolution.surroundings),
+			};
+		}
+
+		// Edges Only needs the length of each channel's gradient, which loses too much precision through the 8-bit results between primitives
+		if let Some((blur, sharpening)) = unsharp(operation) {
+			return match blur {
+				UnsharpBlur::Gaussian(radius) if !forked => self.unsharp_mask(image, radius, sharpening),
+				_ => self.map_showing(capture, image),
 			};
 		}
 
 		match *operation {
 			// The Euclidean length of the gradient loses too much precision through the 8-bit results between primitives
 			EffectOperation::FindEdges => self.uncovered_map(image, capture, Surroundings::Matted(1.)),
-			EffectOperation::MinimumMaximum { .. } if forked => self.map_standing_in(capture, "feOffset", &format!(r#"in="{image}""#)),
+			EffectOperation::MinimumMaximum { .. } if forked => self.map_showing(capture, image),
 			EffectOperation::MinimumMaximum { radius, mode } => self.neighborhood_extreme(image, radius, mode == MinimumMaximumMode::Maximum),
 			_ => image.to_string(),
 		}
@@ -97,7 +109,7 @@ impl SvgFilterPrimitives {
 				let map = self.map(capture);
 				self.push("feComposite", &format!(r#"in="{map}" in2="{image}" operator="atop""#), "")
 			}
-			Surroundings::Matted(_) => self.map_standing_in(capture, "feOffset", &format!(r#"in="{image}""#)),
+			Surroundings::Matted(_) => self.map_showing(capture, image),
 		}
 	}
 
@@ -105,7 +117,7 @@ impl SvgFilterPrimitives {
 	pub(super) fn reads_input_often(&self, operation: &EffectOperation, native: bool) -> bool {
 		match operation.convolution() {
 			Some(convolution) => native && LatticeKernel::new(&convolution).is_some(),
-			None => matches!(operation, EffectOperation::MinimumMaximum { .. }),
+			None => matches!(operation, EffectOperation::MinimumMaximum { .. } | EffectOperation::Sharpen { .. } | EffectOperation::HighPass { .. }),
 		}
 	}
 
@@ -148,6 +160,14 @@ impl SvgFilterPrimitives {
 		self.push("feConvolveMatrix", &attributes, "")
 	}
 
+	/// The image's coverage weighed by the `kernel`, clamped, as the alpha of an `feConvolveMatrix` over every channel.
+	fn convolve_coverage(&mut self, image: &str, kernel: &LatticeKernel) -> String {
+		let ([columns, rows], [target_x, target_y]) = (kernel.order, kernel.target);
+		let matrix = kernel.matrix.iter().map(f64::to_string).collect::<Vec<_>>().join(" ");
+		let attributes = format!(r#"in="{image}" order="{columns} {rows}" kernelMatrix="{matrix}" divisor="1" targetX="{target_x}" targetY="{target_y}" kernelUnitLength="1 1" edgeMode="none""#);
+		self.push("feConvolveMatrix", &attributes, "")
+	}
+
 	/// The image composited over an opaque gray of level `gray`.
 	fn over_gray(&mut self, image: &str, gray: f64) -> String {
 		let percent = gray * 100.;
@@ -164,6 +184,82 @@ impl SvgFilterPrimitives {
 		let values = format!("0 0 0 0 {gray} 0 0 0 0 {gray} 0 0 0 0 {gray} 0 0 0 -1 1");
 		let uncovered_gray = self.push("feColorMatrix", &format!(r#"in="{image}" type="matrix" values="{values}""#), "");
 		self.push("feComposite", &format!(r#"in="{colors}" in2="{uncovered_gray}" operator="arithmetic" k2="1" k3="-1""#), "")
+	}
+
+	/// The image with each straight color and its coverage sharpened against a Gaussian blur of `radius` document pixels, by the amount and threshold fractions in `sharpening`,
+	/// or with none, a high pass of its colors, matching the GPU's `unsharp_mask`.
+	fn unsharp_mask(&mut self, image: &str, radius: f64, sharpening: Option<[f64; 2]>) -> String {
+		let sigma = radius.max(0.);
+		let blur = |primitives: &mut Self, input: &str| primitives.push("feGaussianBlur", &format!(r#"in="{input}" stdDeviation="{sigma} {sigma}""#), "");
+		let matrix = |primitives: &mut Self, input: &str, values: &str| primitives.push("feColorMatrix", &format!(r#"in="{input}" type="matrix" values="{values}""#), "");
+		let arithmetic = |primitives: &mut Self, first: &str, second: &str, [k2, k3, k4]: [f64; 3]| {
+			primitives.push("feComposite", &format!(r#"in="{first}" in2="{second}" operator="arithmetic" k2="{k2}" k3="{k3}" k4="{k4}""#), "")
+		};
+		// Linear transfers stay exact through the truncation browsers round their results by
+		let inverted = |primitives: &mut Self, input: &str| {
+			let functions = ["R", "G", "B"].map(|channel| format!(r#"<feFunc{channel} type="linear" slope="-1" intercept="1" />"#)).concat();
+			primitives.push("feComponentTransfer", &format!(r#"in="{input}""#), &functions)
+		};
+
+		// The average of the visible colors alone, as the blur of them made opaque among the rest left out, divided by its alpha.
+		// Where too little of the blur lands on visible colors to know their average, it eases into the pixel's own color.
+		let visible = matrix(self, image, "1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 255 -15");
+		let blurred = blur(self, &visible);
+		let [start, end] = AVERAGE_VISIBILITY_RAMP.map(f64::from);
+		let weighted = matrix(self, &blurred, &format!("1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 {} {}", 1. / (end - start), -start / (end - start)));
+		let own = matrix(self, image, "1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 255 0");
+		let average = self.push("feComposite", &format!(r#"in="{weighted}" in2="{own}" operator="over""#), "");
+
+		// A high pass is the colors less their average, around middle gray, which adding the inverted average reaches with an alpha clamped back to full
+		let Some([amount, threshold]) = sharpening else {
+			let inverted_average = inverted(self, &average);
+			let detail = arithmetic(self, &own, &inverted_average, [1., 1., HIGH_PASS_GRAY as f64 - 1.]);
+			return self.push("feComposite", &format!(r#"in="{detail}" in2="{image}" operator="in""#), "");
+		};
+
+		// The coverage sharpens the same way against its own blur, carried as an opaque gray then returned to alpha
+		let coverage_gray = matrix(self, image, "0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1");
+		let blurred_coverage = blur(self, image);
+		let blurred_gray = matrix(self, &blurred_coverage, "0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1");
+		let to_alpha = |primitives: &mut Self, gray: &str| matrix(primitives, gray, "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0");
+
+		// Without a threshold, the change is the difference scaled by the amount, so one composite adds it back with nothing rounded between
+		if threshold <= 0. {
+			let colors = arithmetic(self, &own, &average, [1. + amount, -amount, 0.]);
+			let sharpened_gray = arithmetic(self, &coverage_gray, &blurred_gray, [1. + amount, -amount, 0.]);
+			let coverage = to_alpha(self, &sharpened_gray);
+			return self.push("feComposite", &format!(r#"in="{colors}" in2="{coverage}" operator="in""#), "");
+		}
+
+		// The difference from the average, centered on level 128 and widened as far as it can be before the change it makes saturates, then mapped through the change by tables and added back.
+		// Each table value lies a quarter level above the level it means, which the browser's truncation keeps.
+		// Its scale is whole 128ths and its offset whole levels, as Firefox rounds them, with a zero difference landing under half a level above 128.
+		let ideal_count = ((amount / (1. + threshold)).max(1.) * 127. / 255. * 128.).floor() as i64;
+		let count = (65..=ideal_count.max(65)).rev().find(|count| count % 128 == 0 || count % 128 > 64).unwrap_or(65);
+		let scale = count as f64 / 128.;
+		let widening = scale * 255. / 127.;
+		let offset = (128. - (255. * scale).floor()) / 255.;
+		let table: String = (0..256)
+			.map(|level| {
+				let difference = (level as f64 - 128.) / 127. / widening;
+				let change = unsharp_change(difference as f32, amount as f32, threshold as f32).clamp(-1., 1.) as f64;
+				format!("{:.5}", ((128. + change * 127.).round() + 0.25) / 255.)
+			})
+			.collect::<Vec<_>>()
+			.join(" ");
+		let sharpen = |primitives: &mut Self, own: &str, inverted_average: &str, channels: &[&str]| {
+			let difference = arithmetic(primitives, own, inverted_average, [scale, scale, offset]);
+			let functions = channels.iter().map(|channel| format!(r#"<feFunc{channel} type="table" tableValues="{table}" />"#)).collect::<String>();
+			let change = primitives.push("feComponentTransfer", &format!(r#"in="{difference}""#), &functions);
+			arithmetic(primitives, own, &change, [1., 255. / 127., -128. / 127.])
+		};
+		let inverted_average = inverted(self, &average);
+		let colors = sharpen(self, &own, &inverted_average, &["R", "G", "B"]);
+		let inverted_blurred_gray = inverted(self, &blurred_gray);
+		let sharpened_gray = sharpen(self, &coverage_gray, &inverted_blurred_gray, &["R"]);
+		let coverage = to_alpha(self, &sharpened_gray);
+
+		self.push("feComposite", &format!(r#"in="{colors}" in2="{coverage}" operator="in""#), "")
 	}
 
 	/// The image with each pixel's color the lightest (or with `maximum` false, the darkest) in the square of `radius` document pixels around it,
@@ -240,7 +336,7 @@ mod tests {
 	use graphic_types::{EffectOperation, Effects, MinimumMaximumMode};
 
 	fn convolution_kernel(text: &str, scale: f64, offset: f64) -> EffectOperation {
-		EffectOperation::convolution_kernel(text, Some(scale), offset)
+		EffectOperation::convolution_kernel(text, Some(scale), offset, false)
 	}
 
 	/// The one layer that filters alone draw, with the content.
@@ -452,6 +548,30 @@ mod tests {
 	}
 
 	#[test]
+	fn chained_unsharp_masks_and_high_passes_read_each_result_once_where_the_fill_forks_the_content() {
+		let unsharp = |threshold| EffectOperation::Sharpen {
+			amount: 200.,
+			radius: 2.,
+			threshold,
+			edges_only: false,
+		};
+		let effects = Effects::from_operations([EffectOperation::HighPass { radius: 2. }, unsharp(10.), EffectOperation::HighPass { radius: 1. }, unsharp(0.)]);
+
+		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 0.5, true);
+		let mut defs = String::new();
+		let filter = write_svg_effects_filter_on_lattice(&mut defs, &effects, &layers, 0, 0.5, 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &[], 0..effects.len(), 1., true).unwrap();
+		assert_eq!(filter.maps.len(), 8, "both planes of each take a map: {defs}");
+		assert_eq!(most_reads_of_a_result(&defs), 1, "{defs}");
+
+		// Without the fork, each runs natively in its own filter reading the one before
+		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., true);
+		let mut defs = String::new();
+		let filter = write_svg_effects_filter_on_lattice(&mut defs, &effects, &layers, 0, 1., 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &[], 0..effects.len(), 1., true).unwrap();
+		assert!(filter.maps.is_empty(), "{defs}");
+		assert_eq!(filter.ids.len(), 4, "{defs}");
+	}
+
+	#[test]
 	fn stylize_filters_matte_morph_and_map_where_svg_cant_reach() {
 		// Emboss convolves the content over middle gray, then lifts the gray back off within the coverage in one step
 		let (emboss, _) = filter(vec![EffectOperation::Emboss { angle: 0., height: 2., amount: 100. }], true);
@@ -498,5 +618,61 @@ mod tests {
 			"{defs}"
 		);
 		assert_eq!(minimum.region, [DVec2::splat(-5.), DVec2::splat(15.)]);
+	}
+
+	#[test]
+	fn sharpening_blurs_natively_and_maps_its_coverage_off_the_lattice() {
+		// Without a threshold, unsharp masking adds the scaled difference from a blur of the visible colors back in one composite, and sharpens the coverage the same way
+		let unsharp = |threshold| EffectOperation::Sharpen {
+			amount: 200.,
+			radius: 2.,
+			threshold,
+			edges_only: false,
+		};
+		let (defs, maps) = filter(vec![unsharp(0.)], false);
+		assert_eq!(maps, 0);
+		assert_eq!(defs.matches("feGaussianBlur").count(), 2, "{defs}");
+		assert_eq!(defs.matches(r#"operator="arithmetic" k2="3" k3="-2" k4="0""#).count(), 2, "{defs}");
+		assert!(!defs.contains("tableValues"), "{defs}");
+
+		// With one, the difference maps through a table of the change it makes, where no change is level 128 written a quarter level up
+		let (defs, _) = filter(vec![unsharp(10.)], false);
+		assert_eq!(defs.matches(r#"<feFuncR type="table" tableValues=""#).count(), 2, "{defs}");
+		assert!(defs.contains(" 0.50294 ") && defs.contains(r#"type="linear" slope="-1" intercept="1""#), "{defs}");
+
+		// The widening is whole 128ths and its offset whole levels, putting a zero difference at 128.04
+		assert_eq!(defs.matches(r#"k2="0.953125" k3="0.953125" k4="-0.45098"#).count(), 2, "{defs}");
+
+		// Edges Only takes its whole result as one map even on the pixel lattice, as unsharp masking does for both planes where the fill forks
+		let edges_only = EffectOperation::Sharpen {
+			amount: 100.,
+			radius: 1.,
+			threshold: 0.,
+			edges_only: true,
+		};
+		let (defs, maps) = filter(vec![edges_only], true);
+		assert_eq!(maps, 1);
+		assert!(!defs.contains("feGaussianBlur") && !defs.contains("feConvolveMatrix"), "{defs}");
+		let mut defs = String::new();
+		let effects = Effects::from_operations([unsharp(0.)]);
+		let faded = write_svg_effects_filter(&mut defs, &effects, &one_layer(&effects), 0, 0.5, 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &[], 0..effects.len(), 1.).unwrap();
+		let planes: Vec<usize> = faded.maps.iter().map(|map| map.capture.plane).collect();
+		assert_eq!(planes, [1, 0]);
+	}
+
+	#[test]
+	fn a_kernel_applied_to_alpha_convolves_the_coverage_on_the_lattice_and_maps_its_result_off_it() {
+		let sharpen = EffectOperation::convolution_kernel("0 -1 0\n-1 8 -1\n0 -1 0", None, 0., true);
+
+		// The colors convolve straight, and the coverage alongside them as the alpha of a convolution over every channel
+		let (defs, maps) = filter(vec![sharpen.clone()], true);
+		assert_eq!(maps, 0);
+		assert_eq!(defs.matches("<feConvolveMatrix").count(), 2, "{defs}");
+		assert_eq!(defs.matches(r#"preserveAlpha="true""#).count(), 1, "{defs}");
+
+		// Off the lattice, the colors take the coverage they weigh, so the whole result comes as the map
+		let (defs, maps) = filter(vec![sharpen], false);
+		assert_eq!(maps, 1);
+		assert!(!defs.contains("feConvolveMatrix"), "{defs}");
 	}
 }

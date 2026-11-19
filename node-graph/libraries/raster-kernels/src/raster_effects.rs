@@ -22,6 +22,7 @@ use graphic_types::effects::{
 	BevelDirection, BevelStyle, BevelTechnique, EffectCapture, EffectOperation, Effects, GlowFill, GlowSource, GlowTechnique, OutlineFill, bevel_light, continued_map_pixels, contour_gradient_span,
 	effect_space, fitted_paint, grow_and_tent, outline_extents, precise_falloff, shadow_offset, shape_strength, spans_along_axes,
 };
+use graphic_types::filters::sharpens_coverage;
 use graphic_types::generator::GeneratorPattern;
 use graphic_types::masks::masked_radius_blur_levels;
 use raster_types::parallel_rows::fill_rows;
@@ -545,11 +546,23 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				full = adjust(&full, adjustment);
 				filled = filled.map(|filled| adjust(&filled, adjustment));
 			}
-			EffectOperation::ConvolutionKernel { .. } | EffectOperation::Emboss { .. } | EffectOperation::FindEdges | EffectOperation::MinimumMaximum { .. } => {
+			EffectOperation::ConvolutionKernel { .. }
+			| EffectOperation::Emboss { .. }
+			| EffectOperation::FindEdges
+			| EffectOperation::MinimumMaximum { .. }
+			| EffectOperation::Sharpen { .. }
+			| EffectOperation::HighPass { .. } => {
 				merge_beneath(&mut full, &mut filled, &mut beneath);
+				// A filter sharpening the coverage fades the fill's result by the share of the full-strength coverage each pixel's fill left, as if the fill faded the result
+				let shares = filled.as_ref().filter(|_| sharpens_coverage(operation)).map(|filled| crate::filter_kernels::fill_shares(&full, filled));
+
 				// The fill fades the content after the filter, so the full-strength content decides which of the fill's pixels are visible
-				filled = filled.map(|filled| crate::filter_kernels::filter(filled, Some(&full), operation, effect_to_pixels));
+				let filtered_filled = filled.map(|filled| crate::filter_kernels::filter(filled, Some(&full), operation, effect_to_pixels));
 				full = crate::filter_kernels::filter(full, None, operation, effect_to_pixels);
+				filled = filtered_filled.map(|filtered| match &shares {
+					Some(shares) => crate::filter_kernels::faded_by_shares(&filtered, &full, shares),
+					None => filtered,
+				});
 			}
 		}
 	}

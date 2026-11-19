@@ -689,6 +689,7 @@ fn static_node_inspector() -> NodeInspector {
 	map.insert("grid_inspector".to_string(), Box::new(node_inspector::grid_inspector));
 	map.insert("spiral_inspector".to_string(), Box::new(node_inspector::spiral_inspector));
 	map.insert("sample_polyline_inspector".to_string(), Box::new(node_inspector::sample_polyline_inspector));
+	map.insert("sharpen_inspector".to_string(), Box::new(node_inspector::sharpen_inspector));
 	map
 }
 

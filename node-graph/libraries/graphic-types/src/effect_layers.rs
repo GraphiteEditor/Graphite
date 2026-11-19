@@ -386,6 +386,8 @@ fn pieces(index: usize, operation: &EffectOperation) -> Vec<(EffectPiece, BlendM
 		| EffectOperation::Emboss { .. }
 		| EffectOperation::FindEdges
 		| EffectOperation::MinimumMaximum { .. }
+		| EffectOperation::Sharpen { .. }
+		| EffectOperation::HighPass { .. }
 		| EffectOperation::Adjustment(_) => Vec::new(),
 	};
 	pieces.into_iter().flatten().collect()

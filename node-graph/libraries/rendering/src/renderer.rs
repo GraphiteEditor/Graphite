@@ -1345,6 +1345,11 @@ impl SvgFilterPrimitives {
 		result
 	}
 
+	/// Like [`Self::map`], for a map of a filter's whole result, with the placeholder showing the `image` unfiltered until the GPU resolves it.
+	fn map_showing(&mut self, capture: EffectCapture, image: &str) -> String {
+		self.map_standing_in(capture, "feOffset", &format!(r#"in="{image}""#))
+	}
+
 	/// The coverage tinted `color`.
 	fn tint(&mut self, coverage: &str, color: Color) -> String {
 		let flood = self.push(
@@ -1837,14 +1842,19 @@ fn write_svg_effects_filter_on_lattice(
 				full = primitives.adjust(&full, adjustment);
 				continue;
 			}
-			EffectOperation::ConvolutionKernel { .. } | EffectOperation::Emboss { .. } | EffectOperation::FindEdges | EffectOperation::MinimumMaximum { .. } => {
+			EffectOperation::ConvolutionKernel { .. }
+			| EffectOperation::Emboss { .. }
+			| EffectOperation::FindEdges
+			| EffectOperation::MinimumMaximum { .. }
+			| EffectOperation::Sharpen { .. }
+			| EffectOperation::HighPass { .. } => {
 				if !(shows_content || cuts_within) {
 					continue;
 				}
 				primitives.merge_beneath(&mut full, &mut filled, beneath.take());
 
 				// Those keeping the content's coverage leave alone all a layer cutting its pieces within the content reads
-				let changes_coverage = matches!(operation, EffectOperation::MinimumMaximum { .. });
+				let changes_coverage = matches!(operation, EffectOperation::MinimumMaximum { .. }) || graphic_types::filters::sharpens_coverage(&operation);
 				if !shows_content && !changes_coverage {
 					continue;
 				}
@@ -7819,7 +7829,7 @@ mod tests {
 		};
 
 		// A kernel whose weights don't sum to one, or an offset, changes even a flat color, so it's carried out over the view
-		let (_, defs) = render_of(vec![EffectOperation::convolution_kernel("1", Some(2.), 64.)]);
+		let (_, defs) = render_of(vec![EffectOperation::convolution_kernel("1", Some(2.), 64., false)]);
 		assert!(defs.contains(r#"<filter id="effects-"#), "{defs}");
 		assert!(!render_of(Vec::new()).1.contains("<filter"));
 
@@ -7838,6 +7848,7 @@ mod tests {
 0 -1 0",
 				Some(1.),
 				0.,
+				false,
 			),
 		]);
 		assert_eq!(svg.matches(r#"<g filter="url(#effects-"#).count(), 2, "{svg}");
@@ -7864,7 +7875,7 @@ mod tests {
 		};
 
 		// A gradient has details for a kernel to read, which it reads across the view and as far past it as the kernel reaches
-		let kernel = EffectOperation::convolution_kernel("-1 0 1", Some(1.), 128.);
+		let kernel = EffectOperation::convolution_kernel("-1 0 1", Some(1.), 128., false);
 		let margin = 2. * kernel.working_reach();
 		let defs = defs_of(vec![kernel]);
 		assert!(defs.contains(r#"<filter id="effects-"#), "{defs}");
