@@ -70,11 +70,11 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 	Ok(Item::new_from_element(intermediate))
 }
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), version(2))]
 fn render(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: impl Node<Context<'static>, Output = Item<WgpuExecutor>>,
 	data: Item<RenderIntermediate>,
+	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: impl Node<Context<'static>, Output = Item<WgpuExecutor>>,
 ) -> Result<Item<RenderOutput>, Interrupt> {
 	let footprint = ctx.footprint();
 	let render_params = ctx

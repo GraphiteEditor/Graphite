@@ -2,6 +2,7 @@
 //! `cargo run migration new <identifier>` after bumping a node's `version(N)`.
 
 mod graphene_core;
+mod graphene_std;
 mod math_nodes;
 mod raster_nodes;
 mod vector_nodes;

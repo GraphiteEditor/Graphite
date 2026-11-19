@@ -11,11 +11,11 @@ use rendering::{RenderParams, SvgRender, SvgRenderOutput};
 use std::fmt::Write;
 use wgpu_executor::{Buffer, WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), version(2))]
 fn render_background(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: impl Node<Context<'static>, Output = Item<WgpuPipelineCache>>,
 	data: Item<RenderOutput>,
+	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: impl Node<Context<'static>, Output = Item<WgpuPipelineCache>>,
 ) -> Result<Item<RenderOutput>, Interrupt> {
 	let footprint = ctx.footprint();
 	let render_params = ctx
