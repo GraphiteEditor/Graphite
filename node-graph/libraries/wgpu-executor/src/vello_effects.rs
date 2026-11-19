@@ -10,11 +10,12 @@ use graphic_types::effect_layers::{EffectLayers, EffectPiece, LayerPart, PiecePl
 use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GRADIENT_TABLE_SIZE, GlowFill, OutlineFill, bevel_light, contour_gradient_span, grow_and_tent, outline_extents, shadow_offset};
 use graphic_types::masks::{mask_feather_sigma, masked_radius_blur_levels};
 use graphic_types::{Adjustment, BevelDirection, BevelStyle, BevelTechnique, EffectOperation, Effects, GlowSource, GlowTechnique};
-use raster_kernels::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH, chamfer_passes};
+use raster_kernels::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, chamfer_passes};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 use wgpu::util::DeviceExt;
 
+mod filters;
 mod masks;
 mod styles;
 
@@ -24,13 +25,18 @@ pub(crate) const WORKING_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba
 /// The format of the silhouettes shadows and glows are cast from, which hold only coverage, or a distance.
 const COVERAGE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
 
+/// The format of sums carried between passes, which must keep full precision.
+const SUMS_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba32Float;
+
 /// How many samples of a contour the shaders interpolate between, enough to follow its spline to well within a level.
 const CONTOUR_SAMPLES: u32 = 256;
 /// How many samples of a glow's or outline's gradient the shaders read.
 const GRADIENT_SAMPLES: u32 = GRADIENT_TABLE_SIZE as u32;
 
-/// The most taps one kernel pass weighs, matching the length of the shader's array, which holds a kernel of [`MAX_KERNEL_REACH`] texels to each side in pairs.
-const MAX_TAPS: usize = 1 + 2 * MAX_KERNEL_REACH.div_ceil(2);
+/// How many taps the shader's parameters hold, enough for a blur kernel of [`raster_kernels::effect_kernels::MAX_KERNEL_REACH`] texels to each side in pairs, and few enough that a pass reading them all stays quick.
+/// A filter kernel with more takes a pass for each part of them.
+const PARAMETER_TAPS: usize = 81;
+const _: () = assert!(PARAMETER_TAPS > 2 * raster_kernels::effect_kernels::MAX_KERNEL_REACH.div_ceil(2));
 
 /// How many renders a pooled texture survives unused before it is freed.
 const UNUSED_TEXTURE_RENDER_LIMIT: u64 = 3;
@@ -46,7 +52,7 @@ struct Parameters {
 	tap_count: u32,
 	color: [f32; 4],
 	values: [f32; 4],
-	taps: [[f32; 4]; MAX_TAPS],
+	taps: [[f32; 4]; PARAMETER_TAPS],
 }
 
 impl Default for Parameters {
@@ -121,24 +127,33 @@ pub(crate) struct EffectPasses {
 
 impl EffectPasses {
 	pub(crate) fn new(device: &wgpu::Device, adapter: &wgpu::Adapter) -> Self {
-		let renders_working_formats = [WORKING_FORMAT, COVERAGE_FORMAT]
+		let renders_working_formats = [WORKING_FORMAT, COVERAGE_FORMAT, SUMS_FORMAT]
 			.into_iter()
 			.all(|format| adapter.get_texture_format_features(format).allowed_usages.contains(wgpu::TextureUsages::RENDER_ATTACHMENT));
 		if !renders_working_formats {
 			log::warn!("This GPU can't render into the formats layer effects need, so content draws without its effects");
 		}
 
-		// The styles' and masks' passes live in files of their own, sharing this one's bindings and helpers
+		// The filters', styles', and masks' passes live in files of their own, sharing this one's bindings and helpers
 		let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some("vello_effects.wgsl"),
-			source: wgpu::ShaderSource::Wgsl(concat!(include_str!("vello_effects.wgsl"), include_str!("vello_styles.wgsl"), include_str!("vello_masks.wgsl")).into()),
+			source: wgpu::ShaderSource::Wgsl(
+				concat!(
+					include_str!("vello_effects.wgsl"),
+					include_str!("vello_effects/filters.wgsl"),
+					include_str!("vello_styles.wgsl"),
+					include_str!("vello_masks.wgsl")
+				)
+				.into(),
+			),
 		});
 
-		let texture_entry = |binding| wgpu::BindGroupLayoutEntry {
+		// The `content` input is only loaded rather than sampled, so it can also take a 32-bit float texture, which can't be filtered
+		let texture_entry = |binding, filterable| wgpu::BindGroupLayoutEntry {
 			binding,
 			visibility: wgpu::ShaderStages::FRAGMENT,
 			ty: wgpu::BindingType::Texture {
-				sample_type: wgpu::TextureSampleType::Float { filterable: true },
+				sample_type: wgpu::TextureSampleType::Float { filterable },
 				view_dimension: wgpu::TextureViewDimension::D2,
 				multisampled: false,
 			},
@@ -147,9 +162,9 @@ impl EffectPasses {
 		let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: Some("vello_effects_bind_group_layout"),
 			entries: &[
-				texture_entry(0),
-				texture_entry(1),
-				texture_entry(2),
+				texture_entry(0, true),
+				texture_entry(1, true),
+				texture_entry(2, false),
 				wgpu::BindGroupLayoutEntry {
 					binding: 3,
 					visibility: wgpu::ShaderStages::FRAGMENT,
@@ -630,6 +645,12 @@ impl EffectPasses {
 					capture_plane(&mut recorder, 0, &strength, false);
 					recorder.fade_by(content, &mut full, &mut filled, &strength);
 					recorder.textures.release(strength);
+				}
+				EffectOperation::ConvolutionKernel { .. } => {
+					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
+					recorder.filter(content, &mut full, &mut filled, operation, lengths_to_pixels, &mut |recorder, plane, map| {
+						capture_plane(recorder, plane, map, true)
+					});
 				}
 				EffectOperation::Adjustment(_) => {
 					// A run of adjustments is carried out from its first row, in a pass for each standalone step and one for the steps between them
@@ -1550,7 +1571,7 @@ impl PassRecorder<'_> {
 		}
 
 		let taps = kernel_taps(kernel, levels);
-		let mut tap_array = [[0.; 4]; MAX_TAPS];
+		let mut tap_array = [[0.; 4]; PARAMETER_TAPS];
 		tap_array[..taps.len()].copy_from_slice(&taps);
 		for axis in [DVec2::X, DVec2::Y] {
 			let step = axis / level_size(levels).as_dvec2();
@@ -1645,6 +1666,11 @@ mod tests {
 	}
 
 	#[test]
+	fn the_shaders_parameters_hold_as_many_taps_as_the_passes_write() {
+		assert!(include_str!("vello_effects.wgsl").contains(&format!("taps: array<vec4<f32>, {PARAMETER_TAPS}>")));
+	}
+
+	#[test]
 	fn kernels_keep_brightness_and_fit_one_pass() {
 		let kernels = [0.3, 1., 2.5, 7.9, 8., 12., 100., 4000.]
 			.into_iter()
@@ -1653,7 +1679,11 @@ mod tests {
 		for kernel in kernels {
 			let taps = kernel_taps(kernel, kernel.levels());
 
-			assert!(taps.len() <= MAX_TAPS, "{kernel:?} needs {} taps", taps.len());
+			assert!(
+				taps.len() <= 1 + 2 * raster_kernels::effect_kernels::MAX_KERNEL_REACH.div_ceil(2),
+				"{kernel:?} needs {} taps",
+				taps.len()
+			);
 			assert!((total_weight(&taps) - 1.).abs() < 1e-5, "{kernel:?} weighs {}", total_weight(&taps));
 		}
 	}

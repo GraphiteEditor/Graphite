@@ -5,6 +5,7 @@ pub mod adjustments;
 mod blending;
 pub mod color_lookup_table;
 pub mod effect_kernels;
+pub mod filter_kernels;
 pub mod generators;
 mod kernel;
 pub mod layer_blending;

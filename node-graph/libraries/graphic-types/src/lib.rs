@@ -3,6 +3,7 @@ pub mod appearance;
 pub mod artboard;
 pub mod effect_layers;
 pub mod effects;
+pub mod filters;
 pub mod generator;
 pub mod graphic;
 pub mod masks;

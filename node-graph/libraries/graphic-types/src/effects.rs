@@ -4,6 +4,7 @@
 
 use crate::Graphic;
 use crate::adjustment::Adjustment;
+use crate::filters::Convolution;
 use crate::masks::{MaskMode, mask_feather_sigma};
 use crate::parameters::{ParameterVisitor, ReadParameters, WriteParameters};
 use core_types::ATTR_TRANSFORM;
@@ -48,6 +49,8 @@ pub enum EffectKind {
 	Mask,
 	/// Fades the content out toward its edges, reaching nothing at them.
 	Feather,
+	/// Sums each pixel's neighbors weighted by a kernel of numbers.
+	ConvolutionKernel,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
 	Desaturate,
 	GammaCorrection,
@@ -84,6 +87,7 @@ impl std::fmt::Display for EffectKind {
 			Self::PaintOverlay => "Paint Overlay",
 			Self::Mask => "Mask",
 			Self::Feather => "Feather",
+			Self::ConvolutionKernel => "Convolution Kernel",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
 			Self::MakeOpaque => "Make Opaque",
@@ -424,6 +428,11 @@ impl Effects {
 		self.operations().map(|operation| operation.working_reach()).sum()
 	}
 
+	/// How far past the content a render of the effects must reach to draw them right (see [`EffectOperation::required_reach`]), in the effect space of a run of them.
+	pub fn required_reach(&self) -> f64 {
+		self.operations().map(|operation| operation.required_reach()).sum()
+	}
+
 	/// Splits the rows into runs stamped in the same space, in order, each with the transform its effects were stamped at.
 	/// A transform applied between two effects starts a new run, which renders around the result of those before it.
 	/// Effects that change nothing join the run they're in, and a run of only those takes the space of the next effect.
@@ -503,7 +512,7 @@ impl Effects {
 
 	/// How far past the content the effects reading around each pixel (see [`EffectOperation::reads_pixels_around`]) together read, along the axis of the space `content_transform` places the content in that they read furthest along.
 	pub fn read_reach(&self, content_transform: DAffine2) -> f64 {
-		let reach = |operation: &EffectOperation| if operation.reads_pixels_around() { operation.painted_reach() } else { 0. };
+		let reach = |operation: &EffectOperation| if operation.reads_pixels_around() { operation.working_reach() } else { 0. };
 		self.reach_along_axes_by(content_transform, reach).max_element()
 	}
 
@@ -881,6 +890,16 @@ pub enum EffectOperation {
 		/// How far in from the edges the fade reaches full strength.
 		distance: f64,
 	},
+	ConvolutionKernel {
+		/// The weights row by row, centered on each pixel as [`Convolution::custom`] places them.
+		kernel: List<f64>,
+		/// How many weights each row of the kernel holds.
+		columns: u32,
+		/// What the weighted sum is divided by.
+		scale: f64,
+		/// On a scale of 0 to 255.
+		offset: f64,
+	},
 	Adjustment(Adjustment),
 }
 
@@ -888,6 +907,20 @@ impl EffectOperation {
 	/// The operation an effect of this kind carries out when its row gives none of its parameters, matching the defaults of the node that stamps it.
 	pub fn default_for(kind: EffectKind) -> Self {
 		Effect(Item::new_from_element(kind)).operation()
+	}
+
+	/// A convolution kernel of the weights `text` writes (see [`crate::filters::parse_kernel`]), its sums divided by `scale` and raised by `offset` levels out of 255.
+	/// Without a `scale`, it divides by the [`crate::filters::automatic_scale`].
+	pub fn convolution_kernel(text: &str, scale: Option<f64>, offset: f64) -> Self {
+		let (weights, columns) = crate::filters::parse_kernel(text);
+		let scale = scale.unwrap_or_else(|| crate::filters::automatic_scale(&weights, columns));
+
+		Self::ConvolutionKernel {
+			kernel: List::new_from_elements(weights),
+			columns: columns as u32,
+			scale,
+			offset,
+		}
 	}
 
 	pub fn kind(&self) -> EffectKind {
@@ -903,7 +936,21 @@ impl EffectOperation {
 			Self::PaintOverlay { .. } => EffectKind::PaintOverlay,
 			Self::Mask { .. } => EffectKind::Mask,
 			Self::Feather { .. } => EffectKind::Feather,
+			Self::ConvolutionKernel { .. } => EffectKind::ConvolutionKernel,
 			Self::Adjustment(adjustment) => adjustment.kind(),
+		}
+	}
+
+	/// The weighted sum of shifted copies of the content that a filter carries out, for the filters that are one.
+	pub fn convolution(&self) -> Option<Convolution> {
+		match self {
+			// An empty kernel, like the identity, leaves the content as it is
+			Self::ConvolutionKernel { kernel, columns, scale, offset } => {
+				let weights: Vec<f64> = kernel.iter_element_values().copied().collect();
+				let convolution = Convolution::custom(&weights, *columns as usize, *scale, *offset);
+				(!weights.is_empty() && !convolution.is_identity()).then_some(convolution)
+			}
+			_ => None,
 		}
 	}
 
@@ -926,6 +973,7 @@ impl EffectOperation {
 			Self::Adjustment(Adjustment::ColorOverlay { color, opacity, .. }) => color.a() <= 0. || *opacity <= 0.,
 			Self::Mask { density, .. } => *density <= 0.,
 			Self::Feather { distance } => *distance <= 0.,
+			Self::ConvolutionKernel { .. } => self.convolution().is_none(),
 			Self::Adjustment(_) => false,
 		}
 	}
@@ -939,6 +987,7 @@ impl EffectOperation {
 	pub fn reads_pixels_around(&self) -> bool {
 		match self {
 			Self::Blur { .. } => true,
+			Self::ConvolutionKernel { .. } => true,
 			// Cast from the content's shape, reading a mask's own image or a feather's map, or changing each pixel alone
 			Self::DropShadow { .. }
 			| Self::InnerShadow { .. }
@@ -952,9 +1001,9 @@ impl EffectOperation {
 		}
 	}
 
-	/// How far past the content this operation paints, which is nowhere for an operation that changes nothing, a mask, or a feather.
+	/// How far past the content this operation paints, which is nowhere for an operation that changes nothing, a mask, a feather, or a convolution kernel, which keeps the content's coverage.
 	pub fn painted_reach(&self) -> f64 {
-		if self.changes_nothing() || matches!(self, Self::Mask { .. } | Self::Feather { .. }) {
+		if self.changes_nothing() || matches!(self, Self::Mask { .. } | Self::Feather { .. } | Self::ConvolutionKernel { .. }) {
 			0.
 		} else {
 			self.reach()
@@ -964,6 +1013,11 @@ impl EffectOperation {
 	/// How far past the content this operation paints or reads from, which the region it's worked out over covers, and nowhere for an operation that changes nothing.
 	pub fn working_reach(&self) -> f64 {
 		if self.changes_nothing() { 0. } else { self.reach() }
+	}
+
+	/// How far past the content a render must reach for this operation to come out right: as far as it paints, or for one reading around each pixel, as far as it reads.
+	pub fn required_reach(&self) -> f64 {
+		if self.reads_pixels_around() { self.working_reach() } else { self.painted_reach() }
 	}
 
 	/// How far past the content this operation can paint, or reads from, in its effect space.
@@ -983,6 +1037,7 @@ impl EffectOperation {
 			Self::Mask { feather, .. } => 3. * mask_feather_sigma(*feather),
 			// A feather paints nothing past the content, but finds edges up to this far past it, which a render cut short there would miss
 			Self::Feather { distance } => distance.max(0.) + 1.,
+			Self::ConvolutionKernel { .. } => self.convolution().map_or(0., |convolution| convolution.read_reach()),
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => 0.,
 		}
 	}
@@ -1062,7 +1117,7 @@ impl EffectOperation {
 			} => [depth, size, soften, angle, altitude, slope_range, texture_depth].into_iter().for_each(finite),
 			Self::Mask { density, feather, .. } => [density, feather].into_iter().for_each(finite),
 			Self::Feather { distance } => finite(distance),
-			Self::PaintOverlay { .. } | Self::Adjustment(_) => {}
+			Self::PaintOverlay { .. } | Self::ConvolutionKernel { .. } | Self::Adjustment(_) => {}
 		}
 		self
 	}
@@ -1164,6 +1219,12 @@ impl EffectOperation {
 				invert: false,
 			},
 			EffectKind::Feather => Self::Feather { distance: 0. },
+			EffectKind::ConvolutionKernel => Self::ConvolutionKernel {
+				kernel: List::new(),
+				columns: 0,
+				scale: 0.,
+				offset: 0.,
+			},
 			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
 			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
 			EffectKind::MakeOpaque => Self::Adjustment(Adjustment::MakeOpaque),
@@ -1371,6 +1432,12 @@ impl EffectOperation {
 				visitor.parameter("invert", invert, false);
 			}
 			Self::Feather { distance } => visitor.parameter("distance", distance, 10.),
+			Self::ConvolutionKernel { kernel, columns, scale, offset } => {
+				visitor.parameter("kernel", kernel, List::new_from_elements(vec![0., 0., 0., 0., 1., 0., 0., 0., 0.]));
+				visitor.parameter("columns", columns, 3);
+				visitor.parameter("scale", scale, 1.);
+				visitor.parameter("offset", offset, 0.);
+			}
 			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
@@ -1495,6 +1562,7 @@ mod tests {
 				blend_mode: BlendMode::Screen,
 				opacity: 100.,
 			}),
+			EffectOperation::convolution_kernel("-1 0 1\n-2 0 2\n-1 0 1", Some(4.), 128.),
 		];
 
 		for operation in operations {
@@ -1809,6 +1877,19 @@ mod tests {
 
 		let effects = Effects::from_operations([mask]);
 		assert_eq!((effects.reach(), effects.working_reach()), (0., 3. * mask_feather_sigma(4.)));
+		// Unlike a convolution, which a render must read past the view for, the feather leaves edges past the view to what fits
+		assert_eq!(effects.required_reach(), 0.);
+	}
+
+	#[test]
+	fn a_convolution_paints_nothing_past_the_content_but_reads_past_it() {
+		let sharpen = EffectOperation::convolution_kernel("0 -1 0\n-1 5 -1\n0 -1 0", Some(1.), 0.);
+		assert_eq!(sharpen.painted_reach(), 0.);
+
+		// Its farthest copy a pixel away, a faint pixel's nearest visible color within the square around that, turned any way, and two pixels for rounding and copies between pixels
+		let reach = 1. + std::f64::consts::SQRT_2 + 2.;
+		assert_eq!((sharpen.working_reach(), sharpen.required_reach()), (reach, reach));
+		assert_eq!(Effects::from_operations([sharpen]).read_reach(DAffine2::IDENTITY), reach);
 	}
 
 	#[test]

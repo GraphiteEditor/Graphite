@@ -138,9 +138,9 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 		));
 	}
 
-	// A margin around the image to hold the blur and shadows cast past its edges, cut short evenly for an image that would grow too large
+	// A margin around the image to hold the blur and shadows cast past its edges and the colors filters read past them, cut short evenly for an image that would grow too large
 	let reach_in_pixels: DVec2 = (rows[leading..].iter())
-		.map(|(operation, effect_to_pixels, _)| operation.painted_reach() * spans_along_axes(*effect_to_pixels))
+		.map(|(operation, effect_to_pixels, _)| operation.required_reach() * spans_along_axes(*effect_to_pixels))
 		.sum();
 	let mut margin = reach_in_pixels.ceil();
 	// A feather needs the pixels past the image's edges, which are absent, to find those edges
@@ -528,6 +528,12 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				merge_beneath(&mut full, &mut filled, &mut beneath);
 				full = adjust(&full, adjustment);
 				filled = filled.map(|filled| adjust(&filled, adjustment));
+			}
+			EffectOperation::ConvolutionKernel { .. } => {
+				merge_beneath(&mut full, &mut filled, &mut beneath);
+				// The fill fades the content after the filter, so the full-strength content decides which of the fill's pixels are visible
+				filled = filled.map(|filled| crate::filter_kernels::filter(filled, Some(&full), operation, effect_to_pixels));
+				full = crate::filter_kernels::filter(full, None, operation, effect_to_pixels);
 			}
 		}
 	}

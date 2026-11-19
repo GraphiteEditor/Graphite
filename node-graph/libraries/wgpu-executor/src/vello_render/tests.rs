@@ -760,6 +760,74 @@ fn inner_glows_satins_outlines_and_bevels_fall_where_they_should() {
 }
 
 #[test]
+fn convolution_kernels_filter_endless_gradients_and_colors() {
+	use core_types::ATTR_TRANSFORM;
+	use core_types::Color;
+	use core_types::list::{ATTR_EFFECTS, Item, List};
+	use glam::DVec2;
+	use graphic_types::vector_types::gradient::Gradient;
+	use graphic_types::{Effect, EffectOperation, Effects, Graphic, stamp_effect};
+	use rendering::{Render, RenderParams};
+
+	let size = UVec2::new(64, 16);
+	let render_graphic = |graphic: Graphic| render(size, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default()));
+	let difference = EffectOperation::convolution_kernel("-1 0 1", Some(1.), 128.);
+
+	// A difference across a gradient from black to white over the view finds its slope, lifted from middle gray by the offset
+	let gradient = |effects: Vec<EffectOperation>| {
+		let mut item = Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE])).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::new(64., 1.)));
+		effects.iter().for_each(|operation| stamp_effect(&mut item, Effect::new(operation)));
+		Graphic::GradientList(List::new_from_item(item))
+	};
+	let Some(plain) = render_graphic(gradient(Vec::new())) else { return };
+	let Some(filtered) = render_graphic(gradient(vec![difference.clone()])) else { return };
+	let sloped = pixel(&filtered, size, 32, 8);
+	assert!(sloped[0] > 128 && sloped[0] < 160 && sloped[0] != pixel(&plain, size, 32, 8)[0], "{sloped:?}");
+
+	// A flat color changes by its weights' sum and the offset exactly as a rectangle of it covering the view does
+	let halved_and_raised = EffectOperation::convolution_kernel("1", Some(2.), 64.);
+	let color = |effects: Vec<EffectOperation>| {
+		Graphic::ColorList(List::new_from_item(
+			Item::new_from_element(Color::WHITE).with_attribute(ATTR_EFFECTS, Effects::from_operations(effects)),
+		))
+	};
+	let Some(flat) = render_graphic(color(vec![halved_and_raised.clone()])) else { return };
+	let Some(rectangle) = render_square_with_effects(vec![halved_and_raised], 1., -50., 178., size) else {
+		return;
+	};
+	assert_eq!(pixel(&flat, size, 32, 8), pixel(&rectangle, size, 32, 8));
+	assert_eq!(pixel(&flat, size, 32, 8), [191, 191, 191, 255]);
+}
+
+#[test]
+fn convolution_kernels_read_colors_continuing_past_the_edges() {
+	use graphic_types::EffectOperation;
+
+	let size = UVec2::new(128, 128);
+
+	// A difference across the white square finds no edge at its silhouette, since the colors beyond it continue, so the offset leaves middle gray within it
+	let difference = EffectOperation::convolution_kernel("-1 0 1", Some(1.), 128.);
+	let Some(pixels) = render_square_with_effects(vec![difference], 1., 30., 80., size) else { return };
+	for x in [30, 55, 79] {
+		assert_eq!(pixel(&pixels, size, x, 55), [128, 128, 128, 255], "at x = {x}");
+	}
+	assert_eq!(pixel(&pixels, size, 28, 55)[3], 0, "the coverage stays as it is");
+
+	// An empty kernel, like an identity kernel, leaves the content as it is beside other effects
+	let empty = EffectOperation::convolution_kernel("", Some(1.), 0.);
+	let blur = EffectOperation::Blur {
+		radius_mask: Default::default(),
+		radius: 1.,
+		box_blur: false,
+		gamma: false,
+	};
+	let Some(pixels) = render_square_with_effects(vec![empty, blur], 1., 30., 80., size) else {
+		return;
+	};
+	assert_eq!(pixel(&pixels, size, 55, 55), [255; 4]);
+}
+
+#[test]
 fn paint_overlays_stretch_unplaced_paints_across_the_content() {
 	use core_types::Color as GraphicColor;
 	use core_types::blending::BlendMode;
@@ -2000,6 +2068,64 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 	let gpu_content = Color::from_rgb8(content[0], content[1], content[2]);
 	let [red, green, blue] = content.map(|channel| channel as f32 / 255.);
 	let cpu_content = GraphicColor::from_gamma_srgb_channels(red, green, blue, 1.);
+
+	// Filters of the checkerboard's colors, whose sharp edges the kernels pick out
+	let checkered = |filter: EffectOperation| [overlay(&checker, BlendMode::Normal, 100.), vec![filter]].concat();
+	// Kernels of rows as wide as they are tall, unless their width is given
+	let kernel_of_width = |kernel: Vec<f64>, columns: usize, scale, offset| EffectOperation::ConvolutionKernel {
+		kernel: kernel.into_iter().map(Item::new_from_element).collect(),
+		columns: columns as u32,
+		scale,
+		offset,
+	};
+	let convolution_kernel = |kernel: Vec<f64>, scale, offset| kernel_of_width(kernel.clone(), kernel.len().isqrt(), scale, offset);
+	let sparse = (0..81).map(|index| [(0, 2.), (40, 4.), (44, -1.), (80, 1.)].into_iter().find(|&(at, _)| at == index).map_or(0., |(_, weight)| weight));
+	paint_cases.extend([
+		checkered(convolution_kernel(vec![1.; 9], 9., 0.)),
+		checkered(convolution_kernel(vec![0., -1., 0., -1., 5., -1., 0., -1., 0.], 1., 0.)),
+		checkered(convolution_kernel([vec![0.; 10], vec![-1., -1., 1., 1., 1.], vec![0.; 10]].concat(), 2., 128.)),
+		checkered(convolution_kernel(sparse.collect(), 6., 20.)),
+		checkered(convolution_kernel(vec![1.; 49], 40., -10.)),
+		// Large sums of large weights, which must stay precise through the whole sum
+		checkered(convolution_kernel((0..81).map(|index| if index == 40 { 81. } else { -1. }).collect(), 1., 0.)),
+		checkered(convolution_kernel(
+			(0..49)
+				.map(|index| {
+					if index == 24 {
+						500.
+					} else if index % 7 == 0 {
+						-40.
+					} else {
+						0.
+					}
+				})
+				.collect(),
+			220.,
+			0.,
+		)),
+		// More taps than one pass holds, carried over between passes, and colors continued from farther than one pass of shifts reaches
+		checkered(convolution_kernel(
+			(0..121)
+				.map(|index| {
+					if index == 60 {
+						61.
+					} else if index % 2 == 0 {
+						-1.
+					} else {
+						0.5
+					}
+				})
+				.collect(),
+			31.,
+			0.,
+		)),
+		checkered(convolution_kernel((0..169).map(|index| if index % 13 == 6 || index / 13 == 6 { 1. } else { 0. }).collect(), 25., 0.)),
+		// Even and uneven kernels, centered after the middle of an even count
+		checkered(convolution_kernel((0..16).map(|index| index as f64 - 7.).collect(), 8., 64.)),
+		checkered(kernel_of_width(vec![-1., 0., 2., 0., -1.], 5, 1., 40.)),
+		checkered(kernel_of_width(vec![1., 2., 1.], 1, 4., 0.)),
+		checkered(kernel_of_width(vec![1., -1., 2., -2., 3., -3.], 2, 1., 128.)),
+	]);
 
 	for effects in cases.into_iter().chain(paint_cases).chain(mask_cases) {
 		for fill in [1., 0.5] {
