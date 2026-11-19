@@ -627,11 +627,15 @@ impl Graphic {
 	}
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
+		// Effects (like a mask, which shapes a clip) are more than an outline can express
 		match self {
-			Graphic::Vector(item) => vector_can_reduce_to_clip_path(item.attribute_cloned_or(ATTR_OPACITY, 1.), item.attribute::<Appearance>(ATTR_APPEARANCE)),
-			Graphic::VectorList(list) => {
-				(0..list.len()).all(|index| vector_can_reduce_to_clip_path(list.attribute_cloned_or(ATTR_OPACITY, index, 1.), list.attribute::<Appearance>(ATTR_APPEARANCE, index)))
+			Graphic::Vector(item) => {
+				item.attribute::<Effects>(ATTR_EFFECTS).is_none() && vector_can_reduce_to_clip_path(item.attribute_cloned_or(ATTR_OPACITY, 1.), item.attribute::<Appearance>(ATTR_APPEARANCE))
 			}
+			Graphic::VectorList(list) => (0..list.len()).all(|index| {
+				list.attribute::<Effects>(ATTR_EFFECTS, index).is_none()
+					&& vector_can_reduce_to_clip_path(list.attribute_cloned_or(ATTR_OPACITY, index, 1.), list.attribute::<Appearance>(ATTR_APPEARANCE, index))
+			}),
 			_ => false,
 		}
 	}

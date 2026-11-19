@@ -414,21 +414,28 @@ impl<'a> VelloSceneBuilder<'a> {
 		};
 		let device_to_frame = frame_to_device.inverse();
 		let document_to_frame = Affine::new(device_to_frame.to_cols_array()) * self.view;
-		let reach = effects.reach() * lengths_to_frame.determinant().abs().sqrt();
+		let length_scale = lengths_to_frame.determinant().abs().sqrt();
+		let (reach, working_reach) = (effects.reach() * length_scale, effects.working_reach() * length_scale);
 
-		// The content reaching into the viewport, rounded out to whole pixels of the frame
+		// The content and what its effects read past it, reaching into the viewport and rounded out to whole pixels of the frame.
+		// Past the view, what they read without painting (like a mask's feather) is kept as far as it fits without lowering the resolution.
 		let viewport = Rect::new(0., 0., self.width() as f64, self.height() as f64);
 		let viewport_in_frame = Affine::new(device_to_frame.to_cols_array()).transform_rect_bbox(viewport);
 		let content_bounds = bounds.map_or(viewport_in_frame, |bounds| document_to_frame.transform_rect_bbox(bounds));
-		let region = content_bounds.inflate(reach, reach).intersect(viewport_in_frame.inflate(reach, reach)).expand();
+		let max_size = self.max_texture_size.min(u16::MAX as u32);
+		let max_area = MAX_EFFECTS_AREA_PER_VIEWPORT_AREA * viewport.area();
+		let painted_region = content_bounds.inflate(working_reach, working_reach).intersect(viewport_in_frame.inflate(reach, reach));
+		let read_past_view = reach + growth_that_fits(painted_region, max_area, max_size as f64).min(working_reach - reach).max(0.);
+		let region = content_bounds
+			.inflate(working_reach, working_reach)
+			.intersect(viewport_in_frame.inflate(read_past_view, read_past_view))
+			.expand();
 		if !(region.width() > 0. && region.height() > 0.) {
 			return;
 		}
 
 		// A region too large for one texture, or for its memory, renders at a lower resolution, which the blurs and shadows that make it so large hide.
 		// Its size rounds up to a size class so a group that moves between renders keeps reusing the same textures.
-		let max_size = self.max_texture_size.min(u16::MAX as u32);
-		let max_area = MAX_EFFECTS_AREA_PER_VIEWPORT_AREA * viewport.area();
 		let resolution = (max_size as f64 / region.width().max(region.height())).min((max_area / region.area()).sqrt()).min(1.);
 		let size_along = |length: f64| ((length * resolution).ceil() as u32).next_multiple_of(EFFECTS_SIZE_CLASS).min(max_size);
 		let size = UVec2::new(size_along(region.width()), size_along(region.height()));
@@ -606,6 +613,17 @@ fn is_similarity(linear: DMat2) -> bool {
 fn is_axis_aligned(linear: DMat2) -> bool {
 	let tolerance = 1e-9 * linear.x_axis.abs().max_element().max(linear.y_axis.abs().max_element());
 	(linear.x_axis.y.abs() <= tolerance && linear.y_axis.x.abs() <= tolerance) || (linear.x_axis.x.abs() <= tolerance && linear.y_axis.y.abs() <= tolerance)
+}
+
+/// How far `rect` can grow on every side, a pixel short of reaching `max_area` or `max_size` along either axis, or 0 if it already reaches them.
+fn growth_that_fits(rect: Rect, max_area: f64, max_size: f64) -> f64 {
+	let (width, height) = (rect.width().max(0.), rect.height().max(0.));
+
+	// The positive root of (width + 2 × growth) × (height + 2 × growth) = max_area, whose discriminant is never negative
+	let sum = width + height;
+	let by_area = (-sum + (sum * sum - 4. * (width * height - max_area)).sqrt()) / 4.;
+	let by_size = (max_size - width.max(height)) / 2.;
+	(by_area.min(by_size) - 1.).max(0.)
 }
 
 /// The most the linear map stretches any length, its largest singular value.

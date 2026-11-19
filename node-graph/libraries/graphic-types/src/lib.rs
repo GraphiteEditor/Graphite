@@ -5,6 +5,7 @@ pub mod effect_layers;
 pub mod effects;
 pub mod generator;
 pub mod graphic;
+pub mod masks;
 pub(crate) mod parameters;
 
 // Re-export all transitive dependencies so downstream crates only need to depend on graphic-types
@@ -17,10 +18,12 @@ pub use adjustment::Adjustment;
 pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
 pub use artboard::Artboard;
 pub use effects::{
-	BevelDirection, BevelStyle, BevelTechnique, Effect, EffectKind, EffectOperation, Effects, GlowSource, GlowTechnique, fitted_paint, paint_with_envelope_effects, stamp_effect, stamped_transform,
+	BevelDirection, BevelStyle, BevelTechnique, Effect, EffectKind, EffectOperation, Effects, GlowSource, GlowTechnique, fitted_paint, linked_to_content, paint_with_envelope_effects, stamp_effect,
+	stamped_transform,
 };
 pub use generator::Generator;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
+pub use masks::MaskMode;
 
 pub mod migrations {
 	use crate::Vector;

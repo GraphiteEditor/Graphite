@@ -1,7 +1,7 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, MandelbrotExterior, MandelbrotFractal, MandelbrotInterior, NoiseType};
 use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
-use core_types::color::{Alpha, AlphaMut, LinearChannel, Luminance, RGBMut};
+use core_types::color::{AlphaMut, LinearChannel, Luminance, RGBMut};
 use core_types::context::Ctx;
 use core_types::list::Item;
 use core_types::math::bbox::Bbox;
@@ -11,7 +11,6 @@ use glam::{DAffine2, DVec2, UVec2};
 use graphene_resource::Resource;
 use graphic_types::generator::{Generator, MandelbrotSettings, NoiseSettings};
 use raster_kernels::evaluate_raster_effects;
-use raster_types::parallel_rows::fill_rows;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
 use raster_types::{Image, ImageError};
@@ -117,55 +116,6 @@ fn channels_to_image(
 	}
 
 	Ok(Item::from_parts(Raster::new_cpu(image), attributes))
-}
-
-#[node_macro::node(category("Raster"), icon("NodeMask"), memoize)]
-fn mask(
-	_: impl Ctx,
-	/// The image to be masked.
-	image: Item<Raster<CPU>>,
-	/// The stencil to be used for masking.
-	#[expose]
-	stencil: Item<Raster<CPU>>,
-) -> Item<Raster<CPU>> {
-	let image = evaluate_raster_effects(image);
-	let stencil = evaluate_raster_effects(stencil);
-
-	// An absent stencil arrives as the default empty raster, leaving the image unmasked
-	if stencil.element().width == 0 || stencil.element().height == 0 {
-		return image;
-	}
-	let stencil_size = DVec2::new(stencil.element().width as f64, stencil.element().height as f64);
-
-	let mut row = image;
-	let image_size = DVec2::new(row.element().width as f64, row.element().height as f64);
-	let stencil_transform: DAffine2 = stencil.attribute_cloned_or_default(ATTR_TRANSFORM);
-
-	if stencil_transform.matrix2.determinant() == 0. {
-		return row;
-	}
-
-	// Transforms a point from the background image to the foreground image
-	let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let bg_to_fg = transform_attribute * DAffine2::from_scale(1. / image_size);
-	let stencil_transform_inverse = stencil_transform.inverse();
-
-	let width = row.element().width as usize;
-	let stencil_image = stencil.element();
-	fill_rows(&mut row.element_mut().data_mut().data, width, |y, pixels| {
-		for (x, image_pixel) in pixels.iter_mut().enumerate() {
-			let image_point = DVec2::new(x as f64, y as f64);
-			let mask_point = bg_to_fg.transform_point2(image_point);
-			let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
-			let mask_point = stencil_transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
-			let mask_point = (DAffine2::from_scale(stencil_size) * stencil_transform.inverse()).transform_point2(mask_point);
-
-			let mask_pixel = stencil_image.sample(mask_point);
-			*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
-		}
-	});
-
-	row
 }
 
 #[node_macro::node(category(""))]

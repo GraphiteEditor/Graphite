@@ -779,6 +779,154 @@ fn paint_overlays_stretch_unplaced_paints_across_the_content() {
 }
 
 #[test]
+fn masks_show_the_content_where_their_graphic_is_light_or_opaque() {
+	use core_types::Color as GraphicColor;
+	use core_types::list::Item;
+	use glam::DVec2;
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{EffectOperation, Graphic, MaskMode};
+
+	let size = UVec2::new(128, 128);
+	let white = [255, 255, 255, 255];
+
+	// An image with a pixel for each of the square's columns and no placement, so its left half covers the square's left half without interpolation
+	let halves = |left: GraphicColor, right: GraphicColor| {
+		let data = (0..50).map(|column| if column < 25 { left } else { right }).collect();
+		Graphic::from(Item::new_from_element(Raster::new_cpu(Image { width: 50, height: 1, data })))
+	};
+	let mask = |mask, mode, density, feather, invert| EffectOperation::Mask { mask, mode, density, feather, invert };
+	let render = |effects| render_square_with_effects(effects, 1., 30., 80., size);
+
+	let Some(pixels) = render(vec![mask(halves(GraphicColor::BLACK, GraphicColor::WHITE), MaskMode::Luminance, 100., 0., false)]) else {
+		return;
+	};
+	assert_eq!(pixel(&pixels, size, 40, 55)[3], 0, "black hides the content");
+	assert_eq!(pixel(&pixels, size, 70, 55), white, "white shows it");
+
+	let Some(pixels) = render(vec![mask(halves(GraphicColor::BLACK, GraphicColor::WHITE), MaskMode::Luminance, 100., 0., true)]) else {
+		return;
+	};
+	assert_eq!(pixel(&pixels, size, 40, 55), white, "inverted, black shows the content");
+	assert_eq!(pixel(&pixels, size, 70, 55)[3], 0, "inverted, white hides it");
+
+	let Some(pixels) = render(vec![mask(halves(GraphicColor::BLACK, GraphicColor::WHITE), MaskMode::Luminance, 50., 0., false)]) else {
+		return;
+	};
+	assert!(pixel(&pixels, size, 40, 55)[3].abs_diff(128) <= 1, "half the density half hides it: {:?}", pixel(&pixels, size, 40, 55));
+
+	// By alpha, transparent hides the content where an opaque black shows it
+	let Some(pixels) = render(vec![mask(halves(GraphicColor::TRANSPARENT, GraphicColor::BLACK), MaskMode::Alpha, 100., 0., false)]) else {
+		return;
+	};
+	assert_eq!(pixel(&pixels, size, 40, 55)[3], 0, "transparent hides it");
+	assert_eq!(pixel(&pixels, size, 70, 55), white, "opaque shows it");
+
+	// A feather softens the mask's edge at the middle of the square by a Gaussian
+	let Some(pixels) = render(vec![mask(halves(GraphicColor::BLACK, GraphicColor::WHITE), MaskMode::Luminance, 100., 4., false)]) else {
+		return;
+	};
+	for x in [48, 52, 54, 55, 58, 62] {
+		let expected = normal_cdf((x as f64 + 0.5 - 55.) / 4.);
+		let actual = pixel(&pixels, size, x, 55)[3] as f64 / 255.;
+		assert!((expected - actual).abs() < 0.03, "at {x} the feathered mask shows {actual} rather than {expected}");
+	}
+
+	// A mask before a shadow shapes the shadow, and one after it hides the shadow too
+	let shadow = drop_shadow(GraphicColor::BLACK, DVec2::new(-10., 0.), 0., 0.);
+	let left_hidden = || mask(halves(GraphicColor::BLACK, GraphicColor::WHITE), MaskMode::Luminance, 100., 0., false);
+	let Some(pixels) = render(vec![left_hidden(), shadow.clone()]) else { return };
+	assert_eq!(pixel(&pixels, size, 50, 55), [0, 0, 0, 255], "the shown half casts its shadow over the hidden half");
+	assert_eq!(pixel(&pixels, size, 40, 55)[3], 0, "the hidden half casts none");
+	assert_eq!(pixel(&pixels, size, 60, 55), white, "the shown half covers its shadow");
+	let Some(pixels) = render(vec![shadow, left_hidden()]) else { return };
+	assert_eq!(pixel(&pixels, size, 50, 55)[3], 0, "the mask hides the shadow with the content");
+	assert_eq!(pixel(&pixels, size, 25, 55)[3], 0, "and past the content, which the mask graphic doesn't cover");
+	assert_eq!(pixel(&pixels, size, 60, 55), white, "the shown half stays");
+}
+
+#[test]
+fn a_feathered_mask_finds_its_edge_just_past_the_view() {
+	use core_types::Color as GraphicColor;
+	use core_types::list::List;
+	use graphic_types::{Appearance, Coverage, EffectOperation, Graphic, MaskMode, Vector};
+	use vello_gpu::kurbo::Shape;
+
+	// Content past the view on every side, masked by a rectangle whose right edge lies 2 pixels past the view's
+	let size = UVec2::new(128, 128);
+	let mut shown = Vector::item_from_bezpath(&Rect::new(-50., -50., 130., 178.).to_path(0.1));
+	shown.set_attribute(
+		core_types::list::ATTR_APPEARANCE,
+		Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(GraphicColor::WHITE))),
+	);
+	let mask = EffectOperation::Mask {
+		mask: Graphic::Vector(Box::new(shown)),
+		mode: MaskMode::Alpha,
+		density: 100.,
+		feather: 4.,
+		invert: false,
+	};
+	let Some(pixels) = render_square_with_effects(vec![mask], 1., -50., 178., size) else { return };
+
+	// The last column of the view is feathered by that edge, rather than by its own pixels stretched past the view
+	let expected = normal_cdf((130. - 127.5) / 4.);
+	let actual = pixel(&pixels, size, 127, 64)[3] as f64 / 255.;
+	assert!((expected - actual).abs() < 0.04, "the view's edge shows {actual} rather than {expected}");
+	assert_eq!(pixel(&pixels, size, 64, 64)[3], 255, "the mask shows the content well within its edge");
+}
+
+#[test]
+fn a_mask_on_a_clipping_base_shapes_what_clips_to_it() {
+	use core_types::list::{Item, List};
+	use core_types::{ATTR_CLIPPING_MASK, Color as GraphicColor};
+	use graphic_types::{Appearance, Coverage, Effect, EffectOperation, Graphic, MaskMode, Vector, stamp_effect};
+	use rendering::{Render, RenderParams};
+	use vello_gpu::kurbo::Shape;
+
+	let size = UVec2::new(128, 128);
+	let square = |color: GraphicColor, rect: Rect| {
+		let mut item = Vector::item_from_bezpath(&rect.to_path(0.1));
+		item.set_attribute(
+			core_types::list::ATTR_APPEARANCE,
+			Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(color))),
+		);
+		item
+	};
+	let content = Rect::new(30., 30., 80., 80.);
+
+	// A white base masked to its left half, with a red square of the same size clipped to it
+	let mut base = square(GraphicColor::WHITE, content);
+	let left_half = Graphic::Vector(Box::new(square(GraphicColor::WHITE, Rect::new(30., 30., 55., 80.))));
+	let mask = EffectOperation::Mask {
+		mask: left_half,
+		mode: MaskMode::Alpha,
+		density: 100.,
+		feather: 0.,
+		invert: false,
+	};
+	stamp_effect(&mut base, Effect::new(&mask));
+	let clipped = square(GraphicColor::RED, content).with_attribute(ATTR_CLIPPING_MASK, true);
+
+	// Clipped within a list of vectors, and within a list of graphics, where the base's effects lie on its row
+	let vectors = Graphic::VectorList([base.clone(), clipped.clone()].into_iter().collect());
+	let base_effects: graphic_types::Effects = base.attribute_cloned_or_default(core_types::list::ATTR_EFFECTS);
+	let mut bare_base = base;
+	bare_base.remove_attribute::<graphic_types::Effects>(core_types::list::ATTR_EFFECTS);
+	let mut graphics: List<Graphic> = [Item::new_from_element(Graphic::Vector(Box::new(bare_base))), Item::new_from_element(Graphic::Vector(Box::new(clipped)))]
+		.into_iter()
+		.collect();
+	graphics.set_attribute(core_types::list::ATTR_EFFECTS, 0, base_effects);
+	graphics.set_attribute(ATTR_CLIPPING_MASK, 1, true);
+
+	for (name, graphic) in [("vectors", vectors), ("graphics", Graphic::GraphicList(graphics))] {
+		let Some(pixels) = render(size, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default())) else {
+			return;
+		};
+		assert_eq!(pixel(&pixels, size, 40, 55), [255, 0, 0, 255], "{name}: the clipped square shows over the base's shown half");
+		assert_eq!(pixel(&pixels, size, 70, 55)[3], 0, "{name}: the base's mask hides the clipped square with the base");
+	}
+}
+
+#[test]
 fn later_shadows_stack_over_earlier_ones_beneath_the_content() {
 	use core_types::Color as GraphicColor;
 	use glam::DVec2;
@@ -886,6 +1034,58 @@ fn translucent_content_knocks_out_a_blended_shadow_through_its_fill_and_opacity(
 	let expected: [f32; 3] = std::array::from_fn(|channel| shaded[channel] * (1. - covered) + expected[channel]);
 	let beneath = pixel(&pixels, size, 75, 75);
 	assert!(close(beneath, expected), "{beneath:?} against {expected:?}");
+}
+
+#[test]
+fn a_trailing_mask_fades_a_glow_that_still_screens_what_lies_beneath() {
+	use core_types::Color as GraphicColor;
+	use core_types::list::Item;
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{EffectOperation, Graphic, MaskMode};
+
+	let size = UVec2::new(128, 128);
+	let (backdrop, content, glow_color, strength) = ([0.2, 0.6, 0.9], [0.9, 0.5, 0.2], [1., 1., 0.75], 0.75);
+
+	// A glow grown by its whole size surrounds the content evenly at its color's strength
+	let glow = EffectOperation::OuterGlow {
+		color: GraphicColor::from_gamma_srgb_channels(glow_color[0], glow_color[1], glow_color[2], strength).into(),
+		blend_mode: BlendMode::Screen,
+		technique: Default::default(),
+		spread: 100.,
+		size: 5.,
+		range: 50.,
+		contour: Default::default(),
+	};
+
+	// At 60% density, a mask that's black over the square's left half and absent past the square shows 40% there, and all of the right half
+	let halves = (0..50).map(|column| if column < 25 { GraphicColor::BLACK } else { GraphicColor::WHITE }).collect();
+	let halves = Image { width: 50, height: 1, data: halves };
+	let mask = EffectOperation::Mask {
+		mask: Graphic::from(Item::new_from_element(Raster::new_cpu(halves))),
+		mode: MaskMode::Luminance,
+		density: 60.,
+		feather: 0.,
+		invert: false,
+	};
+	let shown = 0.4;
+
+	let Some(pixels) = render_square_over_backdrop(vec![glow, mask], 1., 1., BlendMode::Normal, Some(opaque(backdrop)), opaque(content), 30., 80., size) else {
+		return;
+	};
+	let close = |actual: [u8; 4], expected: [f32; 3]| actual.iter().zip(expected).all(|(&actual, expected)| (actual as f32 - expected * 255.).abs() <= 3.);
+
+	// Past the content, the faded glow screens the backdrop, which drawing it normally would leave 17 levels less blue
+	let screened: [f32; 3] = std::array::from_fn(|channel| backdrop[channel] + glow_color[channel] - backdrop[channel] * glow_color[channel]);
+	let glowing = mix_channels(backdrop, screened, strength * shown);
+	for (x, y) in [(27, 55), (82, 55), (55, 27)] {
+		let actual = pixel(&pixels, size, x, y);
+		assert!(close(actual, glowing), "the glow at ({x}, {y}): {actual:?} against {:?}", glowing.map(|channel| channel * 255.));
+	}
+
+	// The faded content shows the backdrop through it, rather than the glow it knocks out
+	let (faded, whole) = (pixel(&pixels, size, 40, 55), pixel(&pixels, size, 70, 55));
+	assert!(close(faded, mix_channels(backdrop, content, shown)), "the faded content: {faded:?}");
+	assert!(close(whole, content), "the content shown whole: {whole:?}");
 }
 
 /// A pixel's gamma-encoded channels each mixed from `from` to `to` by `amount`.
@@ -1125,7 +1325,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 	use graphic_types::raster_types::{Image, Raster};
 	use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientStop};
 	use graphic_types::vector_types::vector::style::StrokeAlign;
-	use graphic_types::{BevelDirection, BevelStyle, BevelTechnique, Effect, EffectOperation, GlowSource, GlowTechnique, Graphic, stamp_effect};
+	use graphic_types::{BevelDirection, BevelStyle, BevelTechnique, Effect, EffectOperation, GlowSource, GlowTechnique, Graphic, MaskMode, stamp_effect};
 	use raster_kernels::evaluate_raster_effects;
 
 	let size = UVec2::new(160, 160);
@@ -1429,13 +1629,75 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		)],
 	]);
 
+	// Masks by an image with a pixel for each of the square's, with varying grays and alphas, and by gradients, before and after a shadow
+	let square_placement = DAffine2::from_translation(DVec2::splat(min as f64)) * DAffine2::from_scale(DVec2::splat((max - min) as f64));
+	let mask_image = Image {
+		width: 50,
+		height: 50,
+		data: (0..2500)
+			.map(|index| {
+				let (x, y) = ((index % 50) as f32 / 49., (index / 50) as f32);
+				GraphicColor::from_gamma_srgb_channels(x, 0.5 * x, 1. - x, if y < 25. { 1. } else { 0.6 })
+			})
+			.collect(),
+	};
+	let mask_image = Graphic::from(Item::new_from_element(Raster::new_cpu(mask_image)).with_attribute(ATTR_TRANSFORM, square_placement));
+
+	// A 5 by 5 image of black and white stretched over the square, so sampling it interpolates between its pixels
+	let resampled = Image {
+		width: 5,
+		height: 5,
+		data: (0..25).map(|index| if (index % 5 + index / 5) % 2 == 0 { GraphicColor::BLACK } else { GraphicColor::WHITE }).collect(),
+	};
+	let resampled = Graphic::from(Item::new_from_element(Raster::new_cpu(resampled)).with_attribute(ATTR_TRANSFORM, square_placement));
+	let mask = |mask: &Graphic, mode, density, feather, invert| EffectOperation::Mask {
+		mask: mask.clone(),
+		mode,
+		density,
+		feather,
+		invert,
+	};
+	let mask_shadow = drop_shadow(shadow_color, DVec2::new(6.5, -3.), 8., 25.);
+	let screen_glow = || glow(GlowTechnique::Softer, 30., 9., 50., TransferCurve::default());
+	let interior_glow = |blend_mode| EffectOperation::InnerGlow {
+		color: shadow_color.into(),
+		blend_mode,
+		technique: GlowTechnique::Softer,
+		source: GlowSource::Edge,
+		choke: 25.,
+		size: 7.,
+		range: 50.,
+		contour: TransferCurve::default(),
+	};
+	let mask_cases = [
+		vec![mask(&mask_image, MaskMode::Luminance, 100., 0., false)],
+		vec![mask(&mask_image, MaskMode::Alpha, 70., 3., true)],
+		vec![mask(&linear, MaskMode::Luminance, 100., 6., false)],
+		vec![mask(&radial, MaskMode::Alpha, 100., 0., false)],
+		vec![mask(&mask_image, MaskMode::Luminance, 100., 2., false), mask_shadow.clone()],
+		vec![mask_shadow.clone(), mask(&linear, MaskMode::Luminance, 80., 0., true)],
+		vec![blur(2., false, false), mask(&radial, MaskMode::Luminance, 100., 1.5, false), mask_shadow.clone()],
+		vec![mask(&mask_image, MaskMode::Luminance, 60., 0., false), mask(&linear, MaskMode::Alpha, 100., 2., true)],
+		vec![mask(&resampled, MaskMode::Luminance, 100., 0., false)],
+		// Trailing masks fade layers that keep their modes: glows screening beneath the content, and interior pieces blending through its fill
+		vec![screen_glow(), mask(&linear, MaskMode::Luminance, 60., 2., false)],
+		vec![
+			mask_shadow.clone(),
+			screen_glow(),
+			mask(&mask_image, MaskMode::Alpha, 70., 3., true),
+			mask(&radial, MaskMode::Luminance, 50., 0., false),
+		],
+		vec![interior_glow(BlendMode::Multiply), mask(&radial, MaskMode::Luminance, 100., 1.5, false)],
+		vec![interior_glow(BlendMode::Overlay), mask(&linear, MaskMode::Alpha, 80., 0., true)],
+	];
+
 	// Content in a color of its own, so every mode has colors to blend
 	let content = [217, 140, 89];
 	let gpu_content = Color::from_rgb8(content[0], content[1], content[2]);
 	let [red, green, blue] = content.map(|channel| channel as f32 / 255.);
 	let cpu_content = GraphicColor::from_gamma_srgb_channels(red, green, blue, 1.);
 
-	for effects in cases.into_iter().chain(paint_cases) {
+	for effects in cases.into_iter().chain(paint_cases).chain(mask_cases) {
 		for fill in [1., 0.5] {
 			let Some(gpu) = render_square_over_backdrop(effects.clone(), fill, 1., BlendMode::Normal, None, gpu_content, min as f64, max as f64, size) else {
 				return;
@@ -1448,10 +1710,26 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 					image.data[(y * size.x + x) as usize] = cpu_content;
 				}
 			}
+			// The masks follow the raster's placement, as the Mask node links them to it
+			let placement = DAffine2::from_scale(size.as_dvec2());
+			let linked: Vec<EffectOperation> = effects
+				.iter()
+				.cloned()
+				.map(|operation| match operation {
+					EffectOperation::Mask { mask, mode, density, feather, invert } => EffectOperation::Mask {
+						mask: graphic_types::linked_to_content(mask, placement),
+						mode,
+						density,
+						feather,
+						invert,
+					},
+					operation => operation,
+				})
+				.collect();
 			let mut item = Item::new_from_element(Raster::new_cpu(image))
-				.with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(size.as_dvec2()))
+				.with_attribute(ATTR_TRANSFORM, placement)
 				.with_attribute(ATTR_OPACITY_FILL, fill as f64);
-			effects.iter().for_each(|operation| stamp_effect(&mut item, Effect::new(operation)));
+			linked.iter().for_each(|operation| stamp_effect(&mut item, Effect::new(operation)));
 			let evaluated = evaluate_raster_effects(item);
 
 			// Reads the evaluated image at the center of each render pixel through its grown placement
