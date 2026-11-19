@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::application::generate_uuid;
 use graphene_std::vector::style::FillChoice;
 use graphene_std::{Color, color::SRGBA8};
@@ -43,7 +45,7 @@ pub const DEFAULT_PALETTES: [(&str, u32, &[SRGBA8]); 3] = [
 		],
 	),
 	(
-		"Sometyhing",
+		"Something",
 		2,
 		&[
 			SRGBA8::new_opaque(0x26, 0x46, 0x53),
@@ -157,7 +159,6 @@ impl MessageHandler<PaletteMessage, PaletteMessageContext> for PaletteMessageHan
 				self.active_palette = PaletteId(id);
 				responses.add(PaletteMessage::Refresh);
 			}
-			PaletteMessage::UploadFromFile => todo!(),
 			PaletteMessage::PaletteNameChange { id, name } => {
 				let palette = self.palettes.get_mut(&PaletteId { 0: id }).unwrap();
 				palette.name = name;
@@ -165,6 +166,8 @@ impl MessageHandler<PaletteMessage, PaletteMessageContext> for PaletteMessageHan
 			}
 			PaletteMessage::AddColor { color } => todo!(),
 			PaletteMessage::DeleteColor { swatch_id } => todo!(),
+			PaletteMessage::InsertPaletteGPL { palette_name, palette_path, content } => self.parse_gpl_palette(palette_name, palette_path, content),
+			PaletteMessage::InsertPaletteKPL { palette_name, palette_path, content } => self.parse_kpl_palette(palette_name, palette_path, content),
 		}
 	}
 
@@ -186,10 +189,7 @@ impl PaletteMessageHandler {
 				let target_id = palette_id.0;
 
 				let header_row = vec![
-					TextLabel::new(name)
-						.bold(true)
-						.sizing(WidgetSizing::default().grow(true))
-						.widget_instance(),
+					TextLabel::new(name).bold(true).sizing(WidgetSizing::default().grow(true)).widget_instance(),
 					TextInput::new(name.clone())
 						.sizing(WidgetSizing::default().grow(true))
 						.disabled(true)
@@ -251,5 +251,10 @@ impl PaletteMessageHandler {
 		} else {
 			// TODO: Add attached palettes instead
 		}
+	}
+
+	fn parse_gpl_palette(&mut self, palette_name: Option<String>, palette_path: Option<PathBuf>, content: Vec<u8>) {}
+	fn parse_kpl_palette(&mut self, palette_name: Option<String>, palette_path: Option<PathBuf>, content: Vec<u8>) {
+		// TODO: Add a kpl parsing implementation
 	}
 }

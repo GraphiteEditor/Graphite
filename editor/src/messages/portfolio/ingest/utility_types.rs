@@ -33,6 +33,7 @@ pub enum IngestAction {
 		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
 		accepted_types: Vec<DataType>,
 	},
+	ImportPalette,
 }
 
 impl IngestAction {
@@ -54,6 +55,8 @@ pub enum DataType {
 	Svg,
 	Raster(ImageFormat),
 	Lut,
+	PaletteGPL,
+	PaletteKPL,
 	#[default]
 	Unknown,
 }
@@ -75,6 +78,8 @@ impl DataType {
 			"application/graphite+json" => Self::GraphiteLegacy,
 			"application/vnd.graphite.document" => Self::Gdd,
 			"image/svg+xml" => Self::Svg,
+			"application/x-gimp-palette" => Self::PaletteGPL,
+			"application/x-krita-palette" => Self::PaletteKPL,
 			mime => ImageFormat::from_mime_type(mime).map_or(Self::Unknown, Self::Raster),
 		}
 	}
@@ -84,6 +89,8 @@ impl DataType {
 			FILE_EXTENSION => Self::GraphiteLegacy,
 			GDD_FILE_EXTENSION => Self::Gdd,
 			"svg" => Self::Svg,
+			"gpl" => Self::PaletteGPL,
+			"kpl" => Self::PaletteKPL,
 			extension if LUT_FILE_EXTENSIONS.contains(&extension) => Self::Lut,
 			extension => ImageFormat::from_extension(extension).map_or(Self::Unknown, Self::Raster),
 		}
@@ -109,11 +116,14 @@ impl DataType {
 			Err(_) => return Self::Unknown,
 		};
 
+		// TODO: Add recongnision for KPL palette format.
 		let text = text.trim_start_matches('\u{feff}').trim_start();
 		if text.starts_with('{') {
 			Self::GraphiteLegacy
 		} else if text.starts_with('<') && text.contains("<svg") {
 			Self::Svg
+		} else if text.starts_with("GIMP Palette") {
+			Self::PaletteGPL
 		} else {
 			Self::Unknown
 		}
@@ -125,6 +135,8 @@ impl DataType {
 			Self::Gdd => "application/vnd.graphite.document",
 			Self::Svg => "image/svg+xml",
 			Self::Raster(format) => format.to_mime_type(),
+			Self::PaletteGPL => "application/x-gimp-palette",
+			Self::PaletteKPL => "application/x-krita-palette",
 			// The LUT formats share no MIME type
 			Self::Lut | Self::Unknown => return None,
 		})
@@ -137,6 +149,8 @@ impl DataType {
 			Self::Svg => &["svg"],
 			Self::Raster(format) => format.extensions_str(),
 			Self::Lut => LUT_FILE_EXTENSIONS,
+			Self::PaletteGPL => &["gpl"],
+			Self::PaletteKPL => &["kpl"],
 			Self::Unknown => &[],
 		}
 	}
@@ -173,6 +187,13 @@ impl TypeFilter {
 		Self {
 			name: "LUT".into(),
 			types: vec![DataType::Lut],
+		}
+	}
+
+	pub fn palette() -> Self {
+		Self {
+			name: "Palette".into(),
+			types: vec![DataType::PaletteGPL, DataType::PaletteKPL],
 		}
 	}
 }

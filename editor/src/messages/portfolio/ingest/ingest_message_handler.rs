@@ -1,5 +1,6 @@
 use super::utility_types::{DataType, IngestAction, TypeFilter};
 use crate::messages::frontend::utility_types::{FileDialogOptions, FileFilter};
+use crate::messages::portfolio::document::palette::PaletteMessage;
 use crate::messages::prelude::*;
 use glam::IVec2;
 use graph_craft::application_io::resource::ResourceId;
@@ -28,6 +29,11 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 				filters: vec![TypeFilter::image()],
 				multiple: false,
 				action: IngestAction::Import,
+			}),
+			IngestMessage::ImportPalette => responses.add(IngestMessage::Browse {
+				filters: vec![TypeFilter::palette()],
+				multiple: false,
+				action: IngestAction::ImportPalette,
 			}),
 			IngestMessage::SetResourceInput {
 				document_id,
@@ -81,7 +87,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						return;
 					}
 					IngestAction::Open => None,
-					IngestAction::Import | IngestAction::Paste => Some((None, None)),
+					IngestAction::Import | IngestAction::ImportPalette | IngestAction::Paste => Some((None, None)),
 					IngestAction::DropOnCanvas { mouse } => Some((Some(mouse), None)),
 					IngestAction::DropOnLayers { parent, insert_index } => Some((None, Some((parent, insert_index as usize)))),
 				}
@@ -108,6 +114,22 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						responses.add(PortfolioMessage::OpenDocumentFile {
 							document_name: name,
 							document_path,
+							content: data,
+						});
+						return;
+					}
+					DataType::PaletteGPL => {
+						responses.add(PaletteMessage::InsertPaletteGPL {
+							palette_name: name,
+							palette_path: document_path,
+							content: data,
+						});
+						return;
+					}
+					DataType::PaletteKPL => {
+						responses.add(PaletteMessage::InsertPaletteKPL {
+							palette_name: name,
+							palette_path: document_path,
 							content: data,
 						});
 						return;
