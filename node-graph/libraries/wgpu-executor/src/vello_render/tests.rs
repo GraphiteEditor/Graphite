@@ -397,13 +397,13 @@ fn render_square_over_backdrop_in(
 
 	let square = Rect::new(min, min, max, max);
 
-	// The paint overlays' paints, drawn as the renderer does for content placed in the scene's space
+	// The effects' drawn paints, drawn as the renderer does for content placed in the scene's space
 	let paints: Vec<graphic_types::Graphic> = (effects.iter())
-		.filter_map(|operation| match operation {
-			graphic_types::EffectOperation::PaintOverlay { paint, .. } => Some(paint),
-			_ => None,
+		.filter_map(|operation| {
+			let paint = operation.drawn_paint()?;
+			let bounds = operation.drawn_paint_bounds([glam::DVec2::splat(min), glam::DVec2::splat(max)], glam::DVec2::ONE);
+			Some(graphic_types::fitted_paint(paint, bounds).unwrap_or_else(|| paint.clone()))
 		})
-		.map(|paint| graphic_types::fitted_paint(paint, [glam::DVec2::splat(min), glam::DVec2::splat(max)]).unwrap_or_else(|| paint.clone()))
 		.collect();
 	let mut draw_paint = |index: usize, scene: &mut VelloSceneBuilder| {
 		if let Some(paint) = paints.get(index) {
@@ -570,6 +570,7 @@ fn shadows_and_glows_fall_where_they_should() {
 #[test]
 fn inner_glows_satins_outlines_and_bevels_fall_where_they_should() {
 	use core_types::Color as GraphicColor;
+	use graphic_types::vector_types::gradient::{Gradient, GradientStop};
 	use graphic_types::vector_types::vector::style::StrokeAlign;
 	use graphic_types::{BevelDirection, BevelStyle, BevelTechnique, EffectOperation, GlowSource, GlowTechnique};
 
@@ -614,10 +615,11 @@ fn inner_glows_satins_outlines_and_bevels_fall_where_they_should() {
 
 	// An outline outside the edge rounds the corners it grows around, and one inside stays within the content
 	let outline = |align| EffectOperation::Outline {
-		color: black,
+		paint: black.into(),
 		blend_mode: BlendMode::Normal,
 		weight: 5.,
 		align,
+		contour_gradient: false,
 	};
 	let Some(pixels) = render_square(outline(StrokeAlign::Outside)) else { return };
 	assert_eq!(pixel(&pixels, size, 26, 55), [0, 0, 0, 255], "within the weight of the edge");
@@ -629,6 +631,38 @@ fn inner_glows_satins_outlines_and_bevels_fall_where_they_should() {
 	assert_eq!(pixel(&pixels, size, 32, 55), [0, 0, 0, 255], "inside the edge");
 	assert_eq!(pixel(&pixels, size, 40, 55), white, "past the weight inside");
 	assert_eq!(pixel(&pixels, size, 28, 55)[3], clear, "nothing outside");
+
+	// A contour gradient starts at the outline's outer edge and ends at its inner edge, around the corners too
+	let stops = [(0., GraphicColor::RED), (1., GraphicColor::BLUE)].map(|(position, color)| GradientStop { position, midpoint: 0.5, color });
+	let contour_gradient = EffectOperation::Outline {
+		paint: Gradient::new(stops).into(),
+		blend_mode: BlendMode::Normal,
+		weight: 10.,
+		align: StrokeAlign::Center,
+		contour_gradient: true,
+	};
+	let at_start = |[red, _, blue, alpha]: [u8; 4]| red as i32 > blue as i32 + 100 && alpha == 255;
+	let at_end = |[red, _, blue, alpha]: [u8; 4]| blue as i32 > red as i32 + 100 && alpha == 255;
+	let Some(pixels) = render_square(contour_gradient) else { return };
+	for (x, y) in [(25, 55), (55, 84), (27, 27)] {
+		assert!(at_start(pixel(&pixels, size, x, y)), "the start at the outer edge ({x}, {y}): {:?}", pixel(&pixels, size, x, y));
+	}
+	for (x, y) in [(34, 55), (55, 75), (33, 33)] {
+		assert!(at_end(pixel(&pixels, size, x, y)), "the end at the inner edge ({x}, {y}): {:?}", pixel(&pixels, size, x, y));
+	}
+	assert_eq!(pixel(&pixels, size, 55, 55), white, "the content within the outline");
+
+	// A gradient without its own placement runs across the content and the outline's reach outside it, from 20 to 90
+	let unplaced = EffectOperation::Outline {
+		paint: Gradient::new(stops).into(),
+		blend_mode: BlendMode::Normal,
+		weight: 10.,
+		align: StrokeAlign::Outside,
+		contour_gradient: false,
+	};
+	let Some(pixels) = render_square(unplaced) else { return };
+	assert!(at_start(pixel(&pixels, size, 21, 55)), "the start at the outline's left edge: {:?}", pixel(&pixels, size, 21, 55));
+	assert!(at_end(pixel(&pixels, size, 88, 55)), "the end at its right edge: {:?}", pixel(&pixels, size, 88, 55));
 
 	// Lit from the upper left, a raised bevel's top slope catches the highlight and its bottom slope falls into shadow, which swap when it sinks
 	let bevel = |style, direction| EffectOperation::BevelAndEmboss {
@@ -1106,6 +1140,20 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		stop(1., GraphicColor::from_rgbaf32_unchecked(0.2, 0.1, 0.9, 1.)),
 	]));
 	let bow = TransferCurve::new(vec![DVec2::ZERO, DVec2::new(0.25, 0.75), DVec2::ONE]);
+	let outline_by = |blend_mode, paint, weight, align, contour_gradient| EffectOperation::Outline {
+		paint,
+		blend_mode,
+		weight,
+		align,
+		contour_gradient,
+	};
+	let outline = |paint, weight, align, contour_gradient| outline_by(BlendMode::Normal, paint, weight, align, contour_gradient);
+	let hard_stop = Graphic::from(Gradient::new([
+		stop(0., GraphicColor::from_rgbaf32_unchecked(0.1, 0.2, 0.9, 1.)),
+		stop(0.5, GraphicColor::from_rgbaf32_unchecked(0.1, 0.2, 0.9, 1.)),
+		stop(0.5, GraphicColor::from_rgbaf32_unchecked(1., 0.8, 0.1, 1.)),
+		stop(1., GraphicColor::from_rgbaf32_unchecked(1., 0.8, 0.1, 1.)),
+	]));
 
 	let cases = [
 		vec![blur(3., false, false)],
@@ -1127,8 +1175,8 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		vec![glow(GlowTechnique::Precise, 50., 16., 100., TransferCurve::default())],
 		vec![glow(GlowTechnique::Precise, 80., 10., 100., TransferCurve::default())],
 		vec![glow(GlowTechnique::Softer, 0., 6., 50., bow.clone())],
-		vec![gradient_glow(fading, GlowTechnique::Precise, 0., 14., 75., TransferCurve::default())],
-		vec![gradient_glow(opaque, GlowTechnique::Softer, 25., 12., 50., bow.clone())],
+		vec![gradient_glow(fading.clone(), GlowTechnique::Precise, 0., 14., 75., TransferCurve::default())],
+		vec![gradient_glow(opaque.clone(), GlowTechnique::Softer, 25., 12., 50., bow.clone())],
 		vec![EffectOperation::InnerGlow {
 			color: shadow_color.into(),
 			blend_mode: BlendMode::Overlay,
@@ -1167,24 +1215,15 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 			invert: false,
 			contour: bow,
 		}],
-		vec![EffectOperation::Outline {
-			color: shadow_color,
-			blend_mode: BlendMode::Normal,
-			weight: 6.,
-			align: StrokeAlign::Outside,
-		}],
-		vec![EffectOperation::Outline {
-			color: shadow_color,
-			blend_mode: BlendMode::Difference,
-			weight: 5.,
-			align: StrokeAlign::Inside,
-		}],
-		vec![EffectOperation::Outline {
-			color: shadow_color,
-			blend_mode: BlendMode::Normal,
-			weight: 9.,
-			align: StrokeAlign::Center,
-		}],
+		vec![outline(shadow_color.into(), 6., StrokeAlign::Outside, false)],
+		vec![outline_by(BlendMode::Difference, shadow_color.into(), 5., StrokeAlign::Inside, false)],
+		vec![outline(shadow_color.into(), 9., StrokeAlign::Center, false)],
+		// Contour gradients run across the outline, whatever its alignment
+		vec![outline(fading.clone(), 10., StrokeAlign::Center, true)],
+		vec![outline(fading.clone(), 7., StrokeAlign::Inside, true)],
+		vec![outline(opaque.clone(), 12., StrokeAlign::Outside, true)],
+		// A hard stop at the middle of an odd outline lands right on its middle ring
+		vec![outline(hard_stop, 3., StrokeAlign::Outside, true)],
 		vec![EffectOperation::InnerGlow {
 			color: inner_gradient,
 			blend_mode: BlendMode::SoftLight,
@@ -1227,19 +1266,23 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 	let linear = gradient(GradientForm::Linear, DAffine2::from_translation(DVec2::new(45., 60.)) * DAffine2::from_scale(DVec2::splat(60.)));
 	let radial = gradient(GradientForm::Radial, DAffine2::from_translation(DVec2::splat(75.)) * DAffine2::from_scale(DVec2::splat(30.)));
 
-	// A checkerboard with a pixel for each of the square's, so sampling it needs no interpolation
-	let checker = Image {
-		width: 50,
-		height: 50,
-		data: (0..2500)
-			.map(|index| match (index % 50 / 5 + index / 50 / 5) % 2 {
-				0 => GraphicColor::RED,
-				_ => GraphicColor::from_rgbaf32_unchecked(0., 0., 1., 0.5),
-			})
-			.collect(),
+	// A checkerboard spanning the render from `start` to `end` with a pixel for each of the render's, so sampling it needs no interpolation
+	let checkerboard = |start: u32, end: u32| {
+		let side = end - start;
+		let checker = Image {
+			width: side,
+			height: side,
+			data: (0..side * side)
+				.map(|index| match (index % side / 5 + index / side / 5) % 2 {
+					0 => GraphicColor::RED,
+					_ => GraphicColor::from_rgbaf32_unchecked(0., 0., 1., 0.5),
+				})
+				.collect(),
+		};
+		let placement = DAffine2::from_translation(DVec2::splat(start as f64)) * DAffine2::from_scale(DVec2::splat(side as f64));
+		Graphic::from(Item::new_from_element(Raster::new_cpu(checker)).with_attribute(ATTR_TRANSFORM, placement))
 	};
-	let checker_placement = DAffine2::from_translation(DVec2::splat(50.)) * DAffine2::from_scale(DVec2::splat(50.));
-	let checker = Graphic::from(Item::new_from_element(Raster::new_cpu(checker)).with_attribute(ATTR_TRANSFORM, checker_placement));
+	let checker = checkerboard(min, max);
 
 	let overlay = |paint: &Graphic, blend_mode, opacity| {
 		vec![
@@ -1262,6 +1305,12 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		overlay(&linear, BlendMode::Normal, 40.),
 		overlay(&radial, BlendMode::Multiply, 100.),
 		overlay(&checker, BlendMode::Screen, 100.),
+	]);
+	// Outlines drawn with paints placed on their own, the image covering the outline as well as the content
+	paint_cases.extend([
+		vec![outline(linear.clone(), 6., StrokeAlign::Outside, false)],
+		vec![outline(radial.clone(), 8., StrokeAlign::Center, false)],
+		vec![outline(checkerboard(min - 10, max + 10), 9., StrokeAlign::Center, false)],
 	]);
 
 	// Content in a color of its own, so every mode has colors to blend
@@ -1311,7 +1360,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 					}
 				}
 			}
-			// Modes that divide, or land near black where the gamma encoding is steepest, amplify the rounding of the rendered paint's eight bits
+			// A rendered paint rounds to eight bits, which an outline shows unmixed and modes that divide or land near black (where gamma is steepest) amplify
 			use BlendMode::*;
 			let tolerance = match effects.last() {
 				Some(EffectOperation::PaintOverlay { blend_mode: VividLight, .. }) => 16,
@@ -1319,6 +1368,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 					blend_mode: ColorBurn | LinearBurn | ColorDodge | HardLight | LinearLight | PinLight | Difference,
 					..
 				}) => 8,
+				Some(operation @ EffectOperation::Outline { .. }) if operation.drawn_paint().is_some() => 3,
 				_ => 2,
 			};
 			assert!(worst <= tolerance, "{effects:?} at fill {fill} differs from the GPU by up to {worst} levels");

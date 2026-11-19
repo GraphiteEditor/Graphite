@@ -6,7 +6,7 @@ use glam::{DAffine2, UVec2};
 use graphic_types::effect_layers::EffectLayers;
 use graphic_types::effects::EffectCapture;
 use graphic_types::raster_types::{CPU, Image, Raster, WeakCPU};
-use graphic_types::{Adjustment, EffectOperation, Effects};
+use graphic_types::{Adjustment, Effects};
 use rendering::vello_scene_builder::{EffectsRenderer, GeneratorTile, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -379,8 +379,8 @@ impl EffectsRenderer for RenderContext<'_> {
 		let content_texture = self.canvas.effect_textures.acquire(self.device, size, self.renderer.precise_format);
 		self.render_area(draw, view, size, &content_texture, TargetAlpha::Premultiplied);
 
-		// The paint overlays' paints, each rendered over the same pixels as the content
-		let paint_count = effects.operations().filter(|operation| matches!(operation, EffectOperation::PaintOverlay { .. })).count();
+		// The effects' drawn paints, each rendered over the same pixels as the content
+		let paint_count = effects.operations().filter(|operation| operation.drawn_paint().is_some()).count();
 		let paint_textures: Vec<wgpu::Texture> = (0..paint_count)
 			.map(|index| {
 				let paint_texture = self.canvas.effect_textures.acquire(self.device, size, self.renderer.precise_format);

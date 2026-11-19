@@ -53,6 +53,8 @@ use std::sync::Arc;
 use vector_types::gradient::{GradientSettings, GradientSpread};
 use vello_gpu::peniko;
 
+mod styles;
+
 /// A borrowed view of one item of ranked content: one index of a `List<T>`'s attributes, or a lone `Item<T>` reading its own envelope.
 /// Lets the per-item render logic serve both the list impls and the `Graphic` leaf variants without cloning.
 pub(crate) enum ItemRef<'a, T> {
@@ -306,7 +308,7 @@ impl ItemCompositing<'_> {
 	}
 
 	/// Draws the content `draw` draws through the effects group, given the content's bounds in the scene's space. Rendering a split scene calls `draw` again for each part.
-	/// `transform` maps the space the content's item is placed in, where the paint overlays' paints are placed too, into the scene's space.
+	/// `transform` maps the space the content's item is placed in, where the effects' drawn paints are placed too, into the scene's space.
 	fn draw_with_effects(
 		&self,
 		scene: &mut VelloSceneBuilder,
@@ -331,15 +333,17 @@ impl ItemCompositing<'_> {
 
 		// A paint fitted to the content's bounds is placed in the scene's space they're measured in
 		let paint_params = render_params.for_pattern();
-		let paints: Vec<(Graphic, DAffine2)> = effects
-			.operations()
-			.filter_map(|operation| match operation {
-				EffectOperation::PaintOverlay { paint, .. } => Some(paint),
-				_ => None,
+		let paints: Vec<(Graphic, DAffine2)> = (effects.runs().into_iter())
+			.flat_map(|(stamped_transform, rows)| {
+				let length_spans = spans_along_axes(effect_space(self.content_transform, stamped_transform).matrix2);
+				effects.operations_in(rows).map(move |operation| (operation, length_spans))
 			})
-			.map(|paint| match bounds.and_then(|bounds| fitted_paint(&paint, bounds)) {
-				Some(fitted) => (fitted, DAffine2::IDENTITY),
-				None => (paint, transform),
+			.filter_map(|(operation, length_spans)| {
+				let paint = operation.drawn_paint()?;
+				Some(match bounds.and_then(|bounds| fitted_paint(paint, operation.drawn_paint_bounds(bounds, length_spans))) {
+					Some(fitted) => (fitted, DAffine2::IDENTITY),
+					None => (paint.clone(), transform),
+				})
 			})
 			.collect();
 		let draw_paint = |index: usize, scene: &mut VelloSceneBuilder| {
@@ -472,18 +476,18 @@ impl ItemCompositing<'_> {
 		}
 		let transformed = spaces.len() > 1 || spaces.iter().any(|space| space.matrix2 != DMat2::IDENTITY);
 
-		// The paint overlays' paints that aren't solid colors, drawn as markup in a run's effect space, where the content's bounds fit those without a placement
+		// The effects' drawn paints, as markup in a run's effect space, where the content's bounds fit those without a placement
 		let paint_params = render_params.for_pattern();
 		let user_to_document = render.transform;
-		let paints_in = |rows: &Range<usize>, user_to_space: DAffine2| -> Vec<String> {
+		let paints_in = |rows: &Range<usize>, space: DAffine2, user_to_space: DAffine2| -> Vec<String> {
+			let length_spans = spans_along_axes(space.matrix2);
 			effects
 				.operations_in(rows.clone())
-				.filter_map(|operation| match operation {
-					EffectOperation::PaintOverlay { paint, .. } => Some(paint),
-					_ => None,
+				.filter_map(|operation| {
+					let paint = operation.drawn_paint()?;
+					Some(fitted_paint(paint, operation.drawn_paint_bounds(bounds, length_spans)).unwrap_or_else(|| paint.clone()))
 				})
 				.map(|paint| {
-					let paint = fitted_paint(&paint, bounds).unwrap_or(paint);
 					let mut paint_render = SvgRender::new();
 					paint_render.transform = user_to_document;
 					paint.render_svg(&mut paint_render, &paint_params);
@@ -514,7 +518,7 @@ impl ItemCompositing<'_> {
 				true => (EffectLayers::plan(&run, self.blend_mode, run_fill, self.layered), self.opacity),
 				false => (EffectLayers::plan(&run, BlendMode::Normal, run_fill, false), 1.),
 			};
-			let paints = paints_in(rows, user_to_space);
+			let paints = paints_in(rows, *space, user_to_space);
 			let filters: Vec<SvgEffectsFilter> = (0..run_layers.layers.len())
 				.map(|layer| write_svg_effects_filter(&mut render.svg_defs, &run, &run_layers, layer, run_fill, opacity, content_bounds, rows.start, &paints))
 				.collect::<Option<_>>()?;
@@ -602,7 +606,7 @@ struct SvgFilterGroups {
 /// Draws the content `draw` draws through the last of the `runs` of `effects`, around the content drawn through the runs before it, each in its own effect space.
 /// The innermost run fades the content by the `fill`, and each run around it takes the result within as its content, at full strength.
 /// The outermost run draws in the `compositing` opacity and blend mode, layered if it says so, while those within it flatten into its content.
-/// `draw_paint` draws each paint overlay's paint by its index among those in all of `effects`.
+/// `draw_paint` draws each of the effects' drawn paints by its index among those in all of `effects`.
 #[allow(clippy::too_many_arguments)]
 fn draw_effect_runs(
 	scene: &mut VelloSceneBuilder,
@@ -619,10 +623,8 @@ fn draw_effect_runs(
 	let space = effect_space(content_transform, *stamped_transform);
 	let run = effects.run(rows.clone());
 
-	// The run's paint overlays follow those of the rows before it
-	let paints_before = (effects.operations_in(0..rows.start))
-		.filter(|operation| matches!(operation, EffectOperation::PaintOverlay { .. }))
-		.count();
+	// The run's drawn paints follow those of the rows before it
+	let paints_before = effects.operations_in(0..rows.start).filter(|operation| operation.drawn_paint().is_some()).count();
 	let mut draw_run_paint = |index: usize, scene: &mut VelloSceneBuilder| draw_paint(paints_before + index, scene);
 
 	if earlier.is_empty() {
@@ -1277,7 +1279,7 @@ struct SvgEffectsFilter {
 
 /// Writes an SVG filter into `svg_defs` that carries out a run of `effects` like the GPU passes do, in a user space that is their effect space, giving the layer at `layer` among their `layers` drawn at `opacity`,
 /// or `None` if there's no such layer. `bounds` is the content's extent in that space, and `capture_offset` is the run's place in its item's list, which numbers the maps' captures.
-/// `paints` holds the markup of the paint overlays' paints that aren't solid colors, in order.
+/// `paints` holds the markup of the effects' drawn paints, in order.
 /// Shadows and glows shaped for PSD interop measure distances no filter can, so the filter takes their coverages as maps the GPU renders.
 #[expect(clippy::too_many_arguments)]
 fn write_svg_effects_filter(
@@ -1292,7 +1294,8 @@ fn write_svg_effects_filter(
 	paints: &[String],
 ) -> Option<SvgEffectsFilter> {
 	use graphic_types::EffectOperation;
-	use graphic_types::effects::outline_extents;
+	use graphic_types::effects::{OutlineFill, outline_extents};
+	use styles::OutlineBandColors;
 
 	// SVG takes a length along each axis as a pair of numbers
 	let pair = |length: DVec2| format!("{} {}", length.x, length.y);
@@ -1333,12 +1336,14 @@ fn write_svg_effects_filter(
 	// Shadows beneath the content reach its alpha only through a later blur or adjustment
 	let flattened_shown = |index: usize, within: bool| shows_content || (cuts_within && !within && last_pixel_filter.is_some_and(|last| index < last));
 
-	for (index, operation) in operations.into_iter().enumerate() {
+	for (index, operation) in operations.into_iter().enumerate().filter(|(_, operation)| !operation.changes_nothing()) {
 		// A layered effect's coverages become pieces, kept for the layer drawing each, while the flattened ones are carried out within the content's image
 		let layered = index >= layers.flattened;
 		let in_this_layer = |plane: usize| parts.iter().any(|part| matches!(part, LayerPart::Piece(piece) if piece.capture == EffectCapture { index, plane }));
 		// The maps of the run's effects are numbered by their places in the item's whole list
 		let map_capture = |plane: usize| EffectCapture { index: capture_offset + index, plane };
+		// An outline painted with anything but a solid color takes each band's colors from the paint
+		let mut band_colors: Option<OutlineBandColors> = None;
 
 		let planes = match operation {
 			EffectOperation::Blur { radius, box_blur, gamma } => {
@@ -1369,12 +1374,28 @@ fn write_svg_effects_filter(
 				None => continue,
 			},
 			// The band outside lies beneath the content, and the band inside within it
-			EffectOperation::Outline { color, blend_mode, weight, align } => match outline_extents(weight, align) {
-				(outside, inside) if outside > 0. && inside > 0. => vec![(0, false, Some(color), BlendMode::Normal), (1, true, Some(color), blend_mode)],
-				(outside, _) if outside > 0. => shade(BENEATH, Some(color), BlendMode::Normal),
-				(_, inside) if inside > 0. => shade(&[(1, true)], Some(color), blend_mode),
-				_ => continue,
-			},
+			EffectOperation::Outline {
+				paint,
+				blend_mode,
+				weight,
+				align,
+				contour_gradient,
+			} => {
+				let (color, colors) = match OutlineFill::of(&paint, contour_gradient) {
+					Some(OutlineFill::Solid(color)) => (Some(color), None),
+					Some(OutlineFill::Drawn(_)) => match paints.next() {
+						Some(markup) => (None, Some(OutlineBandColors::Drawn(markup.clone()))),
+						None => continue,
+					},
+					Some(OutlineFill::ContourGradient(gradient)) => (None, Some(OutlineBandColors::ContourGradient(gradient))),
+					None => continue,
+				};
+				band_colors = colors;
+
+				let (outside, inside) = outline_extents(weight, align);
+				let bands = [(0, false, outside), (1, true, inside)].into_iter().filter(|band| band.2 > 0.);
+				bands.map(|(plane, within, _)| (plane, within, color, if within { blend_mode } else { BlendMode::Normal })).collect()
+			}
 			// Planes 0 and 1 light the slopes inside the content with the highlight and shadow, and 2 and 3 those outside it, beneath it
 			EffectOperation::BevelAndEmboss {
 				style,
@@ -1442,7 +1463,12 @@ fn write_svg_effects_filter(
 			if color.is_some_and(|color| color.a() <= 0.) || (layered && !in_this_layer(plane)) || (!layered && !flattened_shown(index, within)) {
 				continue;
 			}
+			let colors = band_colors.as_mut().map(|colors| primitives.outline_band_colors(colors, capture_offset + index, region));
 			let coverage = primitives.map(map_capture(plane));
+			let coverage = match colors {
+				Some(colors) => primitives.push("feComposite", &format!(r#"in="{colors}" in2="{coverage}" operator="in""#), ""),
+				None => coverage,
+			};
 			match (layered, within) {
 				(true, _) => {
 					pieces.insert(EffectCapture { index, plane }, primitives.tinted(&coverage, color));
@@ -5629,8 +5655,10 @@ mod tests {
 
 	#[test]
 	fn svg_effects_filters_map_glows_satins_outlines_and_bevels_and_embed_paint_overlays() {
+		use graphic_types::effects::GRADIENT_TABLE_SIZE;
 		use graphic_types::vector_types::vector::style::StrokeAlign;
 		use graphic_types::{BevelStyle, EffectKind, EffectOperation};
+		use vector_types::GradientStop;
 
 		// The planes of the maps the GPU renders for an effect, across the filters of all its layers
 		let planes = |operation| {
@@ -5641,15 +5669,43 @@ mod tests {
 		// Inner glows and satins shade within the content from one map, and an outline takes one map beneath the content and another within it
 		assert_eq!(planes(EffectOperation::default_for(EffectKind::InnerGlow)), [0]);
 		assert_eq!(planes(EffectOperation::default_for(EffectKind::Satin)), [0]);
-		let outline = |align| EffectOperation::Outline {
-			color: Color::BLACK,
+		let outline = |paint: Graphic, align, contour_gradient| EffectOperation::Outline {
+			paint,
 			blend_mode: BlendMode::Normal,
 			weight: 4.,
 			align,
+			contour_gradient,
 		};
-		assert_eq!(planes(outline(StrokeAlign::Center)), [0, 1]);
-		assert_eq!(planes(outline(StrokeAlign::Outside)), [0]);
-		assert_eq!(planes(outline(StrokeAlign::Inside)), [1]);
+		let black = || Graphic::from(Color::BLACK);
+		assert_eq!(planes(outline(black(), StrokeAlign::Center, false)), [0, 1]);
+		assert_eq!(planes(outline(black(), StrokeAlign::Outside, false)), [0]);
+		assert_eq!(planes(outline(black(), StrokeAlign::Inside, true)), [1]);
+
+		// A contour gradient colors the bands from a third map, of each pixel's place across the outline, looked up in tables of the gradient
+		let stops = [(0., Color::RED), (1., Color::from_rgbaf32_unchecked(0., 0., 1., 0.5))].map(|(position, color)| GradientStop { position, midpoint: 0.5, color });
+		let contour_gradient = outline(Graphic::from(Gradient::new(stops)), StrokeAlign::Center, true);
+		assert_eq!(planes(contour_gradient.clone()), [2, 0, 1]);
+		let mut contour_gradient_defs = String::new();
+		write_filters(&mut contour_gradient_defs, &Effects::from_operations([contour_gradient]), 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &[]);
+		let red_table = contour_gradient_defs
+			.split(r#"<feFuncR type="table" tableValues=""#)
+			.nth(1)
+			.and_then(|rest| rest.split('"').next())
+			.unwrap_or_default();
+		let red_table: Vec<&str> = red_table.split(' ').collect();
+		let (samples, _) = GlowFill::of(&Graphic::from(Gradient::new(stops))).and_then(|fill| fill.gradient_samples(GRADIENT_TABLE_SIZE)).unwrap();
+		assert_eq!(red_table.len(), GRADIENT_TABLE_SIZE, "{contour_gradient_defs}");
+		assert_eq!(red_table[100], format!("{:.4}", samples[100][0]), "the table holds the gradient's samples in order");
+		// The gradient's alpha is looked up on its own, since it isn't opaque
+		assert!(contour_gradient_defs.contains(r#"<feFuncA type="table" tableValues="1.0000 "#), "{contour_gradient_defs}");
+
+		// Without a contour gradient, a gradient is drawn like a paint overlay's paint, embedded as an image the bands take their colors from
+		let mut drawn_defs = String::new();
+		let paints = [r#"<rect width="10" height="10" fill="red" />"#.to_string()];
+		let drawn = outline(Graphic::from(Gradient::new(stops)), StrokeAlign::Outside, false);
+		let filters = write_filters(&mut drawn_defs, &Effects::from_operations([drawn]), 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &paints);
+		assert_eq!(filters.iter().flat_map(|filter| filter.maps.iter().map(|map| map.capture.plane)).collect::<Vec<_>>(), [0]);
+		assert!(drawn_defs.contains(r#"<feImage href="data:image/svg+xml;base64,"#), "{drawn_defs}");
 
 		// A bevel lights the slopes inside the content from the first two maps and those outside, beneath it, from the last two
 		let bevel = |style| {

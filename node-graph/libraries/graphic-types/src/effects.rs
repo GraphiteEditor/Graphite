@@ -37,7 +37,7 @@ pub enum EffectKind {
 	InnerGlow,
 	/// Shades the content's interior with soft bands from its silhouette cast two ways.
 	Satin,
-	/// Draws a band of color along the content's silhouette.
+	/// Paints a band along the content's silhouette.
 	Outline,
 	/// Lights the content as if raised from the surface or pressed into it, with highlights and shadows along its edges.
 	BevelAndEmboss,
@@ -231,7 +231,7 @@ pub fn bevel_lighting(gradient: DVec2, light: DVec3) -> (f64, f64) {
 	(highlight.clamp(0., 1.), shadow.clamp(0., 1.))
 }
 
-/// An overlay's paint with its unit square fitted to `content_bounds`, the content's extent in the space it's drawn in, if it's a gradient or image without its own placement.
+/// An effect's drawn paint with its unit square fitted to `content_bounds`, the extent it fills in the space it's drawn in, if it's a gradient or image without its own placement.
 pub fn fitted_paint(paint: &Graphic, content_bounds: [DVec2; 2]) -> Option<Graphic> {
 	let unplaced = match paint {
 		Graphic::Gradient(item) => item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none(),
@@ -420,6 +420,9 @@ fn same_linear_part(first: DMat2, second: DMat2) -> bool {
 /// For PSD interop, an outer glow filled with a gradient fades out once its strength before range and contour falls below this.
 pub const GRADIENT_GLOW_FADE: f64 = 0.12;
 
+/// How many evenly spaced samples of a glow's or outline's gradient the renderers look its colors up in, enough to follow it within a level.
+pub const GRADIENT_TABLE_SIZE: usize = 256;
+
 /// What fills a glow: a solid color its strength fades, or a gradient its strength runs across, from the gradient's start at full strength to its end at none.
 pub enum GlowFill {
 	Solid(Color),
@@ -440,9 +443,10 @@ impl GlowFill {
 			let color = *item.element();
 			Self::Solid(color.with_alpha(color.a() * opacity(item.attribute(ATTR_OPACITY), item.attribute(ATTR_OPACITY_FILL))))
 		};
+		// A gradient without stops reads as black
 		let gradient = |item: &Item<Gradient>| Self::Gradient {
 			evaluator: Box::new(item.element().evaluator(GradientSettings::from_item_attributes(item))),
-			visible: item.element().0.iter_element_values().any(|stop| stop.a() > 0.),
+			visible: item.element().is_empty() || item.element().0.iter_element_values().any(|stop| stop.a() > 0.),
 			opacity: opacity(item.attribute(ATTR_OPACITY), item.attribute(ATTR_OPACITY_FILL)),
 		};
 
@@ -491,6 +495,65 @@ pub fn outline_extents(weight: f64, align: StrokeAlign) -> (f64, f64) {
 		StrokeAlign::Inside => (0., weight),
 		StrokeAlign::Center => (weight / 2., weight / 2.),
 	}
+}
+
+/// What fills an outline: a solid color tinting its coverage, a gradient run across its width, or a graphic the renderers draw over the same pixels.
+pub enum OutlineFill<'a> {
+	Solid(Color),
+	/// A contour gradient, with its position following the distance across the outline's width rather than its placement (PSD's Shape Burst, for interop).
+	ContourGradient(GlowFill),
+	Drawn(&'a Graphic),
+}
+
+impl<'a> OutlineFill<'a> {
+	/// The fill an outline's `paint` makes, or `None` for no paint. A gradient runs across the outline's width if `contour_gradient`, and any other paint ignores it.
+	/// A list of several colors or gradients is drawn, which composites them all.
+	pub fn of(paint: &'a Graphic, contour_gradient: bool) -> Option<Self> {
+		let list_length = match paint {
+			Graphic::None(_) | Graphic::NoneList(_) => return None,
+			Graphic::ColorList(list) => list.len(),
+			Graphic::GradientList(list) => list.len(),
+			_ => 1,
+		};
+		if list_length == 0 {
+			return None;
+		}
+
+		let single = list_length == 1;
+		Some(match paint {
+			Graphic::Color(_) | Graphic::ColorList(_) if single => Self::Solid(match GlowFill::of(paint)? {
+				GlowFill::Solid(color) => color,
+				GlowFill::Gradient { .. } => return None,
+			}),
+			Graphic::Gradient(_) | Graphic::GradientList(_) if single && contour_gradient => Self::ContourGradient(GlowFill::of(paint)?),
+			_ => Self::Drawn(paint),
+		})
+	}
+
+	/// Whether the fill paints nothing anywhere.
+	pub fn is_invisible(&self) -> bool {
+		match self {
+			Self::Solid(color) => color.a() <= 0.,
+			Self::ContourGradient(gradient) => gradient.is_invisible(),
+			Self::Drawn(_) => false,
+		}
+	}
+}
+
+/// Where a contour gradient across an outline of `weight` starts, as a distance past the content's edge, and how far inward it spans.
+/// A point `distance` past the edge (negative inside it) takes the position `(start - distance) / span`, clamped from 0 to 1 and rounded by [`contour_gradient_position`].
+/// For PSD interop, it spans from half a unit outside the outline to half a unit past its inner edge, or a unit and a half for a centered outline.
+pub fn contour_gradient_span(weight: f64, align: StrokeAlign) -> (f64, f64) {
+	let (outside, _) = outline_extents(weight, align);
+	let span = weight + if align == StrokeAlign::Center { 2. } else { 1. };
+	(outside + 0.5, span)
+}
+
+/// The position from 0 to 1 along a contour gradient that a point `distance` past the content's edge takes, given the `start` and `span` of [`contour_gradient_span`].
+/// It's rounded to the nearest of the gradient's [`GRADIENT_TABLE_SIZE`] samples, which for PSD interop are 8-bit levels, so every renderer reads the same sample even at a hard stop.
+pub fn contour_gradient_position(distance: f32, start: f32, span: f32) -> f32 {
+	let last = (GRADIENT_TABLE_SIZE - 1) as f32;
+	(((start - distance) / span).clamp(0., 1.) * last + 0.5).floor() / last
 }
 
 /// Appends an effect to the item's list, after those already applied to it, recording the item's transform at that point.
@@ -633,11 +696,14 @@ pub enum EffectOperation {
 		contour: TransferCurve,
 	},
 	Outline {
-		color: Color,
+		/// A solid color with the outline's opacity, a gradient, or any graphic, fitted when unplaced to the content and the outline's margin.
+		paint: Graphic,
 		/// How the outline mixes with what lies beneath it, or with the content for the part inside its edge.
 		blend_mode: BlendMode,
 		weight: f64,
 		align: StrokeAlign,
+		/// Whether a gradient paint runs across the outline's width rather than by its own placement.
+		contour_gradient: bool,
 	},
 	BevelAndEmboss {
 		style: BevelStyle,
@@ -700,7 +766,7 @@ impl EffectOperation {
 			Self::Blur { radius, .. } => *radius <= 0.,
 			Self::DropShadow { color, .. } | Self::InnerShadow { color, .. } | Self::Satin { color, .. } => color.a() <= 0.,
 			Self::OuterGlow { color, .. } | Self::InnerGlow { color, .. } => GlowFill::of(color).is_none_or(|fill| fill.is_invisible()),
-			Self::Outline { color, weight, .. } => color.a() <= 0. || *weight <= 0.,
+			Self::Outline { paint, weight, contour_gradient, .. } => *weight <= 0. || OutlineFill::of(paint, *contour_gradient).is_none_or(|fill| fill.is_invisible()),
 			Self::BevelAndEmboss {
 				highlight_color, shadow_color, size, ..
 			} => (highlight_color.a() <= 0. && shadow_color.a() <= 0.) || *size <= 0.,
@@ -739,6 +805,40 @@ impl EffectOperation {
 			Self::Outline { weight, .. } => weight.max(0.) + 1.,
 			Self::BevelAndEmboss { size, soften, .. } => size.max(0.) + soften.max(0.) + 2.,
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => 0.,
+		}
+	}
+
+	/// The graphic this operation paints with that renderers draw over the content's pixels on their own: a paint overlay's paint, or an outline's drawn paint.
+	/// An operation that changes nothing draws none, since renderers skip it.
+	pub fn drawn_paint(&self) -> Option<&Graphic> {
+		if self.changes_nothing() {
+			return None;
+		}
+
+		match self {
+			Self::PaintOverlay { paint, .. } => Some(paint),
+			Self::Outline { paint, contour_gradient, .. } => match OutlineFill::of(paint, *contour_gradient)? {
+				OutlineFill::Drawn(paint) => Some(paint),
+				_ => None,
+			},
+			_ => None,
+		}
+	}
+
+	/// The bounds a drawn paint without its own placement is fitted to, given the content's bounds and the length a document pixel spans along each of their axes.
+	/// For PSD interop, an outline's paint fits the content grown by the whole pixels the outline reaches outside it, at least one.
+	pub fn drawn_paint_bounds(&self, content_bounds: [DVec2; 2], pixel_spans: DVec2) -> [DVec2; 2] {
+		match self {
+			Self::Outline { weight, align, .. } => {
+				// Interpolated between the whole weights PSD stores
+				let margin_at = |weight: f64| outline_extents(weight, *align).0.ceil().max(1.);
+				let weight = weight.max(0.);
+				let below = weight.floor();
+				let margin = margin_at(below) + (margin_at(below + 1.) - margin_at(below)) * (weight - below);
+
+				[content_bounds[0] - margin * pixel_spans, content_bounds[1] + margin * pixel_spans]
+			}
+			_ => content_bounds,
 		}
 	}
 
@@ -826,10 +926,11 @@ impl EffectOperation {
 				contour: TransferCurve::default(),
 			},
 			EffectKind::Outline => Self::Outline {
-				color: Color::TRANSPARENT,
+				paint: Graphic::default(),
 				blend_mode: BlendMode::default(),
 				weight: 0.,
 				align: StrokeAlign::default(),
+				contour_gradient: false,
 			},
 			EffectKind::BevelAndEmboss => Self::BevelAndEmboss {
 				style: BevelStyle::default(),
@@ -989,11 +1090,18 @@ impl EffectOperation {
 				visitor.parameter("invert", invert, true);
 				visitor.parameter("contour", contour, TransferCurve::default());
 			}
-			Self::Outline { color, blend_mode, weight, align } => {
-				visitor.parameter("color", color, Color::BLACK);
+			Self::Outline {
+				paint,
+				blend_mode,
+				weight,
+				align,
+				contour_gradient,
+			} => {
+				visitor.parameter("paint", paint, Graphic::from(Color::BLACK));
 				visitor.parameter("blend_mode", blend_mode, BlendMode::Normal);
 				visitor.parameter("weight", weight, 3.);
 				visitor.parameter("align", align, StrokeAlign::Outside);
+				visitor.parameter("contour_gradient", contour_gradient, false);
 			}
 			Self::BevelAndEmboss {
 				style,
@@ -1084,10 +1192,22 @@ mod tests {
 				contour: TransferCurve::new(vec![DVec2::ZERO, DVec2::new(0.5, 1.), DVec2::ONE]),
 			},
 			EffectOperation::Outline {
-				color: Color::RED,
+				paint: Graphic::from(Color::RED),
 				blend_mode: BlendMode::Difference,
 				weight: 7.,
 				align: StrokeAlign::Center,
+				contour_gradient: false,
+			},
+			EffectOperation::Outline {
+				paint: Graphic::from(Gradient::new([0., 1.].map(|position| GradientStop {
+					position,
+					midpoint: 0.5,
+					color: Color::from_rgbaf32_unchecked(1., position as f32, 0., 1.),
+				}))),
+				blend_mode: BlendMode::Multiply,
+				weight: 4.,
+				align: StrokeAlign::Inside,
+				contour_gradient: true,
 			},
 			EffectOperation::BevelAndEmboss {
 				style: BevelStyle::PillowEmboss,
@@ -1190,6 +1310,53 @@ mod tests {
 		assert!((precise_falloff(1., 0., 16.) - 16. / 34.).abs() < 1e-12);
 		assert_eq!(precise_falloff(17., 0., 16.), 0.);
 		assert_eq!(precise_falloff(0., 16., 16.), 1.);
+	}
+
+	#[test]
+	fn outline_paints_fit_the_whole_pixels_the_outline_reaches_outside() {
+		let margin = |weight, align| {
+			let outline = EffectOperation::Outline {
+				paint: Graphic::from(Gradient::default()),
+				blend_mode: BlendMode::Normal,
+				weight,
+				align,
+				contour_gradient: false,
+			};
+			outline.drawn_paint_bounds([DVec2::ZERO, DVec2::splat(10.)], DVec2::ONE)[1].x - 10.
+		};
+
+		assert_eq!(margin(8., StrokeAlign::Outside), 8.);
+		// A centered outline of odd weight reaches into one more pixel, and one inside still fits a pixel past the content
+		assert_eq!(margin(7., StrokeAlign::Center), 4.);
+		assert_eq!(margin(40., StrokeAlign::Center), 20.);
+		assert_eq!(margin(8., StrokeAlign::Inside), 1.);
+		// Between whole weights, the margin is interpolated
+		assert_eq!(margin(6.5, StrokeAlign::Center), 3.5);
+
+		// In a space a document pixel spans unevenly, the margin is measured along each axis
+		let outline = EffectOperation::Outline {
+			paint: Graphic::from(Gradient::default()),
+			blend_mode: BlendMode::Normal,
+			weight: 4.,
+			align: StrokeAlign::Outside,
+			contour_gradient: false,
+		};
+		assert_eq!(
+			outline.drawn_paint_bounds([DVec2::ZERO, DVec2::splat(10.)], DVec2::new(2., 0.5)),
+			[DVec2::new(-8., -2.), DVec2::new(18., 12.)]
+		);
+	}
+
+	#[test]
+	fn contour_gradient_positions_land_on_the_gradients_samples() {
+		// An outline of 3 aligned outside spans from 3.5 past the edge to 0.5 inside it, so its middle pixel lies halfway
+		let (start, span) = contour_gradient_span(3., StrokeAlign::Outside);
+		assert_eq!((start, span), (3.5, 4.));
+		assert_eq!(contour_gradient_position(1.5, start as f32, span as f32), 128. / 255.);
+		assert_eq!(contour_gradient_position(-5., start as f32, span as f32), 1.);
+
+		// A centered outline spans a unit more
+		assert_eq!(contour_gradient_span(8., StrokeAlign::Center), (4.5, 10.));
 	}
 
 	#[test]
