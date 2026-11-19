@@ -57,7 +57,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::reso
 use crate::messages::portfolio::document::utility_types::text_metrics::text_width;
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_thick_wire_center_line, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
@@ -72,7 +71,7 @@ use graphene_std::vector::click_target::{ClickTarget, ClickTargetType, FreePoint
 use graphene_std::vector::{Vector, VectorModificationType};
 use kurbo::BezPath;
 use memo_network::MemoNetwork;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::ops::Deref;

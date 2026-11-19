@@ -1,9 +1,6 @@
 use super::*;
 use std::hash::{Hash, Hasher};
 
-/// Index of the Artboard definition's Clip input, which must match the input order authored in document_node_definitions.rs.
-pub(crate) const ARTBOARD_CLIP_INPUT_INDEX: usize = 5;
-
 impl NodeNetworkInterface {
 	/// Runs a query against a resolved [`NetworkView`], logging any error at this message-boundary wrapper and mapping it to None.
 	pub(crate) fn query<'a, 'p, T>(&'a self, network_path: &'p [NodeId], caller: &str, query: impl FnOnce(NetworkView<'a, 'p>) -> Result<T, NetworkError>) -> Option<T> {
@@ -829,17 +826,27 @@ impl NodeNetworkInterface {
 		self.view(network_path).ok().and_then(|view| view.persistent_input_metadata(node_id, index).ok())
 	}
 
-	/// Whether the input is internal state of its proto node (named with a leading `_`), which is never exposed to the graph.
+	/// Whether the input is internal state of its node (named with a leading `_`), which is never exposed to the graph.
 	pub fn is_internal_input(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> bool {
-		let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) else {
-			return false;
-		};
-		let Ok(node_metadata) = graphene_std::registry::NODE_METADATA.lock() else { return false };
+		self.field_metadata(node_id, index, network_path).is_some_and(|field| field.internal)
+	}
 
-		node_metadata
-			.get(proto_node_identifier)
-			.and_then(|metadata| metadata.fields.get(index))
-			.is_some_and(|field| field.internal)
+	/// The metadata the node macro records for a proto node's parameter, or the `#[graph]` macro for a graph node's import.
+	/// A graph node's input has it only while it still has that import's name, since an edited subgraph can reorder its imports.
+	pub fn field_metadata(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<graphene_std::registry::FieldMetadata> {
+		if let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) {
+			let node_metadata = graphene_std::registry::NODE_METADATA.lock().ok()?;
+			return node_metadata.get(proto_node_identifier)?.fields.get(index).cloned();
+		}
+
+		let Some(DefinitionIdentifier::Network(identifier)) = self.reference(node_id, network_path) else {
+			return None;
+		};
+		let input_name = self.persistent_input_metadata(node_id, index, network_path)?.input_name.clone();
+
+		let graphs = graphene_std::registry::GRAPH_METADATA.lock().ok()?;
+		let field = graphs.iter().find(|graph| graph.identifier == identifier)?.imports.get(index)?;
+		(field.name == input_name).then(|| field.clone())
 	}
 
 	/// The description stored for a node's output, or else for a proto node, the doc comment on its field in the struct a multi-output node returns.
@@ -1079,7 +1086,7 @@ impl NodeNetworkInterface {
 	/// Whether the artboard layer clips the content inside it to its bounds.
 	fn artboard_clips_content(&self, artboard: LayerNodeIdentifier) -> bool {
 		self.document_node(&artboard.to_node(), &[])
-			.and_then(|artboard| artboard.inputs.get(ARTBOARD_CLIP_INPUT_INDEX))
+			.and_then(|artboard| artboard.inputs.get(graphene_std::subgraphs::artboard::ClipInput::INDEX))
 			.is_some_and(|clip_input| matches!(clip_input, NodeInput::Value { tagged_value, .. } if tagged_value.clone().deref() == &TaggedValue::Bool(true)))
 	}
 

@@ -60,6 +60,12 @@ pub struct FieldMetadata {
 	pub progression: bool,
 	/// Whether the input must be fed by a value known at compile time, from `#[constant]`.
 	pub constant: bool,
+	/// The X and Y labels of a Vec2 parameter's widget, from `#[labels("W", "H")]`.
+	pub labels: Option<(&'static str, &'static str)>,
+	/// Whether a number or Vec2 parameter's widget only takes integers, from `#[integer]`. Integer types always do.
+	pub integer: bool,
+	/// Whether the widget leaves room for the assist area beside it, which `#[blank_assist(false)]` turns off.
+	pub blank_assist: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -221,6 +227,167 @@ type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstru
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Every node defined as a subgraph by the `#[graph]` macro, in registration order.
+pub static GRAPH_METADATA: LazyLock<Mutex<Vec<GraphMetadata>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// A node defined as a subgraph by `#[graph]`, which the editor turns into a catalog definition alongside the proto nodes.
+#[derive(Clone, Debug)]
+pub struct GraphMetadata {
+	/// The definition's identifier and display name.
+	pub identifier: &'static str,
+	pub category: &'static str,
+	pub icon: Option<&'static str>,
+	pub description: &'static str,
+	/// The declaration version from `#[graph(version(N))]`, starting at 1.
+	pub version: u32,
+	/// Whether a new instance starts as a layer, from `#[graph(layer)]`.
+	pub layer: bool,
+	/// The subgraph's imports, which become the inputs of each instance, described like a proto node's parameters.
+	/// Each one's `default_type` is the type it was declared with.
+	pub imports: Vec<FieldMetadata>,
+	pub exports: Vec<GraphExportMetadata>,
+	/// The nodes inside the subgraph, where each node's position in this list is its ID.
+	pub nodes: Vec<GraphNodeMetadata>,
+}
+
+#[derive(Clone, Debug)]
+pub struct GraphExportMetadata {
+	pub name: &'static str,
+	pub description: &'static str,
+	pub source: GraphInputSource,
+}
+
+/// A node inside a subgraph defined by `#[graph]`.
+#[derive(Clone, Debug)]
+pub struct GraphNodeMetadata {
+	pub implementation: GraphNodeImplementation,
+	/// The inputs the definition sets, by index. Every other input keeps the default from the node's own definition.
+	pub inputs: Vec<(usize, GraphInputSource)>,
+	/// The absolute position in grid units, from `.at(x, y)`.
+	pub position: Option<(i32, i32)>,
+	/// From `.layer()`.
+	pub layer: bool,
+	/// From `.named("…")`.
+	pub display_name: Option<&'static str>,
+	/// From `.hidden()`.
+	pub hidden: bool,
+	/// From `.locked()`.
+	pub locked: bool,
+	/// From `.pinned()`.
+	pub pinned: bool,
+	/// From `.call_argument::<T>()`.
+	pub call_argument: Option<Type>,
+}
+
+/// What a node inside a subgraph is an instance of.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GraphNodeImplementation {
+	ProtoNode(ProtoNodeIdentifier),
+	/// Another node defined by `#[graph]`, named by its identifier.
+	Graph(&'static str),
+}
+
+impl From<ProtoNodeIdentifier> for GraphNodeImplementation {
+	fn from(identifier: ProtoNodeIdentifier) -> Self {
+		Self::ProtoNode(identifier)
+	}
+}
+
+impl From<&'static str> for GraphNodeImplementation {
+	fn from(identifier: &'static str) -> Self {
+		Self::Graph(identifier)
+	}
+}
+
+/// What feeds an input, or an export, of a subgraph defined by `#[graph]`.
+#[derive(Clone, Debug)]
+pub enum GraphInputSource {
+	/// The output of another node in the subgraph, by its position in [`GraphMetadata::nodes`].
+	Node { node: usize, output: usize },
+	/// One of the subgraph's imports, with the type its wire records.
+	Import { index: usize, ty: Type },
+	/// A value. Without an exposure, the input keeps the one from the node's own definition.
+	Value { value: GraphValue, exposed: Option<bool> },
+	/// A scope input, from `scope("…")`.
+	Scope(&'static str),
+	/// The document path of the node, from `reflect(NodePath)`.
+	NodePath,
+	/// The source ID of the node, from `reflect(SourceId)`.
+	SourceId,
+}
+
+/// A value written in a subgraph definition. The editor converts it to the type of the input it feeds.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GraphValue {
+	/// A number written without a fractional part, which feeds an integer input as an integer and any other as a number.
+	Integer(i64),
+	Number(f64),
+	Bool(bool),
+	String(String),
+	Vec2(glam::DVec2),
+	Color(Color),
+}
+
+impl GraphValue {
+	pub fn vec2(x: f64, y: f64) -> Self {
+		Self::Vec2(glam::DVec2::new(x, y))
+	}
+
+	/// An opaque color from `rgb(0xRRGGBB)`.
+	pub fn rgb(hex: u32) -> Self {
+		let [_, red, green, blue] = hex.to_be_bytes();
+		Self::Color(crate::color::SRGBA8::new(red, green, blue, 255).into())
+	}
+
+	/// A color with alpha from `rgba(0xRRGGBBAA)`.
+	pub fn rgba(hex: u32) -> Self {
+		let [red, green, blue, alpha] = hex.to_be_bytes();
+		Self::Color(crate::color::SRGBA8::new(red, green, blue, alpha).into())
+	}
+}
+
+impl From<&str> for GraphValue {
+	fn from(value: &str) -> Self {
+		Self::String(value.to_string())
+	}
+}
+
+impl From<String> for GraphValue {
+	fn from(value: String) -> Self {
+		Self::String(value)
+	}
+}
+
+impl From<bool> for GraphValue {
+	fn from(value: bool) -> Self {
+		Self::Bool(value)
+	}
+}
+
+impl From<f64> for GraphValue {
+	fn from(value: f64) -> Self {
+		Self::Number(value)
+	}
+}
+
+impl From<i64> for GraphValue {
+	fn from(value: i64) -> Self {
+		Self::Integer(value)
+	}
+}
+
+impl From<glam::DVec2> for GraphValue {
+	fn from(value: glam::DVec2) -> Self {
+		Self::Vec2(value)
+	}
+}
+
+impl From<Color> for GraphValue {
+	fn from(value: Color) -> Self {
+		Self::Color(value)
+	}
+}
 
 /// All multi-output proto nodes (those returning a [`Destructure`] struct), keyed by their identifier.
 /// Snapshotted on first access, which must happen after startup registration of the node metadata completes.

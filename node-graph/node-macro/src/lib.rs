@@ -5,6 +5,7 @@ mod codegen;
 mod crate_ident;
 mod derive_choice_type;
 mod destructure;
+mod graph;
 mod parsing;
 mod validation;
 
@@ -14,6 +15,38 @@ mod validation;
 pub fn node(attr: TokenStream, item: TokenStream) -> TokenStream {
 	// Performs the `node_impl` macro's functionality of attaching an `impl Node for TheGivenStruct` block to the node struct
 	parsing::new_node_fn(attr.into(), item.into()).unwrap_or_else(|err| err.to_compile_error()).into()
+}
+
+/// Defines a node as a subgraph of other nodes, the way `#[node]` defines a proto node.
+///
+/// The function's parameters are the subgraph's imports, parsed like a proto node's parameters, so they take the same
+/// value and widget attributes. On an import, `#[hard]` bounds the widget without clamping a wired value.
+/// `out!(...)` names its exports. The body binds nodes with `let`, wires them with `>>` (which feeds its left side
+/// into the primary input of the node on its right), and ends with `return`, giving one value per export. Every
+/// parameter is named in a call, and a bare name feeds the binding or import of that name to the parameter of the same
+/// name. Node state goes in methods after the call, each written once: `.at(x, y)`, `.layer()`, `.hidden()`, `.locked()`,
+/// `.pinned()`, `.named("…")`, and `.call_argument::<Footprint>()`. After those, an output's name like `.captures` wires from that
+/// output of the node, which also works on a binding.
+///
+/// ```ignore
+/// /// Outlines its content.
+/// #[node_macro::graph(category("Vector: Style"))]
+/// pub fn outlined(
+/// 	content: List<Graphic>,
+/// 	/// Outline thickness.
+/// 	#[unit(" px")]
+/// 	width: Item<f64>,
+/// ) -> out!(
+/// 	/// The outlined content.
+/// 	out,
+/// ) {
+/// 	return content >> stroke(weight = width).at(7, 0);
+/// }
+/// ```
+#[proc_macro_error]
+#[proc_macro_attribute]
+pub fn graph(attr: TokenStream, item: TokenStream) -> TokenStream {
+	graph::new_graph_fn(attr.into(), item.into()).unwrap_or_else(|err| err.to_compile_error()).into()
 }
 
 /// Derives `Destructure` for a struct returned by a multi-output node, making each of its `Item<T>` or `List<T>` fields an output connector.

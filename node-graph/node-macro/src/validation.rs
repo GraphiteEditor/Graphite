@@ -1,22 +1,22 @@
-use crate::parsing::{Implementation, NodeOutputTier, NodeParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField, output_payload, output_tier};
+use crate::graph::VALUE_HELPERS;
+use crate::parsing::{Implementation, NodeOutputTier, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField, output_payload, output_tier};
 use proc_macro_error3::{abort_if_dirty, emit_error};
 use quote::quote;
 use syn::spanned::Spanned;
-use syn::{GenericParam, Type};
+use syn::{GenericParam, Ident, Type};
 
 pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	let validators: &[fn(&ParsedNodeFn)] = &[
 		// Add more validators here as needed
 		validate_implementations_for_generics,
 		validate_implementations_row_counts,
-		validate_primary_input_expose,
-		validate_min_max,
-		validate_range_slider_bounds,
+		|parsed| validate_parameters(&parsed.fields),
 		validate_no_item_parameters,
 		validate_element_wise,
 		validate_ranked_inputs,
 		validate_async,
 		validate_non_parameters_trail,
+		|parsed| validate_name_isnt_a_value_helper(&parsed.fn_name),
 	];
 
 	for validator in validators {
@@ -26,6 +26,20 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	abort_if_dirty();
 
 	Ok(())
+}
+
+/// A graph body reads a call to a value helper like `rgb(...)` as a value, so a node or graph of that name couldn't be called there.
+pub(crate) fn validate_name_isnt_a_value_helper(name: &Ident) {
+	if let Some(message) = value_helper_name_violation(name) {
+		emit_error!(name.span(), "{}", message);
+	}
+}
+
+fn value_helper_name_violation(name: &Ident) -> Option<String> {
+	let name = name.to_string();
+	VALUE_HELPERS
+		.contains(&name.as_str())
+		.then(|| format!("A node can't be named `{name}`, since graphs use that name for a value helper"))
 }
 
 fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
@@ -291,8 +305,15 @@ fn is_unit_type(ty: &Type) -> bool {
 	matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty())
 }
 
-fn validate_min_max(parsed: &ParsedNodeFn) {
-	for field in &parsed.fields {
+/// The checks on a node's parameters, shared by proto node fields and graph imports, where the first is the primary input.
+pub(crate) fn validate_parameters(fields: &[ParsedField]) {
+	validate_primary_input_expose(fields);
+	validate_min_max(fields);
+	validate_range_slider_bounds(fields);
+}
+
+fn validate_min_max(fields: &[ParsedField]) {
+	for field in fields {
 		if let Some(RegularParsedField {
 			number_hard_max,
 			number_hard_min,
@@ -351,8 +372,8 @@ fn validate_min_max(parsed: &ParsedNodeFn) {
 
 /// A `#[range]` slider needs a defined extent on both ends. The extent comes from `#[soft]` when present,
 /// otherwise it falls back to `#[hard]`, so each end must be covered by at least one of the two attributes.
-fn validate_range_slider_bounds(parsed: &ParsedNodeFn) {
-	for field in &parsed.fields {
+fn validate_range_slider_bounds(fields: &[ParsedField]) {
+	for field in fields {
 		if let Some(RegularParsedField {
 			number_mode_range: true,
 			number_soft_min,
@@ -384,8 +405,8 @@ fn validate_range_slider_bounds(parsed: &ParsedNodeFn) {
 	}
 }
 
-fn validate_primary_input_expose(parsed: &ParsedNodeFn) {
-	if let Some(field) = parsed.fields.first()
+fn validate_primary_input_expose(fields: &[ParsedField]) {
+	if let Some(field) = fields.first()
 		&& let Some(RegularParsedField { exposed: true, .. }) = field.ty.regular()
 	{
 		let pat_ident = &field.pat_ident;
@@ -394,7 +415,7 @@ fn validate_primary_input_expose(parsed: &ParsedNodeFn) {
 			"Unnecessary #[expose] attribute on primary input `{}`. Primary inputs are always exposed.",
 			pat_ident.ident;
 			help = "You can safely remove the #[expose] attribute from this field.";
-			note = "The function's second argument, `{}`, is the node's primary input and it's always exposed by default", pat_ident.ident
+			note = "`{}` is the node's primary input, which is always exposed by default", pat_ident.ident
 		);
 	}
 }
@@ -462,7 +483,7 @@ fn validate_async(parsed: &ParsedNodeFn) {
 }
 
 /// The arguments that aren't parameters, which are `#[data]` state and the inputs the compiler fills in, go after the parameters.
-/// That keeps the primary input at index 0, where the editor's chain flow and other nodes feeding the primary input expect it.
+/// That keeps the primary input at index 0, where the editor's chain flow and a graph's `>>` expect it.
 fn validate_non_parameters_trail(parsed: &ParsedNodeFn) {
 	if let Some((span, message)) = non_parameter_order_violation(parsed) {
 		emit_error!(span, "{}", message);
@@ -475,7 +496,7 @@ fn non_parameter_order_violation(parsed: &ParsedNodeFn) -> Option<(proc_macro2::
 
 	let (parameter, non_parameter) = (&parameter.pat_ident, &non_parameter.pat_ident.ident);
 	let message = format!(
-		"The parameter `{}` comes after `{non_parameter}`, which isn't a parameter. Move `{non_parameter}` after the parameters: `#[data]` state and the inputs the compiler fills in (`#[scope]`, `#[source_id]`, and `#[node_path]`) go last, so the primary input is always the node's first input, which is the one the editor's chain flow feeds.",
+		"The parameter `{}` comes after `{non_parameter}`, which isn't a parameter. Move `{non_parameter}` after the parameters: `#[data]` state and the inputs the compiler fills in (`#[scope]`, `#[source_id]`, and `#[node_path]`) go last, so the primary input is always the node's first input, which is the one the editor's chain flow and a graph's `>>` feed.",
 		parameter.ident
 	);
 	Some((parameter.span(), message))
@@ -725,6 +746,25 @@ mod tests {
 			}
 		));
 		assert_eq!(only_non_parameters, None);
+	}
+
+	#[test]
+	fn a_node_named_like_a_value_helper_is_rejected() {
+		let named = |input: TokenStream| value_helper_name_violation(&parse_node_fn(quote::quote!(category("Test")), input).expect("The test node fn should parse").fn_name);
+
+		let message = named(quote::quote!(
+			fn rgb(_: impl Ctx, value: Item<f64>) -> Item<f64> {
+				value
+			}
+		));
+		assert!(message.is_some_and(|message| message.contains("can't be named `rgb`")));
+
+		let other = named(quote::quote!(
+			fn tint(_: impl Ctx, value: Item<f64>) -> Item<f64> {
+				value
+			}
+		));
+		assert_eq!(other, None);
 	}
 
 	fn row_count_violations(input: TokenStream) -> Vec<String> {

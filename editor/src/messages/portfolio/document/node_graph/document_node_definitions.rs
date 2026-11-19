@@ -5,19 +5,16 @@ use super::node_inspector::{self, ParameterWidgetsInfo, SliderRange};
 use super::utility_types::{FrontendNodeType, InputTypeConstraint};
 use crate::messages::frontend::IconName;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::utility_types::network_interface::{
-	InputMetadata, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, Vec2InputSettings, WidgetOverride,
-};
+use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, NodeTemplate, NodeTemplateImplementation};
 use crate::messages::portfolio::ingest::utility_types::TypeFilter;
 use crate::messages::prelude::{DocumentId, FontsMessage, FontsMessageHandler, Message, ResourceMessageHandler, Responses};
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
+use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graph_craft::{concrete, list};
-use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType};
-use graphene_std::vector::Vector;
+use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
 use graphene_std::*;
 use std::collections::{HashMap, VecDeque};
 
@@ -40,6 +37,11 @@ impl NodeInspectorContext<'_> {
 		let input_inspector_row = self.network_interface.persistent_input_metadata(node_id, index, self.selection_network_path)?;
 		let widget_override = input_inspector_row.widget_override.clone()?;
 
+		// Older documents store number and Vec2 widget settings this way, but they come from the definition's parameter
+		if matches!(widget_override.as_str(), "number" | "vec2") {
+			return None;
+		}
+
 		let Some(widget_override_lambda) = INPUT_OVERRIDES.get(&widget_override) else {
 			log::error!("Could not get widget override '{widget_override}' lambda in call_widget_override");
 			return None;
@@ -51,11 +53,11 @@ impl NodeInspectorContext<'_> {
 }
 
 /// Input position of the location parameter on the "Artboard" layer template, which follows the two layer-shaped inputs (stack and content) and maps through to the inner Create Artboard proto node.
-pub const ARTBOARD_LOCATION_INPUT_INDEX: usize = 2;
+pub const ARTBOARD_LOCATION_INPUT_INDEX: usize = graphene_std::subgraphs::artboard::LocationInput::INDEX;
 /// Input position of the dimensions parameter on the "Artboard" layer template, which follows the two layer-shaped inputs (stack and content) and maps through to the inner Create Artboard proto node.
-pub const ARTBOARD_DIMENSIONS_INPUT_INDEX: usize = 3;
+pub const ARTBOARD_DIMENSIONS_INPUT_INDEX: usize = graphene_std::subgraphs::artboard::DimensionsInput::INDEX;
 /// Input position of the control path parameter on the "Blend" network node template.
-pub const BLEND_PATH_INPUT_INDEX: usize = 4;
+pub const BLEND_PATH_INPUT_INDEX: usize = graphene_std::subgraphs::blend::PathInput::INDEX;
 
 /// The key used to access definitions for a network node or proto node.
 /// For proto nodes, this is their [`ProtoNodeIdentifier`].
@@ -107,8 +109,7 @@ pub struct DocumentNodeDefinition {
 	/// Used to create the [`DefinitionIdentifier::Network`] identifier.
 	pub identifier: &'static str,
 
-	/// The definition's position in its lineage. Bump it, with a `network` migration, when a change would load existing instances wrongly.
-	/// Instances store it next to their reference. Proto-node definitions take theirs from the node macro.
+	/// The definition's position in its lineage, from `version(N)` on its `#[node]` or `#[graph]`. Instances store it next to their reference.
 	pub version: u32,
 
 	/// The default [`NodeTemplate`] this definition instantiates.
@@ -136,529 +137,9 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<HashMap<DefinitionIdentifier, 
 
 /// Defines the "signature" or "header file"-like metadata for the document nodes, but not the implementation (which is defined in the node registry).
 /// The [`DocumentNode`] is the instance while these [`DocumentNodeDefinition`]s are the "classes" or "blueprints" from which the instances are built.
-/// Only the position can be set for protonodes within a definition. The rest of the metadata comes from the node macro in NODE_METADATA
+/// A proto node within a definition takes its input and output metadata from the node macro in NODE_METADATA, and its display name too unless the definition gives one.
 fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
-	let custom = vec![
-		DocumentNodeDefinition {
-			identifier: "Merge",
-			version: 1,
-			category: "Graphic",
-			icon: Some("NodeMerge"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(2), 0)],
-					nodes: [
-						// Primary (bottom) input type coercion
-						NodeTemplate {
-							inputs: vec![NodeInput::import(generic!(T), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::as_graphic::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -2)),
-							..Default::default()
-						},
-						// Secondary (left) input type coercion
-						NodeTemplate {
-							inputs: vec![NodeInput::import(generic!(T), 1)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::into_group::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
-							..Default::default()
-						},
-						NodeTemplate {
-							call_argument: generic!(T),
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -2)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![NodeInput::type_default(list!(Graphic), true), NodeInput::type_default(list!(Graphic), true)],
-				input_metadata: vec![
-					("Base", "The stack of layers below this one, which the content is placed above.").into(),
-					("Content", "The artwork this layer adds to the stack as a single item.").into(),
-				],
-				output_names: vec!["Out".to_string()],
-				output_descriptions: vec!["The stack of layers with this layer's content placed on top.".to_string()],
-				node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
-				..Default::default()
-			},
-			description: Cow::Borrowed("Merges the provided content as a new item in the layer's compositing stack."),
-			inspector: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Artboard",
-			version: 1,
-			category: "Graphic",
-			icon: Some("NodeArtboard"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(1), 0)],
-					nodes: [
-						NodeTemplate {
-							call_argument: generic!(T),
-							implementation: NodeTemplateImplementation::ProtoNode(artboard::create_artboard::IDENTIFIER),
-							inputs: vec![
-								NodeInput::import(Type::Fn(concrete!(Context).into(), generic!(T).into()), 1),
-								NodeInput::import(item!(TaggedValue), 2),
-								NodeInput::import(item!(TaggedValue), 3),
-								NodeInput::import(item!(TaggedValue), 4),
-								NodeInput::import(item!(TaggedValue), 5),
-							],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(list!(Artboard))), 0),
-								NodeInput::node(NodeId(0), 0),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![
-					NodeInput::type_default(list!(Artboard), true),
-					NodeInput::type_default(list!(Graphic), true),
-					NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-					NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
-					NodeInput::value(TaggedValue::Color(Color::WHITE), false),
-					NodeInput::value(TaggedValue::Bool(true), false),
-				],
-				input_metadata: vec![
-					("Base", "The stack of artboards below this one, which this artboard is placed above.").into(),
-					("Content", "Graphics to include within the artboard.").into(),
-					InputMetadata::with_name_description_override(
-						"Location",
-						"Coordinate of the top-left corner of the artboard within the document.",
-						WidgetOverride::Vec2(Vec2InputSettings {
-							x: "X".to_string(),
-							y: "Y".to_string(),
-							unit: " px".to_string(),
-							is_integer: true,
-							..Default::default()
-						}),
-					),
-					InputMetadata::with_name_description_override(
-						"Dimensions",
-						"Width and height of the artboard within the document.",
-						WidgetOverride::Vec2(Vec2InputSettings {
-							x: "W".to_string(),
-							y: "H".to_string(),
-							unit: " px".to_string(),
-							is_integer: true,
-							..Default::default()
-						}),
-					),
-					InputMetadata::with_name_description_override("Background", "Color of the artboard background.", WidgetOverride::Custom("artboard_background".to_string())),
-					("Clip", "Whether to cut off the contained content that extends outside the artboard, or keep it visible.").into(),
-				],
-				output_names: vec!["Out".to_string()],
-				output_descriptions: vec!["The stack of artboards with this artboard placed on top.".to_string()],
-				node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
-				..Default::default()
-			},
-			description: Cow::Borrowed("Creates a new Artboard which can be used as a working surface."),
-			inspector: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Blend",
-			version: 1,
-			category: "Vector: Deform",
-			icon: Some("NodeBlend"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(16), 0)],
-					nodes: [
-						// 0: Separate Paths (split the vector into its individual paths)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::separate_paths::IDENTIFIER),
-							inputs: vec![NodeInput::import(generic!(T), 4)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 0)),
-							..Default::default()
-						},
-						// 1: Count (number of subpaths)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::count::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 2)),
-							..Default::default()
-						},
-						// 2: Max (clamp subpath count to at least 1 for empty path case)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::value(TaggedValue::Number(1.), false)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(9, 2)),
-							..Default::default()
-						},
-						// 3: As Number (the integer count enters the network's decimal math)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::as_number::IDENTIFIER),
-							inputs: vec![NodeInput::import(item!(i64), 1)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 13)),
-							..Default::default()
-						},
-						// 4: Multiply (total_instances = count × subpath_count)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::multiply::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(2), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 1)),
-							..Default::default()
-						},
-						// 5: Subtract (count - 1, open subpath denominator)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::subtract::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::value(TaggedValue::Number(1.), false)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 14)),
-							..Default::default()
-						},
-						// 6: Read Index (current repetition index)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(context::read_index::IDENTIFIER),
-							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::Integer(0), false)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 7)),
-							..Default::default()
-						},
-						// 7: Divide (index / count)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::divide::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(6), 0), NodeInput::node(NodeId(17), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 10)),
-							..Default::default()
-						},
-						// 8: Floor (floor(index / count) = subpath index)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::floor::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(7), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 4)),
-							..Default::default()
-						},
-						// 9: Modulo (index % count = local index within subpath)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::modulo::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(6), 0), NodeInput::node(NodeId(17), 0), NodeInput::value(TaggedValue::Bool(true), false)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 7)),
-							..Default::default()
-						},
-						// 10: Path Is Closed (check if current subpath is closed)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::path_is_closed::IDENTIFIER),
-							inputs: vec![NodeInput::import(generic!(T), 4), NodeInput::node(NodeId(8), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 2)),
-							..Default::default()
-						},
-						// 11: Switch (closed → count, open → max(count - 1, 1) as denominator)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::switch::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(10), 0), NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(18), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 12)),
-							..Default::default()
-						},
-						// 12: Divide (local_index / denominator = within-subpath fraction)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::divide::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(9), 0), NodeInput::node(NodeId(11), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 7)),
-							..Default::default()
-						},
-						// 13: Multiply (fraction × 0.9999999999 to avoid overflowing to the next subpath)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::multiply::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(12), 0), NodeInput::value(TaggedValue::Number(0.9999999999), false)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 7)),
-							..Default::default()
-						},
-						// 14: Add (subpath_index + clamped fraction = progression)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::add::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(8), 0), NodeInput::node(NodeId(13), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(37, 4)),
-							..Default::default()
-						},
-						// 15: Morph (content, progression, reverse, distribution, path)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::morph::IDENTIFIER),
-							inputs: vec![
-								NodeInput::import(generic!(T), 0),
-								NodeInput::node(NodeId(14), 0),
-								NodeInput::value(TaggedValue::Bool(false), false),
-								NodeInput::import(item!(vector::misc::InterpolationDistribution), 3),
-								NodeInput::import(item!(Vector), 4),
-							],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(44, 3)),
-							..Default::default()
-						},
-						// 16: Repeat
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(repeat_nodes::repeat::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(15), 0), NodeInput::node(NodeId(4), 0), NodeInput::import(generic!(T), 2)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(51, 0)),
-							..Default::default()
-						},
-						// 17: Max (clamp count to at least 1)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(3), 0), NodeInput::value(TaggedValue::Number(1.), false)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(9, 13)),
-							..Default::default()
-						},
-						// 18: Max (clamp open-path denominator to at least 1 to avoid division by zero when count = 1)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(5), 0), NodeInput::value(TaggedValue::Number(1.), false)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 14)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![
-					NodeInput::type_default(list!(Vector), true),
-					NodeInput::value(TaggedValue::Integer(10), false),
-					NodeInput::value(TaggedValue::Bool(Default::default()), false),
-					NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
-					NodeInput::type_default(item!(Vector), false),
-				],
-				input_metadata: vec![
-					("Content", "The vector objects to create intermediate shapes between.").into(),
-					(
-						"Count",
-						"The number of shapes spanning from the first object to the last, repeated for each subpath of the control path.",
-					)
-						.into(),
-					("Reverse", "Flip the stacking order of the shapes, so the ones nearest the first object are on top.").into(),
-					("Distribution", "What changes evenly from one shape to the next, which sets how the intermediate shapes are spaced.").into(),
-					(
-						"Path",
-						"An optional control path with one anchor point per object. Curved segments shape the trajectory of the blend instead of traveling straight.",
-					)
-						.into(),
-				],
-				output_names: vec!["Out".to_string()],
-				output_descriptions: vec!["The blended shapes, from the first object to the last.".to_string()],
-				node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-				..Default::default()
-			},
-			description: Cow::Borrowed("Creates a series of intermediate shapes that gradually transition between vector objects, optionally along a control path."),
-			inspector: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Origins to Polyline",
-			version: 1,
-			category: "Vector: Path",
-			icon: Some("NodeOriginsToPolyline"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(7), 0)],
-					nodes: [
-						// 0: Read Vector
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(context::read_vector::IDENTIFIER),
-							inputs: vec![NodeInput::value(TaggedValue::None, false)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 1)),
-							..Default::default()
-						},
-						// 1: Extract Transform
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(transform_nodes::extract_transform::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 1)),
-							..Default::default()
-						},
-						// 2: Decompose Translation
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(transform_nodes::decompose_translation::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(1), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 1)),
-							..Default::default()
-						},
-						// 3: As Vector (auto-converts the decomposed translation into a single-anchor List<Vector>)
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::as_vector::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(2), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 1)),
-							..Default::default()
-						},
-						// 4: Flatten Vector
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(graphic_nodes::graphic::flatten_vector::IDENTIFIER),
-							inputs: vec![NodeInput::import(generic!(T), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 0)),
-							..Default::default()
-						},
-						// 5: Map
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::map::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(28, 0)),
-							..Default::default()
-						},
-						// 6: Combine Paths
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::combine_paths::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(5), 0)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(35, 0)),
-							..Default::default()
-						},
-						// 7: Points to Polyline
-						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::points_to_polyline::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(6), 0), NodeInput::value(TaggedValue::Bool(false), false)],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(42, 0)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![NodeInput::type_default(list!(Vector), true)],
-				input_metadata: vec![("Vector", "The vector objects to connect in order by their origins.").into()],
-				output_names: vec!["Vector".to_string()],
-				output_descriptions: vec!["An open polyline with an anchor point at the origin of each object.".to_string()],
-				node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-				..Default::default()
-			},
-			description: Cow::Borrowed("Connects the origins of vector objects in order with an open polyline, such as to make a control path for the **Blend** and **Morph** nodes."),
-			inspector: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Load Image",
-			version: 1,
-			category: "Data: I/O",
-			icon: Some("NodeLoadImage"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(1), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::import(item!(String), 1)],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::load_resource::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::bytes_to_image::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String(String::new()), false)],
-				input_metadata: vec![
-					("Empty", "Has no effect, since the image is loaded from the URL.").into(),
-					("URL", "The web address or local asset path of the image to load.").into(),
-				],
-				output_names: vec!["Image".to_string()],
-				output_descriptions: vec!["The loaded image.".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("Loads an image from a given URL."),
-			inspector: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Regex Find",
-			version: 1,
-			category: "String: Regex",
-			icon: Some("NodeRegexFind"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![
-						// Primary output: the whole match (String)
-						NodeInput::node(NodeId(1), 0),
-						// Secondary output: capture groups (List<String>), each item carries `start`/`end`/`name` attributes from `regex_find`
-						NodeInput::node(NodeId(2), 0),
-					],
-					nodes: [
-						// Node 0: regex_find proto node — returns List<String> of [whole_match, ...capture_groups]
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(item!(String), 0),
-								NodeInput::import(item!(String), 1),
-								NodeInput::import(item!(i64), 2),
-								NodeInput::import(item!(bool), 3),
-								NodeInput::import(item!(bool), 4),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(text_nodes::regex::regex_find::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						// Node 1: item_at_index at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::Integer(0), false)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::item_at_index::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 0)),
-							..Default::default()
-						},
-						// Node 2: remove_at_index at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::Integer(0), false)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::remove_at_index::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 2)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![
-					NodeInput::value(TaggedValue::String(String::new()), true),
-					NodeInput::value(TaggedValue::String(String::new()), false),
-					NodeInput::value(TaggedValue::Integer(0), false),
-					NodeInput::value(TaggedValue::Bool(false), false),
-					NodeInput::value(TaggedValue::Bool(false), false),
-				],
-				input_metadata: vec![
-					("String", "The string to search within.").into(),
-					("Pattern", "The regular expression pattern to search for.").into(),
-					(
-						"Match Index",
-						"Which non-overlapping occurrence of the pattern to return, starting from 0 for the first match. Negative indices count backwards from the last match.",
-					)
-						.into(),
-					("Case Insensitive", "Match letters regardless of case.").into(),
-					("Multiline", "Make `^` and `$` match the start and end of each line, not just the whole string.").into(),
-				],
-				output_names: vec!["Match".to_string(), "Captures".to_string()],
-				output_descriptions: vec![
-					"The whole portion of the string matching the pattern, or empty if there is no match.".to_string(),
-					"The text matched by each capture group in the pattern, in order.".to_string(),
-				],
-				..Default::default()
-			},
-			description: Cow::Borrowed(
-				r#"Finds a portion of the string matching a regular expression pattern. With "Match Index" at its default 0, it selects the first non-overlapping occurrence, but others may be selected. Capture groups, if any, are produced as a list in the "Captures" output."#,
-			),
-			inspector: None,
-		},
-	];
-
-	document_node_derive::post_process_nodes(custom)
+	document_node_derive::derive_definitions()
 }
 
 type NodeInspector = HashMap<String, Box<dyn Fn(NodeId, &mut NodeInspectorContext) -> Vec<LayoutGroup> + Send + Sync>>;
@@ -726,91 +207,10 @@ fn static_input_inspector() -> InputInspector {
 		}),
 	);
 	map.insert(
-		"number".to_string(),
-		Box::new(|node_id, index, context| {
-			let mut number_input = NumberInput::default();
-			if let Some(unit) = context
-				.network_interface
-				.input_data(&node_id, index, "unit", context.selection_network_path)
-				.and_then(|value| value.as_str())
-			{
-				number_input = number_input.unit(unit);
-			}
-			if let Some(min) = context
-				.network_interface
-				.input_data(&node_id, index, "min", context.selection_network_path)
-				.and_then(|value| value.as_f64())
-			{
-				number_input = number_input.min(min);
-			}
-			if let Some(max) = context
-				.network_interface
-				.input_data(&node_id, index, "max", context.selection_network_path)
-				.and_then(|value| value.as_f64())
-			{
-				number_input = number_input.max(max);
-			}
-			if let Some(step) = context
-				.network_interface
-				.input_data(&node_id, index, "step", context.selection_network_path)
-				.and_then(|value| value.as_f64())
-			{
-				number_input = number_input.step(step);
-			}
-			if let Some(mode) = context.network_interface.input_data(&node_id, index, "mode", context.selection_network_path).map(|value| {
-				let mode: NumberInputMode = serde_json::from_value(value.clone()).unwrap();
-				mode
-			}) {
-				number_input = number_input.mode(mode);
-			}
-			if let Some(range_min) = context
-				.network_interface
-				.input_data(&node_id, index, "range_min", context.selection_network_path)
-				.and_then(|value| value.as_f64())
-			{
-				number_input = number_input.range_min(Some(range_min));
-			}
-			if let Some(range_max) = context
-				.network_interface
-				.input_data(&node_id, index, "range_max", context.selection_network_path)
-				.and_then(|value| value.as_f64())
-			{
-				number_input = number_input.range_max(Some(range_max));
-			}
-			if let Some(is_integer) = context
-				.network_interface
-				.input_data(&node_id, index, "is_integer", context.selection_network_path)
-				.and_then(|value| value.as_bool())
-			{
-				number_input = number_input.is_integer(is_integer);
-			}
-			let blank_assist = context
-				.network_interface
-				.input_data(&node_id, index, "blank_assist", context.selection_network_path)
-				.and_then(|value| value.as_bool())
-				.unwrap_or_else(|| {
-					log::error!("Could not get blank assist when displaying number input for node {node_id}, index {index}");
-					true
-				});
-
-			Ok(vec![LayoutGroup::row(node_inspector::number_widget(
-				ParameterWidgetsInfo::at_index(node_id, index, blank_assist, context),
-				number_input,
-			))])
-		}),
-	);
-	map.insert(
-		// The custom number input settings are only available on proto nodes
 		"optional_f64".to_string(),
 		Box::new(|node_id, index, context| {
 			let mut number_input = NumberInput::default();
-			// The field is cloned so the lock is released before building the row below, which locks the node metadata again
-			if let Some(field) = context
-				.network_interface
-				.implementation(&node_id, context.selection_network_path)
-				.and_then(|implementation| if let DocumentNodeImplementation::ProtoNode(id) = implementation { Some(id) } else { None })
-				.and_then(|proto_node_identifier| registry::NODE_METADATA.lock().unwrap().get(proto_node_identifier)?.fields.get(index).cloned())
-			{
+			if let Some(field) = context.network_interface.field_metadata(&node_id, index, context.selection_network_path) {
 				if let Some(unit) = field.unit {
 					number_input = number_input.unit(unit);
 				}
@@ -904,57 +304,6 @@ fn static_input_inspector() -> InputInspector {
 		// A type-witness input, whose stored value's type selects the node's row: the dropdown lists the types the rows accept there
 		"type_choice".to_string(),
 		Box::new(|node_id, index, context| Ok(vec![node_inspector::type_choice_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context))])),
-	);
-	map.insert(
-		"vec2".to_string(),
-		Box::new(|node_id, index, context| {
-			let x = context
-				.network_interface
-				.input_data(&node_id, index, "x", context.selection_network_path)
-				.and_then(|value| value.as_str())
-				.unwrap_or_else(|| {
-					log::error!("Could not get x for vec2 input");
-					""
-				})
-				.to_string();
-			let y = context
-				.network_interface
-				.input_data(&node_id, index, "y", context.selection_network_path)
-				.and_then(|value| value.as_str())
-				.unwrap_or_else(|| {
-					log::error!("Could not get y for vec2 input");
-					""
-				})
-				.to_string();
-			let unit = context
-				.network_interface
-				.input_data(&node_id, index, "unit", context.selection_network_path)
-				.and_then(|value| value.as_str())
-				.unwrap_or_else(|| {
-					log::error!("Could not get unit for vec2 input");
-					""
-				})
-				.to_string();
-			let min = context
-				.network_interface
-				.input_data(&node_id, index, "min", context.selection_network_path)
-				.and_then(|value| value.as_f64());
-			let is_integer = context
-				.network_interface
-				.input_data(&node_id, index, "is_integer", context.selection_network_path)
-				.and_then(|value| value.as_bool())
-				.unwrap_or_default();
-
-			Ok(vec![node_inspector::vec2_widget(
-				ParameterWidgetsInfo::at_index(node_id, index, true, context),
-				&x,
-				&y,
-				&unit,
-				min,
-				is_integer,
-				false,
-			)])
-		}),
 	);
 	map.insert(
 		"noise_inspector_scale".to_string(),
@@ -1128,6 +477,7 @@ fn static_input_inspector() -> InputInspector {
 				"Y",
 				"",
 				None,
+				None,
 				false,
 				mandelbrot_to_julia.is_some_and(|percent| percent >= 100.),
 			)])
@@ -1143,6 +493,7 @@ fn static_input_inspector() -> InputInspector {
 				"X",
 				"Y",
 				"",
+				None,
 				None,
 				false,
 				mandelbrot_to_julia.is_some_and(|percent| percent <= 0.),
@@ -1250,6 +601,7 @@ fn static_input_inspector() -> InputInspector {
 				"Y",
 				" px",
 				None,
+				None,
 				false,
 				false,
 			)])
@@ -1264,6 +616,7 @@ fn static_input_inspector() -> InputInspector {
 				"W",
 				"H",
 				"x",
+				None,
 				None,
 				false,
 				false,
@@ -1385,7 +738,7 @@ fn static_input_inspector() -> InputInspector {
 		"vec2_uv".to_string(),
 		Box::new(|node_id, index, context| {
 			let parameter_widgets_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
-			Ok(vec![node_inspector::vec2_widget(parameter_widgets_info, "U", "V", "", None, false, false)])
+			Ok(vec![node_inspector::vec2_widget(parameter_widgets_info, "U", "V", "", None, None, false, false)])
 		}),
 	);
 	map
@@ -1633,6 +986,18 @@ mod test {
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::document::NodeId;
 
+	// A `#[graph]` node with an inner node that has no definition is left out of the catalog with only a logged error
+	#[test]
+	fn every_registered_graph_has_a_definition() {
+		// Released before resolving, since building the catalog locks the registry too
+		let identifiers: Vec<&str> = graphene_std::registry::GRAPH_METADATA.lock().unwrap().iter().map(|graph| graph.identifier).collect();
+		assert!(!identifiers.is_empty(), "the `#[graph]` nodes in `graphene_std::subgraphs` should be registered");
+
+		for identifier in identifiers {
+			assert!(resolve_network_node_type(identifier).is_some(), "the '{identifier}' graph should have a definition");
+		}
+	}
+
 	#[test]
 	fn rasterize_defaults_to_a_1000_px_square_at_full_resolution() {
 		use glam::{DAffine2, UVec2};
@@ -1773,21 +1138,36 @@ mod test_type_constraints {
 
 	#[test]
 	fn every_definition_default_value_satisfies_its_constraint() {
-		let mut violations = Vec::new();
-		for definition in super::DOCUMENT_NODE_TYPES.values() {
-			let name = &definition.node_template.display_name;
-			let constraints = InputTypeConstraint::constraints_for_all_inputs(&definition.node_template, name);
+		// Checks a node's inputs against what its implementations accept, then each node inside it, whose values a subgraph's author writes too
+		fn check(node_template: &NodeTemplate, name: &str, violations: &mut Vec<String>) {
+			let constraints = InputTypeConstraint::constraints_for_all_inputs(node_template, name);
 
-			for (index, (constraint, input)) in constraints.iter().zip(&definition.node_template.inputs).enumerate() {
+			for (index, (constraint, input)) in constraints.iter().zip(&node_template.inputs).enumerate() {
 				if let Some(value) = input.as_value()
 					&& !constraint.accepts_default_value(&value.ty())
 				{
 					violations.push(format!("{name} input {index}: {} does not satisfy {constraint:?}", value.ty()));
 				}
+
+				let takes_nothing = matches!(constraint, InputTypeConstraint::Limited(types) if !types.is_empty() && types.iter().all(|ty| ty == "()"));
+				if takes_nothing && matches!(input, NodeInput::Node { .. } | NodeInput::Import { .. }) {
+					violations.push(format!("{name} input {index}: a wire feeds it, but it takes nothing"));
+				}
+			}
+
+			if let NodeTemplateImplementation::Network(network) = &node_template.implementation {
+				for (node_id, inner) in &network.nodes {
+					check(inner, &format!("{name}, node {node_id}"), violations);
+				}
 			}
 		}
 
-		assert!(violations.is_empty(), "Default values rejected by their input constraints:\n{}", violations.join("\n"));
+		let mut violations = Vec::new();
+		for definition in super::DOCUMENT_NODE_TYPES.values() {
+			check(&definition.node_template, &definition.node_template.display_name, &mut violations);
+		}
+
+		assert!(violations.is_empty(), "Values rejected by their input constraints:\n{}", violations.join("\n"));
 	}
 
 	#[test]
@@ -1804,7 +1184,7 @@ mod test_type_constraints {
 
 	#[test]
 	fn single_protonode() {
-		let node_type = resolve_proto_node_type(test_node_accept_f_32_f_64_dvec_2::IDENTIFIER).expect("test node to exist");
+		let node_type = resolve_proto_node_type(test_node_accept_f32_f64_dvec2::IDENTIFIER).expect("test node to exist");
 		let constraint = InputTypeConstraint::constraints_for_all_inputs(&node_type.node_template, "name");
 		all_satisifed(&constraint[0], [concrete!(f32), concrete!(f64), concrete!(glam::DVec2)]);
 		assert!(!constraint[0].satisfies(&concrete!(String)));
@@ -1818,7 +1198,7 @@ mod test_type_constraints {
 
 	#[test]
 	fn single_protonode2() {
-		let node_type = resolve_proto_node_type(test_node_accept_f_32_f_64_string::IDENTIFIER).expect("test node to exist");
+		let node_type = resolve_proto_node_type(test_node_accept_f32_f64_string::IDENTIFIER).expect("test node to exist");
 		let constraint = InputTypeConstraint::constraints_for_all_inputs(&node_type.node_template, "name");
 		all_satisifed(&constraint[0], [concrete!(f32), concrete!(f64), concrete!(String)]);
 		assert!(!constraint[0].satisfies(&concrete!(glam::DVec2)));
@@ -1827,8 +1207,8 @@ mod test_type_constraints {
 
 	#[test]
 	fn network() {
-		let atan_definition = resolve_proto_node_type(test_node_accept_f_32_f_64_dvec_2::IDENTIFIER).expect("test node to exist");
-		let min_definition = resolve_proto_node_type(test_node_accept_f_32_f_64_string::IDENTIFIER).expect("test node to exist");
+		let atan_definition = resolve_proto_node_type(test_node_accept_f32_f64_dvec2::IDENTIFIER).expect("test node to exist");
+		let min_definition = resolve_proto_node_type(test_node_accept_f32_f64_string::IDENTIFIER).expect("test node to exist");
 		let atan_node = atan_definition.node_template_input_override([Some(NodeInput::import(generic!(X), 0))]);
 		let min_node = min_definition.node_template_input_override([Some(NodeInput::import(generic!(X), 0))]);
 		let inner_network = NodeNetworkTemplate {

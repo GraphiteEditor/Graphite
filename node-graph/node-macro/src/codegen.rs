@@ -3,6 +3,7 @@ use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use std::sync::atomic::AtomicU64;
+use syn::ext::IdentExt;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
@@ -112,15 +113,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let data_field_names: Vec<_> = data_fields.iter().map(|f| &f.pat_ident.ident).collect();
 
 	// Only regular fields have input names/descriptions (for UI)
-	let input_names: Vec<_> = regular_fields
-		.iter()
-		.map(|f| &f.name)
-		.zip(regular_field_names.iter())
-		.map(|zipped| match zipped {
-			(Some(name), _) => name.value(),
-			(_, name) => name.to_string().to_case(Case::Title),
-		})
-		.collect();
+	let input_names: Vec<_> = regular_fields.iter().map(|field| parameter_display_name(field)).collect();
 
 	// The primary input is not a parameter, so generators can name their unused one `_primary` without it becoming internal
 	let input_internal = regular_field_names
@@ -174,56 +167,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.collect();
 
-	// Only regular fields have UI metadata (data fields are internal state)
-	let widget_override: Vec<_> = regular_fields
-		.iter()
-		.map(|field| match &field.widget_override {
-			ParsedWidgetOverride::None => quote!(RegistryWidgetOverride::None),
-			ParsedWidgetOverride::Hidden => quote!(RegistryWidgetOverride::Hidden),
-			ParsedWidgetOverride::String(lit_str) => quote!(RegistryWidgetOverride::String(#lit_str)),
-			ParsedWidgetOverride::Custom(lit_str) => quote!(RegistryWidgetOverride::Custom(#lit_str)),
-		})
-		.collect();
-
-	let value_sources: Vec<_> = regular_fields
-		.iter()
-		.map(|field| match field.ty.value_source() {
-			ParsedValueSource::Default(data) => {
-				// Check if the data is a string literal by parsing the token stream
-				let data_str = data.to_string();
-				if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
-					quote!(RegistryValueSource::Default(#data))
-				} else {
-					quote!(RegistryValueSource::Default(stringify!(#data)))
-				}
-			}
-			ParsedValueSource::Scope(data) => {
-				if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data.as_ref() {
-					quote!(RegistryValueSource::Scope(#data))
-				} else {
-					quote!(RegistryValueSource::Scope(#data.as_static_str()))
-				}
-			}
-			ParsedValueSource::SourceId => quote!(RegistryValueSource::SourceId),
-			ParsedValueSource::NodePath => quote!(RegistryValueSource::NodePath),
-			_ => quote!(RegistryValueSource::None),
-		})
-		.collect();
-
-	let default_colors: Vec<_> = regular_fields
-		.iter()
-		.map(|field| match field.ty.regular() {
-			Some(RegularParsedField {
-				value_source: ParsedValueSource::Default(data),
-				..
-			}) => match color_constant_paths(data) {
-				Some(paths) => quote!(Some(&[#(#paths),*])),
-				None => quote!(None),
-			},
-			_ => quote!(None),
-		})
-		.collect();
-
 	let default_types: Vec<_> = regular_fields
 		.iter()
 		.enumerate()
@@ -270,64 +213,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.collect();
 
-	let bound_values = |select: fn(&RegularParsedField) -> &Option<NumberBound>| -> Vec<_> {
-		regular_fields
-			.iter()
-			.map(|field| match field.ty.regular() {
-				Some(regular) => select(regular).as_ref().map_or(quote!(None), |bound| quote!(Some(#bound))),
-				None => quote!(None),
-			})
-			.collect()
-	};
-	let number_soft_min_values = bound_values(|field| &field.number_soft_min);
-	let number_soft_max_values = bound_values(|field| &field.number_soft_max);
-	let number_hard_min_values = bound_values(|field| &field.number_hard_min);
-	let number_hard_max_values = bound_values(|field| &field.number_hard_max);
-	let number_mode_range_values: Vec<_> = regular_fields
+	// Only regular fields have UI metadata (data fields are internal state)
+	let field_metadata: Vec<_> = regular_fields
 		.iter()
-		.map(|field| match field.ty.regular() {
-			Some(RegularParsedField { number_mode_range, .. }) => quote!(#number_mode_range),
-			None => quote!(false),
-		})
-		.collect();
-	let number_display_decimal_places: Vec<_> = regular_fields
-		.iter()
-		.map(|field| field.number_display_decimal_places.as_ref().map_or(quote!(None), |i| quote!(Some(#i))))
-		.collect();
-	let number_step: Vec<_> = regular_fields.iter().map(|field| field.number_step.as_ref().map_or(quote!(None), |i| quote!(Some(#i)))).collect();
-
-	let unit_suffix: Vec<_> = regular_fields.iter().map(|field| field.unit.as_ref().map_or(quote!(None), |i| quote!(Some(#i)))).collect();
-	let multiline: Vec<_> = regular_fields
-		.iter()
-		.map(|field| {
-			let multiline = field.multiline;
-			quote!(#multiline)
-		})
-		.collect();
-	let progression: Vec<_> = regular_fields
-		.iter()
-		.map(|field| {
-			let progression = field.progression;
-			quote!(#progression)
-		})
-		.collect();
-	let constant: Vec<_> = regular_fields
-		.iter()
-		.map(|field| {
-			let constant = field.constant;
-			quote!(#constant)
-		})
-		.collect();
-
-	let exposed: Vec<_> = regular_fields
-		.iter()
-		.map(|field| match field.ty.regular() {
-			Some(RegularParsedField { exposed, .. }) => quote!(#exposed),
-			None => {
-				let exposed = !field.is_environment();
-				quote!(#exposed)
-			}
-		})
+		.zip(&input_internal)
+		.zip(&default_types)
+		.map(|((field, internal), default_type)| field_metadata_tokens(field, *internal, default_type, core_types))
 		.collect();
 
 	// Only eval regular fields (data fields are accessed directly as self.field_name)
@@ -858,7 +749,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Some(cfg) => quote!(#[cfg(#cfg)]),
 		None => quote!(),
 	};
-	let node_input_accessor = generate_node_input_references(parsed, &field_idents, core_types, &identifier, &cfg);
+	let parameter_idents: Vec<_> = regular_fields.iter().filter(|field| !field.is_environment()).map(|field| &field.pat_ident).collect();
+	let node_input_accessor = generate_node_input_references(parsed, &parameter_idents, core_types, &identifier, &cfg);
 
 	let mapped_node_impl = match (&mapped_struct_where_clause, &mapped_eval_impl) {
 		(Some(mapped_where_clause), Some(mapped_eval)) => quote! {
@@ -1009,7 +901,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			use gcore::{Node, NodeIOTypes, concrete, fn_type,  ProtoNodeIdentifier, WasmNotSync, NodeIO, ContextFeature};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
-			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
+			use gcore::registry::{NodeMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, TypeErasedBox, PanicNode};
 			use gcore::ctor::ctor;
 
 			// Use the types specified in the implementation
@@ -1056,36 +948,137 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					},
 					version: #version,
 					output_fields: #output_fields,
-					fields: vec![
-						#(
-							FieldMetadata {
-								name: #input_names,
-								widget_override: #widget_override,
-								description: #input_descriptions,
-								internal: #input_internal,
-								exposed: #exposed,
-								value_source: #value_sources,
-								default_colors: #default_colors,
-								default_type: #default_types,
-								number_soft_min: #number_soft_min_values,
-								number_soft_max: #number_soft_max_values,
-								number_hard_min: #number_hard_min_values,
-								number_hard_max: #number_hard_max_values,
-								number_mode_range: #number_mode_range_values,
-								number_display_decimal_places: #number_display_decimal_places,
-								number_step: #number_step,
-								unit: #unit_suffix,
-								multiline: #multiline,
-								progression: #progression,
-								constant: #constant,
-							},
-						)*
-					],
+					fields: vec![#(#field_metadata,)*],
 				};
 				NODE_METADATA.lock().unwrap().insert(#identifier(), metadata);
 			}
 		}
 	})
+}
+
+/// The display name an identifier derives, in Title Case.
+pub(crate) fn derived_display_name(ident: &Ident) -> String {
+	// A lone `_` comes out of the case conversion as a space
+	ident.unraw().to_string().to_case(Case::Title).trim().to_string()
+}
+
+/// The name a parameter shows in the UI: its `#[name("…")]`, or else its identifier in Title Case.
+pub(crate) fn parameter_display_name(field: &ParsedField) -> String {
+	match &field.name {
+		Some(name) => name.value(),
+		None => derived_display_name(&field.pat_ident.ident),
+	}
+}
+
+/// The symbol naming a parameter or output in a node's module, like `CountInput` for the `count` parameter.
+pub(crate) fn symbol_name(ident: &Ident, suffix: &str) -> Ident {
+	format_ident!("{}{suffix}", ident.unraw().to_string().to_case(Case::Pascal), span = ident.span())
+}
+
+/// Generated code for `Some(value)` or `None`, by full path so no name in the author's module can stand in for either.
+pub(crate) fn option_tokens(value: Option<TokenStream2>) -> TokenStream2 {
+	match value {
+		Some(value) => quote!(::core::option::Option::Some(#value)),
+		None => quote!(::core::option::Option::None),
+	}
+}
+
+/// The registry's `FieldMetadata` for a parameter, shared by proto node fields and graph imports, which differ only in
+/// how they work out whether it's internal state and which type its default is built from.
+pub(crate) fn field_metadata_tokens(field: &ParsedField, internal: bool, default_type: &TokenStream2, core_types: &TokenStream2) -> TokenStream2 {
+	let registry = quote!(#core_types::registry);
+
+	let name = parameter_display_name(field);
+	let description = &field.description;
+	let exposed = match field.ty.regular() {
+		Some(regular) => regular.exposed,
+		None => !field.is_environment(),
+	};
+
+	let widget_override = match &field.widget_override {
+		ParsedWidgetOverride::None => quote!(#registry::RegistryWidgetOverride::None),
+		ParsedWidgetOverride::Hidden => quote!(#registry::RegistryWidgetOverride::Hidden),
+		ParsedWidgetOverride::String(text) => quote!(#registry::RegistryWidgetOverride::String(#text)),
+		ParsedWidgetOverride::Custom(key) => quote!(#registry::RegistryWidgetOverride::Custom(#key)),
+	};
+
+	// A string literal default keeps its contents, and any other expression is stringified for the editor to parse by type
+	let value_source = match field.ty.value_source() {
+		ParsedValueSource::Default(data) => {
+			let data_string = data.to_string();
+			if data_string.starts_with('"') && data_string.ends_with('"') && data_string.len() >= 2 {
+				quote!(#registry::RegistryValueSource::Default(#data))
+			} else {
+				quote!(#registry::RegistryValueSource::Default(::core::stringify!(#data)))
+			}
+		}
+		ParsedValueSource::Scope(data) => {
+			if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data.as_ref() {
+				quote!(#registry::RegistryValueSource::Scope(#data))
+			} else {
+				quote!(#registry::RegistryValueSource::Scope(#data.as_static_str()))
+			}
+		}
+		ParsedValueSource::SourceId => quote!(#registry::RegistryValueSource::SourceId),
+		ParsedValueSource::NodePath => quote!(#registry::RegistryValueSource::NodePath),
+		ParsedValueSource::None => quote!(#registry::RegistryValueSource::None),
+	};
+
+	let default_colors = match field.ty.regular() {
+		Some(RegularParsedField {
+			value_source: ParsedValueSource::Default(data),
+			..
+		}) => option_tokens(color_constant_paths(data).map(|paths| quote!(&[#(#paths),*]))),
+		_ => option_tokens(None),
+	};
+
+	let regular = field.ty.regular();
+	let bound = |select: fn(&RegularParsedField) -> &Option<NumberBound>| option_tokens(regular.and_then(|regular| select(regular).as_ref()).map(ToTokens::to_token_stream));
+	let number_soft_min = bound(|regular| &regular.number_soft_min);
+	let number_soft_max = bound(|regular| &regular.number_soft_max);
+	let number_hard_min = bound(|regular| &regular.number_hard_min);
+	let number_hard_max = bound(|regular| &regular.number_hard_max);
+	let number_mode_range = regular.is_some_and(|regular| regular.number_mode_range);
+
+	let number_display_decimal_places = option_tokens(field.number_display_decimal_places.as_ref().map(ToTokens::to_token_stream));
+	let number_step = option_tokens(field.number_step.as_ref().map(ToTokens::to_token_stream));
+	let unit = option_tokens(field.unit.as_ref().map(ToTokens::to_token_stream));
+	let labels = option_tokens(field.labels.as_ref().map(|(x, y)| quote!((#x, #y))));
+	let ParsedField {
+		multiline,
+		progression,
+		constant,
+		integer,
+		blank_assist,
+		..
+	} = field;
+
+	quote! {
+		#registry::FieldMetadata {
+			name: #name,
+			description: #description,
+			internal: #internal,
+			exposed: #exposed,
+			widget_override: #widget_override,
+			value_source: #value_source,
+			default_colors: #default_colors,
+			default_type: #default_type,
+			number_soft_min: #number_soft_min,
+			number_soft_max: #number_soft_max,
+			number_hard_min: #number_hard_min,
+			number_hard_max: #number_hard_max,
+			number_mode_range: #number_mode_range,
+			number_display_decimal_places: #number_display_decimal_places,
+			number_step: #number_step,
+			unit: #unit,
+			multiline: #multiline,
+			progression: #progression,
+			constant: #constant,
+			labels: #labels,
+			integer: #integer,
+			blank_assist: #blank_assist,
+		}
+	}
 }
 
 /// The `Color::*` constant paths making up a default expression, when it consists solely of them (the form used by color and gradient parameter defaults).
@@ -1108,26 +1101,25 @@ fn color_constant_paths(tokens: &TokenStream2) -> Option<Vec<ExprPath>> {
 		.collect()
 }
 
-/// Generates the per-parameter symbol types used to reference this node's inputs.
-fn generate_node_input_references(parsed: &ParsedNodeFn, field_idents: &[&PatIdent], core_types: &TokenStream2, identifier: &Ident, cfg: &TokenStream2) -> TokenStream2 {
-	let inputs_module_name = format_ident!("{}", parsed.struct_name.to_string().to_case(Case::Snake));
+/// Generates the module named after the node's function, holding its identifier, its parameter count, and a symbol for each parameter.
+/// The inputs the compiler fills in come after the parameters and get no symbol, so a graph can't name one.
+fn generate_node_input_references(parsed: &ParsedNodeFn, parameter_idents: &[&PatIdent], core_types: &TokenStream2, identifier: &Ident, cfg: &TokenStream2) -> TokenStream2 {
+	let inputs_module_name = &parsed.fn_name;
 
-	let mut generated_input_accessor = Vec::new();
-	if !parsed.attributes.flags.skip_impl {
-		for (input_index, input_ident) in field_idents.iter().enumerate() {
-			// TODO: figure out a better name that doesn't conflict with so many types
-			let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
-
-			// Every parameter gets a plain unit struct: the symbol used across the codebase to name this input
-			generated_input_accessor.push(quote! {
-				pub struct #struct_name;
-				impl #core_types::NodeParameter for #struct_name {
-					const NODE_IDENTIFIER: #core_types::ProtoNodeIdentifier = #inputs_module_name::IDENTIFIER;
-					const INDEX: usize = #input_index;
-				}
-			});
+	// Every parameter gets a plain unit struct: the symbol used across the codebase to name this input
+	let generated_input_accessor = parameter_idents.iter().enumerate().map(|(input_index, input_ident)| {
+		// TODO: figure out a better name that doesn't conflict with so many types
+		let struct_name = symbol_name(&input_ident.ident, "Input");
+		quote! {
+			pub struct #struct_name;
+			impl #core_types::NodeParameter for #struct_name {
+				const NODE_IDENTIFIER: #core_types::ProtoNodeIdentifier = #inputs_module_name::IDENTIFIER;
+				const INDEX: usize = #input_index;
+			}
 		}
-	}
+	});
+
+	let parameter_count = parameter_idents.len();
 
 	quote! {
 		#cfg
@@ -1136,6 +1128,8 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, field_idents: &[&PatIde
 
 			/// The `ProtoNodeIdentifier` of this node without any generics attached to it
 			pub const IDENTIFIER: #core_types::ProtoNodeIdentifier = #identifier();
+			/// How many parameters this node has, which come before the inputs the compiler fills in.
+			pub const PARAMETER_COUNT: usize = #parameter_count;
 			#(#generated_input_accessor)*
 		}
 	}

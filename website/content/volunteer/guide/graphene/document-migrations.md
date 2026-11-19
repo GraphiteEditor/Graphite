@@ -219,7 +219,7 @@ Writing to any other node fails, since another anchor's run may be editing it.
 
 ### Network definitions
 
-Some built-in nodes, like Merge and Artboard, are subgraphs. Each instance holds its own copy of a network defined in `document_node_definitions.rs`, and stores the definition's identifier and `version` next to it. Bump `version` on the `DocumentNodeDefinition` when instances saved before your change would load wrongly, and register a migration from the old version with the `network` prefix:
+Some built-in nodes, like Merge and Artboard, are subgraphs. Each is defined by a `#[graph]` function in `node-graph/nodes/gstd/src/subgraphs.rs`, and instances store the definition's identifier and `version` next to their copy of its network. Bump the version with `#[graph(..., version(N))]` when instances saved before your change would load wrongly, and register a migration from the old version with the `network` prefix:
 
 ```rust
 rename!(network "Artboard"@1 => @2);

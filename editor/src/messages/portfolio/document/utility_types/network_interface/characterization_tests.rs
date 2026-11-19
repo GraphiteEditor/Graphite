@@ -2614,7 +2614,7 @@ async fn shaking_a_node_spliced_in_by_a_secondary_input_keeps_the_dot_on_its_wir
 	// Numbers to Vec2 hides its primary input, so it takes the flow by its first exposed input instead
 	let source = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
 	let shaken = editor
-		.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::numbers_to_vec_2::IDENTIFIER), 10, 0)
+		.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::numbers_to_vec2::IDENTIFIER), 10, 0)
 		.await;
 	let dot = editor.create_node_by_name_at(passthrough_definition(), 20, 0).await;
 	let consumer = editor.create_node_by_name_at(fill_definition(), 30, 0).await;
