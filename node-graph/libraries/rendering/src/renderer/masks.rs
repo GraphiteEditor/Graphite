@@ -117,6 +117,8 @@ pub(super) fn write_native_masks(svg_defs: &mut String, effects: &Effects, range
 /// The extent in the user space that the leading masks of content without edges (like a color or gradient filling everything) confine it to, with the reach of their feathers, given the content's `placement` there.
 /// `None` unless the first effect is such a mask: not inverted, at full density, with a graphic of bounded extent. Each such mask after it narrows the extent.
 pub(super) fn masked_extent(effects: &Effects, placement: DAffine2) -> Option<[DVec2; 2]> {
+	// TODO: Masks that cut holes (like an inverted one) leave the content endless, so both renderers skip its other effects (blurs, shadows, feathers) at the holes' edges.
+	// Carry those effects out over the area in view when masks give the content edges without confining it.
 	let mut extent: Option<[DVec2; 2]> = None;
 	for (operation, length_scale) in effects.operations().zip(effects.length_spans(placement)) {
 		let EffectOperation::Mask { mask, density, feather, invert, .. } = operation else { break };

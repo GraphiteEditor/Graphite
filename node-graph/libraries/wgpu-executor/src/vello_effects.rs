@@ -602,6 +602,14 @@ impl EffectPasses {
 						recorder.textures.release(strength);
 					}
 				}
+				EffectOperation::Feather { distance } => {
+					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
+
+					let strength = recorder.feather_strength(full.as_ref().unwrap_or(content), distance * length_scale);
+					capture_plane(&mut recorder, 0, &strength, false);
+					recorder.fade_by(content, &mut full, &mut filled, &strength);
+					recorder.textures.release(strength);
+				}
 				EffectOperation::Adjustment(_) => {
 					// A run of adjustments is carried out from its first row, in a pass for each standalone step and one for the steps between them
 					let is_adjustment = |position: usize| is_pixel_filter(&operations[position].1) && matches!(operations[position].1, EffectOperation::Adjustment(_));
@@ -987,6 +995,8 @@ enum Seeds {
 	PastGrow { grow: f64 },
 	/// Every pixel, with its value as a head start, matching `distances_through_seeds` of values that are all finite.
 	Weighted,
+	/// Like `Covered`, but measured in straight lines rather than by `chamfer_length`.
+	CoveredStraight,
 }
 
 /// A color as the premultiplied, gamma-encoded channels the passes work with.
@@ -1177,13 +1187,15 @@ impl PassRecorder<'_> {
 	/// Each pixel's distance from the `seeds` in `seed_values`, matching the CPU's distance passes, or far past `reach` pixels.
 	/// Jump flooding finds them in a pass for each halving of a step that starts past `reach`, then two more halvings and those of [`chamfer_passes`] along the chamfer steps. O(width × height × log(reach)).
 	fn distances(&mut self, seed_values: &wgpu::Texture, reach: f64, seeds: Seeds) -> wgpu::Texture {
-		let (mode, grow) = match seeds {
-			Seeds::Covered => (0., 0.),
-			Seeds::PastGrow { grow } => (1., grow as f32),
-			Seeds::Weighted => (2., 0.),
+		let (mode, grow, straight) = match seeds {
+			Seeds::Covered => (0., 0., 0.),
+			Seeds::PastGrow { grow } => (1., grow as f32, 0.),
+			Seeds::Weighted => (2., 0., 0.),
+			Seeds::CoveredStraight => (0., 0., 1.),
 		};
 		let parameters = |step: u32| Parameters {
 			values: [step as f32, mode, grow, 0.],
+			amount: straight,
 			..Default::default()
 		};
 
@@ -1196,6 +1208,7 @@ impl PassRecorder<'_> {
 		}
 		let chamfer_parameters = Parameters {
 			values: [1., mode, grow, 1.],
+			amount: straight,
 			..Default::default()
 		};
 		for _ in 0..chamfer_passes(reach) {
@@ -1281,7 +1294,7 @@ impl PassRecorder<'_> {
 	}
 
 	/// Places what lies `beneath` under the full-strength content (`content` itself until a pass replaces it) and the faded fill,
-	/// so a pixel filter after it (a blur, an adjustment, or a mask) processes them together.
+	/// so a pixel filter after it (a blur, an adjustment, a mask, or a feather) processes them together.
 	fn merge_beneath(&mut self, content: &wgpu::Texture, full: &mut Option<wgpu::Texture>, filled: &mut Option<wgpu::Texture>, beneath: Option<wgpu::Texture>) {
 		let Some(beneath) = beneath else { return };
 

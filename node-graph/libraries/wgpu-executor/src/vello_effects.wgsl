@@ -83,6 +83,7 @@ fn chamfer_length(offset: vec2<f32>) -> f32 {
 // With `values.y` 0, the seeds are the covered texels and a distance runs to the edge within the seed, placed by its coverage.
 // With `values.y` 1, the seeds are the texels past a grow of `values.z` texels and a distance runs to that grown edge, matching `distances_through_seeds`.
 // With `values.y` 2, every texel seeds with its value as a head start, matching `distances_through_seeds` of values that are all finite.
+// With `amount` 1, offsets are measured in straight lines rather than by `chamfer_length`.
 fn is_seed(value: f32) -> bool {
 	if parameters.values.y > 1.5 {
 		return true;
@@ -96,14 +97,21 @@ fn is_seed(value: f32) -> bool {
 
 fn seed_distance(pixel: vec2<i32>, offset: vec2<f32>) -> f32 {
 	let value = textureLoad(content, pixel - vec2<i32>(offset), 0).r;
+	// Only a feather measures round, so the others skip the square root
+	var offset_length: f32;
+	if parameters.amount > 0.5 {
+		offset_length = length(offset);
+	} else {
+		offset_length = chamfer_length(offset);
+	}
 	if parameters.values.y > 1.5 {
-		return chamfer_length(offset) + value;
+		return offset_length + value;
 	}
 	if parameters.values.y > 0.5 {
-		return chamfer_length(offset) + parameters.values.z - value;
+		return offset_length + parameters.values.z - value;
 	}
 
-	return chamfer_length(offset) + (0.5 - value) + 0.5;
+	return offset_length + (0.5 - value) + 0.5;
 }
 
 @fragment

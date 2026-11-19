@@ -875,6 +875,41 @@ fn a_feathered_mask_finds_its_edge_just_past_the_view() {
 }
 
 #[test]
+fn a_feather_on_a_clipping_base_fades_what_clips_to_it() {
+	use core_types::list::List;
+	use core_types::{ATTR_CLIPPING_MASK, Color as GraphicColor};
+	use graphic_types::{Appearance, Coverage, Effect, EffectOperation, Graphic, Vector, stamp_effect};
+	use rendering::{Render, RenderParams};
+	use vello_gpu::kurbo::Shape;
+
+	let size = UVec2::new(128, 128);
+	let square = |color: GraphicColor| {
+		let mut item = Vector::item_from_bezpath(&Rect::new(30., 30., 80., 80.).to_path(0.1));
+		item.set_attribute(
+			core_types::list::ATTR_APPEARANCE,
+			Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(color))),
+		);
+		item
+	};
+
+	// A white base feathered by 10, with a red square of the same size clipped to it
+	let mut base = square(GraphicColor::WHITE);
+	stamp_effect(&mut base, Effect::new(&EffectOperation::Feather { distance: 10. }));
+	let clipped = square(GraphicColor::RED).with_attribute(ATTR_CLIPPING_MASK, true);
+	let graphic = Graphic::VectorList([base, clipped].into_iter().collect());
+
+	let Some(pixels) = render(size, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default())) else {
+		return;
+	};
+	assert_eq!(pixel(&pixels, size, 55, 55), [255, 0, 0, 255], "the clipped square shows fully well within the feather");
+	assert!(
+		pixel(&pixels, size, 31, 55)[3] < 128,
+		"the clipped square fades with the base at its edge: {:?}",
+		pixel(&pixels, size, 31, 55)
+	);
+}
+
+#[test]
 fn a_mask_on_a_clipping_base_shapes_what_clips_to_it() {
 	use core_types::list::{Item, List};
 	use core_types::{ATTR_CLIPPING_MASK, Color as GraphicColor};
@@ -924,6 +959,28 @@ fn a_mask_on_a_clipping_base_shapes_what_clips_to_it() {
 		assert_eq!(pixel(&pixels, size, 40, 55), [255, 0, 0, 255], "{name}: the clipped square shows over the base's shown half");
 		assert_eq!(pixel(&pixels, size, 70, 55)[3], 0, "{name}: the base's mask hides the clipped square with the base");
 	}
+}
+
+#[test]
+fn feathers_fade_the_content_to_nothing_at_its_edges() {
+	use graphic_types::EffectOperation;
+
+	let size = UVec2::new(128, 128);
+	let distance = 12.;
+	let Some(pixels) = render_square_with_effects(vec![EffectOperation::Feather { distance }], 1., 30., 80., size) else {
+		return;
+	};
+
+	// Across the left edge, on the middle row, the strength rises along the normal curve from the edge to the distance, halfway at half the distance
+	for x in 30..48 {
+		let depth = x as f64 + 0.5 - 30.;
+		let expected = normal_cdf((depth - distance / 2.) / (distance / 6.));
+		let actual = pixel(&pixels, size, x, 55)[3] as f64 / 255.;
+		assert!((expected - actual).abs() < 0.03, "at {depth} in from the edge the feather keeps {actual} rather than {expected}");
+	}
+	assert_eq!(pixel(&pixels, size, 29, 55)[3], 0, "nothing outside");
+	assert_eq!(pixel(&pixels, size, 55, 55), [255, 255, 255, 255], "the middle is untouched");
+	assert!(pixel(&pixels, size, 31, 31)[3] <= 1, "the corner fades to nothing");
 }
 
 #[test]
@@ -1689,6 +1746,13 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		],
 		vec![interior_glow(BlendMode::Multiply), mask(&radial, MaskMode::Luminance, 100., 1.5, false)],
 		vec![interior_glow(BlendMode::Overlay), mask(&linear, MaskMode::Alpha, 80., 0., true)],
+		vec![EffectOperation::Feather { distance: 3. }],
+		vec![EffectOperation::Feather { distance: 14. }],
+		vec![mask_shadow.clone(), EffectOperation::Feather { distance: 8. }],
+		vec![EffectOperation::Feather { distance: 6. }, blur(2., false, false)],
+		// Masks first give the feather curved, translucent, and holed outlines
+		vec![mask(&radial, MaskMode::Alpha, 100., 0., false), EffectOperation::Feather { distance: 6. }],
+		vec![mask(&radial, MaskMode::Luminance, 100., 0., true), EffectOperation::Feather { distance: 5. }],
 	];
 
 	// Content in a color of its own, so every mode has colors to blend
