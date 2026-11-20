@@ -12,11 +12,6 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 	subscriptionsRouter = subscriptions;
 	editorWrapper = editor;
 
-	subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
-		// If the Clipboard API is supported in the browser, copy text to the clipboard
-		navigator.clipboard?.writeText?.(data.content);
-	});
-
 	subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
 		const content = readAtCaret(data.cut);
 		// A text field with nothing selected has nothing to copy, rather than leaving the shortcut to act on the selected layers
@@ -34,7 +29,6 @@ export function destroyClipboardManager() {
 	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
-	subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
 }

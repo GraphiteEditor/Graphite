@@ -1,18 +1,5 @@
-use crate::{Attributes, NetworkId, NodeId, ResourceId, TimeStamp, Value, attributes_value_equal};
-use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Node {
-	pub(crate) implementation: Implementation,
-	/// When the implementation was last written, so a swap resolves by last-writer-wins rather than by
-	/// the order ops happen to arrive in. Absent from documents written before swaps were expressible.
-	#[serde(default)]
-	pub(crate) implementation_timestamp: TimeStamp,
-	pub(crate) inputs: Vec<InputSlot>,
-	pub(crate) attributes: Attributes,
-	pub(crate) network: NetworkId,
-}
+use crate::registry::attributes_value_equal;
+use crate::{Attributes, BlobHash, Implementation, InputSlot, Network, NetworkId, Node, NodeInput, TimeStamp, Value};
 
 impl Node {
 	pub fn implementation(&self) -> &Implementation {
@@ -26,6 +13,17 @@ impl Node {
 	}
 	pub fn network(&self) -> NetworkId {
 		self.network
+	}
+
+	// Mutable access for edits on a registry clone that is diffed back into deltas. Live-session edits go through the delta paths instead.
+	pub fn implementation_mut(&mut self) -> &mut Implementation {
+		&mut self.implementation
+	}
+	pub fn inputs_mut(&mut self) -> &mut Vec<InputSlot> {
+		&mut self.inputs
+	}
+	pub fn attributes_mut(&mut self) -> &mut Attributes {
+		&mut self.attributes
 	}
 
 	/// True if both nodes agree on every value-bearing field, ignoring slot/attribute timestamps.
@@ -47,60 +45,52 @@ impl Node {
 		attributes_value_equal(&self.attributes, &other.attributes)
 	}
 
+	/// A node in `network` whose `inputs` slots are unset, for a caller that fills them in with
+	/// `ChangeNodeInput`. The slot count is fixed at creation, since changing an input addresses a
+	/// slot by position.
+	pub fn new(network: NetworkId, implementation: Implementation, inputs: usize) -> Self {
+		Self {
+			presence: TimeStamp::ORIGIN,
+			network_timestamp: TimeStamp::ORIGIN,
+			inputs_timestamp: TimeStamp::ORIGIN,
+			implementation,
+			implementation_timestamp: TimeStamp::ORIGIN,
+			inputs: vec![InputSlot::unset(TimeStamp::ORIGIN); inputs],
+			attributes: Attributes::new(),
+			network,
+		}
+	}
+
 	#[cfg(test)]
 	pub(crate) fn dummy() -> Self {
-		Self {
-			implementation: Implementation::ProtoNode(ResourceId::new()),
-			implementation_timestamp: TimeStamp::default(),
-			inputs: vec![],
-			attributes: Attributes::new(),
-			network: crate::ROOT_NETWORK,
+		Self::new(crate::ROOT_NETWORK, Implementation::ProtoNode(crate::ResourceId::new()), 0)
+	}
+}
+
+impl NodeInput {
+	/// The blob hash of a value input that holds a [`Value::Blob`].
+	pub fn blob(&self) -> Option<BlobHash> {
+		match self {
+			NodeInput::Value { value: Value::Blob(hash), .. } => Some(*hash),
+			_ => None,
 		}
 	}
 }
 
-/// One positional input. The timestamp drives LWW on concurrent `ChangeNodeInput` ops targeting
-/// the same `(node_id, input_idx)`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct InputSlot {
-	pub input: NodeInput,
-	pub timestamp: TimeStamp,
-	pub attributes: Attributes,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum NodeInput {
-	Node {
-		id: NodeId,
-		index: u32,
-	},
-	Value {
-		value: Value,
-		exposed: bool,
-	},
-	Scope(Cow<'static, str>),
-	Import {
-		index: u32,
-	},
-	/// Marker; the `DocumentNodeMetadata` lives in `inputs_attributes`.
-	Reflection,
-	Other,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Implementation {
-	/// References a proto-node declaration resource (see [`ProtoNode`]); the binding to content lives
-	/// in `Registry.resources` like any other resource.
-	ProtoNode(ResourceId),
-	Network(NetworkId),
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Network {
-	pub exports: Vec<ExportSlot>,
-	/// Per-network `ui::*` state (navigation, previewing). Separate from `Node.attributes` so
-	/// view-state edits LWW independently.
-	pub attributes: Attributes,
+impl InputSlot {
+	/// A slot holding nothing, stamped `timestamp`.
+	pub fn unset(timestamp: TimeStamp) -> Self {
+		// `to_runtime` reads this back as a `TaggedValue`, whose unit `None` variant encodes as this string.
+		// Pinned by `unset_input_slot_deserializes_as_tagged_value_none`.
+		Self {
+			input: NodeInput::Value {
+				value: Value::Str("None".to_string()),
+				exposed: false,
+			},
+			timestamp,
+			attributes: Attributes::empty_at(timestamp),
+		}
+	}
 }
 
 impl Network {
@@ -123,27 +113,10 @@ impl Network {
 	}
 }
 
-/// One positional export slot. `target == None` marks an empty/removed slot. Timestamp drives LWW
-/// on concurrent `SetExport` ops.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ExportSlot {
-	pub target: Option<NodeInput>,
-	pub timestamp: TimeStamp,
-}
-
-/// Content of a proto-node declaration. Stored as a content-addressed resource (serialized bytes
-/// keyed by `ResourceHash`, held by the `Gdd` byte store) and referenced from
-/// `Implementation::ProtoNode(ResourceId)`. `document-graph-storage` itself only holds the reference.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ProtoNode {
-	pub identifier: String,
-	pub attributes: Attributes,
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::TimeStamp;
+	use crate::{ExportSlot, NodeId, TimeStamp};
 
 	fn target_slot(node_id: u64) -> ExportSlot {
 		ExportSlot {
@@ -159,8 +132,20 @@ mod tests {
 		}
 	}
 
-	/// A `SetExport(None)` truncation leaves a trailing empty slot. Such a network is value-equal to
-	/// the same network without that slot, so the soak oracle doesn't false-report drift.
+	/// `to_runtime` has to read back what `Node::new` writes into an unset slot, so its literal must stay
+	/// in step with how `TaggedValue::None` serializes.
+	#[test]
+	fn unset_input_slot_deserializes_as_tagged_value_none() {
+		let node = Node::new(crate::ROOT_NETWORK, Implementation::Network(crate::ROOT_NETWORK), 1);
+		let NodeInput::Value { value, .. } = &node.inputs()[0].input else {
+			panic!("a fresh slot holds a value input");
+		};
+
+		let tagged: graph_craft::document::value::TaggedValue = crate::from_value(value).expect("the unset slot value must deserialize");
+		assert_eq!(tagged, graph_craft::document::value::TaggedValue::None);
+	}
+
+	/// A `SetExport(None)` truncation leaves a trailing empty slot, which doesn't change the network's value.
 	#[test]
 	fn trailing_empty_export_slot_is_value_equal() {
 		let compact = Network {

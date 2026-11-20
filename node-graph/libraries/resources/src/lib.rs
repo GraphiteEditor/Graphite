@@ -5,7 +5,7 @@ use std::future::Future;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 #[derive(Clone, DynAny)]
 pub struct Resource {
@@ -29,6 +29,22 @@ impl Resource {
 
 	pub fn empty() -> Self {
 		Self::new([])
+	}
+
+	/// A reference to this resource's data that doesn't keep it alive.
+	pub fn downgrade(&self) -> WeakResource {
+		WeakResource(Arc::downgrade(&self.inner))
+	}
+}
+
+/// A reference to a [`Resource`]'s data that doesn't keep it alive, for caches of what's derived from the data.
+#[derive(Clone)]
+pub struct WeakResource(Weak<dyn AsRef<[u8]> + Send + Sync>);
+
+impl WeakResource {
+	/// Whether anything still holds the resource's data.
+	pub fn is_alive(&self) -> bool {
+		self.0.strong_count() > 0
 	}
 }
 
@@ -135,7 +151,7 @@ impl std::str::FromStr for ResourceHash {
 		}
 
 		let mut out = [0u8; 32];
-		for (index, chunk) in bytes.chunks_exact(2).enumerate() {
+		for (index, chunk) in bytes.as_chunks::<2>().0.iter().enumerate() {
 			let high = decode_hex_nibble(chunk[0], index * 2)?;
 			let low = decode_hex_nibble(chunk[1], index * 2 + 1)?;
 			out[index] = (high << 4) | low;
@@ -298,7 +314,9 @@ pub enum DataSource {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResourceRegistry {
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_sorted"))]
 	hashes: HashMap<ResourceId, ResourceHash>,
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_sorted"))]
 	sources: HashMap<ResourceId, Vec<DataSource>>,
 }
 
@@ -363,4 +381,35 @@ pub struct ResourceInfo<'a> {
 	pub id: ResourceId,
 	pub hash: Option<&'a ResourceHash>,
 	pub sources: &'a [DataSource],
+}
+
+/// Serializes a hash map in ascending key order, so equal maps write equal bytes whatever their iteration order.
+#[cfg(feature = "serde")]
+fn serialize_sorted<K: Ord + serde::Serialize, V: serde::Serialize, S: serde::Serializer>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error> {
+	let mut entries: Vec<_> = map.iter().collect();
+	entries.sort_unstable_by_key(|&(key, _)| key);
+	serializer.collect_map(entries)
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn equal_registries_serialize_alike_whatever_their_insertion_order() {
+		let ids: Vec<_> = (0..200).map(|_| ResourceId::new()).collect();
+		let fill = |order: &mut dyn Iterator<Item = &ResourceId>| {
+			let mut registry = ResourceRegistry::new();
+			for id in order {
+				registry.push_source_back(id, DataSource::Embedded);
+				registry.resolve(id, ResourceHash::from(&id.0.to_le_bytes()[..]));
+			}
+			registry
+		};
+		let forward = fill(&mut ids.iter());
+		let backward = fill(&mut ids.iter().rev());
+
+		assert_eq!(forward, backward);
+		assert_eq!(serde_json::to_string(&forward).unwrap(), serde_json::to_string(&backward).unwrap());
+	}
 }

@@ -4,6 +4,7 @@
 	import BreadcrumbTrailButtons from "/src/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import ImageButton from "/src/components/widgets/buttons/ImageButton.svelte";
+	import ParameterChainToggle from "/src/components/widgets/buttons/ParameterChainToggle.svelte";
 	import ParameterExposeButton from "/src/components/widgets/buttons/ParameterExposeButton.svelte";
 	import PopoverButton from "/src/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
@@ -41,19 +42,21 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const colorPickerStore = getContext<ColorPickerStore>("colorPicker");
 
-	export let widgets: WidgetInstance[];
-	export let direction: "row" | "column";
-	export let layoutTarget: LayoutTarget;
+	type Props = {
+		widgets: WidgetInstance[];
+		direction: "row" | "column";
+		layoutTarget: LayoutTarget;
+		class?: string;
+		classes?: Record<string, boolean>;
+		narrow?: boolean;
+	};
+	let { widgets, direction, layoutTarget, class: className = "", classes = {}, narrow = false }: Props = $props();
 
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-
-	export let narrow = false;
-
-	$: extraClasses = Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" ");
+	const extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
 
 	function widgetValueCommit(widgetIndex: number, value: unknown) {
 		editor.widgetValueCommit(layoutTarget, widgets[widgetIndex].widgetId, value);
@@ -172,11 +175,17 @@
 			getProps: (props, index) => ({
 				...props,
 				$$events: {
-					hoverInEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
-					hoverOutEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
+					previewIndex: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					selectedIndex: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true),
 					fileDrop: (e: CustomEvent<File>) => widgetValueFileDrop(index, e.detail),
 				},
+			}),
+		},
+		ParameterChainToggle: {
+			component: ParameterChainToggle,
+			getProps: (props, index) => ({
+				...props,
+				action: () => widgetValueCommitAndUpdate(index, undefined, true),
 			}),
 		},
 		ParameterExposeButton: {
@@ -276,6 +285,7 @@
 				$$events: {
 					update: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					dragging: (e: CustomEvent<boolean>) => colorPickerStore.setDragging(e.detail),
+					startHistoryTransaction: () => widgetValueCommit(index, undefined),
 				},
 			}),
 		},
@@ -354,11 +364,11 @@
 	{#each widgets as widget, widgetIndex}
 		{@const unwrapped = unwrapWidget(widget)}
 		{#if unwrapped}
-			{@const { component, props, slot } = resolveWidget(unwrapped, widgetIndex)}
+			{@const { component: Component, props, slot } = resolveWidget(unwrapped, widgetIndex)}
 			{#if props !== undefined && slot !== undefined}
-				<svelte:component this={component} {...props}>{slot}</svelte:component>
+				<Component {...props}>{slot}</Component>
 			{:else if props !== undefined}
-				<svelte:component this={component} {...props} />
+				<Component {...props} />
 			{/if}
 		{/if}
 	{/each}
@@ -374,6 +384,7 @@
 	.widget-span.row {
 		flex: 0 0 auto;
 		display: flex;
+		overflow: hidden;
 		min-height: var(--row-height);
 		--row-height: 32px;
 

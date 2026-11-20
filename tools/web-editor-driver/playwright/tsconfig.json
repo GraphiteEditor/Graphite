@@ -1,0 +1,16 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"strict": true,
+		"skipLibCheck": true,
+		"verbatimModuleSyntax": true,
+		"erasableSyntaxOnly": true,
+		"noEmit": true,
+		"typeRoots": ["../../../frontend/node_modules/@types"],
+		"types": ["node"],
+		"lib": ["ESNext", "DOM", "DOM.Iterable"]
+	},
+	"include": ["*.ts"]
+}

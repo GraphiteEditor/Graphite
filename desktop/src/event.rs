@@ -1,17 +1,15 @@
 use crate::ui::Cursor;
-use crate::wrapper::NodeGraphExecutionResult;
-use crate::wrapper::messages::DesktopWrapperMessage;
+use crate::wrapper::Texture;
+use crate::wrapper::messages::{DataTransfer, DesktopWrapperMessage};
 
 pub(crate) enum AppEvent {
 	UiUpdate(wgpu::Texture),
 	CursorChange(Cursor),
 	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
-	NodeGraphExecutionResult(NodeGraphExecutionResult),
+	ViewportTexture(Option<Texture>),
 	ClipboardRead,
-	ClipboardWrite {
-		content: String,
-	},
+	ClipboardWrite(DataTransfer),
 	Exit,
 	UiCrashed,
 	OpenFiles(Vec<std::path::PathBuf>),

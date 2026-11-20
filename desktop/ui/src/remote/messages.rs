@@ -47,5 +47,5 @@ pub(crate) enum EventMessage {
 		format: u32,
 		content: Option<crate::frames::import::ContentRect>,
 	},
-	ShutdownComplete,
+	RenderProcessTerminated,
 }

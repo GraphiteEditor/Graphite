@@ -128,33 +128,34 @@ pub fn sequence<I: IntoIterator<Item = Expression>>(expressions: I) -> Sequence 
 	let worker = std::thread::spawn(move || {
 		for expr in expressions {
 			if worker_killed.load(Ordering::SeqCst) {
-				return;
+				return false;
 			}
 			let handle = match expr.start() {
 				Ok(h) => Arc::new(h),
 				Err(e) => {
 					eprintln!("sequence: failed to start step: {e}");
-					return;
+					return false;
 				}
 			};
 			{
 				let mut slot = worker_current.lock().unwrap();
 				if worker_killed.load(Ordering::SeqCst) {
 					let _ = handle.kill();
-					return;
+					return false;
 				}
 				*slot = Some(Arc::clone(&handle));
 			}
 			let result = handle.wait().map(|_| ());
 			worker_current.lock().unwrap().take();
 			if worker_killed.load(Ordering::SeqCst) {
-				return;
+				return false;
 			}
 			if let Err(e) = result {
 				eprintln!("sequence: step failed: {e}");
-				return;
+				return false;
 			}
 		}
+		true
 	});
 
 	Sequence {
@@ -167,7 +168,7 @@ pub fn sequence<I: IntoIterator<Item = Expression>>(expressions: I) -> Sequence 
 pub struct Sequence {
 	current: Arc<Mutex<Option<Arc<Handle>>>>,
 	killed: Arc<AtomicBool>,
-	worker: Option<JoinHandle<()>>,
+	worker: Option<JoinHandle<bool>>,
 }
 impl Sequence {
 	pub fn kill(&self) {
@@ -178,10 +179,9 @@ impl Sequence {
 		}
 	}
 
-	pub fn wait(&mut self) {
-		if let Some(w) = self.worker.take() {
-			let _ = w.join();
-		}
+	/// Waits for the steps to finish, returning whether every one ran and succeeded.
+	pub fn wait(&mut self) -> bool {
+		self.worker.take().is_some_and(|worker| worker.join().unwrap_or(false))
 	}
 }
 impl Drop for Sequence {

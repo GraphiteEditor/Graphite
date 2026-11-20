@@ -3,7 +3,8 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { RadioEntryData } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { widgetSizingStyles } from "/src/utility-functions/widgets";
+	import type { RadioEntryData, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
@@ -14,8 +15,7 @@
 	export let entries: RadioEntryData[];
 	// Styling
 	export let narrow = false;
-	// Sizing
-	export let minWidth = 0;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 
 	$: mixed = selectedIndex === undefined && !disabled;
 
@@ -25,7 +25,7 @@
 	}
 </script>
 
-<LayoutRow class="radio-input" classes={{ disabled, narrow, mixed }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
+<LayoutRow class="radio-input" classes={{ disabled, narrow, mixed }} styles={widgetSizingStyles(sizing)}>
 	{#each entries as entry, index}
 		<button
 			class:active={!mixed ? index === selectedIndex : undefined}
@@ -33,7 +33,6 @@
 			data-tooltip-label={entry.tooltipLabel}
 			data-tooltip-description={entry.tooltipDescription}
 			data-tooltip-shortcut={entry.tooltipShortcut?.shortcut ? JSON.stringify(entry.tooltipShortcut.shortcut) : undefined}
-			tabindex={index === selectedIndex ? -1 : 0}
 			{disabled}
 		>
 			{#if entry.icon}
@@ -52,6 +51,21 @@
 		border-radius: 2px;
 		--widget-height: 24px;
 		height: var(--widget-height);
+		// Insets the ends here rather than with wider end margins, which would widen every equal-width column
+		padding: 0 1px;
+
+		// Equal-width buttons, each as wide as the widest label until the radio is given more or less room to divide evenly
+		&.radio-input {
+			display: grid;
+			grid-auto-flow: column;
+			grid-auto-columns: minmax(24px, 1fr);
+			min-width: min-content;
+		}
+
+		// Icons stay whole rather than being cut off
+		&:not(:has(.text-label)) {
+			grid-auto-columns: minmax(min-content, 1fr);
+		}
 
 		button {
 			background: var(--color-4-dimgray);
@@ -64,18 +78,6 @@
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			// `min-width: fit-content` and `flex: 1 1 0` together allow us to occupy space such that we're always at least the content width,
-			// but if the container is set wider, we distribute the space evenly (so buttons with short and long labels would have equal widths).
-			min-width: fit-content;
-			flex: 1 1 0;
-
-			&:first-of-type {
-				margin-left: 2px;
-			}
-
-			&:last-of-type {
-				margin-right: 2px;
-			}
 
 			&.active {
 				background: var(--color-e-nearwhite);
@@ -97,7 +99,8 @@
 			.text-label {
 				margin: 0 8px;
 				overflow: hidden;
-				flex: 0 0 auto;
+				flex: 0 1 auto;
+				text-overflow: ellipsis;
 			}
 		}
 

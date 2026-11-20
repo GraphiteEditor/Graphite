@@ -64,6 +64,9 @@ pub struct DropdownInput {
 	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (we can replace this with `usize` if we switch to a Rust-based GUI)
 	#[serde(rename = "selectedIndex")]
 	pub selected_index: Option<u32>,
+	// Shown while no entry is selected
+	#[derivative(Default(value = "\"-\".to_string()"))]
+	pub placeholder: String,
 	#[serde(rename = "drawIcon")]
 	pub draw_icon: bool,
 	pub disabled: bool,
@@ -77,22 +80,18 @@ pub struct DropdownInput {
 
 	// Styling
 	pub narrow: bool,
+	pub sizing: WidgetSizing,
+	// Sized to the selected entry, rather than the widest, so its width changes with the selection
+	#[serde(rename = "sizedToSelection")]
+	pub sized_to_selection: bool,
 
 	// Behavior
 	#[serde(rename = "virtualScrolling")]
 	pub virtual_scrolling: bool,
-	#[derivative(Default(value = "true"))]
-	pub interactive: bool,
 	// Set along with the `on_file_drop` callback
 	#[serde(rename = "takesFileDrop")]
 	#[widget_builder(skip)]
 	pub takes_file_drop: bool,
-
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
-	#[serde(rename = "maxWidth")]
-	pub max_width: u32,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]
@@ -222,6 +221,7 @@ pub struct NumberInput {
 
 	// Styling
 	pub narrow: bool,
+	pub sizing: WidgetSizing,
 
 	// Behavior
 	pub mode: NumberInputMode,
@@ -247,12 +247,6 @@ pub struct NumberInput {
 	#[serde(rename = "unitIsHiddenWhenEditing")]
 	#[derivative(Default(value = "true"))]
 	pub unit_is_hidden_when_editing: bool,
-
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
-	#[serde(rename = "maxWidth")]
-	pub max_width: u32,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]
@@ -340,7 +334,7 @@ pub struct NodeCatalog {
 
 	// Behavior
 	#[serde(rename = "initialSearchTerm")]
-	pub intial_search: String,
+	pub initial_search: String,
 
 	// Callbacks
 	#[serde(skip)]
@@ -367,10 +361,7 @@ pub struct RadioInput {
 
 	// Styling
 	pub narrow: bool,
-
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
+	pub sizing: WidgetSizing,
 	//
 	// Callbacks exists on the `RadioEntryData` children, not this parent `RadioInput`
 }
@@ -481,12 +472,7 @@ pub struct TextInput {
 	// Styling
 	pub narrow: bool,
 	pub centered: bool,
-
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
-	#[serde(rename = "maxWidth")]
-	pub max_width: u32,
+	pub sizing: WidgetSizing,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]
@@ -519,9 +505,9 @@ pub struct MathExpressionInput {
 	pub tooltips: Vec<MathExpressionTooltip>,
 	/// The stretches of the value its parse errors point at, which the frontend underlines.
 	pub errors: Vec<MathExpressionRange>,
-	/// Whether a lone operator or function name like `+` or `max` is an expression, applied across a list as by the Math node.
+	/// Whether the value is a lone operator or function name like `+` or `max`, applied across a list, rather than an expression.
 	#[serde(skip)]
-	pub accepts_reducers: bool,
+	pub operator_only: bool,
 	pub disabled: bool,
 
 	// Tooltips

@@ -17,6 +17,9 @@ fn usage() {
 	println!("  [run]        Run the selected target (default)");
 	println!("  build        Build the selected target");
 	println!("  explore      Open an assortment of tools for exploring the codebase");
+	println!("  drive        Drive the web editor in an isolated browser (see `cargo run drive help`)");
+	println!("  migration    Freeze the stored format or scaffold node migrations (see `cargo run migration help`)");
+	println!("  regression   Upgrade documents and check renders of the regression corpus (see `cargo run regression help`)");
 	println!("  help         Show this message");
 	println!("<target>:");
 	println!("  [web]        Web app (default)");
@@ -47,6 +50,16 @@ fn main() -> ExitCode {
 		}
 	};
 
+	if matches!(task.action, Action::Drive) {
+		return drive(&task);
+	}
+	if matches!(task.action, Action::Migration) {
+		return delegate("migration-snapshot", &task);
+	}
+	if matches!(task.action, Action::Regression) {
+		return delegate("regression", &task);
+	}
+
 	if let Err(e) = run_task(&task) {
 		eprintln!("Error: {e}");
 		return ExitCode::FAILURE;
@@ -65,6 +78,47 @@ fn explore_usage() {
 	println!("  deps      View the crate dependency graph for the workspace");
 	println!("  editor    View an interactive outline of the editor's message system architecture");
 	println!();
+}
+
+// Exits with the driver's own status, since scripts read whether its commands succeeded from it
+fn drive(task: &Task) -> ExitCode {
+	// Serving builds the editor's Wasm first, as `cargo run` does
+	let asking_for_help = task.args.iter().any(|argument| argument == "--help" || argument == "-h");
+	if task.args.first().map(String::as_str) == Some("serve") && !asking_for_help {
+		let prepared = requirements::check(task).and_then(|()| branding::setup()).and_then(|()| frontend::setup());
+		if let Err(e) = prepared {
+			eprintln!("Error: {e}");
+			return ExitCode::FAILURE;
+		}
+
+		// Unlike `frontend::build_wasm`, this stops at a failed build rather than going on to serve the previous one
+		if !sequence(frontend::build_wasm_steps(false, false)).wait() {
+			eprintln!("Error: The Wasm build failed");
+			return ExitCode::FAILURE;
+		}
+	}
+
+	// Run from the caller's own folder, which relative paths in the arguments are written from
+	let driver = cmd!("cargo", "run", "--quiet", "--package", "web-editor-driver", "--").args(&task.args).unchecked();
+	match Expression::run(&driver) {
+		Ok(output) => ExitCode::from(output.status.code().and_then(|code| u8::try_from(code).ok()).unwrap_or(1)),
+		Err(e) => {
+			eprintln!("Error: {e}");
+			ExitCode::FAILURE
+		}
+	}
+}
+
+// Exits with the tool's own status, so CI reads a failed check from it
+fn delegate(package: &str, task: &Task) -> ExitCode {
+	let tool = cmd!("cargo", "run", "--quiet", "--package", package, "--").args(&task.args).unchecked();
+	match Expression::run(&tool) {
+		Ok(output) => ExitCode::from(output.status.code().and_then(|code| u8::try_from(code).ok()).unwrap_or(1)),
+		Err(e) => {
+			eprintln!("Error: {e}");
+			ExitCode::FAILURE
+		}
+	}
 }
 
 fn run_task(task: &Task) -> Result<(), Error> {
@@ -111,7 +165,7 @@ fn run_task(task: &Task) -> Result<(), Error> {
 				profile = match action {
 					Action::Run => &Profile::Debug,
 					Action::Build => &Profile::Release,
-					Action::Explore(_) => unreachable!(),
+					Action::Explore(_) | Action::Drive | Action::Migration | Action::Regression => unreachable!(),
 				}
 			}
 
@@ -138,7 +192,7 @@ fn run_task(task: &Task) -> Result<(), Error> {
 		(Action::Build, Target::Cli, Profile::Debug) => cmd!("cargo", "build", "-p", "graphene-cli").run()?,
 		(Action::Build, Target::Cli, Profile::Release | Profile::Default) => cmd!("cargo", "build", "-r", "-p", "graphene-cli").run()?,
 
-		(Action::Explore(_), _, _) => unreachable!(),
+		(Action::Explore(_) | Action::Drive | Action::Migration | Action::Regression, _, _) => unreachable!(),
 	}
 	Ok(())
 }

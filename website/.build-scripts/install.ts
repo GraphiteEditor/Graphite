@@ -4,7 +4,6 @@ import fs from "fs";
 import type { IncomingMessage } from "http";
 import https from "https";
 import path from "path";
-
 import * as tar from "tar";
 
 // Define basePath as the directory of the current script

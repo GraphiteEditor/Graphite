@@ -90,6 +90,7 @@ pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) 
 				PivotGizmoType::Average => 1,
 				PivotGizmoType::Active => 2,
 			}))
+			.sized_to_selection(true)
 			.tooltip_label("Pivot Gizmo Type")
 			.tooltip_description(
 				"

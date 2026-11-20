@@ -1,0 +1,23 @@
+{
+	"name": "graphite-web-editor-driver-playwright",
+	"private": true,
+	"description": "The Playwright part of the web editor driver, which owns its isolated browser and delivers real input to it.",
+	"author": "Graphite Authors <contact@graphite.art>",
+	"type": "module",
+	"engines": {
+		"node": ">=22.18"
+	},
+	"scripts": {
+		"check": "node ../../../frontend/node_modules/typescript/bin/tsc && node ../../../frontend/node_modules/eslint/bin/eslint.js",
+		"fix": "node ../../../frontend/node_modules/eslint/bin/eslint.js --fix"
+	},
+	"dependencies": {
+		"playwright-core": "^1.63.0"
+	},
+	"homepage": "https://graphite.art",
+	"license": "MIT OR Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/GraphiteEditor/Graphite.git"
+	}
+}

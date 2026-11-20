@@ -15,22 +15,21 @@ publish.workspace = true
 workspace = true
 
 [features]
-wgpu = ["dep:wgpu", "dep:wgpu-executor"]
+wgpu = ["dep:graphene-application-io", "dep:log", "dep:wgpu", "dep:wgpu-executor"]
 
-[dependencies]
+# The library has no functionality outside WebAssembly
+[target.'cfg(target_family = "wasm")'.dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
-core-types = { workspace = true }
-vector-types = { workspace = true }
-text-nodes = { workspace = true }
-graphene-application-io = { workspace = true }
 
 # Workspace dependencies
 web-sys = { workspace = true }
 glam = { workspace = true }
-serde = { workspace = true }
-log = { workspace = true }
+
+# Optional local dependencies
+graphene-application-io = { workspace = true, optional = true }
 
 # Optional workspace dependencies
+log = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 wgpu-executor = { workspace = true, optional = true }

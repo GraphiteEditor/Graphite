@@ -1,5 +1,5 @@
+use crate::consts::COLOR_OVERLAY_RED;
 use crate::consts::GIZMO_HIDE_THRESHOLD;
-use crate::consts::{COLOR_OVERLAY_RED, POINT_RADIUS_HANDLE_SNAP_THRESHOLD};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -7,11 +7,12 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::{overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
 use crate::messages::prelude::FrontendMessage;
 use crate::messages::prelude::Responses;
-use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
+use crate::messages::prelude::{DocumentMessageHandler, NodeGraphMessage};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{draw_snapping_ticks, extract_polygon_parameters, polygon_outline, polygon_vertex_position, star_outline};
 use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_star_parameters, star_vertex_position};
-use glam::DVec2;
+use crate::messages::tool::common_functionality::snap_session::{Kind, SnapSession, SnapView, ValueCandidate};
+use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::ParameterRef;
@@ -397,29 +398,41 @@ impl PointRadiusHandle {
 		snap_radii
 	}
 
-	fn check_snapping(&self, new_radius: f64, original_radius: f64) -> Option<(usize, f64)> {
-		self.snap_radii
+	/// Snaps a radius to the ones in `snap_radii`, judged by how far the handle moves along its spoke on screen.
+	fn snap_radius(&self, view: SnapView, snap_session: &mut SnapSession, layer: LayerNodeIdentifier, free_radius: f64) -> f64 {
+		let document = view.document;
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+		let point = self.point as i32;
+
+		// The unit spoke the handle moves along in the layer's space
+		let spoke = if let Some((sides, _, _)) = extract_star_parameters(Some(layer), document) {
+			star_vertex_position(DAffine2::IDENTITY, point, sides, 1., 1.)
+		} else if let Some((sides, _)) = extract_polygon_parameters(Some(layer), document) {
+			polygon_vertex_position(DAffine2::IDENTITY, point, sides, 1.)
+		} else {
+			return free_radius;
+		};
+
+		// The first two radii give the star right-angled tips, and the rest line the tips up with other vertices
+		let candidates: Vec<ValueCandidate> = self
+			.snap_radii
 			.iter()
 			.enumerate()
-			.filter(|(_, rad)| (**rad - new_radius).abs() < POINT_RADIUS_HANDLE_SNAP_THRESHOLD)
-			.min_by(|(i_a, a), (i_b, b)| {
-				let dist_a = (**a - new_radius).abs();
-				let dist_b = (**b - new_radius).abs();
-
-				// Check if either index is 0 or 1 and prioritize them
-				match (*i_a == 0 || *i_a == 1, *i_b == 0 || *i_b == 1) {
-					// `a` is priority index, `b` is not
-					(true, false) => std::cmp::Ordering::Less,
-					// `b` is priority index, `a` is not
-					(false, true) => std::cmp::Ordering::Greater,
-					// Normal comparison
-					_ => dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal),
-				}
+			.map(|(index, &value)| ValueCandidate {
+				value,
+				kind: if index < 2 { Kind::RightAngle } else { Kind::Through },
+				identity: index as u64,
 			})
-			.map(|(i, rad)| (i, *rad - original_radius))
+			.collect();
+
+		let on_screen_per_unit = layer_to_viewport.transform_vector2(spoke).length();
+		let to_document = document.metadata().document_to_viewport.inverse() * layer_to_viewport;
+		let position_of = |radius: f64| to_document.transform_point2(spoke * radius);
+		snap_session.snap_value(view, position_of, free_radius, on_screen_per_unit, &candidates)
 	}
 
-	pub fn update_inner_radius(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
+	pub fn update_inner_radius(&mut self, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>, drag_start: DVec2) {
+		let SnapView { document, input, .. } = view;
 		let Some(layer) = self.layer else { return };
 		let Some(radius_parameter) = self.radius_parameter.clone() else { return };
 
@@ -438,21 +451,23 @@ impl PointRadiusHandle {
 		let projection = delta.project_onto(radius);
 		let sign = radius.dot(delta).signum();
 
-		let mut net_delta = projection.length() * sign * original_radius.signum();
+		let net_delta = projection.length() * sign * original_radius.signum();
 		let new_radius = original_radius + net_delta;
 
 		self.update_state(PointRadiusHandleState::Dragging);
 
 		self.check_if_radius_flipped(original_radius, new_radius, document, layer, &radius_parameter);
 
-		if let Some((index, snapped_delta)) = self.check_snapping(new_radius, original_radius) {
-			net_delta = snapped_delta;
-			self.update_state(PointRadiusHandleState::Snapped(index));
+		// A snap's identity is the index of its radius, which picks the guides drawn for it
+		let snapped_radius = self.snap_radius(view, snap_session, layer, new_radius);
+		let engaged = snap_session.shown().and_then(|shown| shown.outcome.engaged_candidates().next());
+		if let Some(candidate) = engaged {
+			self.update_state(PointRadiusHandleState::Snapped(candidate.key.identity[0] as usize));
 		}
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, radius_parameter),
-			input: NodeInput::value(TaggedValue::Number(original_radius + net_delta), false),
+			input: NodeInput::value(TaggedValue::Number(snapped_radius), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}

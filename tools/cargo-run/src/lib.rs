@@ -9,6 +9,9 @@ pub enum Action {
 	Run,
 	Build,
 	Explore(Option<String>),
+	Drive,
+	Migration,
+	Regression,
 }
 
 pub enum Target {
@@ -32,6 +35,36 @@ pub struct Task {
 
 impl Task {
 	pub fn parse(args: &[&str]) -> Option<Self> {
+		// Everything after `drive` belongs to the web editor driver, which has commands and options of its own
+		if args.first() == Some(&"drive") {
+			return Some(Task {
+				action: Action::Drive,
+				target: Target::Web,
+				profile: Profile::Default,
+				args: args[1..].iter().map(|s| s.to_string()).collect(),
+			});
+		}
+
+		// Everything after `migration` belongs to the format snapshot tool
+		if args.first() == Some(&"migration") {
+			return Some(Task {
+				action: Action::Migration,
+				target: Target::Web,
+				profile: Profile::Default,
+				args: args[1..].iter().map(|s| s.to_string()).collect(),
+			});
+		}
+
+		// Everything after `regression` belongs to the document regression tool
+		if args.first() == Some(&"regression") {
+			return Some(Task {
+				action: Action::Regression,
+				target: Target::Cli,
+				profile: Profile::Default,
+				args: args[1..].iter().map(|s| s.to_string()).collect(),
+			});
+		}
+
 		let split = args.iter().position(|a| *a == "--").unwrap_or(args.len());
 		let passthru_args = args[split..].iter().skip(1).map(|s| s.to_string()).collect();
 		let args = &args[..split];

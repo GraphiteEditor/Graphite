@@ -128,16 +128,18 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.insert_node(origins_to_polyline_id, origins_to_polyline, &[]);
 		self.network_interface.move_node_to_chain_start(&origins_to_polyline_id, layer, &[], self.import);
 
-		// Add Auto-Tangents node (between Origins to Polyline and Path), with spread=1 and preserve_existing=false
-		let auto_tangents = resolve_proto_node_type(graphene_std::vector::auto_tangents::IDENTIFIER)
-			.expect("Auto-Tangents node does not exist")
+		// Add Smooth Anchors node (between Origins to Polyline and Path), with spread=1 and preserve_existing=false
+		let smooth_anchors = resolve_proto_node_type(graphene_std::vector::smooth_anchors::IDENTIFIER)
+			.expect("Smooth Anchors node does not exist")
 			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Number(1.), false)), Some(NodeInput::value(TaggedValue::Bool(false), false))]);
-		let auto_tangents_id = NodeId::new();
-		self.network_interface.insert_node(auto_tangents_id, auto_tangents, &[]);
-		self.network_interface.move_node_to_chain_start(&auto_tangents_id, layer, &[], self.import);
+		let smooth_anchors_id = NodeId::new();
+		self.network_interface.insert_node(smooth_anchors_id, smooth_anchors, &[]);
+		self.network_interface.move_node_to_chain_start(&smooth_anchors_id, layer, &[], self.import);
 
 		// Add Path node to chain start (closest to the Merge node)
-		let path = resolve_network_node_type("Path").expect("Path node does not exist").default_node_template();
+		let path = resolve_proto_node_type(graphene_std::vector::path::IDENTIFIER)
+			.expect("Path node does not exist")
+			.default_node_template();
 		let path_id = NodeId::new();
 		self.network_interface.insert_node(path_id, path, &[]);
 		self.network_interface.move_node_to_chain_start(&path_id, layer, &[], self.import);
@@ -147,10 +149,10 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_vector(&mut self, bezpath: BezPath, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
 		// Build a VectorModification that reproduces the geometry (same format the Pen tool uses)
-		let vector = Vector::from_bezpath(bezpath);
-		let modification = Box::new(VectorModification::create_from_vector(&vector));
+		let (vector, paths) = Vector::from_bezpath(&bezpath);
+		let modification = Box::new(VectorModification::create_from_vector(&vector, &paths));
 
-		let shape = resolve_network_node_type("Path")
+		let shape = resolve_proto_node_type(graphene_std::vector::path::IDENTIFIER)
 			.expect("Path node does not exist")
 			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))]);
 		let shape_id = NodeId::new();
@@ -247,14 +249,15 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Clear the whole-expanse paint one tool left on a layer so the other can start its own chain there.
-	/// Severing at the attachment detaches the layer from whatever the walk stopped at, which is the only part a node
-	/// the rest of the graph also draws from is subjected to, since such a node is never among those deleted.
+	/// Severing at the attachment detaches the layer from the old chain, which is all that a node the rest of
+	/// the graph also draws from is subjected to, since such a node is never among those deleted.
 	fn clear_paint_chain(&mut self, paint_chain: &ReplaceablePaintChain) {
 		self.network_interface.disconnect_input(&paint_chain.attachment_input, &[]);
 
 		if !paint_chain.nodes.is_empty() {
 			self.network_interface.delete_nodes(paint_chain.nodes.clone(), false, &[]);
 		}
+		self.network_interface.remove_orphaned_dots(&[]);
 	}
 
 	/// Wire a node that paints the layer's whole expanse into the start of its chain,
@@ -409,7 +412,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// If inserting a 'Path' node, insert a 'Combine Paths' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on `List` data by utilizing the reference (index or ID?) for each item.
-		if node_definition.identifier == "Path" {
+		if *reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER) {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::layer_secondary_input(output_layer.to_node()), &[]);
 			if layer_input_type.compiled_element_name().as_deref() == Some("Graphic") {
 				let Some(combine_paths_definition) = resolve_proto_node_type(graphene_std::vector_nodes::combine_paths::IDENTIFIER) else {
@@ -447,7 +450,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: DAffine2) {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: Option<DAffine2>) {
 		let existing_fill_node_id = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, false);
 		let Some(fill_node_id) = existing_fill_node_id.or_else(|| self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true)) else {
 			return;
@@ -475,14 +478,16 @@ impl<'a> ModifyInputsContext<'a> {
 		if transform_is_value {
 			self.set_input_with_refresh(
 				InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput),
-				NodeInput::value(TaggedValue::Bool(true), false),
+				NodeInput::value(TaggedValue::Bool(transform.is_some()), false),
 				true,
 			);
-			self.set_input_with_refresh(
-				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput),
-				NodeInput::value(TaggedValue::DAffine2(transform), false),
-				true,
-			);
+			if let Some(transform) = transform {
+				self.set_input_with_refresh(
+					InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput),
+					NodeInput::value(TaggedValue::DAffine2(transform), false),
+					true,
+				);
+			}
 		}
 
 		self.set_input_with_refresh(
@@ -752,7 +757,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		transform_utils::update_transform(self.network_interface, &transform_node_id, last_transform_value);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -949,8 +954,7 @@ impl<'a> ModifyInputsContext<'a> {
 				return None;
 			}
 
-			// Create the Transform node
-			self.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, true)
+			self.create_transform_node()
 		}) else {
 			return;
 		};
@@ -959,18 +963,44 @@ impl<'a> ModifyInputsContext<'a> {
 		transform_utils::update_transform(self.network_interface, &transform_node_id, transform);
 
 		// Refresh the render and editor UI
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
 	}
 
+	/// Creates the layer's Transform node upstream of its Fill and Stroke, as the Shape tools build it,
+	/// so transforming the layer resizes its geometry and leaves its stroke weight as set.
+	fn create_transform_node(&mut self) -> Option<NodeId> {
+		let output_layer = self.get_output_layer()?;
+		let paint_nodes = [graphene_std::vector_nodes::fill::IDENTIFIER, graphene_std::vector_nodes::stroke::IDENTIFIER].map(DefinitionIdentifier::ProtoNode);
+
+		// The most upstream Fill or Stroke in the layer's own chain
+		let upstream_paint_node = self
+			.network_interface
+			.upstream_flow_back_from_nodes(vec![output_layer.to_node()], &[], FlowType::HorizontalFlow)
+			.skip(1)
+			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
+			.filter(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| paint_nodes.contains(&reference)))
+			.last();
+		let Some(paint_node) = upstream_paint_node else {
+			return self.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, true);
+		};
+
+		let transform_definition = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)?;
+		let node_id = NodeId::new();
+		self.network_interface.insert_node(node_id, transform_definition.default_node_template(), &[]);
+		self.network_interface.insert_node_before_input(&node_id, &InputConnector::primary_input(paint_node), &[]);
+
+		Some(node_id)
+	}
+
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
-		let Some(path_node_id) = self.existing_network_node_id("Path", true) else {
+		let Some(path_node_id) = self.existing_proto_node_id(graphene_std::vector::path::IDENTIFIER, true) else {
 			return;
 		};
 		self.network_interface.vector_modify(&path_node_id, modification_type);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -1002,10 +1032,10 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
-	/// Set the input, refresh the Properties panel, and run the document graph if skip_rerender is false
+	/// Set the input, refresh the Inspector, and run the document graph if skip_rerender is false
 	pub fn set_input_with_refresh(&mut self, input_connector: InputConnector, input: NodeInput, skip_rerender: bool) {
 		self.network_interface.set_input(&input_connector, input, &[]);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
@@ -1057,6 +1087,14 @@ pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, netw
 	};
 	let downstream_consumers = primary_output_consumers(network_interface, network_path, downstream);
 
+	// The rewiring knocks chain nodes out to absolute positions, so record how the pair and the chain feeding it were placed
+	let original_placements = network_interface
+		.upstream_flow_back_from_nodes(vec![downstream], network_path, FlowType::HorizontalFlow)
+		.enumerate()
+		.take_while(|(index, node_id)| *index < 2 || network_interface.is_chain(node_id, network_path))
+		.map(|(_, node_id)| (node_id, network_interface.is_chain(&node_id, network_path), network_interface.position(&node_id, network_path)))
+		.collect::<Vec<_>>();
+
 	network_interface.set_input(&InputConnector::node_at_index(downstream, 0), upstream_source, network_path);
 	network_interface.set_input(&InputConnector::node_at_index(upstream, 0), NodeInput::node(downstream, 0), network_path);
 	for consumer in &downstream_consumers {
@@ -1064,6 +1102,16 @@ pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, netw
 			continue;
 		}
 		network_interface.set_input(consumer, NodeInput::node(upstream, 0), network_path);
+	}
+
+	// Each node of the pair takes over the other's place, and the chain feeding the pair is restored as it was
+	let swapped_nodes = [upstream, downstream].into_iter().chain(original_placements.iter().skip(2).map(|(node_id, _, _)| *node_id));
+	for (node_id, (_, was_chain, position)) in swapped_nodes.zip(&original_placements) {
+		if *was_chain {
+			network_interface.set_chain_position(&node_id, network_path);
+		} else if let Some(position) = position {
+			network_interface.set_absolute_position(&node_id, *position, network_path);
+		}
 	}
 
 	true

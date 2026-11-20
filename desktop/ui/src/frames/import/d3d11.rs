@@ -67,9 +67,15 @@ impl D3D11Importer {
 			Ok::<_, TextureImportError>(hal_texture)
 		}?;
 
-		let texture = unsafe { device.create_texture_from_hal::<api::Dx12>(hal_texture, &texture_descriptor(self.width, self.height, self.format, "CEF D3D11→D3D12 Shared Texture")?) };
+		let texture = unsafe {
+			device.create_texture_from_hal::<api::Dx12>(
+				hal_texture,
+				&texture_descriptor(self.width, self.height, self.format, "CEF D3D11 -> D3D12 Shared Texture")?,
+				wgpu::TextureUses::UNINITIALIZED,
+			)
+		};
 
-		Ok(texture)
+		Ok(texture.into())
 	}
 
 	fn import_via_vulkan(&self, device: &wgpu::Device) -> TextureImportResult {
@@ -108,9 +114,15 @@ impl D3D11Importer {
 			Ok::<_, TextureImportError>(hal_texture)
 		}?;
 
-		let texture = unsafe { device.create_texture_from_hal::<Vulkan>(hal_texture, &texture_descriptor(self.width, self.height, self.format, "CEF D3D11 Shared Texture")?) };
+		let texture = unsafe {
+			device.create_texture_from_hal::<Vulkan>(
+				hal_texture,
+				&texture_descriptor(self.width, self.height, self.format, "CEF D3D11 Shared Texture")?,
+				wgpu::TextureUses::UNINITIALIZED,
+			)
+		};
 
-		Ok(texture)
+		Ok(texture.into())
 	}
 
 	fn import_d3d11_handle_to_d3d12(&self, hal_device: &<wgpu::hal::api::Dx12 as wgpu::hal::Api>::Device) -> Result<windows::Win32::Graphics::Direct3D12::ID3D12Resource, TextureImportError> {

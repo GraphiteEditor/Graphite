@@ -34,7 +34,7 @@ impl DialogLayoutHolder for FailedToLoadDocumentsDialog {
 				.widget_instance(),
 			TextButton::new("Dismiss")
 				.tooltip_description("Close this dialog. The autosaved data is kept and this dialog will reappear on next launch.")
-				.on_update(|_| FrontendMessage::DialogClose.into())
+				.on_update(|_| DialogMessage::Close.into())
 				.widget_instance(),
 		];
 

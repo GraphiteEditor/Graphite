@@ -35,6 +35,20 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				self.registry.resolve(&resource_id, hash);
 				responses.add(ResourceStorageMessage::Store { data });
 			}
+			ResourceMessage::StoreFont { resource_id, font, data } => {
+				let hash = ResourceHash::from(data.as_ref());
+				self.registry.push_source_back(&resource_id, DataSource::Embedded);
+				self.registry.push_source_back(
+					&resource_id,
+					DataSource::Font {
+						family: font.font_family.clone(),
+						style: Some(font.font_style.clone()),
+					},
+				);
+				self.registry.resolve(&resource_id, hash);
+				responses.add(ResourceStorageMessage::Store { data });
+				responses.add(FontsMessage::ResourceResolved { font, hash });
+			}
 			ResourceMessage::AddFont { resource_id, font } => {
 				let style = fonts.font_catalog.find_font_style_in_catalog(&font);
 				let style_name = style.map(|style| style.to_named_style()).unwrap_or_else(|| font.font_style.clone());
@@ -46,7 +60,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 						style: Some(style_name),
 					},
 				);
-				responses.add(ResourceMessage::Resolve { resource_id });
+				let message = ResourceMessage::Resolve { resource_id }.into();
+				responses.add(PortfolioMessage::DocumentPassMessage { document_id, message });
 			}
 			ResourceMessage::ResolveAll => {
 				let storage = resource_storage.resources_mut();
@@ -55,7 +70,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					if self.pending_resolves.contains(&id) {
 						continue;
 					}
-					responses.add(ResourceMessage::Resolve { resource_id: id });
+					let message = ResourceMessage::Resolve { resource_id: id }.into();
+					responses.add(PortfolioMessage::DocumentPassMessage { document_id, message });
 				}
 			}
 			ResourceMessage::Resolve { resource_id } => {
@@ -93,7 +109,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					.collect::<Vec<(DataSource, Option<ResourceHash>)>>();
 
 				async fn resolve_to_message(document_id: DocumentId, resource_id: ResourceId, source: DataSource, url: Url, client: &Client) -> Option<Message> {
-					let result = client.fetch(url.clone()).await;
+					let result = client.fetch(url.as_str()).await;
 					match result {
 						Some(data) => {
 							let hash = ResourceHash::from(data.as_ref());
@@ -120,7 +136,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					let mut response: Option<Message> = None;
 					for (source, hash) in sources {
 						if let Some(hash) = hash {
-							response = Some(ResourceMessage::Resolved { resource_id, source, hash }.into());
+							let message = ResourceMessage::Resolved { resource_id, source, hash }.into();
+							response = Some(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
 							break;
 						}
 
@@ -337,7 +354,11 @@ mod tests {
 			},
 		);
 
-		let resolve_requested = |id: ResourceId| responses.contains(&Message::from(ResourceMessage::Resolve { resource_id: id }));
+		// Addressed to this document, which may be in the background
+		let resolve_requested = |id: ResourceId| {
+			let message = ResourceMessage::Resolve { resource_id: id }.into();
+			responses.contains(&PortfolioMessage::DocumentPassMessage { document_id: DocumentId(0), message }.into())
+		};
 		assert!(resolve_requested(evicted), "a resource whose bytes are gone should be resolved again");
 		assert!(!resolve_requested(cached), "a resource whose bytes are in storage should be left alone");
 		assert_eq!(handler.registry.hash(&evicted), Some(evicted_hash), "the hash keeps naming the content");

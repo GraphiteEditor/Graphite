@@ -1,14 +1,18 @@
 <script lang="ts">
-	import WidgetSection from "/src/components/widgets/WidgetSection.svelte";
+	import NodeSection from "/src/components/widgets/NodeSection.svelte";
 	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
 	import WidgetTable from "/src/components/widgets/WidgetTable.svelte";
 	import type { Layout, LayoutTarget } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	export let layout: Layout;
-	export let layoutTarget: LayoutTarget;
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
+	type Props = {
+		layout: Layout;
+		layoutTarget: LayoutTarget;
+		class?: string;
+		classes?: Record<string, boolean>;
+		// Asks for the rows of a virtually scrolled table from `start` up to but not including `end`
+		requestTableRows?: (start: number, end: number) => void;
+	};
+	let { layout, layoutTarget, class: className = "", classes = {}, requestTableRows }: Props = $props();
 </script>
 
 {#each layout as layoutGroup}
@@ -16,10 +20,10 @@
 		<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} class={className} {classes} />
 	{:else if "Column" in layoutGroup}
 		<WidgetSpan direction="column" widgets={layoutGroup.Column.columnWidgets} {layoutTarget} class={className} {classes} />
-	{:else if "Section" in layoutGroup}
-		<WidgetSection widgetData={layoutGroup.Section} {layoutTarget} class={className} {classes} />
+	{:else if "NodeSection" in layoutGroup}
+		<NodeSection widgetData={layoutGroup.NodeSection} {layoutTarget} class={className} {classes} />
 	{:else if "Table" in layoutGroup}
-		<WidgetTable widgetData={layoutGroup.Table} {layoutTarget} />
+		<WidgetTable widgetData={layoutGroup.Table} {layoutTarget} requestRows={requestTableRows} />
 	{/if}
 {/each}
 

@@ -42,17 +42,10 @@ impl HostHandle {
 		}
 	}
 
-	pub(crate) fn shutdown(&self, shutdown_complete_receiver: &mpsc::Receiver<()>) {
+	pub(crate) fn shutdown(&self) {
 		self.shutting_down.store(true, Ordering::SeqCst);
 		let deadline = Instant::now() + HOST_SHUTDOWN_TIMEOUT;
-
-		if self.sender.send(HostControlMessage::Shutdown).is_ok() {
-			match shutdown_complete_receiver.recv_timeout(HOST_SHUTDOWN_TIMEOUT) {
-				Ok(()) => tracing::debug!("CEF host completed shutdown"),
-				Err(RecvTimeoutError::Timeout) => tracing::warn!("Timed out waiting for the CEF host to shut down"),
-				Err(RecvTimeoutError::Disconnected) => tracing::debug!("CEF host connection closed during shutdown"),
-			}
-		}
+		let _ = self.sender.send(HostControlMessage::Shutdown);
 
 		loop {
 			match self.child.lock() {
@@ -233,7 +226,7 @@ pub(crate) fn spawn_host(acceleration: bool) -> Result<HostHandle, UiError> {
 	})
 }
 
-pub(crate) fn start_instance(handle: &HostHandle, surface: FrameSurface, events: EventQueue) -> Result<mpsc::Receiver<()>, UiError> {
+pub(crate) fn start_instance(handle: &HostHandle, surface: FrameSurface, events: EventQueue) -> Result<(), UiError> {
 	let receive_side = match handle.receivers.lock() {
 		Ok(mut receive_side) => receive_side.take(),
 		Err(_) => None,
@@ -242,7 +235,6 @@ pub(crate) fn start_instance(handle: &HostHandle, surface: FrameSurface, events:
 		return Err(UiError::InstanceLimit);
 	};
 
-	let (shutdown_complete_sender, shutdown_complete_receiver) = mpsc::channel();
 	let consumer = FrameConsumer::new(surface, events.clone(), handle.sender.clone());
 
 	#[cfg(all(any(target_os = "linux", target_os = "macos"), feature = "accelerated_paint"))]
@@ -263,7 +255,7 @@ pub(crate) fn start_instance(handle: &HostHandle, surface: FrameSurface, events:
 		let events = events.clone();
 		std::thread::Builder::new()
 			.name("cef-host".to_string())
-			.spawn(move || event_receiver_loop(receiver, consumer, events, shutting_down, died_reported, shutdown_complete_sender))
+			.spawn(move || event_receiver_loop(receiver, consumer, events, shutting_down, died_reported))
 			.map_err(|e| UiError::Bootstrap(format!("failed to spawn the host event receiver thread: {e}")))?;
 	}
 
@@ -286,7 +278,7 @@ pub(crate) fn start_instance(handle: &HostHandle, surface: FrameSurface, events:
 							if shutting_down.load(Ordering::SeqCst) {
 								tracing::debug!("CEF host exited during shutdown: {status}");
 							} else {
-								report_host_died(&died_reported, &events, &format!("CEF host process exited unexpectedly: {status}"));
+								report_crash(&died_reported, &events, &format!("CEF host process exited unexpectedly: {status}"));
 							}
 							return;
 						}
@@ -297,25 +289,18 @@ pub(crate) fn start_instance(handle: &HostHandle, surface: FrameSurface, events:
 			.map_err(|e| UiError::Bootstrap(format!("failed to spawn the host supervisor thread: {e}")))?;
 	}
 
-	Ok(shutdown_complete_receiver)
+	Ok(())
 }
 
-fn report_host_died(died_reported: &AtomicBool, events: &EventQueue, message: &str) {
+fn report_crash(died_reported: &AtomicBool, events: &EventQueue, message: &str) {
 	if died_reported.swap(true, Ordering::SeqCst) {
 		return;
 	}
 	tracing::error!("{message}");
-	events.terminate(UiEvent::Crashed);
+	events.send(UiEvent::Crashed);
 }
 
-fn event_receiver_loop(
-	receiver: IpcReceiver<EventMessage>,
-	consumer: FrameConsumer,
-	events: EventQueue,
-	shutting_down: Arc<AtomicBool>,
-	died_reported: Arc<AtomicBool>,
-	shutdown_complete_sender: mpsc::Sender<()>,
-) {
+fn event_receiver_loop(receiver: IpcReceiver<EventMessage>, consumer: FrameConsumer, events: EventQueue, shutting_down: Arc<AtomicBool>, died_reported: Arc<AtomicBool>) {
 	let mut newest_frame: Option<PendingFrame> = None;
 	let mut segments = SegmentTable::new();
 
@@ -325,21 +310,21 @@ fn event_receiver_loop(
 			Err(ipc_channel::IpcError::Io(ref io)) if io.kind() == std::io::ErrorKind::Interrupted => continue,
 			Err(e) => {
 				if !shutting_down.load(Ordering::SeqCst) {
-					report_host_died(&died_reported, &events, &format!("Lost connection to the CEF host process: {e:?}"));
+					report_crash(&died_reported, &events, &format!("Lost connection to the CEF host process: {e:?}"));
 				}
 				return;
 			}
 		};
-		handle_message(message, &events, &shutting_down, &died_reported, &shutdown_complete_sender, &mut newest_frame, &mut segments);
+		handle_message(message, &events, &shutting_down, &died_reported, &mut newest_frame, &mut segments);
 
 		loop {
 			match receiver.try_recv() {
-				Ok(message) => handle_message(message, &events, &shutting_down, &died_reported, &shutdown_complete_sender, &mut newest_frame, &mut segments),
+				Ok(message) => handle_message(message, &events, &shutting_down, &died_reported, &mut newest_frame, &mut segments),
 				Err(ipc_channel::TryRecvError::Empty) => break,
 				Err(ipc_channel::TryRecvError::IpcError(ipc_channel::IpcError::Io(ref io))) if io.kind() == std::io::ErrorKind::Interrupted => break,
 				Err(ipc_channel::TryRecvError::IpcError(e)) => {
 					if !shutting_down.load(Ordering::SeqCst) {
-						report_host_died(&died_reported, &events, &format!("Lost connection to the CEF host process: {e:?}"));
+						report_crash(&died_reported, &events, &format!("Lost connection to the CEF host process: {e:?}"));
 					}
 					return;
 				}
@@ -352,22 +337,14 @@ fn event_receiver_loop(
 	}
 }
 
-fn handle_message(
-	message: EventMessage,
-	events: &EventQueue,
-	shutting_down: &AtomicBool,
-	died_reported: &AtomicBool,
-	shutdown_complete_sender: &mpsc::Sender<()>,
-	newest_frame: &mut Option<PendingFrame>,
-	segments: &mut SegmentTable,
-) {
+fn handle_message(message: EventMessage, events: &EventQueue, shutting_down: &AtomicBool, died_reported: &AtomicBool, newest_frame: &mut Option<PendingFrame>, segments: &mut SegmentTable) {
 	match message {
 		EventMessage::Hello { .. } => tracing::error!("Unexpected second Hello from the CEF host"),
 		EventMessage::BrowserCreated => tracing::info!("CEF host created the browser"),
 		EventMessage::InitFailed(e) => {
 			tracing::error!("CEF initialization failed in the host process: {e}");
 			died_reported.store(true, Ordering::SeqCst);
-			events.terminate(UiEvent::Failure(e.to_string()));
+			events.send(UiEvent::Failure(e.to_string()));
 		}
 		EventMessage::WebCommunicationInitialized => events.send(UiEvent::Ready),
 		EventMessage::WebMessage(message) => events.send(UiEvent::Message(message)),
@@ -393,9 +370,10 @@ fn handle_message(
 				*newest_frame = Some(frame);
 			}
 		}
-		EventMessage::ShutdownComplete => {
-			shutting_down.store(true, Ordering::SeqCst);
-			let _ = shutdown_complete_sender.send(());
+		EventMessage::RenderProcessTerminated => {
+			if !shutting_down.load(Ordering::SeqCst) {
+				report_crash(died_reported, events, "CEF render process terminated unexpectedly");
+			}
 		}
 	}
 }

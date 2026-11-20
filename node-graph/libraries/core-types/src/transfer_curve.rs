@@ -121,7 +121,7 @@ impl TransferCurveEvaluator {
 		}
 
 		// O(log n) search for the segment holding x
-		let upper = points.partition_point(|point| point.x <= x).min(points.len() - 1);
+		let upper = points.partition_point(|point| point.x <= x).clamp(1, points.len() - 1);
 		let lower = upper - 1;
 		let (a, b) = (points[lower], points[upper]);
 		let width = (b.x - a.x).max(f64::EPSILON);
@@ -203,6 +203,17 @@ mod tests {
 		// A singular system would send the neighboring segments off to enormous values
 		for x in [0.1, 0.25, 0.4, 0.6, 0.75, 0.9] {
 			assert!(curve.evaluate(x).abs() < 2., "runaway value {} at {x}", curve.evaluate(x));
+		}
+	}
+
+	#[test]
+	fn sampling_survives_a_value_or_point_that_is_not_a_number() {
+		assert!(TransferCurve::default().evaluate(f64::NAN).is_nan());
+
+		// A negative NaN sorts first, so every x between the points meets it
+		let curve = TransferCurve::new(vec![DVec2::new(-f64::NAN, 0.), DVec2::new(0.5, 0.7), DVec2::ONE]);
+		for x in (1..100).map(|i| i as f64 / 100.) {
+			curve.evaluate(x);
 		}
 	}
 

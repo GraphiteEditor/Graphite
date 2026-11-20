@@ -1,3 +1,4 @@
+use crate::messages::frontend::IconName;
 use crate::messages::prelude::*;
 
 #[impl_message(Message, Dialog)]
@@ -12,6 +13,11 @@ pub enum DialogMessage {
 	PreferencesDialog(PreferencesDialogMessage),
 
 	// Messages
+	Display {
+		title: String,
+		icon: IconName,
+	},
+	Redisplay,
 	Dismiss,
 	Close,
 	CloseAndThen {

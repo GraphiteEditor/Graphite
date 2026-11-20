@@ -44,7 +44,7 @@ The **workspace** is the editor's main content area, filled with **panels** arra
 
 ### Panels
 
-Panels are regions of the UI dedicated to a specific purpose. [**Document**](./document-panel), Properties, and Layers are presently the three panel types.
+Panels are regions of the UI dedicated to a specific purpose. [**Document**](./document-panel), Inspector, and Layers are presently the three panel types.
 
 Each panel name is shown in its **panel header**. Panel tabs offer a quick way to swap between multiple panels occupying the same area (currently only documents support this).
 

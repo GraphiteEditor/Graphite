@@ -16,7 +16,7 @@ workspace = true
 [features]
 default = ["dealloc_nodes", "wgpu", "loading"]
 dealloc_nodes = ["core-types/dealloc_nodes"]
-wgpu = ["wgpu-executor"]
+wgpu = ["wgpu-executor", "dep:graphene-canvas-utils", "graphene-canvas-utils?/wgpu"]
 tokio = ["dep:tokio"]
 loading = ["serde_json"]
 wasm = [
@@ -35,6 +35,7 @@ core-types = { workspace = true, features = ["serde"] }
 brush-nodes = { workspace = true, features = ["serde"] }
 graphene-core = { workspace = true, features = ["serde"] }
 graphene-application-io = { workspace = true, features = ["serde"] }
+graphene-animation = { workspace = true, features = ["serde"] }
 rendering = { workspace = true, features = ["serde"] }
 raster-nodes = { workspace = true, features = ["serde"] }
 vector-nodes = { workspace = true, features = ["serde"] }
@@ -74,9 +75,11 @@ web-sys = { workspace = true, features = [
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
+graphene-canvas-utils = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 mmap-io = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
 
 [dev-dependencies]
 # Workspace dependencies
@@ -84,6 +87,8 @@ graph-craft = { workspace = true, features = ["loading"] }
 pretty_assertions = { workspace = true }
 criterion = { workspace = true }
 gungraun = { workspace = true }
+document-loader = { workspace = true }
+futures = { workspace = true }
 
 # Benchmarks
 [[bench]]

@@ -68,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	// DOM REFERENCES
 	// ==============
 
-	const tool = document.querySelector(".bisect-tool");
+	const tool = document.querySelector("[data-bisect-tool]");
 	if (!tool) return;
 
 	const phases = {
@@ -94,8 +94,8 @@ document.addEventListener("DOMContentLoaded", () => {
 		issuePresentButton: tool.querySelector("[data-issue-present-button]"),
 		issueAbsentButton: tool.querySelector("[data-issue-absent-button]"),
 		goBackButton: tool.querySelector("[data-go-back-button]"),
-		findings: tool.querySelector(".findings"),
-		bisectActions: tool.querySelector(".bisect-actions"),
+		findings: tool.querySelector("[data-findings]"),
+		bisectActions: tool.querySelector("[data-bisect-actions]"),
 	};
 
 	// =====
@@ -479,15 +479,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
 	// Toggle start input visibility
 	function syncStartInputVisibility() {
-		// eslint-disable-next-line quotes
-		const selected = tool?.querySelector('input[name="start-method"]:checked');
+		const selected = tool?.querySelector("[data-start-method]:checked");
 		const method = selected instanceof HTMLInputElement ? selected.value : "date";
 		elements.hashInput?.classList.toggle("hidden", method !== "hash");
 		elements.dateInput?.classList.toggle("hidden", method !== "date");
 	}
 	syncStartInputVisibility();
-	// eslint-disable-next-line quotes
-	tool.querySelectorAll('input[name="start-method"]').forEach((radio) => {
+	tool.querySelectorAll("[data-start-method]").forEach((radio) => {
 		radio.addEventListener("change", syncStartInputVisibility);
 	});
 
@@ -495,10 +493,8 @@ document.addEventListener("DOMContentLoaded", () => {
 	elements.startButton?.addEventListener("click", async () => {
 		if (isDisabled(elements.startButton)) return;
 		hideMessage();
-		// eslint-disable-next-line quotes
-		const modeInput = tool.querySelector('input[name="bisect-mode"]:checked');
-		// eslint-disable-next-line quotes
-		const methodInput = tool.querySelector('input[name="start-method"]:checked');
+		const modeInput = tool.querySelector("[data-bisect-mode]:checked");
+		const methodInput = tool.querySelector("[data-start-method]:checked");
 		if (!(modeInput instanceof HTMLInputElement) || !(methodInput instanceof HTMLInputElement)) return;
 		mode = modeInput.value;
 		const method = methodInput.value;
@@ -600,7 +596,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	onIssueResponse(elements.issueAbsentButton, false);
 
 	// Go back
-	elements.goBackButton?.querySelector("a")?.addEventListener("click", async () => {
+	elements.goBackButton?.querySelector("[data-go-back-link]")?.addEventListener("click", async () => {
 		hideMessage();
 
 		if (history.length === 0) {

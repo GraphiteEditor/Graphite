@@ -1,12 +1,15 @@
 use super::widgets::button_widgets::*;
 use super::widgets::input_widgets::*;
 use super::widgets::label_widgets::*;
-use crate::application::generate_uuid;
+use crate::application::{Environment, generate_uuid};
+use crate::messages::frontend::IconName;
 use crate::messages::input_mapper::utility_types::keyboard::KeysGroup;
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::prelude::*;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::ops::Range;
 use std::sync::Arc;
 
 #[repr(transparent)]
@@ -22,7 +25,7 @@ impl core::fmt::Display for WidgetId {
 
 macro_rules! define_layout_target {
 	($($(#[$attr:meta])* $variant:ident),* $(,)?) => {
-		#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+		#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 		#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize)]
 		#[repr(u8)]
 		pub enum LayoutTarget {
@@ -50,26 +53,31 @@ define_layout_target!(
 	ColorPickerDetails,
 	/// The Data panel visualizes the output data flowing through the selected node in the graph.
 	DataPanel,
-	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
+	/// The inspected node's context, at the right of the Data panel's top bar.
+	DataPanelContext,
+	/// The inspected node and the path to the data shown, at the left of the Data panel's top bar.
+	DataPanelPath,
+	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `DialogMessage::Display` message.
 	DialogButtons,
-	/// Contains the contents of the dialog's primary column. Must be shown with the `FrontendMessage::DisplayDialog` message.
+	/// Contains the contents of the dialog's primary column. Must be shown with the `DialogMessage::Display` message.
 	DialogColumn1,
-	/// Contains the contents of the dialog's secondary column (often blank). Must be shown with the `FrontendMessage::DisplayDialog` message.
+	/// Contains the contents of the dialog's secondary column (often blank). Must be shown with the `DialogMessage::Display` message.
 	DialogColumn2,
 	/// Contains the widgets located directly above the canvas to the right, for example the zoom in and out buttons.
 	DocumentBar,
-	/// Controls for adding, grouping, and deleting layers at the bottom of the Layers panel.
-	LayersPanelBottomBar,
+	/// Visibility and lock toggles for the selection at the bottom left of the Layers panel.
+	LayersPanelBottomLeftBar,
+	/// Controls for adding, grouping, and deleting layers at the bottom right of the Layers panel.
+	LayersPanelBottomRightBar,
 	/// Blending options at the top of the Layers panel.
 	LayersPanelControlLeftBar,
-	/// Selected layer status (locked/hidden) at the top of the Layers panel.
-	LayersPanelControlRightBar,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
 	NodeGraphControlBar,
-	/// The body of the Properties panel containing many collapsable sections.
-	PropertiesPanel,
+	/// The body of the Inspector containing many collapsable sections.
+	Inspector,
+	CollaborationPanel,
 	/// The contextual input key/mouse combination shortcuts shown in the status bar at the bottom of the window.
 	StatusBarHints,
 	/// The version information shown in the status bar at the bottom right of the window.
@@ -121,7 +129,7 @@ pub trait DialogLayoutHolder: LayoutHolder {
 		self.send_layout(responses, LayoutTarget::DialogColumn1);
 		self.send_layout_column_2(responses, LayoutTarget::DialogColumn2);
 		self.send_layout_buttons(responses, LayoutTarget::DialogButtons);
-		responses.add(FrontendMessage::DisplayDialog {
+		responses.add(DialogMessage::Display {
 			icon: Self::ICON.into(),
 			title: Self::TITLE.into(),
 		});
@@ -208,6 +216,14 @@ impl Layout {
 			..Default::default()
 		}
 	}
+
+	/// Disables every widget, and stops every node section from being dragged to reorder it.
+	pub fn disable(&mut self) {
+		for widget in self.iter_mut() {
+			widget.widget.disable();
+		}
+		self.0.iter_mut().for_each(LayoutGroup::stop_dragging);
+	}
 }
 
 impl Diffable for Layout {
@@ -293,7 +309,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 				self.table.extend(rows.iter().flatten().flatten().rev());
 				self.next()
 			}
-			Some(LayoutGroup::Section(WidgetSection { layout, .. })) => {
+			Some(LayoutGroup::NodeSection(NodeSection { layout, .. })) => {
 				for layout_row in &layout.0 {
 					self.stack.push(layout_row);
 				}
@@ -345,7 +361,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 				self.table.extend(rows.iter_mut().flatten().flatten().rev());
 				self.next()
 			}
-			Some(LayoutGroup::Section(WidgetSection { layout, .. })) => {
+			Some(LayoutGroup::NodeSection(NodeSection { layout, .. })) => {
 				for layout_row in &mut layout.0 {
 					self.stack.push(layout_row);
 				}
@@ -362,7 +378,7 @@ pub enum LayoutGroup {
 	Column(WidgetColumn),
 	Row(WidgetRow),
 	Table(WidgetTable),
-	Section(WidgetSection),
+	NodeSection(NodeSection),
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -386,27 +402,70 @@ pub struct WidgetTable {
 	#[serde(rename = "tableWidgets")]
 	pub rows: Vec<Vec<Vec<WidgetInstance>>>,
 	pub unstyled: bool,
+	/// For a table too long to send whole, the rows left out around those sent, which are only the ones in or near view.
+	#[serde(rename = "scrollWindow")]
+	pub scroll_window: Option<TableScrollWindow>,
 }
 
-/// A collapsible Properties panel section for a single node: a header with its name and pin, delete, and visibility controls, above its input parameter widgets.
+/// How many rows a virtually scrolled table leaves out on either side of the rows it sends after its heading row, which is always sent.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TableScrollWindow {
+	/// The rows left out between the heading row and the first row sent.
+	#[serde(rename = "rowsBefore")]
+	pub rows_before: u32,
+	/// The rows left out after the last row sent.
+	#[serde(rename = "rowsAfter")]
+	pub rows_after: u32,
+}
+
+/// A wire drawn between Inspector sections, styled like the graph's wire carrying the same data.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SectionWire {
+	#[serde(rename = "dataType")]
+	pub data_type: FrontendGraphDataType,
+	/// Whether the wire carries a list, drawn as two parallel lines.
+	#[serde(rename = "isList")]
+	pub is_list: bool,
+}
+
+/// A collapsible Inspector section for a single node: a header with its name and pin, delete, and visibility controls, above its input parameter widgets.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WidgetSection {
-	/// The node's name shown in the section header: its given alias with the implementation name in parentheses, or just the implementation name.
+pub struct NodeSection {
+	/// The node's name shown in the section header: its implementation name, followed in parentheses by its given alias if it has one.
 	pub name: String,
+	/// The node definition's icon, shown before the name in the section header (none when it has no icon).
+	pub icon: Option<IconName>,
 	/// The node definition's description, shown as the header's tooltip (empty when it has none).
 	pub description: String,
 	/// Whether the node is visible rather than hidden (shown as the eye icon).
 	pub visible: bool,
-	/// Whether the node is pinned, keeping its section shown in the Properties panel when nothing is selected (shown as the pin icon).
+	/// Whether the node is pinned, keeping its section shown in the Inspector when nothing is selected (shown as the pin icon).
 	pub pinned: bool,
 	/// Whether this section can be dragged to reorder it within its layer's chain of nodes (true for a layer chain's nodes, but not its terminal layer node).
 	pub draggable: bool,
+	/// For a section showing the chain feeding one of its inputs, the wire drawn up into that input from the chain's sections within it (none when it shows no chain).
+	#[serde(rename = "chainWire")]
+	pub chain_wire: Option<SectionWire>,
+	/// For a section in the chain feeding another section's input, the wire drawn up to the section above, which its node's output feeds.
+	#[serde(rename = "outputWire")]
+	pub output_wire: Option<SectionWire>,
+	/// Whether this section only refers to its node with a row like the Data panel's, in place of its header and parameters (for a layer feeding a chain, or feeding or fed by the selected layer).
+	#[serde(rename = "nodeReference")]
+	pub node_reference: bool,
+	/// For a section referring to layers that take the wire from the section below into their content, rather than from their bottom, that wire turning in from the left past its indent.
+	#[serde(rename = "contentWire")]
+	pub content_wire: Option<SectionWire>,
+	/// Whether the content wire also continues up past its turn, to the section above that takes it from the bottom.
+	#[serde(rename = "contentWireContinues")]
+	pub content_wire_continues: bool,
 	/// Whether this section is expanded to show its contents, as opposed to being collapsed down to just its header.
 	pub expanded: bool,
-	/// The ID of the node whose properties this section displays.
+	/// The ID of the node whose Inspector section this is.
 	pub id: u64,
-	/// The node's properties content, rendered as the section's body when expanded.
+	/// The node's Inspector content, rendered as the section's body when expanded, followed by the sections of any chain it shows (those with an `output_wire`).
 	pub layout: Layout,
 }
 
@@ -433,21 +492,47 @@ impl LayoutGroup {
 	/// A table with one widget per cell.
 	pub fn table(rows: Vec<Vec<WidgetInstance>>, unstyled: bool) -> Self {
 		let rows = rows.into_iter().map(|row| row.into_iter().map(|widget| vec![widget]).collect()).collect();
-		Self::Table(WidgetTable { rows, unstyled })
+		Self::Table(WidgetTable { rows, unstyled, scroll_window: None })
 	}
 
 	/// A table whose cells may each hold multiple widgets laid out inline.
 	pub fn table_of_cells(rows: Vec<Vec<Vec<WidgetInstance>>>, unstyled: bool) -> Self {
-		Self::Table(WidgetTable { rows, unstyled })
+		Self::Table(WidgetTable { rows, unstyled, scroll_window: None })
 	}
 
-	pub fn section(name: impl Into<String>, description: impl Into<String>, visible: bool, pinned: bool, expanded: bool, id: u64, layout: Layout) -> Self {
-		Self::Section(WidgetSection {
+	/// A table under a heading row that sends only the rows in `rows_sent`, each made by `build_row` from its index. O(rows sent).
+	pub fn virtually_scrolled_table_of_cells(heading: Vec<Vec<WidgetInstance>>, row_count: usize, rows_sent: Range<usize>, build_row: impl FnMut(usize) -> Vec<Vec<WidgetInstance>>) -> Self {
+		// Asking past the end of the table sends as many of its last rows instead
+		let end = rows_sent.end.min(row_count);
+		let start = rows_sent.start.min(end.saturating_sub(rows_sent.len()));
+
+		let rows = std::iter::once(heading).chain((start..end).map(build_row)).collect();
+		let scroll_window = TableScrollWindow {
+			rows_before: start as u32,
+			rows_after: (row_count - end) as u32,
+		};
+
+		Self::Table(WidgetTable {
+			rows,
+			unstyled: false,
+			scroll_window: Some(scroll_window),
+		})
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn section(name: impl Into<String>, icon: Option<IconName>, description: impl Into<String>, visible: bool, pinned: bool, expanded: bool, id: u64, layout: Layout) -> Self {
+		Self::NodeSection(NodeSection {
 			name: name.into(),
+			icon,
 			description: description.into(),
 			visible,
 			pinned,
 			draggable: false,
+			chain_wire: None,
+			output_wire: None,
+			node_reference: false,
+			content_wire: None,
+			content_wire_continues: false,
 			expanded,
 			id,
 			layout,
@@ -473,6 +558,7 @@ impl LayoutGroup {
 				Widget::ImageLabel(x) => &mut x.tooltip_description,
 				Widget::MathExpressionInput(x) => &mut x.tooltip_description,
 				Widget::NumberInput(x) => &mut x.tooltip_description,
+				Widget::ParameterChainToggle(x) => &mut x.tooltip_description,
 				Widget::PopoverButton(x) => &mut x.tooltip_description,
 				Widget::TextAreaInput(x) => &mut x.tooltip_description,
 				Widget::TextButton(x) => &mut x.tooltip_description,
@@ -497,6 +583,13 @@ impl LayoutGroup {
 			}
 		}
 		if is_col { Self::Column(WidgetColumn { widgets }) } else { Self::Row(WidgetRow { widgets }) }
+	}
+
+	fn stop_dragging(&mut self) {
+		if let LayoutGroup::NodeSection(section) = self {
+			section.draggable = false;
+			section.layout.0.iter_mut().for_each(LayoutGroup::stop_dragging);
+		}
 	}
 
 	pub fn iter_mut(&mut self) -> WidgetIterMut<'_> {
@@ -542,22 +635,34 @@ impl Diffable for LayoutGroup {
 				}
 			}
 			(
-				Self::Section(WidgetSection {
+				Self::NodeSection(NodeSection {
 					name: current_name,
+					icon: current_icon,
 					description: current_description,
 					visible: current_visible,
 					pinned: current_pinned,
 					draggable: current_draggable,
+					chain_wire: current_chain_wire,
+					output_wire: current_output_wire,
+					node_reference: current_node_reference,
+					content_wire: current_content_wire,
+					content_wire_continues: current_content_wire_continues,
 					expanded: current_expanded,
 					id: current_id,
 					layout: current_layout,
 				}),
-				Self::Section(WidgetSection {
+				Self::NodeSection(NodeSection {
 					name: new_name,
+					icon: new_icon,
 					description: new_description,
 					visible: new_visible,
 					pinned: new_pinned,
 					draggable: new_draggable,
+					chain_wire: new_chain_wire,
+					output_wire: new_output_wire,
+					node_reference: new_node_reference,
+					content_wire: new_content_wire,
+					content_wire_continues: new_content_wire_continues,
 					expanded: new_expanded,
 					id: new_id,
 					layout: new_layout,
@@ -567,30 +672,48 @@ impl Diffable for LayoutGroup {
 				// TODO: Diff insersion and deletion of items
 				if current_layout.0.len() != new_layout.0.len()
 					|| *current_name != new_name
+					|| *current_icon != new_icon
 					|| *current_description != new_description
 					|| *current_visible != new_visible
 					|| *current_pinned != new_pinned
 					|| *current_draggable != new_draggable
+					|| *current_chain_wire != new_chain_wire
+					|| *current_output_wire != new_output_wire
+					|| *current_node_reference != new_node_reference
+					|| *current_content_wire != new_content_wire
+					|| *current_content_wire_continues != new_content_wire_continues
 					|| *current_expanded != new_expanded
 					|| *current_id != new_id
 				{
 					// Update self to reflect new changes
 					current_name.clone_from(&new_name);
+					current_icon.clone_from(&new_icon);
 					current_description.clone_from(&new_description);
 					*current_visible = new_visible;
 					*current_pinned = new_pinned;
 					*current_draggable = new_draggable;
+					*current_chain_wire = new_chain_wire;
+					*current_output_wire = new_output_wire;
+					*current_node_reference = new_node_reference;
+					*current_content_wire = new_content_wire;
+					*current_content_wire_continues = new_content_wire_continues;
 					*current_expanded = new_expanded;
 					*current_id = new_id;
 					current_layout.clone_from(&new_layout);
 
 					// Push an update layout group to the diff
-					let new_value = Self::Section(WidgetSection {
+					let new_value = Self::NodeSection(NodeSection {
 						name: new_name,
+						icon: new_icon,
 						description: new_description,
 						visible: new_visible,
 						pinned: new_pinned,
 						draggable: new_draggable,
+						chain_wire: new_chain_wire,
+						output_wire: new_output_wire,
+						node_reference: new_node_reference,
+						content_wire: new_content_wire,
+						content_wire_continues: new_content_wire_continues,
 						expanded: new_expanded,
 						id: new_id,
 						layout: new_layout,
@@ -641,7 +764,7 @@ impl Diffable for LayoutGroup {
 					}
 				}
 			}
-			Self::Section(WidgetSection { layout, .. }) => {
+			Self::NodeSection(NodeSection { layout, .. }) => {
 				layout.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
 			}
 		}
@@ -671,7 +794,7 @@ impl Diffable for LayoutGroup {
 					}
 				}
 			}
-			Self::Section(WidgetSection { layout, .. }) => {
+			Self::NodeSection(NodeSection { layout, .. }) => {
 				layout.replace_widget_ids(layout_target, widget_path, checkbox_map);
 			}
 		}
@@ -837,6 +960,7 @@ pub enum Widget {
 	ShortcutLabel(ShortcutLabel),
 	NodeCatalog(NodeCatalog),
 	NumberInput(NumberInput),
+	ParameterChainToggle(ParameterChainToggle),
 	ParameterExposeButton(ParameterExposeButton),
 	ReferencePointInput(ReferencePointInput),
 	PopoverButton(PopoverButton),
@@ -851,12 +975,112 @@ pub enum Widget {
 	WorkingColorsInput(WorkingColorsInput),
 }
 
+impl Widget {
+	/// Dims the widget and stops it from taking input, if it has a disabled state.
+	pub fn disable(&mut self) {
+		let disabled = match self {
+			Self::BreadcrumbTrailButtons(widget) => &mut widget.disabled,
+			Self::CheckboxInput(widget) => &mut widget.disabled,
+			Self::ColorComparisonInput(widget) => &mut widget.disabled,
+			Self::ColorInput(widget) => &mut widget.disabled,
+			Self::ColorPresetsInput(widget) => &mut widget.disabled,
+			Self::TransferCurveInput(widget) => &mut widget.disabled,
+			Self::DropdownInput(widget) => &mut widget.disabled,
+			Self::IconButton(widget) => &mut widget.disabled,
+			Self::IconLabel(widget) => &mut widget.disabled,
+			Self::ParameterExposeButton(widget) => &mut widget.disabled,
+			Self::MathExpressionInput(widget) => &mut widget.disabled,
+			Self::NodeCatalog(widget) => &mut widget.disabled,
+			Self::NumberInput(widget) => &mut widget.disabled,
+			Self::ReferencePointInput(widget) => &mut widget.disabled,
+			Self::PopoverButton(widget) => &mut widget.disabled,
+			Self::RadioInput(widget) => &mut widget.disabled,
+			Self::SliderInput(widget) => &mut widget.disabled,
+			Self::TextAreaInput(widget) => &mut widget.disabled,
+			Self::TextButton(widget) => &mut widget.disabled,
+			Self::TextInput(widget) => &mut widget.disabled,
+			Self::TextLabel(widget) => &mut widget.disabled,
+			Self::VisualColorPickersInput(widget) => &mut widget.disabled,
+			Self::ImageButton(_) | Self::ImageLabel(_) | Self::ShortcutLabel(_) | Self::ParameterChainToggle(_) | Self::Separator(_) | Self::WorkingColorsInput(_) => {
+				return;
+			}
+		};
+		*disabled = true;
+	}
+}
+
+/// How a widget claims width within its row, borrowing the model of flexbox. Parts left unset follow the defaults of the layout it appears in.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetSizing {
+	/// The width in pixels before growing or shrinking.
+	pub basis: Option<u32>,
+	/// Whether it widens into spare room in its row.
+	pub grow: Option<bool>,
+	/// Whether it narrows below its starting width when its row runs out of room.
+	pub shrink: Option<bool>,
+	/// The narrowest it can be, in pixels.
+	pub min_width: Option<u32>,
+	/// The widest it can be, in pixels.
+	pub max_width: Option<u32>,
+}
+
+impl WidgetSizing {
+	/// Exactly this many pixels wide, neither growing nor shrinking.
+	pub const fn fixed(width: u32) -> Self {
+		Self {
+			basis: Some(width),
+			grow: Some(false),
+			shrink: Some(false),
+			min_width: Some(width),
+			max_width: Some(width),
+		}
+	}
+
+	/// As wide as its content, neither growing nor shrinking.
+	pub const fn hug() -> Self {
+		Self {
+			basis: None,
+			grow: Some(false),
+			shrink: Some(false),
+			min_width: None,
+			max_width: None,
+		}
+	}
+
+	pub const fn basis(mut self, width: u32) -> Self {
+		self.basis = Some(width);
+		self
+	}
+
+	pub const fn grow(mut self, grow: bool) -> Self {
+		self.grow = Some(grow);
+		self
+	}
+
+	pub const fn shrink(mut self, shrink: bool) -> Self {
+		self.shrink = Some(shrink);
+		self
+	}
+
+	pub const fn min_width(mut self, width: u32) -> Self {
+		self.min_width = Some(width);
+		self
+	}
+
+	pub const fn max_width(mut self, width: u32) -> Self {
+		self.max_width = Some(width);
+		self
+	}
+}
+
 /// A single change to part of the UI, containing the location of the change and the new value.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WidgetDiff {
 	/// A path to the change
-	/// e.g. [0, 1, 2] in the Properties panel is the first section, second row and third widget.
+	/// e.g. [0, 1, 2] in the Inspector is the first section, second row and third widget.
 	/// An empty path [] shows that the entire panel has changed and is sent when the UI is first created.
 	#[serde(rename = "widgetPath")]
 	pub widget_path: Vec<usize>,
@@ -879,7 +1103,7 @@ pub enum DiffUpdate {
 
 impl DiffUpdate {
 	/// Append the keyboard shortcut to the tooltip where applicable
-	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>, environment: Environment) {
 		// Go through each widget to convert `ActionShortcut::Action` to `ActionShortcut::Shortcut` and append the key combination to the widget tooltip
 		let convert_tooltip = |widget_instance: &mut WidgetInstance| {
 			// Handle all the widgets that have tooltips
@@ -890,6 +1114,7 @@ impl DiffUpdate {
 				Widget::DropdownInput(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::IconButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::NumberInput(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::ParameterChainToggle(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::ParameterExposeButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::PopoverButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::TextButton(widget) => widget.tooltip_shortcut.as_mut(),
@@ -915,7 +1140,7 @@ impl DiffUpdate {
 
 			// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 			if let Some(tooltip_shortcut) = tooltip_shortcut {
-				tooltip_shortcut.realize_shortcut(action_input_mapping);
+				tooltip_shortcut.realize_shortcut(action_input_mapping, environment);
 			}
 
 			// Handle RadioInput separately because its tooltips are children of the widget
@@ -923,23 +1148,23 @@ impl DiffUpdate {
 				for radio_entry_data in &mut radio_input.entries {
 					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 					if let Some(tooltip_shortcut) = radio_entry_data.tooltip_shortcut.as_mut() {
-						tooltip_shortcut.realize_shortcut(action_input_mapping);
+						tooltip_shortcut.realize_shortcut(action_input_mapping, environment);
 					}
 				}
 			}
 		};
 
 		// Recursively fill menu list entries with their realized shortcut keys specific to the current bindings and platform
-		fn apply_action_shortcut_to_menu_lists(entry_sections: &mut MenuListEntrySections, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+		fn apply_action_shortcut_to_menu_lists(entry_sections: &mut MenuListEntrySections, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>, environment: Environment) {
 			for entries in entry_sections {
 				for entry in entries {
 					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 					if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
-						tooltip_shortcut.realize_shortcut(action_input_mapping);
+						tooltip_shortcut.realize_shortcut(action_input_mapping, environment);
 					}
 
 					// Recursively call this function on the menu's children
-					apply_action_shortcut_to_menu_lists(&mut entry.children, action_input_mapping);
+					apply_action_shortcut_to_menu_lists(&mut entry.children, action_input_mapping, environment);
 				}
 			}
 		}
@@ -947,29 +1172,39 @@ impl DiffUpdate {
 		// Apply shortcut conversions to all widgets that have menu lists
 		let convert_menu_lists = |widget_instance: &mut WidgetInstance| match &mut *widget_instance.widget {
 			Widget::DropdownInput(dropdown_input) => {
-				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries, action_input_mapping);
+				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries, action_input_mapping, environment);
 				dropdown_input.entries_hash = hash_menu_list_entry_sections(&dropdown_input.entries);
 			}
 			Widget::TextButton(text_button) => {
-				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children, action_input_mapping);
+				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children, action_input_mapping, environment);
 				text_button.menu_list_children_hash = hash_menu_list_entry_sections(&text_button.menu_list_children);
 			}
 			_ => {}
 		};
 
-		match self {
-			Self::Layout(layout) => layout.0.iter_mut().flat_map(|layout_group| layout_group.iter_mut()).for_each(|widget_instance| {
-				convert_tooltip(widget_instance);
-				convert_menu_lists(widget_instance);
-			}),
-			Self::LayoutGroup(layout_group) => layout_group.iter_mut().for_each(|widget_instance| {
-				convert_tooltip(widget_instance);
-				convert_menu_lists(widget_instance);
-			}),
-			Self::Widget(widget_instance) => {
-				convert_tooltip(widget_instance);
-				convert_menu_lists(widget_instance);
+		let convert = |widget_instance: &mut WidgetInstance| {
+			convert_tooltip(widget_instance);
+			convert_menu_lists(widget_instance);
+		};
+
+		fn convert_layout_group(layout_group: &mut LayoutGroup, convert: &impl Fn(&mut WidgetInstance)) {
+			match layout_group {
+				LayoutGroup::Column(WidgetColumn { widgets }) | LayoutGroup::Row(WidgetRow { widgets }) => widgets.iter_mut().for_each(|widget_instance| convert_widget(widget_instance, convert)),
+				LayoutGroup::Table(WidgetTable { rows, .. }) => rows.iter_mut().flatten().flatten().for_each(|widget_instance| convert_widget(widget_instance, convert)),
+				LayoutGroup::NodeSection(NodeSection { layout, .. }) => layout.0.iter_mut().for_each(|layout_group| convert_layout_group(layout_group, convert)),
 			}
+		}
+		fn convert_widget(widget_instance: &mut WidgetInstance, convert: &impl Fn(&mut WidgetInstance)) {
+			convert(widget_instance);
+			if let Widget::PopoverButton(popover_button) = &mut *widget_instance.widget {
+				popover_button.popover_layout.0.iter_mut().for_each(|layout_group| convert_layout_group(layout_group, convert));
+			}
+		}
+
+		match self {
+			Self::Layout(layout) => layout.0.iter_mut().for_each(|layout_group| convert_layout_group(layout_group, &convert)),
+			Self::LayoutGroup(layout_group) => convert_layout_group(layout_group, &convert),
+			Self::Widget(widget_instance) => convert_widget(widget_instance, &convert),
 		}
 	}
 }

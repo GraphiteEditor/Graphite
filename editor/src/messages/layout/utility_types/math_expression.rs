@@ -16,12 +16,15 @@ fn utf16_offsets(source: &str) -> Vec<u32> {
 	units
 }
 
-/// Why a math expression fails to parse, or `None` when it parses. Where the node applies a lone operator or function name like
-/// `+` or `min` across its items, that counts as valid too.
-pub fn math_expression_error(expression: &str, accepts_reducers: bool) -> Option<ParseError> {
+/// Why a math expression fails to parse, or `None` when it parses. Where the node takes only a lone operator or function name like
+/// `+` or `min` to apply across its items, anything else is the error instead.
+pub fn math_expression_error(expression: &str, operator_only: bool) -> Option<ParseError> {
 	// A blank expression is unfinished rather than wrong, so it goes unflagged like any empty field
-	if expression.trim().is_empty() || (accepts_reducers && math_parser::reducer::classify_reducer(expression, math_parser::context::NothingMap).is_some()) {
+	if expression.trim().is_empty() {
 		return None;
+	}
+	if operator_only {
+		return math_parser::reducer::reducer_error(expression);
 	}
 	math_parser::ast::Node::try_parse_from_str(expression).err()
 }
@@ -143,11 +146,11 @@ pub struct MathExpressionTokens {
 }
 
 /// The tokens of a math expression for the frontend to color and typeset, with the parser's byte offsets converted to code units.
-pub fn math_expression_tokens(source: &str, accepts_reducers: bool) -> MathExpressionTokens {
+pub fn math_expression_tokens(source: &str, operator_only: bool) -> MathExpressionTokens {
 	let units = utf16_offsets(source);
 	let mut tooltips: Vec<MathExpressionTooltip> = Vec::new();
 
-	let tokens = math_parser::highlight::highlight(source, accepts_reducers).into_iter().map(|token| {
+	let tokens = math_parser::highlight::highlight(source, operator_only).into_iter().map(|token| {
 		let tooltip = token.tooltip.map(|tooltip| MathExpressionTooltip {
 			label: tooltip.label,
 			form: tooltip.form,

@@ -1,7 +1,7 @@
 #[derive(clap::Parser)]
 #[clap(name = "graphite", version)]
 pub struct Cli {
-	#[arg(help = "Files to open on startup")]
+	#[arg(help = "Files to open on startup", value_parser = |path: &str| std::path::absolute(path))]
 	pub files: Vec<std::path::PathBuf>,
 
 	#[arg(long, action = clap::ArgAction::SetTrue, help = "Disable hardware accelerated UI rendering")]

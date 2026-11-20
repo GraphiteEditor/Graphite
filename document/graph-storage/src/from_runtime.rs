@@ -1,106 +1,49 @@
 use std::collections::HashMap;
 
 use core_types::Context;
-use core_types::context::ContextDependencies;
+use core_types::registry::NODE_METADATA;
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput as GraphCraftNodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId as RuntimeNetworkId, NetworkLocation, NodeInput as GraphCraftNodeInput, NodeNetwork};
 use serde::Serialize;
 
 use crate::attr::*;
+use crate::blob::BlobBytes;
 use crate::metadata_source::{NoMetadata, NodeMetadataSource};
 use crate::{
-	AttributesWrite, ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp, Value,
-	ValueError, from_value, to_value,
+	ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp, Value, ValueError, from_value,
+	to_value,
 };
 
 fn map_serialization_error(key: &str) -> impl FnOnce(ValueError) -> ConversionError + '_ {
 	move |e| ConversionError::SerializationError(format!("{key}: {e:?}"))
 }
 
-/// Path to a node, used to mint stable global IDs by hashing.
-///
-/// Hashing uses blake3 truncated to 64 bits with the document's `PeerId` mixed in, so two peers
-/// converting runtime states that happen to share local IDs (e.g. both editors seeded the same
-/// UUID RNG) still produce distinct global IDs. Determinism: same `(peer, path, local_id)` always
-/// yields the same global ID, so a peer re-converting its own runtime state preserves IDs.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-struct NodePath {
-	path: Vec<(RuntimeNodeId, NetworkId)>,
-	local_id: RuntimeNodeId,
+fn storage_network_id(id: RuntimeNetworkId) -> NetworkId {
+	NetworkId(id.0)
 }
 
-impl NodePath {
-	fn root(node_id: RuntimeNodeId) -> Self {
-		Self { path: vec![], local_id: node_id }
-	}
-
-	fn nested(parent_path: &NodePath, parent_node_id: RuntimeNodeId, network_id: NetworkId, local_id: RuntimeNodeId) -> Self {
-		let mut path = parent_path.path.clone();
-		path.push((parent_node_id, network_id));
-		Self { path, local_id }
-	}
-
-	fn to_global_id(&self, peer: PeerId) -> NodeId {
-		let bytes = postcard::to_stdvec(&(peer, self)).expect("NodePath must serialize");
-		let digest = blake3::hash(&bytes);
-		let mut truncated = [0u8; 8];
-		truncated.copy_from_slice(&digest.as_bytes()[..8]);
-		NodeId(u64::from_le_bytes(truncated))
-	}
-
-	/// Stable id of the network owned by the node at this path, derived purely from the (structural)
-	/// path and peer so it reproduces across `to_runtime` -> `from_runtime` round trips rather than
-	/// depending on traversal order. A domain tag keeps it from colliding with this node's own
-	/// `to_global_id`. The root network is `ROOT_NETWORK` and never goes through here.
-	fn owned_network_id(&self, peer: PeerId) -> NetworkId {
-		let bytes = postcard::to_stdvec(&("network", peer, self)).expect("NodePath must serialize");
-		let digest = blake3::hash(&bytes);
-		let mut truncated = [0u8; 8];
-		truncated.copy_from_slice(&digest.as_bytes()[..8]);
-		NetworkId(u64::from_le_bytes(truncated))
-	}
+/// The storage `NetworkId` of the network at `location` (`ROOT_NETWORK` for the document network).
+pub fn storage_location_id(location: NetworkLocation) -> NetworkId {
+	location.map_or(ROOT_NETWORK, storage_network_id)
 }
 
-/// Resolves a node's storage identity: the identity the metadata source holds for it where there is
-/// one, and a hash of its location otherwise. Every place a node is named goes through here, so a
-/// node's own registry key and every reference to it agree.
-///
-/// A held identity travels with the node, so moving it between networks keeps it. A hashed one is
-/// derived from the node's place in the tree, so it changes when the node moves; it stands in for a
-/// node no source names, such as one in a network that has never been stored.
-pub(crate) struct NodeIds<'a, M: NodeMetadataSource + ?Sized> {
-	pub(crate) metadata: Option<&'a M>,
-	pub(crate) metadata_path: &'a [RuntimeNodeId],
-	pub(crate) peer: PeerId,
+/// The storage `NodeId` of a runtime node, which carries the same number since runtime node IDs are unique across the document.
+pub fn storage_node_id(id: RuntimeNodeId) -> NodeId {
+	NodeId(id.0)
 }
 
-impl<M: NodeMetadataSource + ?Sized> Clone for NodeIds<'_, M> {
-	fn clone(&self) -> Self {
-		*self
-	}
-}
-
-impl<M: NodeMetadataSource + ?Sized> Copy for NodeIds<'_, M> {}
-
-impl<M: NodeMetadataSource + ?Sized> NodeIds<'_, M> {
-	fn resolve(&self, path: &NodePath, local_id: RuntimeNodeId) -> NodeId {
-		self.metadata
-			.and_then(|metadata| metadata.storage_node_id(self.metadata_path, local_id))
-			.unwrap_or_else(|| path.to_global_id(self.peer))
-	}
-}
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
 	#[error("Failed to serialize value: {0}")]
 	SerializationError(String),
-	#[error("Unsupported node implementation type")]
-	UnsupportedImplementation,
 	#[error("Invalid network structure: {0}")]
 	InvalidNetwork(String),
 	#[error("Index {0} exceeds the storage format's u32 range")]
 	IndexOverflow(usize),
+	#[error("Node ID {0} is used by more than one node in the document")]
+	DuplicateNodeId(u64),
 }
 
 /// Graph-only conversion (no editor metadata). Use [`Registry::from_runtime_with_metadata`] for
@@ -126,9 +69,10 @@ pub struct RuntimeConversion {
 	pub registry: Registry,
 	pub declaration_bytes: DeclarationBytes,
 	pub declarations: crate::Declarations,
-	/// Each network's runtime `metadata_path` mapped to its stable storage `NetworkId`, for associating
-	/// per-network, per-peer view state (`session.json`) without re-deriving ids.
-	pub network_ids: HashMap<Vec<RuntimeNodeId>, NetworkId>,
+	/// The bytes of the blobs that the registry names. The caller stores them.
+	pub blob_bytes: BlobBytes,
+	/// The storage `NetworkId` of each runtime network location, to key per-network view state in `session.json`.
+	pub network_ids: HashMap<NetworkLocation, NetworkId>,
 }
 
 /// Encode a [`ProtoNode`] declaration to its content-addressed bytes: through the self-describing
@@ -137,6 +81,32 @@ pub struct RuntimeConversion {
 pub fn encode_declaration(proto: &ProtoNode) -> Result<Vec<u8>, String> {
 	let value = to_value(proto).map_err(|error| error.to_string())?;
 	postcard::to_stdvec(&value).map_err(|error| error.to_string())
+}
+
+/// A declaration with no attributes, as runtime conversion stores `identifier@version` and node migrations switch nodes to it.
+pub struct EncodedDeclaration {
+	pub id: ResourceId,
+	pub hash: ResourceHash,
+	pub bytes: Vec<u8>,
+	pub proto: ProtoNode,
+}
+
+impl EncodedDeclaration {
+	pub fn new(identifier: String, version: u32) -> Result<Self, String> {
+		let proto = ProtoNode {
+			identifier,
+			version,
+			attributes: Default::default(),
+		};
+		let bytes = encode_declaration(&proto)?;
+		let hash = ResourceHash::from(bytes.as_slice());
+		Ok(Self {
+			id: ResourceId::from_hash(&hash),
+			hash,
+			bytes,
+			proto,
+		})
+	}
 }
 
 /// Decode a [`ProtoNode`] declaration from the bytes [`encode_declaration`] produced.
@@ -148,13 +118,26 @@ pub fn decode_declaration(bytes: &[u8]) -> Result<ProtoNode, String> {
 impl Registry {
 	/// Convenience wrapper returning only the registry (declaration bytes discarded). For callers
 	/// that don't persist a byte store — e.g. the graph-only `TryFrom` and value-comparison tests.
+	/// Large values stay inline, so the registry converts back without blob bytes.
 	pub fn from_runtime_with_metadata<M: NodeMetadataSource>(node_network: &NodeNetwork, metadata: &M, resources: &graphene_resource::ResourceRegistry, peer: PeerId) -> Result<Self, ConversionError> {
-		Ok(Self::convert_from_runtime(node_network, metadata, resources, peer)?.registry)
+		Ok(Self::convert_from_runtime_inline(node_network, metadata, resources, peer)?.registry)
 	}
 
 	/// Full conversion: returns the registry and the extracted declaration bytes for the caller to
 	/// persist. See [`RuntimeConversion`].
 	pub fn convert_from_runtime<M: NodeMetadataSource>(
+		node_network: &NodeNetwork,
+		metadata: &M,
+		resources: &graphene_resource::ResourceRegistry,
+		peer: PeerId,
+	) -> Result<RuntimeConversion, ConversionError> {
+		let mut conversion = Self::convert_from_runtime_inline(node_network, metadata, resources, peer)?;
+		conversion.registry.move_values_into_blobs(&mut conversion.blob_bytes);
+		Ok(conversion)
+	}
+
+	/// [`convert_from_runtime`](Self::convert_from_runtime) without moving large values into blobs.
+	pub(crate) fn convert_from_runtime_inline<M: NodeMetadataSource>(
 		node_network: &NodeNetwork,
 		metadata: &M,
 		resources: &graphene_resource::ResourceRegistry,
@@ -170,20 +153,36 @@ impl Registry {
 			peer,
 		};
 
-		convert_network(node_network, ROOT_NETWORK, None, &[], &mut registry, &mut ctx)?;
+		convert_network(node_network, None, &mut registry, &mut ctx)?;
+
+		let reachable = node_network.reachable_definitions();
+		if let Some(missing) = reachable.iter().find(|id| !node_network.definitions.contains_key(id)) {
+			return Err(ConversionError::InvalidNetwork(format!("Definition {missing:?} is referenced but not defined")));
+		}
+		for (&id, definition) in node_network.definitions.iter().filter(|(id, _)| reachable.contains(id)) {
+			if storage_network_id(id) == ROOT_NETWORK {
+				return Err(ConversionError::InvalidNetwork(format!("Definition {id:?} collides with the root network ID")));
+			}
+
+			convert_network(definition, Some(id), &mut registry, &mut ctx)?;
+		}
+
+		// A cycle would be stored but could never be opened again
+		crate::to_runtime::reject_network_cycles(&registry, &ctx.declarations).map_err(|error| ConversionError::InvalidNetwork(error.to_string()))?;
 
 		// Only snapshot resources the network actually references. The runtime resource cache also keeps
 		// resources alive across undo (so legacy redo can restore them), so it can contain orphans whose
 		// node was removed by an undo. Snapshotting those would re-introduce an `AddResource` on the next
 		// diff and let an undone resource resurface as a phantom edit. Declaration resources are added
 		// separately by `convert_network` and are always referenced, so they're unaffected by this filter.
-		let referenced = collect_referenced_resources(node_network);
+		let referenced = collect_referenced_resources(node_network, &reachable);
 		convert_resources(resources, &referenced, peer, &mut registry)?;
 
 		Ok(RuntimeConversion {
 			registry,
 			declaration_bytes: ctx.declaration_bytes,
 			declarations: ctx.declarations,
+			blob_bytes: BlobBytes::new(),
 			network_ids: ctx.network_ids,
 		})
 	}
@@ -221,11 +220,13 @@ pub fn convert_resource_entry(resources: &graphene_resource::ResourceRegistry, i
 			peer,
 		};
 		let body = to_value(source).map_err(|error| ConversionError::SerializationError(error.to_string()))?;
-		entry.set_source(
+		// Built rather than written: the chain is put in place as converted, floor and all at the origin.
+		entry.force_set_source(
 			key,
 			crate::SourceValue {
 				source: body,
 				timestamp: TimeStamp::ORIGIN,
+				deleted: false,
 			},
 		);
 	}
@@ -236,9 +237,12 @@ pub fn convert_resource_entry(resources: &graphene_resource::ResourceRegistry, i
 /// Collect the `ResourceId`s referenced by `TaggedValue::Resource` inputs anywhere in the network
 /// (recursively through nested networks). These are the resources the document actually uses; the
 /// runtime cache may hold more (history-retained orphans) that shouldn't be snapshotted into storage.
-fn collect_referenced_resources(network: &NodeNetwork) -> std::collections::HashSet<ResourceId> {
+fn collect_referenced_resources(network: &NodeNetwork, reachable: &rustc_hash::FxHashSet<RuntimeNetworkId>) -> std::collections::HashSet<ResourceId> {
 	let mut referenced = std::collections::HashSet::new();
 	collect_referenced_resources_inner(network, &mut referenced);
+	for definition in reachable.iter().filter_map(|id| network.definitions.get(id)) {
+		collect_referenced_resources_inner(definition, &mut referenced);
+	}
 	referenced
 }
 
@@ -280,82 +284,55 @@ struct ConversionContext<'m, M: NodeMetadataSource + ?Sized> {
 	declaration_bytes: DeclarationBytes,
 	/// The same declarations decoded, keyed by id, handed back for the caller's declaration cache.
 	declarations: crate::Declarations,
-	/// Maps each network's runtime `metadata_path` to its stable storage `NetworkId`, so the caller can
-	/// associate per-network, per-peer view state (in `session.json`) with networks without re-deriving ids.
-	network_ids: HashMap<Vec<RuntimeNodeId>, NetworkId>,
+	/// The storage `NetworkId` of each runtime network location, to key per-network view state in `session.json`.
+	network_ids: HashMap<NetworkLocation, NetworkId>,
 	metadata: &'m M,
 	peer: PeerId,
 }
 
-impl<'m, M: NodeMetadataSource + ?Sized> ConversionContext<'m, M> {
-	/// The identity resolver for nodes addressed inside the network at `metadata_path`.
-	fn ids<'a>(&self, metadata_path: &'a [RuntimeNodeId]) -> NodeIds<'a, M>
-	where
-		'm: 'a,
-	{
-		NodeIds {
-			metadata: Some(self.metadata),
-			metadata_path,
-			peer: self.peer,
+fn convert_network<M: NodeMetadataSource + ?Sized>(node_network: &NodeNetwork, location: NetworkLocation, registry: &mut Registry, ctx: &mut ConversionContext<'_, M>) -> Result<(), ConversionError> {
+	for (runtime_node_id, doc_node) in &node_network.nodes {
+		let node = convert_node(doc_node, location, *runtime_node_id, registry, ctx)?;
+		if registry.node_instances.insert(storage_node_id(*runtime_node_id), node).is_some() {
+			return Err(ConversionError::DuplicateNodeId(runtime_node_id.0));
 		}
 	}
+
+	let network_id = storage_location_id(location);
+	let network = convert_network_entry(node_network, location, ctx)?;
+	registry.networks.insert(network_id, network);
+	ctx.network_ids.insert(location, network_id);
+
+	Ok(())
 }
 
-fn convert_network<M: NodeMetadataSource + ?Sized>(
-	node_network: &NodeNetwork,
-	network_id: NetworkId,
-	parent_path: Option<&NodePath>,
-	metadata_path: &[RuntimeNodeId],
-	registry: &mut Registry,
-	ctx: &mut ConversionContext<'_, M>,
-) -> Result<(), ConversionError> {
-	for (runtime_node_id, doc_node) in &node_network.nodes {
-		let node_path = child_path(parent_path, network_id, *runtime_node_id);
-		let global_id = ctx.ids(metadata_path).resolve(&node_path, *runtime_node_id);
-
-		let location = NodeLocation {
-			network_id,
-			parent_path,
-			metadata_path,
-			runtime_node_id: *runtime_node_id,
-		};
-		let mut node = convert_node(doc_node, location, registry, ctx, true)?;
-		node.attributes.set(node::ORIGINAL_NODE_ID, Value::Int(runtime_node_id.0.into()), TimeStamp::ORIGIN);
-		registry.node_instances.insert(global_id, node);
-	}
-
+/// A network's export slots and network-level attributes, without its nodes.
+fn convert_network_entry<M: NodeMetadataSource + ?Sized>(node_network: &NodeNetwork, location: NetworkLocation, ctx: &ConversionContext<'_, M>) -> Result<Network, ConversionError> {
 	let exports = node_network
 		.exports
 		.iter()
 		.map(|export| {
 			Ok(ExportSlot {
-				target: Some(convert_input(export, parent_path, network_id, ctx.ids(metadata_path))?),
+				target: Some(convert_input(export)?),
 				timestamp: TimeStamp::ORIGIN,
 			})
 		})
 		.collect::<Result<Vec<_>, ConversionError>>()?;
 
 	let mut attributes = crate::Attributes::new();
-	write_ui_network_attributes(&mut attributes, node_network, metadata_path, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
-	write_scope_injections(&mut attributes, node_network, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
+	write_ui_network_attributes(&mut attributes, node_network, ctx.metadata, location, TimeStamp::ORIGIN)?;
+	write_scope_injections(&mut attributes, node_network, TimeStamp::ORIGIN)?;
 
-	registry.networks.insert(network_id, Network { exports, attributes });
-	ctx.network_ids.insert(metadata_path.to_vec(), network_id);
-
-	Ok(())
+	Ok(Network {
+		presence: TimeStamp::ORIGIN,
+		exports,
+		exports_timestamp: TimeStamp::ORIGIN,
+		attributes,
+	})
 }
 
-/// Serialize a network's `scope_injections` onto its attributes as one whole-map LWW blob, remapping
-/// each runtime-local node reference to its stable storage global ID so the reference survives a
-/// round trip even if runtime IDs are later reshuffled.
-fn write_scope_injections<M: NodeMetadataSource + ?Sized>(
-	attributes: &mut crate::Attributes,
-	node_network: &NodeNetwork,
-	parent_path: Option<&NodePath>,
-	network_id: NetworkId,
-	ids: NodeIds<'_, M>,
-	timestamp: TimeStamp,
-) -> Result<(), ConversionError> {
+/// Serialize a network's `scope_injections` onto its attributes as one whole-map LWW blob.
+fn write_scope_injections(attributes: &mut crate::Attributes, node_network: &NodeNetwork, timestamp: TimeStamp) -> Result<(), ConversionError> {
 	if node_network.scope_injections.is_empty() {
 		return Ok(());
 	}
@@ -363,10 +340,7 @@ fn write_scope_injections<M: NodeMetadataSource + ?Sized>(
 	let stored: HashMap<String, (NodeId, core_types::Type)> = node_network
 		.scope_injections
 		.iter()
-		.map(|(key, (runtime_id, ty))| {
-			let storage_id = ids.resolve(&child_path(parent_path, network_id, *runtime_id), *runtime_id);
-			(key.clone(), (storage_id, ty.clone()))
-		})
+		.map(|(key, (runtime_id, ty))| (key.clone(), (storage_node_id(*runtime_id), ty.clone())))
 		.collect();
 
 	attributes
@@ -374,86 +348,49 @@ fn write_scope_injections<M: NodeMetadataSource + ?Sized>(
 		.map_err(map_serialization_error(network::SCOPE_INJECTIONS))
 }
 
-fn child_path(parent_path: Option<&NodePath>, network_id: NetworkId, local_id: RuntimeNodeId) -> NodePath {
-	match parent_path {
-		None => NodePath::root(local_id),
-		Some(parent) => NodePath::nested(parent, parent.local_id, network_id, local_id),
-	}
-}
-
-/// Where a node sits in both the storage tree (`network_id`, `parent_path`) and the runtime tree
-/// (`metadata_path`, `runtime_node_id`). `metadata_path` is the chain of runtime IDs from the root
-/// down to (but not including) this node.
-struct NodeLocation<'a> {
-	network_id: NetworkId,
-	parent_path: Option<&'a NodePath>,
-	metadata_path: &'a [RuntimeNodeId],
-	runtime_node_id: RuntimeNodeId,
-}
-
 fn convert_node<M: NodeMetadataSource + ?Sized>(
 	doc_node: &DocumentNode,
-	location: NodeLocation<'_>,
+	network: NetworkLocation,
+	runtime_node_id: RuntimeNodeId,
 	registry: &mut Registry,
 	ctx: &mut ConversionContext<'_, M>,
-	recurse: bool,
 ) -> Result<Node, ConversionError> {
-	let NodeLocation {
-		network_id,
-		parent_path,
-		metadata_path,
-		runtime_node_id,
-	} = location;
-
-	let node_path = child_path(parent_path, network_id, runtime_node_id);
 	let timestamp = TimeStamp::ORIGIN;
 
 	let mut inputs = Vec::with_capacity(doc_node.inputs.len());
-	for (input_index, input) in doc_node.inputs.iter().enumerate() {
+	for input in &doc_node.inputs {
 		let mut input_attrs = convert_input_attributes(input)?;
-		write_ui_input_attributes(&mut input_attrs, ctx.metadata, metadata_path, runtime_node_id, input_index, timestamp)?;
+		input_attrs.set_floor(timestamp);
 
 		inputs.push(InputSlot {
-			input: convert_input(input, parent_path, network_id, ctx.ids(metadata_path))?,
+			input: convert_input(input)?,
 			timestamp,
 			attributes: input_attrs,
 		});
 	}
 
-	// For nested networks, append this node onto the metadata path.
-	let mut extended_path = Vec::new();
-	let child_metadata_path = if matches!(doc_node.implementation, DocumentNodeImplementation::Network(_)) {
-		extended_path.extend_from_slice(metadata_path);
-		extended_path.push(runtime_node_id);
-		extended_path.as_slice()
-	} else {
-		metadata_path
-	};
-	let implementation = convert_implementation(&doc_node.implementation, &node_path, child_metadata_path, registry, ctx, recurse)?;
+	let implementation = convert_implementation(&doc_node.implementation, registry, ctx)?;
 
 	// Defaults match `DocumentNode::default()`; `to_runtime` rehydrates absent keys from the same defaults.
-	let mut attributes = crate::Attributes::new();
+	let mut attributes = crate::Attributes::empty_at(timestamp);
 	attributes
 		.set_if_not_default(node::CALL_ARGUMENT, &doc_node.call_argument, &concrete!(Context), timestamp)
 		.map_err(map_serialization_error(node::CALL_ARGUMENT))?;
 	attributes
-		.set_if_not_default(node::CONTEXT_FEATURES, &doc_node.context_features, &ContextDependencies::default(), timestamp)
-		.map_err(map_serialization_error(node::CONTEXT_FEATURES))?;
-	attributes
 		.set_if_not_default(node::VISIBLE, &doc_node.visible, &true, timestamp)
 		.map_err(map_serialization_error(node::VISIBLE))?;
-	attributes
-		.set_if_not_default(node::SKIP_DEDUPLICATION, &doc_node.skip_deduplication, &false, timestamp)
-		.map_err(map_serialization_error(node::SKIP_DEDUPLICATION))?;
 
-	write_ui_attributes(&mut attributes, ctx.metadata, metadata_path, runtime_node_id, timestamp)?;
+	write_ui_attributes(&mut attributes, ctx.metadata, network, runtime_node_id, timestamp)?;
 
 	Ok(Node {
+		presence: timestamp,
+		network_timestamp: timestamp,
+		inputs_timestamp: timestamp,
 		implementation,
 		implementation_timestamp: timestamp,
 		inputs,
 		attributes,
-		network: network_id,
+		network: storage_location_id(network),
 	})
 }
 
@@ -461,11 +398,6 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 /// `to_runtime` rehydrates an absent key from. For staging paths that encode this field alone.
 pub fn encode_call_argument(call_argument: &core_types::Type) -> Result<crate::AttributeDelta, ConversionError> {
 	encode_if_not_default(node::CALL_ARGUMENT, call_argument, &concrete!(Context))
-}
-
-/// The `context_features` attribute write, cleared at its default like [`encode_call_argument`].
-pub fn encode_context_features(context_features: &ContextDependencies) -> Result<crate::AttributeDelta, ConversionError> {
-	encode_if_not_default(node::CONTEXT_FEATURES, context_features, &ContextDependencies::default())
 }
 
 fn encode_if_not_default<T: Serialize + PartialEq>(key: &str, value: &T, default: &T) -> Result<crate::AttributeDelta, ConversionError> {
@@ -478,33 +410,21 @@ fn encode_if_not_default<T: Serialize + PartialEq>(key: &str, value: &T, default
 pub fn encode_node_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,
 	metadata: &M,
-	metadata_path: &[RuntimeNodeId],
+	network: NetworkLocation,
 	runtime_node_id: RuntimeNodeId,
 	timestamp: TimeStamp,
 ) -> Result<(), ConversionError> {
-	write_ui_attributes(attributes, metadata, metadata_path, runtime_node_id, timestamp)
-}
-
-/// Public form of the per-input ui-attribute encoding, matching `encode_node_ui_attributes`.
-pub fn encode_input_ui_attributes<M: NodeMetadataSource + ?Sized>(
-	attributes: &mut crate::Attributes,
-	metadata: &M,
-	metadata_path: &[RuntimeNodeId],
-	runtime_node_id: RuntimeNodeId,
-	input_index: usize,
-	timestamp: TimeStamp,
-) -> Result<(), ConversionError> {
-	write_ui_input_attributes(attributes, metadata, metadata_path, runtime_node_id, input_index, timestamp)
+	write_ui_attributes(attributes, metadata, network, runtime_node_id, timestamp)
 }
 
 fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,
 	metadata: &M,
-	metadata_path: &[RuntimeNodeId],
+	network: NetworkLocation,
 	runtime_node_id: RuntimeNodeId,
 	timestamp: TimeStamp,
 ) -> Result<(), ConversionError> {
-	if let Some(position) = metadata.position(metadata_path, runtime_node_id) {
+	if let Some(position) = metadata.position(network, runtime_node_id) {
 		attributes
 			.set_serialized(node::ui::POSITION, &position, timestamp)
 			.map_err(map_serialization_error(node::ui::POSITION))?;
@@ -512,57 +432,42 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 
 	// Bool flags are only emitted when true; absence reads as false.
 	for (key, value) in [
-		(node::ui::IS_LAYER, metadata.is_layer(metadata_path, runtime_node_id)),
-		(node::ui::LOCKED, metadata.locked(metadata_path, runtime_node_id)),
-		(node::ui::PINNED, metadata.pinned(metadata_path, runtime_node_id)),
+		(node::ui::IS_LAYER, metadata.is_layer(network, runtime_node_id)),
+		(node::ui::LOCKED, metadata.locked(network, runtime_node_id)),
+		(node::ui::PINNED, metadata.pinned(network, runtime_node_id)),
 	] {
 		if value {
 			attributes.set(key, Value::Bool(true), timestamp);
 		}
 	}
 
-	if let Some(name) = metadata.display_name(metadata_path, runtime_node_id)
+	if let Some(name) = metadata.display_name(network, runtime_node_id)
 		&& !name.is_empty()
 	{
 		attributes.set(node::ui::DISPLAY_NAME, Value::Str(name.to_string()), timestamp);
 	}
 
-	// One whole-vec attribute; per-slot LWW would be overkill for rename-on-output.
-	let output_names = metadata.output_names(metadata_path, runtime_node_id);
-	if !output_names.is_empty() {
-		attributes
-			.set_serialized(node::ui::OUTPUT_NAMES, &output_names, timestamp)
-			.map_err(map_serialization_error(node::ui::OUTPUT_NAMES))?;
-	}
-
 	Ok(())
 }
 
-/// Node references here are remapped to stable storage IDs for the same reason `write_scope_injections`
-/// does it: a runtime ID is not stable across a round trip.
 fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,
 	node_network: &NodeNetwork,
-	network_path: &[RuntimeNodeId],
-	parent_path: Option<&NodePath>,
-	network_id: NetworkId,
-	ids: NodeIds<'_, M>,
+	metadata: &M,
+	location: NetworkLocation,
 	timestamp: TimeStamp,
 ) -> Result<(), ConversionError> {
-	// The same source the IDs resolve through, so a network's attributes and the nodes they name agree.
-	let Some(metadata) = ids.metadata else { return Ok(()) };
-	if let Some(reference) = metadata.reference(network_path) {
-		attributes.set(node::ui::REFERENCE, Value::Str(reference.to_string()), timestamp);
+	if let Some(reference) = metadata.reference(location) {
+		attributes.set(node::ui::REFERENCE, reference.to_value(), timestamp);
 	}
-
-	let to_storage_id = |runtime_id: RuntimeNodeId| ids.resolve(&child_path(parent_path, network_id, runtime_id), runtime_id);
+	write_network_interface_attributes(attributes, metadata, location, timestamp)?;
 
 	// Only nodes the converted network still holds: the read side drops a stored ID it cannot find, so
 	// persisting one for a node deleted or reparented elsewhere would leave stored state disagreeing with
 	// what a peer converting the same input produces.
-	let pinned_order: Vec<_> = metadata.pinned_order(network_path).into_iter().filter(|pinned| node_network.nodes.contains_key(pinned)).collect();
+	let pinned_order: Vec<_> = metadata.pinned_order(location).into_iter().filter(|pinned| node_network.nodes.contains_key(pinned)).collect();
 	if !pinned_order.is_empty() {
-		let stored: Vec<NodeId> = pinned_order.into_iter().map(to_storage_id).collect();
+		let stored: Vec<NodeId> = pinned_order.into_iter().map(storage_node_id).collect();
 		attributes
 			.set_serialized(network::PINNED_ORDER, &stored, timestamp)
 			.map_err(map_serialization_error(network::PINNED_ORDER))?;
@@ -571,37 +476,36 @@ fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 	Ok(())
 }
 
-/// Empty strings (the runtime's "unset" sentinel) and absent values are both skipped.
-/// `input_data` entries each get their own `ui::input_data::<sub_key>` attribute for per-key LWW.
-fn write_ui_input_attributes<M: NodeMetadataSource + ?Sized>(
-	attributes: &mut crate::Attributes,
-	metadata: &M,
-	metadata_path: &[RuntimeNodeId],
-	runtime_node_id: RuntimeNodeId,
-	input_index: usize,
-	timestamp: TimeStamp,
-) -> Result<(), ConversionError> {
-	let non_empty_string = |key: &'static str, value: Option<&str>, attributes: &mut crate::Attributes| {
-		if let Some(value) = value.filter(|s| !s.is_empty()) {
-			attributes.set(key, Value::Str(value.to_string()), timestamp);
-		}
-	};
+fn write_network_interface_attributes<M: NodeMetadataSource + ?Sized>(attributes: &mut crate::Attributes, metadata: &M, network: NetworkLocation, timestamp: TimeStamp) -> Result<(), ConversionError> {
+	let import_metadata = metadata.import_metadata(network);
+	if !import_metadata.is_empty() {
+		attributes
+			.set_serialized(network::IMPORT_METADATA, &import_metadata, timestamp)
+			.map_err(map_serialization_error(network::IMPORT_METADATA))?;
+	}
 
-	non_empty_string(node::input::ui::NAME, metadata.input_name(metadata_path, runtime_node_id, input_index), attributes);
-	non_empty_string(node::input::ui::DESCRIPTION, metadata.input_description(metadata_path, runtime_node_id, input_index), attributes);
-	non_empty_string(node::input::ui::WIDGET_OVERRIDE, metadata.widget_override(metadata_path, runtime_node_id, input_index), attributes);
+	let export_names = metadata.export_names(network);
+	if !export_names.is_empty() {
+		attributes
+			.set_serialized(network::EXPORT_NAMES, &export_names, timestamp)
+			.map_err(map_serialization_error(network::EXPORT_NAMES))?;
+	}
 
-	for (sub_key, value) in metadata.input_data(metadata_path, runtime_node_id, input_index) {
-		attributes.set(&format!("{prefix}{sub_key}", prefix = node::input::ui::DATA_PREFIX), value, timestamp);
+	let export_descriptions = metadata.export_descriptions(network);
+	if export_descriptions.iter().any(|description| !description.is_empty()) {
+		attributes
+			.set_serialized(network::EXPORT_DESCRIPTIONS, &export_descriptions, timestamp)
+			.map_err(map_serialization_error(network::EXPORT_DESCRIPTIONS))?;
 	}
 
 	Ok(())
 }
 
-fn convert_input<M: NodeMetadataSource + ?Sized>(input: &GraphCraftNodeInput, parent_path: Option<&NodePath>, network_id: NetworkId, ids: NodeIds<'_, M>) -> Result<NodeInput, ConversionError> {
+/// Converts one runtime input to storage form.
+pub fn convert_input(input: &GraphCraftNodeInput) -> Result<NodeInput, ConversionError> {
 	Ok(match input {
 		GraphCraftNodeInput::Node { node_id, output_index } => NodeInput::Node {
-			id: ids.resolve(&child_path(parent_path, network_id, *node_id), *node_id),
+			id: storage_node_id(*node_id),
 			index: (*output_index).try_into().map_err(|_| ConversionError::IndexOverflow(*output_index))?,
 		},
 		GraphCraftNodeInput::Value { tagged_value, exposed } => {
@@ -613,8 +517,6 @@ fn convert_input<M: NodeMetadataSource + ?Sized>(input: &GraphCraftNodeInput, pa
 			index: (*import_index).try_into().map_err(|_| ConversionError::IndexOverflow(*import_index))?,
 		},
 		GraphCraftNodeInput::Reflection(_) => NodeInput::Reflection,
-		// GPU-specific; not modeled in the Registry format.
-		GraphCraftNodeInput::Inline(_) => return Err(ConversionError::UnsupportedImplementation),
 	})
 }
 
@@ -643,11 +545,8 @@ pub fn convert_input_attributes(input: &GraphCraftNodeInput) -> Result<crate::At
 
 fn convert_implementation<M: NodeMetadataSource + ?Sized>(
 	implementation: &DocumentNodeImplementation,
-	current_node_path: &NodePath,
-	child_metadata_path: &[RuntimeNodeId],
 	registry: &mut Registry,
 	ctx: &mut ConversionContext<'_, M>,
-	recurse: bool,
 ) -> Result<Implementation, ConversionError> {
 	Ok(match implementation {
 		DocumentNodeImplementation::ProtoNode(identifier) => {
@@ -659,14 +558,10 @@ fn convert_implementation<M: NodeMetadataSource + ?Sized>(
 				return Ok(Implementation::ProtoNode(*id));
 			}
 
-			let proto = ProtoNode {
-				identifier: identifier_str.clone(),
-				attributes: Default::default(),
-			};
-			// Content-address the declaration: serialize, hash, derive a deterministic id.
-			let bytes = encode_declaration(&proto).map_err(|error| ConversionError::SerializationError(format!("proto-node {identifier_str}: {error}")))?;
-			let hash = ResourceHash::from(bytes.as_slice());
-			let id = ResourceId::from_hash(&hash);
+			// Nodes the binary doesn't register, such as in tests, are at their first version
+			let version = NODE_METADATA.lock().ok().and_then(|metadata| metadata.get(identifier).map(|metadata| metadata.version)).unwrap_or(1);
+			let EncodedDeclaration { id, hash, bytes, proto } =
+				EncodedDeclaration::new(identifier_str.clone(), version).map_err(|error| ConversionError::SerializationError(format!("proto-node {identifier_str}: {error}")))?;
 
 			register_declaration_resource(registry, id, hash, ctx.peer);
 			ctx.declaration_bytes.insert(hash, bytes);
@@ -675,87 +570,15 @@ fn convert_implementation<M: NodeMetadataSource + ?Sized>(
 
 			Implementation::ProtoNode(id)
 		}
-		DocumentNodeImplementation::Network(nested_network) => {
-			// Stable, traversal-order-independent id derived from the owning node's path, so a
-			// `to_runtime` -> `from_runtime` round trip reproduces the same `NetworkId` (and thus the
-			// same node-path hashes underneath it).
-			let nested_network_id = current_node_path.owned_network_id(ctx.peer);
-			if recurse {
-				convert_network(nested_network, nested_network_id, Some(current_node_path), child_metadata_path, registry, ctx)?;
-			}
-			Implementation::Network(nested_network_id)
-		}
-		// TODO: Support Extract in the Registry format.
-		DocumentNodeImplementation::Extract => return Err(ConversionError::UnsupportedImplementation),
+		DocumentNodeImplementation::Network(_) => return Err(ConversionError::InvalidNetwork("Inline networks must be lifted into the definitions table".into())),
+		DocumentNodeImplementation::Definition(id) => Implementation::Network(storage_network_id(*id)),
 	})
-}
-
-/// Derives the storage IDs for entities addressed by runtime network paths, resolving each through
-/// the same [`NodeIds`] a whole-document conversion uses so scoped and whole-document conversions agree.
-pub struct PathResolver<'m> {
-	metadata: Option<&'m dyn NodeMetadataSource>,
-	peer: PeerId,
-}
-
-impl<'m> PathResolver<'m> {
-	/// Without a metadata source every node falls back to a hash of its location, which only matches a
-	/// whole-document conversion while no node has a stored identity.
-	pub fn new(metadata: Option<&'m dyn NodeMetadataSource>, peer: PeerId) -> Self {
-		Self { metadata, peer }
-	}
-
-	/// The storage `NetworkId` of the network at `local_path` (`ROOT_NETWORK` for the empty path).
-	pub fn network_id(&self, local_path: &[RuntimeNodeId]) -> NetworkId {
-		match self.owner_path(local_path) {
-			None => ROOT_NETWORK,
-			Some(owner) => owner.owned_network_id(self.peer),
-		}
-	}
-
-	/// The storage `NodeId` of the node with `local_id` inside the network at `local_path`.
-	pub fn node_id(&self, local_path: &[RuntimeNodeId], local_id: RuntimeNodeId) -> NodeId {
-		let owner = self.owner_path(local_path);
-		self.ids(local_path).resolve(&child_path(owner.as_ref(), self.network_id(local_path), local_id), local_id)
-	}
-
-	/// Converts one runtime input inside the network at `local_path` to its storage form, resolving
-	/// node references to their storage IDs.
-	pub fn convert_input_at(&self, input: &GraphCraftNodeInput, local_path: &[RuntimeNodeId]) -> Result<NodeInput, ConversionError> {
-		let owner = self.owner_path(local_path);
-		convert_input(input, owner.as_ref(), self.network_id(local_path), self.ids(local_path))
-	}
-
-	/// The identity resolver for nodes addressed inside the network at `local_path`.
-	fn ids<'a>(&self, local_path: &'a [RuntimeNodeId]) -> NodeIds<'a, dyn NodeMetadataSource + 'm>
-	where
-		'm: 'a,
-	{
-		NodeIds {
-			metadata: self.metadata,
-			metadata_path: local_path,
-			peer: self.peer,
-		}
-	}
-
-	/// The `NodePath` of the node owning the network at `local_path`, or `None` for the root network.
-	fn owner_path(&self, local_path: &[RuntimeNodeId]) -> Option<NodePath> {
-		let mut owner: Option<NodePath> = None;
-		for &local_id in local_path {
-			let network_id = match &owner {
-				None => ROOT_NETWORK,
-				Some(owner) => owner.owned_network_id(self.peer),
-			};
-			owner = Some(child_path(owner.as_ref(), network_id, local_id));
-		}
-		owner
-	}
 }
 
 /// Converts a chosen subset of runtime entities into a scratch [`Registry`] through the same
 /// encoders as a whole-document conversion, so staging can derive deltas for just those entities.
 pub struct ScopedConversion<'m> {
 	ctx: ConversionContext<'m, dyn NodeMetadataSource + 'm>,
-	resolver: PathResolver<'m>,
 }
 
 impl<'m> ScopedConversion<'m> {
@@ -769,50 +592,22 @@ impl<'m> ScopedConversion<'m> {
 				metadata,
 				peer,
 			},
-			resolver: PathResolver::new(Some(metadata), peer),
 		}
 	}
 
-	/// Converts the node with `local_id` in the network at `local_path` into `registry` under its
-	/// stable IDs. `recurse` also converts the contents of any nested network the node implements;
-	/// without it only the node itself is converted, with its nested network referenced by ID.
-	pub fn convert_node_at(&mut self, registry: &mut Registry, local_path: &[RuntimeNodeId], local_id: RuntimeNodeId, doc_node: &DocumentNode, recurse: bool) -> Result<(), ConversionError> {
-		let owner_path = self.resolver.owner_path(local_path);
-		let location = NodeLocation {
-			network_id: self.resolver.network_id(local_path),
-			parent_path: owner_path.as_ref(),
-			metadata_path: local_path,
-			runtime_node_id: local_id,
-		};
-
-		let mut node = convert_node(doc_node, location, registry, &mut self.ctx, recurse)?;
-		node.attributes.set(node::ORIGINAL_NODE_ID, Value::Int(local_id.0.into()), TimeStamp::ORIGIN);
-		registry.node_instances.insert(self.resolver.node_id(local_path, local_id), node);
+	/// Converts the node `local_id` in the network at `location` into `registry`.
+	pub fn convert_node_at(&mut self, registry: &mut Registry, location: NetworkLocation, local_id: RuntimeNodeId, doc_node: &DocumentNode) -> Result<(), ConversionError> {
+		let node = convert_node(doc_node, location, local_id, registry, &mut self.ctx)?;
+		if registry.node_instances.insert(storage_node_id(local_id), node).is_some() {
+			return Err(ConversionError::DuplicateNodeId(local_id.0));
+		}
 		Ok(())
 	}
 
-	/// Converts the entry of the network at `local_path` (its export slots and network-level
-	/// attributes, not its nodes) into `registry`.
-	pub fn convert_network_entry_at(&mut self, registry: &mut Registry, local_path: &[RuntimeNodeId], node_network: &NodeNetwork) -> Result<(), ConversionError> {
-		let owner_path = self.resolver.owner_path(local_path);
-		let network_id = self.resolver.network_id(local_path);
-
-		let exports = node_network
-			.exports
-			.iter()
-			.map(|export| {
-				Ok(ExportSlot {
-					target: Some(convert_input(export, owner_path.as_ref(), network_id, self.ctx.ids(local_path))?),
-					timestamp: TimeStamp::ORIGIN,
-				})
-			})
-			.collect::<Result<Vec<_>, ConversionError>>()?;
-
-		let mut attributes = crate::Attributes::new();
-		write_ui_network_attributes(&mut attributes, node_network, local_path, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
-		write_scope_injections(&mut attributes, node_network, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
-
-		registry.networks.insert(network_id, Network { exports, attributes });
+	/// Converts the export slots and attributes of the network at `location` into `registry`, without its nodes.
+	pub fn convert_network_entry_at(&mut self, registry: &mut Registry, location: NetworkLocation, node_network: &NodeNetwork) -> Result<(), ConversionError> {
+		let network = convert_network_entry(node_network, location, &self.ctx)?;
+		registry.networks.insert(storage_location_id(location), network);
 		Ok(())
 	}
 

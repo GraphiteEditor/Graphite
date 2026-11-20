@@ -1,4 +1,4 @@
-import type { EditorWrapper, FileFilter } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { FileFilter } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export function downloadFileURL(filename: string, url: string) {
 	const element = document.createElement("a");
@@ -79,13 +79,6 @@ export async function upload(
 	});
 }
 export type UploadResult<T> = { filename: string; type: string; content: T };
-
-export async function pasteFile(item: DataTransferItem, editor: EditorWrapper, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
-	const file = item.getAsFile();
-	if (!file) return;
-
-	editor.ingestFile(file.name, file.type, await file.bytes(), mouse?.[0], mouse?.[1], insertParentId, insertIndex);
-}
 
 export function acceptStringFromFilters(filters: FileFilter[]): string {
 	return filters.flatMap((filter) => [...filter.mimeTypes, ...filter.extensions.map((extension) => `.${extension}`)]).join(",");

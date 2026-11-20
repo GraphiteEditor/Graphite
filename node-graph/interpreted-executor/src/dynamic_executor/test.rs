@@ -11,10 +11,9 @@ fn push_node_sync() {
 	let mut tree = BorrowTree::default();
 	let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Integer(2_i64).into()), vec![]);
 	let context = TypingContext::default();
-	let future = tree.push_node(NodeId(0), val_1_protonode, &context);
-	futures::executor::block_on(future).unwrap();
+	tree.push_node(NodeId(0), val_1_protonode, &context).unwrap();
 	let _node = tree.get(NodeId(0)).unwrap();
-	let result: Option<Item<i64>> = futures::executor::block_on(tree.eval(NodeId(0), ()));
+	let result: Option<Item<i64>> = tree.eval(NodeId(0), &());
 	assert_eq!(result.map(|item| *item.element()), Some(2_i64));
 }
 
@@ -36,7 +35,7 @@ fn compile_bounding_box_network(content: TaggedValue) -> BorrowTree {
 	let network = bounding_box_network(content);
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("The network should resolve against exactly one registered wire variant");
-	futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The resolved variant's constructor should instantiate")
+	BorrowTree::new(network, &typing_context).expect("The resolved variant's constructor should instantiate")
 }
 
 #[test]
@@ -44,10 +43,10 @@ fn item_wire_variant_resolves_and_executes() {
 	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(item!(Vector)));
 
 	let context: Context = None;
-	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context.clone()));
+	let result: Option<Item<Vector>> = tree.eval(NodeId(1), &context);
 	assert!(result.is_some(), "The Item wire variant should downcast and execute end-to-end");
 
-	let wrong_type: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let wrong_type: Option<List<Vector>> = tree.eval(NodeId(1), &context);
 	assert!(wrong_type.is_none(), "An Item wire should not downcast as a List");
 }
 
@@ -67,10 +66,10 @@ fn item_wire_promotes_to_list_connector() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item wire should resolve a List connector via promotion");
 	assert!(typing_context.promotions(NodeId(1)).is_some(), "The typing pass should record the promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion adapter should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The promotion adapter should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<graphene_std::vector::misc::BoxCorners>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<graphene_std::vector::misc::BoxCorners>> = tree.eval(NodeId(1), &context);
 	assert!(result.is_some(), "The promoted wire should execute end-to-end");
 }
 
@@ -97,10 +96,10 @@ fn rank_0_content_promotes_through_the_layer_coercion_path() {
 	typing_context.update(&network).expect("A rank-0 content wire should resolve the layer coercion path via promotion");
 	assert!(typing_context.promotions(NodeId(1)).is_some(), "The rank-0 content should be raised at Into Group's List connector");
 	assert!(typing_context.promotions(NodeId(3)).is_some(), "The grouped Item<Graphic> should be raised at Extend's List connector");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion adapters should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The promotion adapters should instantiate");
 
 	let context: Context = None;
-	let result: Option<List<graphene_std::Graphic>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<List<graphene_std::Graphic>> = tree.eval(NodeId(3), &context);
 	let stack = result.expect("The layer coercion path should execute end-to-end");
 	assert_eq!(stack.len(), 1, "The rank-0 content should contribute exactly one graphic to the stack");
 }
@@ -131,10 +130,10 @@ fn mixed_rank_connectors_resolve_via_promotion() {
 		.update(&network)
 		.expect("A List primary with an Item parameter should resolve the mapped variant via promotion");
 	assert!(typing_context.promotions(NodeId(3)).is_some(), "The Item distance should be marked for promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("Construction should wrap the promoted argument");
+	let tree = BorrowTree::new(network, &typing_context).expect("Construction should wrap the promoted argument");
 
 	let context: Context = None;
-	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<List<Vector>> = tree.eval(NodeId(3), &context);
 	assert!(result.is_some(), "The zipped mapped variant should execute end-to-end");
 }
 
@@ -144,10 +143,10 @@ fn all_item_connectors_resolve_without_promotion() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("All-Item connectors should resolve the rank-0 variant exactly");
 	assert!(typing_context.promotions(NodeId(3)).is_none(), "No promotion should be needed at rank 0");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The rank-0 variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The rank-0 variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<Item<Vector>> = tree.eval(NodeId(3), &context);
 	assert!(result.is_some(), "The rank-0 variant should execute and stay rank 0");
 }
 
@@ -192,10 +191,10 @@ fn transform_composes_onto_item_wire() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("Transform should resolve its rank-0 variant");
 	assert!(typing_context.promotions(output).is_none(), "All-Item connectors should need no promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("Transform's rank-0 variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("Transform's rank-0 variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(output, context));
+	let result: Option<Item<Vector>> = tree.eval(output, &context);
 	let item = result.expect("A rank-0 chain through Transform should stay rank 0");
 	let transform = item.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
 	assert_eq!(transform.translation, DVec2::new(5., 0.), "The translation should compose onto the item's transform attribute");
@@ -212,10 +211,10 @@ fn transform_broadcasts_item_content_across_a_framed_parameter() {
 		.update(&network)
 		.expect("A framed rotation should resolve the mapped variant via promotion of the other connectors");
 	assert!(typing_context.promotions(output).is_some(), "The Item-typed connectors should be raised into the frame");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The mapped variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The mapped variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(output, context));
+	let result: Option<List<Vector>> = tree.eval(output, &context);
 	let list = result.expect("The broadcast should produce a List");
 	assert_eq!(list.len(), 2, "One output item per frame slot");
 
@@ -245,10 +244,10 @@ fn generator_frames_over_a_list_parameter() {
 
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("A List<f64> radius should resolve Circle's mapped generator variant");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The mapped generator variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The mapped generator variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<List<Vector>> = tree.eval(NodeId(3), &context);
 	let list = result.expect("The generator frame should produce a List<Vector>");
 	assert_eq!(list.len(), 3, "One circle per radius slot");
 }
@@ -260,7 +259,7 @@ fn nullification_chain_network(value: TaggedValue) -> ProtoNetwork {
 	let mut memoize_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	memoize_node.identifier = graphene_core::memo::memoize::IDENTIFIER;
 
-	let features_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::ContextFeatures(Default::default()).into()), vec![NodeId(2)]);
+	let features_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::ContextModification(Default::default()).into()), vec![NodeId(2)]);
 
 	let mut nullification_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1), NodeId(2)]), vec![NodeId(3)]);
 	nullification_node.identifier = graphene_core::context_modification::context_modification::IDENTIFIER;
@@ -315,10 +314,10 @@ fn value_wires_materialize_as_items_at_resolution() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("Value wires should materialize as Items and resolve the all-Item variant");
 	assert!(typing_context.promotions(NodeId(5)).is_none(), "Already-Item value wires should need no promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The all-Item variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The all-Item variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<DAffine2>> = futures::executor::block_on(tree.eval(NodeId(5), context));
+	let result: Option<Item<DAffine2>> = tree.eval(NodeId(5), &context);
 	let item = result.expect("A value matrix should flow through Transform as an Item");
 	let transform = item.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
 	assert_eq!(transform.translation, DVec2::new(7., 0.), "The translation should compose onto the gained transform attribute");
@@ -339,10 +338,10 @@ fn position_value_converts_through_the_vector_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item<DVec2> wire should resolve the adapter's element conversion row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The conversion constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The conversion constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<Vector>> = tree.eval(NodeId(1), &context);
 	assert!(result.is_some(), "The position should arrive as an Item<Vector> single-anchor path");
 }
 
@@ -364,10 +363,10 @@ fn position_value_raises_into_the_into_group_reducer() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item<DVec2> wire should raise into Into Group's List<DVec2> row");
 	assert!(typing_context.promotions(NodeId(1)).is_some(), "The rank-0 position should be raised at Into Group's List connector");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The reducer constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The reducer constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Graphic>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<Graphic>> = tree.eval(NodeId(1), &context);
 	let grouped = result.expect("The position should arrive as an Item<Graphic>");
 
 	let Graphic::VectorList(anchors) = grouped.element() else {
@@ -398,10 +397,10 @@ fn color_list_wraps_through_the_colors_to_gradient_node() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("A List<Color> wire should embed into the node's List<Graphic> connector");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The node constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The node constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<graphene_std::vector::Gradient>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<Item<graphene_std::vector::Gradient>> = tree.eval(NodeId(3), &context);
 	let gradient = result.expect("The color list should arrive wrapped as a gradient");
 	assert_eq!(gradient.element().len(), 1, "The single color should become the gradient's one stop");
 }
@@ -443,10 +442,10 @@ fn as_graphic_converts_a_vector_list_element_wise() {
 	typing_context
 		.update(&network)
 		.expect("A List<Vector> wire should resolve As Graphic's mapped variant through the embedding adapter");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The mapped constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The mapped constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<List<Graphic>> = futures::executor::block_on(tree.eval(NodeId(5), context));
+	let result: Option<List<Graphic>> = tree.eval(NodeId(5), &context);
 	let graphics = result.expect("The vector list should arrive as a graphic list");
 
 	assert_eq!(graphics.len(), 2, "Each vector should become its own graphic rather than collapsing into one group");
@@ -479,10 +478,10 @@ fn gradient_value_embeds_through_the_graphic_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item<Gradient> wire should resolve the adapter's embedding row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The embedding constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The embedding constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Graphic>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<Graphic>> = tree.eval(NodeId(1), &context);
 	let embedded = result.expect("The gradient should arrive as an Item<Graphic>");
 
 	assert!(embedded.attributes().iter_any().next().is_none(), "The fresh outer envelope describes the graphic, so it starts empty");
@@ -509,10 +508,10 @@ fn number_value_splats_through_the_vec2_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An f64 wire should resolve the adapter's splat conversion row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The splat constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The splat constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<glam::DVec2>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<glam::DVec2>> = tree.eval(NodeId(1), &context);
 	assert_eq!(result.map(|item| *item.element()), Some(glam::DVec2::splat(-60.)), "The scalar should splat into both axes");
 }
 
@@ -531,10 +530,10 @@ fn number_value_formats_through_the_string_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An f64 wire should resolve the adapter's formatting conversion row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The formatting constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The formatting constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<String>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<String>> = tree.eval(NodeId(1), &context);
 	assert_eq!(result.map(|item| item.element().clone()), Some("42".to_string()), "The number should format as its text representation");
 }
 
@@ -554,10 +553,10 @@ fn bool_value_embeds_through_the_number_input_adapter() {
 		};
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 		typing_context.update(&network).expect("A bool wire should resolve the adapter's embedding conversion row");
-		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The embedding constructor should instantiate");
+		let tree = BorrowTree::new(network, &typing_context).expect("The embedding constructor should instantiate");
 
 		let context: Context = None;
-		let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		let result: Option<Item<f64>> = tree.eval(NodeId(1), &context);
 		assert_eq!(result.map(|item| *item.element()), Some(expected), "{value} should embed as exactly {expected}");
 	}
 }
@@ -578,10 +577,10 @@ fn bool_value_formats_through_the_string_input_adapter() {
 		};
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 		typing_context.update(&network).expect("A bool wire should resolve the adapter's formatting conversion row");
-		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The formatting constructor should instantiate");
+		let tree = BorrowTree::new(network, &typing_context).expect("The formatting constructor should instantiate");
 
 		let context: Context = None;
-		let result: Option<Item<String>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		let result: Option<Item<String>> = tree.eval(NodeId(1), &context);
 		assert_eq!(result.map(|item| item.element().clone()), Some(expected.to_string()), "{value} should format as `{expected}`");
 	}
 }
@@ -603,10 +602,10 @@ fn list_wire_erases_through_the_list_dyn_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("A List<f64> wire should resolve the ListDyn erasure row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The erasure constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The erasure constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<ListDyn> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<ListDyn> = tree.eval(NodeId(1), &context);
 	let erased = result.expect("The erased list should arrive as a ListDyn");
 	assert_eq!(erased.len(), 3, "The erased list should keep its row count");
 }
@@ -625,10 +624,10 @@ fn value_wire_passes_through_the_input_adapter_as_item() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An f64 value's Item wire should resolve the adapter's passthrough row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The passthrough constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The passthrough constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<f64>> = tree.eval(NodeId(1), &context);
 	assert_eq!(result.map(|item| *item.element()), Some(3.), "The value should arrive as an Item");
 }
 
@@ -651,10 +650,10 @@ fn modification_value_rides_the_item_wire_through_its_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("A modification value's Item wire should resolve the adapter's passthrough row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The passthrough constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The passthrough constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Box<VectorModification>>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<Box<VectorModification>>> = tree.eval(NodeId(1), &context);
 	assert!(result.is_some(), "The modification should arrive as an Item");
 }
 
@@ -675,10 +674,10 @@ fn item_wire_boxes_into_the_attribute_value_connector() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item<f64> wire should resolve the attribute value boxing row");
 	assert!(typing_context.promotions(NodeId(1)).is_none(), "The already-Item value wire should need no promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The boxing constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The boxing constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<AttributeValueDyn>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<AttributeValueDyn>> = tree.eval(NodeId(1), &context);
 	let boxed = result.expect("The boxed attribute value should arrive as an Item");
 	assert_eq!(
 		boxed.element().0.as_any().downcast_ref::<f64>(),
@@ -692,10 +691,10 @@ fn list_wire_variant_resolves_and_executes() {
 	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(list!(Vector)));
 
 	let context: Context = None;
-	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context.clone()));
+	let result: Option<List<Vector>> = tree.eval(NodeId(1), &context);
 	assert!(result.is_some(), "The mapped List wire variant should downcast and execute end-to-end");
 
-	let wrong_type: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let wrong_type: Option<Item<Vector>> = tree.eval(NodeId(1), &context);
 	assert!(wrong_type.is_none(), "A List wire should not downcast as an Item");
 }
 
@@ -733,10 +732,10 @@ fn expander_flattens_under_the_frame() {
 		.update(&network)
 		.expect("All-Item connectors should resolve the expander's direct `Item -> List` variant");
 	assert!(typing_context.promotions(output).is_none(), "No promotion should be needed when every connector is already an Item");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The expander variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The expander variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<List<String>> = futures::executor::block_on(tree.eval(output, context));
+	let result: Option<List<String>> = tree.eval(output, &context);
 	let list = result.expect("An Item-wired expander should produce a List");
 	assert_eq!(list.len(), 2, "Splitting \"a,b\" on the comma should expand into two rows");
 	let substrings: Vec<_> = list.iter_element_values().map(|s| s.as_str()).collect();
@@ -779,9 +778,9 @@ fn whole_list_switches_as_one_bundle() {
 		.count();
 	assert_eq!(branch_bundles, 2, "Both branches should bundle their whole list into one opaque cell");
 
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The bundle, wrap, and unbundle adapters should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The bundle, wrap, and unbundle adapters should instantiate");
 	let context: Context = None;
-	let result: Option<List<f64>> = futures::executor::block_on(tree.eval(NodeId(4), context));
+	let result: Option<List<f64>> = tree.eval(NodeId(4), &context);
 	let list = result.expect("The whole stack should round-trip through the bundle switch back to a flat List<f64>");
 	let values: Vec<f64> = list.iter_element_values().copied().collect();
 	assert_eq!(values, [1., 2., 3.], "The taken branch's whole list should come through unchanged");
@@ -814,9 +813,9 @@ fn a_bundle_unbundles_into_a_list_connector() {
 		"The base connector should unbundle the whole list"
 	);
 
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The unbundle adapter should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The unbundle adapter should instantiate");
 	let context: Context = None;
-	let result: Option<List<graphene_std::Graphic>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<List<graphene_std::Graphic>> = tree.eval(NodeId(3), &context);
 	assert!(result.is_some(), "The unbundled stack should flow into Extend as a List<Graphic>");
 }
 
@@ -856,9 +855,324 @@ fn a_whole_list_of_scalars_switches_as_one_bundle() {
 		.count();
 	assert_eq!(branch_bundles, 2, "Both scalar-list branches should bundle into one opaque cell");
 
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The bundle, wrap, and unbundle adapters should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The bundle, wrap, and unbundle adapters should instantiate");
 	let context: Context = None;
-	let result: Option<List<f64>> = futures::executor::block_on(tree.eval(NodeId(4), context));
+	let result: Option<List<f64>> = tree.eval(NodeId(4), &context);
 	let list = result.expect("The whole scalar list should round-trip through the bundle switch");
 	assert_eq!(list.len(), 2, "The true branch's whole list should be selected and preserved intact");
+}
+
+fn error_traced_through(indices: &[usize]) -> NodeError {
+	let mut state = Poll::<()>::error("boom");
+	for &index in indices {
+		let status = core_types::Status::new();
+		let Err(interrupt) = status.record(index, state) else { unreachable!() };
+		state = status.bail(interrupt);
+	}
+	let Poll::Error(error) = state else { unreachable!() };
+	*error
+}
+
+#[test]
+fn a_trace_leads_to_the_node_that_raised_the_error() {
+	let executor = DynamicExecutor::new(bounding_box_network(TaggedValue::TypeDefault(item!(Vector)))).unwrap();
+
+	assert!(executor.trace_error(executor.output(), &error_traced_through(&[])).is_empty());
+	assert_eq!(*executor.trace_error(executor.output(), &error_traced_through(&[0])), [NodeId(0)]);
+	assert_eq!(*executor.trace_error(executor.output(), &error_traced_through(&[0, 0])), [NodeId(0)], "a value node has no inputs");
+	assert!(executor.trace_error(NodeId(0), &error_traced_through(&[])).is_empty());
+	assert!(
+		executor.trace_error(NodeId(0), &error_traced_through(&[0])).is_empty(),
+		"an upstream trace starts at its parent's origin"
+	);
+}
+
+#[test]
+fn a_trace_steps_over_the_index_of_a_promotion_adapter() {
+	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(f64)).into()), vec![NodeId(0)]);
+	let mut box_corners_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	box_corners_node.identifier = graphene_std::vector::generator_nodes::box_corners::IDENTIFIER;
+	let executor = DynamicExecutor::new(ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(1),
+		nodes: vec![(NodeId(0), value_node), (NodeId(1), box_corners_node)],
+	})
+	.unwrap();
+
+	assert_eq!(*executor.trace_error(executor.output(), &error_traced_through(&[0, 0])), [NodeId(0)]);
+}
+
+#[test]
+fn executor_panics_reach_the_host_with_the_original_payload() {
+	struct Panics;
+	impl core_types::Node<core_types::registry::AnyInput> for Panics {
+		type Output = core_types::registry::Any;
+		fn eval(&self, _: &core_types::registry::AnyInput) -> Poll<Self::Output> {
+			std::panic::panic_any(42_u32);
+		}
+	}
+
+	let mut executor = DynamicExecutor {
+		output: NodeId(0),
+		..Default::default()
+	};
+	let missing_output = (&executor).execute(()).unwrap_err();
+	assert_eq!(missing_output.to_string(), "Output node not found in executor");
+
+	executor.tree.store_node(ObservedNode::new(Box::new(Panics)), NodeId(0), Box::default(), Box::default());
+	let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (&executor).execute(()))).unwrap_err();
+	assert_eq!(*payload.downcast::<u32>().unwrap(), 42);
+}
+
+#[test]
+fn chained_fallbacks_both_reach_the_root() {
+	let executor = DynamicExecutor::new(ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(4),
+		nodes: [
+			throw_error_inputs(),
+			vec![(NodeId(3), throw_error_node([0, 1, 2, 1], 3)), (NodeId(4), throw_error_node([3, 1, 2, 1], 4))],
+		]
+		.concat(),
+	})
+	.unwrap();
+
+	let context: Context = None;
+	let Ok(Poll::Fallback(boxed)) = (&executor).execute(context) else {
+		panic!("Both nodes fall back, so the root should too")
+	};
+	let error = &boxed.1;
+	assert!(executor.trace_error(executor.output(), error).is_empty());
+	let [upstream] = error.upstream() else {
+		panic!("The second node's error should carry the first node's error")
+	};
+	assert_eq!(*executor.trace_error(NodeId(4), upstream), [NodeId(3)]);
+}
+
+#[test]
+fn an_error_after_a_fallback_keeps_both() {
+	let executor = DynamicExecutor::new(ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(5),
+		nodes: [
+			throw_error_inputs(),
+			vec![
+				(NodeId(3), throw_error_node([0, 1, 2, 1], 3)),
+				value_node(4, TaggedValue::Bool(false)),
+				(NodeId(5), throw_error_node([3, 1, 2, 4], 5)),
+			],
+		]
+		.concat(),
+	})
+	.unwrap();
+
+	let context: Context = None;
+	let Ok(Poll::Error(error)) = (&executor).execute(context) else {
+		panic!("The failing node should stop the frame")
+	};
+	assert!(executor.trace_error(executor.output(), &error).is_empty());
+	let [upstream] = error.upstream() else {
+		panic!("The failing node's error should carry the fallback before it")
+	};
+	assert_eq!(*executor.trace_error(NodeId(5), upstream), [NodeId(3)]);
+}
+
+#[test]
+fn a_node_error_names_the_node_that_raised_it() {
+	let executor = DynamicExecutor::new(ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(5),
+		nodes: [
+			throw_error_inputs(),
+			vec![
+				value_node(3, TaggedValue::Bool(false)),
+				(NodeId(4), throw_error_node([0, 1, 2, 3], 4)),
+				(NodeId(5), throw_error_node([4, 3, 2, 3], 5)),
+			],
+		]
+		.concat(),
+	})
+	.expect("The Throw Error nodes should resolve");
+
+	let context: Context = None;
+	let Ok(Poll::Error(error)) = (&executor).execute(context) else {
+		panic!("The failing node should stop the frame")
+	};
+	let origin = executor.trace_error(executor.output(), &error).last().copied();
+	assert_eq!(origin, Some(NodeId(4)), "The error should name the failing node, not the root that forwarded it");
+	let paths: Vec<_> = executor
+		.tree()
+		.source_map()
+		.iter()
+		.filter(|(_, (node, _))| Some(*node) == origin)
+		.map(|(path, _)| path.to_vec())
+		.collect();
+	assert_eq!(paths, [vec![NodeId(4)]]);
+}
+
+fn value_node(id: u64, value: TaggedValue) -> (NodeId, ProtoNode) {
+	(NodeId(id), ProtoNode::value(ConstructionArgs::Value(value.into()), vec![NodeId(id)]))
+}
+
+fn throw_error_inputs() -> Vec<(NodeId, ProtoNode)> {
+	vec![
+		value_node(0, TaggedValue::Number(1.)),
+		value_node(1, TaggedValue::Bool(true)),
+		value_node(2, TaggedValue::String("too small".to_string())),
+	]
+}
+
+fn throw_error_node(inputs: [u64; 4], id: u64) -> ProtoNode {
+	let mut node = ProtoNode::value(ConstructionArgs::Nodes(inputs.into_iter().map(NodeId).collect()), vec![NodeId(id)]);
+	node.identifier = graphene_core::poll::throw_error::IDENTIFIER;
+	node
+}
+
+fn handled_error_network(handler: ProtoNodeIdentifier, handler_inputs: &[u64], keep_value: bool) -> DynamicExecutor {
+	let mut handler_node = ProtoNode::value(ConstructionArgs::Nodes(handler_inputs.iter().copied().map(NodeId).collect()), vec![NodeId(6)]);
+	handler_node.identifier = handler;
+
+	DynamicExecutor::new(ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(6),
+		nodes: [
+			throw_error_inputs(),
+			vec![
+				value_node(3, TaggedValue::Bool(keep_value)),
+				(NodeId(4), throw_error_node([0, 1, 2, 3], 4)),
+				value_node(5, TaggedValue::Number(2.)),
+				(NodeId(6), handler_node),
+			],
+		]
+		.concat(),
+	})
+	.expect("The error handling nodes should resolve")
+}
+
+#[test]
+fn a_caught_error_does_not_reach_the_output() {
+	let context: Context = None;
+	for keep_value in [false, true] {
+		let executor = handled_error_network(graphene_core::poll::catch::IDENTIFIER, &[4, 5], keep_value);
+		assert!(matches!((&executor).execute(context.clone()), Ok(Poll::Final(_))), "Catch should hide the error");
+	}
+}
+
+#[test]
+fn suppress_error_hides_only_an_error_with_a_value() {
+	let context: Context = None;
+	let executor = handled_error_network(graphene_core::poll::suppress_error::IDENTIFIER, &[4], true);
+	assert!(
+		matches!((&executor).execute(context.clone()), Ok(Poll::Final(_))),
+		"Suppress Error should keep the value and hide the error"
+	);
+	let executor = handled_error_network(graphene_core::poll::suppress_error::IDENTIFIER, &[4], false);
+	assert!(matches!((&executor).execute(context), Ok(Poll::Error(_))), "An error without a value should still stop the frame");
+}
+
+#[test]
+fn a_fallback_keeps_the_error_on_the_node_that_raised_it() {
+	let executor = handled_error_network(graphene_core::poll::fallback::IDENTIFIER, &[4, 5], false);
+	let context: Context = None;
+	let Ok(Poll::Fallback(boxed)) = (&executor).execute(context) else {
+		panic!("Fallback should keep the frame going with the error")
+	};
+	assert_eq!(boxed.1.to_string(), "too small");
+	assert_eq!(*executor.trace_error(executor.output(), &boxed.1), [NodeId(4)], "The error should stay on the Throw Error node");
+}
+
+#[test]
+fn a_node_keeps_its_last_context_and_evaluates_again_with_another() {
+	use core_types::context::{ExtractAnimationTime, ExtractFootprint, ExtractIndex};
+	use core_types::transform::Footprint;
+	use core_types::{OwnedContextImpl, Poll};
+
+	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(item!(Vector)));
+	let frame: Context = OwnedContextImpl::empty().with_animation_time(1.).with_index(3).into_context();
+	let _: Option<Item<Vector>> = tree.eval(NodeId(1), &frame);
+
+	let last = tree.last_context(NodeId(1)).unwrap().flatten().unwrap();
+	let normalized: Context = last.with_replaced_footprint_and_time(Some(Footprint::default()), Some(0.)).into_context();
+	assert_eq!(normalized.try_animation_time(), Some(0.));
+	assert!(normalized.try_footprint().is_none());
+	assert_eq!(normalized.try_index().map(|index| index.collect::<Vec<_>>()), Some(vec![3]));
+
+	// Neither the node nor the one upstream of it keeps the context it's evaluated with again
+	assert!(matches!(tree.evaluate(NodeId(1), &normalized).unwrap(), Poll::Final(_)));
+	for node in [NodeId(0), NodeId(1)] {
+		let last_time = tree.last_context(node).unwrap().flatten().and_then(|context| context.try_animation_time());
+		assert_eq!(last_time, Some(1.));
+	}
+}
+
+#[test]
+fn a_network_node_resolves_to_the_proto_node_its_export_is_wired_to() {
+	use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput};
+
+	let bounding_box = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+	let value = TaggedValue::TypeDefault(item!(Vector));
+
+	// Document network 5 exports its inner node 1, read by document node 6. Its inner value node 0 is identical to the one
+	// document node 7 reads, so the two compile into one proto node that's also used outside of network 5.
+	let value_node = DocumentNode {
+		inputs: vec![NodeInput::value(value.clone(), false)],
+		implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
+		..Default::default()
+	};
+	let bounding_box_node = |input: NodeInput| DocumentNode {
+		inputs: vec![input],
+		implementation: DocumentNodeImplementation::ProtoNode(bounding_box.clone()),
+		..Default::default()
+	};
+	let inner_network = NodeNetwork {
+		exports: vec![NodeInput::node(NodeId(1), 0)],
+		nodes: [(NodeId(0), value_node), (NodeId(1), bounding_box_node(NodeInput::node(NodeId(0), 0)))].into_iter().collect(),
+		..Default::default()
+	};
+	let document_network = NodeNetwork {
+		exports: vec![NodeInput::node(NodeId(6), 0)],
+		nodes: [
+			(
+				NodeId(5),
+				DocumentNode {
+					implementation: DocumentNodeImplementation::Network(inner_network),
+					..Default::default()
+				},
+			),
+			(NodeId(6), bounding_box_node(NodeInput::node(NodeId(5), 0))),
+			(NodeId(7), bounding_box_node(NodeInput::value(value.clone(), false))),
+		]
+		.into_iter()
+		.collect(),
+		..Default::default()
+	};
+
+	let value_proto_node = ProtoNode::value(ConstructionArgs::Value(value.into()), vec![NodeId(5), NodeId(0)]);
+	let bounding_box_proto_node = |input: NodeId, path: Vec<NodeId>| {
+		let mut node = ProtoNode::value(ConstructionArgs::Nodes(vec![input]), path);
+		node.identifier = bounding_box.clone();
+		node
+	};
+	let proto_network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(2),
+		nodes: vec![
+			(NodeId(0), value_proto_node),
+			(NodeId(1), bounding_box_proto_node(NodeId(0), vec![NodeId(5), NodeId(1)])),
+			(NodeId(2), bounding_box_proto_node(NodeId(1), vec![NodeId(6)])),
+			(NodeId(3), bounding_box_proto_node(NodeId(0), vec![NodeId(7)])),
+		],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&proto_network).unwrap();
+	let tree = BorrowTree::new(proto_network, &typing_context).unwrap();
+
+	assert_eq!(
+		tree.output_node(&document_network, &[NodeId(5)]),
+		Some(NodeId(1)),
+		"Network 5 gives the output of what its export is wired to"
+	);
+	assert_eq!(tree.output_node(&document_network, &[NodeId(5), NodeId(0)]), Some(NodeId(0)));
+	assert_eq!(tree.output_node(&document_network, &[NodeId(6)]), Some(NodeId(2)));
+	assert_eq!(tree.output_node(&document_network, &[NodeId(8)]), None);
 }

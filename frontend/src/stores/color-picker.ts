@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
+import { createLayout } from "/src/utility-functions/layout-state.svelte";
 import { patchLayout } from "/src/utility-functions/widgets";
 import type { FillChoice, Layout, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -19,8 +20,8 @@ export type ColorPickerStoreState = {
 };
 
 const initialState: ColorPickerStoreState = {
-	pickersAndGradient: [],
-	details: [],
+	pickersAndGradient: createLayout(),
+	details: createLayout(),
 	callbacks: {},
 	isDragging: false,
 };

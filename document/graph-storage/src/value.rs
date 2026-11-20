@@ -1,6 +1,6 @@
-use serde::de::{self, DeserializeOwned, MapAccess, SeqAccess, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt;
+use crate::Value;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 pub fn to_value<T: Serialize + ?Sized>(value: &T) -> Result<Value, ValueError> {
 	serde_json::to_value(value).map(Value::from).map_err(ValueError)
@@ -8,111 +8,6 @@ pub fn to_value<T: Serialize + ?Sized>(value: &T) -> Result<Value, ValueError> {
 
 pub fn from_value<T: DeserializeOwned>(value: &Value) -> Result<T, ValueError> {
 	serde_json::from_value(value.clone().into()).map_err(ValueError)
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(remote = "Self")]
-pub enum Value {
-	None,
-	Bool(bool),
-	Int(i128),
-	Float(f64),
-	Str(String),
-	Array(Vec<Value>),
-	Object(Vec<(String, Value)>),
-}
-
-// Using `Serializer::is_human_readable` to determine whether to serialize tagged.
-// We assume that any human-readable format is self describing and does not need tags.
-impl Serialize for Value {
-	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		if !serializer.is_human_readable() {
-			return Value::serialize(self, serializer);
-		}
-		match self {
-			Value::None => serializer.serialize_unit(),
-			Value::Bool(boolean) => serializer.serialize_bool(*boolean),
-			Value::Int(int) => serializer.serialize_i128(*int),
-			Value::Float(float) => serializer.serialize_f64(*float),
-			Value::Str(string) => serializer.serialize_str(string),
-			Value::Array(array) => serializer.collect_seq(array),
-			Value::Object(object) => serializer.collect_map(object.iter().map(|(key, value)| (key, value))),
-		}
-	}
-}
-
-// Using `Deserialize::is_human_readable` to determine whether to deserialize tagged.
-// We assume that any human-readable format is self describing and does not need tags.
-impl<'de> Deserialize<'de> for Value {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		if !deserializer.is_human_readable() {
-			return Value::deserialize(deserializer);
-		}
-
-		struct Untagged;
-		impl<'de> Visitor<'de> for Untagged {
-			type Value = Value;
-			fn visit_unit<E>(self) -> Result<Value, E> {
-				Ok(Value::None)
-			}
-			fn visit_none<E>(self) -> Result<Value, E> {
-				Ok(Value::None)
-			}
-			fn visit_some<D: Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
-				Deserialize::deserialize(deserializer)
-			}
-			fn visit_bool<E>(self, value: bool) -> Result<Value, E> {
-				Ok(Value::Bool(value))
-			}
-			fn visit_i64<E>(self, value: i64) -> Result<Value, E> {
-				Ok(Value::Int(value.into()))
-			}
-			fn visit_u64<E>(self, value: u64) -> Result<Value, E> {
-				Ok(Value::Int(value.into()))
-			}
-			fn visit_i128<E>(self, value: i128) -> Result<Value, E> {
-				Ok(Value::Int(value))
-			}
-			fn visit_u128<E: de::Error>(self, value: u128) -> Result<Value, E> {
-				i128::try_from(value).map(Value::Int).map_err(E::custom)
-			}
-			fn visit_f64<E>(self, value: f64) -> Result<Value, E> {
-				Ok(Value::Float(value))
-			}
-			fn visit_str<E>(self, value: &str) -> Result<Value, E> {
-				Ok(Value::Str(value.to_owned()))
-			}
-			fn visit_string<E>(self, value: String) -> Result<Value, E> {
-				Ok(Value::Str(value))
-			}
-			fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
-				let mut array = Vec::with_capacity(seq.size_hint().unwrap_or(0));
-				while let Some(value) = seq.next_element()? {
-					array.push(value);
-				}
-				Ok(Value::Array(array))
-			}
-			fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
-				let mut object: Vec<(String, Value)> = Vec::with_capacity(map.size_hint().unwrap_or(0));
-				while let Some(entry) = map.next_entry()? {
-					object.push(entry);
-				}
-				object.sort_by(|a, b| a.0.cmp(&b.0));
-				object.dedup_by(|b, a| {
-					let dedup = b.0 == a.0;
-					if dedup {
-						std::mem::swap(&mut a.1, &mut b.1);
-					}
-					dedup
-				});
-				Ok(Value::Object(object))
-			}
-			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-				formatter.write_str("a valid Value")
-			}
-		}
-		deserializer.deserialize_any(Untagged)
-	}
 }
 
 impl From<serde_json::Value> for Value {
@@ -132,7 +27,7 @@ impl From<serde_json::Value> for Value {
 			}
 			Json::String(string) => Value::Str(string),
 			Json::Array(array) => Value::Array(array.into_iter().map(Into::into).collect()),
-			Json::Object(object) => Value::Object(object.into_iter().map(|(key, value)| (key, value.into())).collect()),
+			Json::Object(object) => Value::from_object(object.into_iter().map(|(key, value)| (key, value.into())).collect()),
 		}
 	}
 }
@@ -152,6 +47,7 @@ impl From<Value> for serde_json::Value {
 			Value::Str(string) => Json::String(string),
 			Value::Array(array) => Json::Array(array.into_iter().map(Into::into).collect()),
 			Value::Object(object) => Json::Object(object.into_iter().map(|(key, value)| (key, value.into())).collect()),
+			Value::Blob(hash) => serde_json::json!({ Value::BLOB_KEY: String::from(&hash.0) }),
 		}
 	}
 }
@@ -163,6 +59,8 @@ pub struct ValueError(serde_json::Error);
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::{BlobHash, ResourceHash};
+	use serde::Deserialize;
 
 	#[test]
 	fn round_trips_through_postcard() {
@@ -261,5 +159,26 @@ mod tests {
 		assert_eq!(encode(Value::Str("ab".into())), [4, 2, b'a', b'b']);
 		assert_eq!(encode(Value::Array(vec![Value::None])), [5, 1, 0]);
 		assert_eq!(encode(Value::Object(vec![("k".into(), Value::None)])), [6, 1, 1, b'k', 0]);
+		assert_eq!(encode(Value::Blob(BlobHash(ResourceHash::from([9; 32]))))[..2], [7, 32]);
+	}
+
+	#[test]
+	fn blob_round_trips_as_reserved_object() {
+		let blob = Value::Blob(BlobHash::of(b"bytes"));
+
+		let text = serde_json::to_string(&blob).unwrap();
+		assert!(text.starts_with(r#"{"$blob":""#), "got {text}");
+		assert_eq!(serde_json::from_str::<Value>(&text).unwrap(), blob);
+		assert_eq!(Value::from(serde_json::Value::from(blob.clone())), blob);
+
+		let bytes = postcard::to_stdvec(&blob).unwrap();
+		assert_eq!(postcard::from_bytes::<Value>(&bytes).unwrap(), blob);
+	}
+
+	#[test]
+	fn reserved_key_without_a_hash_stays_an_object() {
+		for json in [r#"{"$blob": "not a hash"}"#, r#"{"$blob": 1}"#, r#"{"$blob": "", "other": 1}"#] {
+			assert!(matches!(serde_json::from_str::<Value>(json).unwrap(), Value::Object(_)), "{json}");
+		}
 	}
 }

@@ -45,13 +45,7 @@ impl TextureCache {
 				sample_count: 1,
 				dimension: wgpu::TextureDimension::D2,
 				format,
-				usage: {
-					let common = wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT;
-					match format {
-						wgpu::TextureFormat::Rgba8Unorm => common | wgpu::TextureUsages::STORAGE_BINDING,
-						_ => common,
-					}
-				},
+				usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
 				view_formats: &[],
 			})
 			.into();

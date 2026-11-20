@@ -6,24 +6,11 @@ use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 
 pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
-	// Create hashmap for the protonodes added by the macro.
 	let mut definitions_map = HashMap::new();
-	// First remove the custom protonodes and add them to the definitions map since they contain different metadata
-	// from the macro and must be inserted first so that network nodes which reference them use the correct metadata.
-	let network_nodes = custom
-		.into_iter()
-		.filter_map(|definition| {
-			if let NodeTemplateImplementation::ProtoNode(proto_node_identifier) = &definition.node_template.implementation {
-				definitions_map.insert(DefinitionIdentifier::ProtoNode(proto_node_identifier.clone()), definition);
-				return None;
-			};
-			Some(definition)
-		})
-		.collect::<Vec<_>>();
 
-	// Add the rest of the protonodes from the macro.
+	// Add the protonodes from the macro.
 	// Typed nodes are registered in `core_types::NODE_REGISTRY` via the macro's auto-generated `register_node` codegen.
-	// `skip_impl` nodes (e.g. Cache, Monitor) bypass that registration but are wired up manually in
+	// `skip_impl` nodes (e.g. Cache) bypass that registration but are wired up manually in
 	// `interpreted_executor::node_registry::NODE_REGISTRY` via `async_node!`. We consult that extended registry as a
 	// fallback when deriving `call_argument` so it reflects the impls actually registered, which will usually be `Context`.
 	let extended_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
@@ -32,16 +19,15 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 	let context_type = concrete!(Context);
 	for (id, metadata) in NODE_METADATA.lock().unwrap().iter() {
 		let identifier = DefinitionIdentifier::ProtoNode(id.clone());
-		if definitions_map.contains_key(&identifier) {
-			continue;
-		};
 		let NodeMetadata {
 			display_name,
 			category,
+			icon,
 			fields,
 			description,
-			properties,
-			context_features,
+			inspector,
+			output_fields,
+			version,
 			..
 		} = metadata;
 
@@ -66,15 +52,29 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 		};
 
 		let inputs = preprocessor::node_inputs(fields, first_node_io);
+
+		// A multi-output node names each output after its field, leaving the hidden primary output unnamed
+		let output_names = output_fields
+			.as_ref()
+			.map(|destructure| {
+				(0..destructure.number_of_outputs())
+					.map(|output_index| {
+						let field = destructure.field_index_for_output(output_index).and_then(|field_index| destructure.fields.get(field_index));
+						field.map_or_else(String::new, |field| field.name.to_string())
+					})
+					.collect()
+			})
+			.unwrap_or_default();
+
 		definitions_map.insert(
 			identifier,
 			DocumentNodeDefinition {
 				identifier: display_name,
+				version: *version,
 				node_template: NodeTemplate {
 					inputs,
 					call_argument: input_type.clone(),
 					implementation: NodeTemplateImplementation::ProtoNode(id.clone()),
-					context_features: ContextDependencies::from(context_features.as_slice()),
 					// TODO: Store information for input overrides in the node macro
 					input_metadata: fields
 						.iter()
@@ -85,17 +85,19 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 							RegistryWidgetOverride::Custom(str) => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::Custom(str.to_string())),
 						})
 						.collect(),
+					output_names,
 					..Default::default()
 				},
 				category,
+				icon: *icon,
 				description: Cow::Borrowed(description),
-				properties: *properties,
+				inspector: *inspector,
 			},
 		);
 	}
 
-	// Add the rest of the network nodes to the map and add the metadata for their internal protonodes
-	for mut network_node in network_nodes {
+	// Add the hand-written network nodes to the map and add the metadata for their internal protonodes
+	for mut network_node in custom {
 		fill_proto_node_metadata(&mut network_node.node_template, &definitions_map);
 
 		// Set the reference to the node identifier
@@ -133,6 +135,6 @@ fn fill_proto_node_metadata(node_template: &mut NodeTemplate, definitions_map: &
 			node_template.locked = definition_template.locked;
 			node_template.pinned = definition_template.pinned;
 		}
-		NodeTemplateImplementation::Extract => {}
+		NodeTemplateImplementation::Definition(_) => {}
 	}
 }

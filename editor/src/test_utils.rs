@@ -1,78 +1,146 @@
-use crate::application::Editor;
+use crate::application::{DEFAULT_ENVIRONMENT, Editor};
+use crate::builder::{Builder, EditorBuilder, RuntimeBuilder};
+use crate::messages::frontend::utility_types::RenderStatus;
 use crate::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::ingest::utility_types::IngestAction;
+use crate::messages::portfolio::ingest::utility_types::{DataTransfer, IngestAction, TransferData};
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
-use crate::node_graph_executor::NodeRuntime;
+use crate::node_graph_executor::{EvaluationErrors, NodeRuntime};
+use crate::task::{Spawn, Task};
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
+use document_container::store::MemoryStore;
 use glam::{DVec2, UVec2};
+use graph_craft::application_io::resource::HashMapResourceStorage;
+use graph_craft::application_io::{ApplicationIo, PlatformApplicationIo};
 use graphene_std::raster::color::Color;
 use graphene_std::uuid::NodeId;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock};
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
 	pub editor: Editor,
 	pub runtime: NodeRuntime,
+	woken: Arc<AtomicBool>,
 }
 
 impl EditorTestUtils {
 	pub fn create() -> Self {
-		let _ = env_logger::builder().is_test(true).try_init();
+		init_test_logger();
 
-		let (mut editor, runtime) = Editor::new_local_executor();
+		let woken = Arc::new(AtomicBool::new(false));
+		let wake = woken.clone();
+		let (editor, runtime) = Builder::new()
+			.with_editor(
+				EditorBuilder::new()
+					.with_wake(move || wake.store(true, Ordering::Relaxed))
+					.with_environment(DEFAULT_ENVIRONMENT)
+					.with_resource_storage(Arc::new(HashMapResourceStorage::new()))
+					.with_document_store(Arc::new(MemoryStore::default())),
+			)
+			.with_runtime(RuntimeBuilder::new().with_wake(|| {}).with_application_io(gpu_application_io()))
+			.with_spawner(BlockingSpawner)
+			.with_random_seed(0)
+			.build();
+		let mut editor = Self { editor, runtime, woken };
 
-		editor.handle_message(PortfolioMessage::Init);
+		editor.dispatch(PortfolioMessage::Init);
 
-		// Tests run with `.gdd` storage on and the dual-write soak validation enabled, so storage round-trip drift fails loud.
-		editor.handle_message(PreferencesMessage::SaveAsGdd { enabled: true });
-		editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: true });
-
-		Self { editor, runtime }
+		editor
 	}
 
-	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<Instrumented, String>> + 'a {
-		// An inner function is required since async functions in traits are a bit weird
-		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<Instrumented, String> {
-			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
-			let document_id = portfolio.active_document_id.unwrap();
-			let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
-			let document = documents.get_mut(&document_id).unwrap();
+	pub fn dispatch(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
+		let mut responses = self.editor.handle_message(message);
+		while self.woken.swap(false, Ordering::Relaxed) {
+			responses.extend(self.editor.handle_message(Message::Wake));
+		}
+		responses
+	}
 
-			let instrumented = match executor.update_node_graph_instrumented(document) {
-				Ok(instrumented) => instrumented,
-				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
-			};
+	/// Submit an evaluation to the executor, run the runtime, and process the results.
+	///
+	/// If a deferred message triggers a second graph run, this will not occur. See [`Self::eval_graph_until_finished`] for this behaviour.
+	async fn eval_graph_once(&mut self) -> Result<Instrumented, TestGraphError> {
+		let portfolio = &mut self.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
 
-			if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
-				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
-			}
-			runtime.run().await;
+		let instrumented = match executor.update_node_graph_instrumented(document) {
+			Ok(instrumented) => instrumented,
+			Err(e) => return Err(TestGraphError::Other(format!("update_node_graph_instrumented failed\n\n{e}"))),
+		};
 
-			let mut messages = VecDeque::new();
-			if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
-				return Err(format!("Graph should render\n\n{e}"));
-			}
-			let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
+		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
+			return Err(TestGraphError::Other(format!("submit_current_node_graph_evaluation failed\n\n{e}")));
+		}
+		self.runtime.update();
+		self.runtime.run().await;
 
-			for message in frontend_messages {
-				message.check_node_graph_error();
-			}
-
-			Ok(instrumented)
+		let frontend_messages = self.dispatch(Message::Wake);
+		let evaluation_errors = self.portfolio_message_handler_mut().executor.take_evaluation_errors();
+		if evaluation_errors.is_none() && frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
+			return Err(TestGraphError::Render);
+		}
+		let evaluation_errors = evaluation_errors.filter(|errors| !errors.iter().all(|(error, _)| error.is::<wgpu_executor::NoGpuError>()));
+		if let Some(errors) = evaluation_errors {
+			return Err(TestGraphError::Evaluation(errors));
 		}
 
-		run(&mut self.editor, &mut self.runtime)
+		for message in frontend_messages {
+			message.check_node_graph_error();
+		}
+
+		Ok(instrumented)
+	}
+
+	/// Repeatedly calls [`Self::eval_graph_once`] until no more runs are triggered by deferred messages.
+	pub async fn eval_graph_until_finished(&mut self) -> Result<Instrumented, TestGraphError> {
+		const MAX_ITERATIONS: usize = 16;
+		for _iteration in 0..MAX_ITERATIONS {
+			let execution_id = self.portfolio_message_handler().executor.current_execution_id();
+			let result = self.eval_graph_once().await?;
+			// If there have been no other executions queued (other than the one we just queued ourselves above) then finish
+			if execution_id + 1 >= self.portfolio_message_handler().executor.current_execution_id() {
+				return Ok(result);
+			}
+		}
+		Err(TestGraphError::Other(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping")))
+	}
+
+	/// Handles a message that copies to the clipboard, returning what was last written once the runtime has rendered the copied layers.
+	pub async fn copy_to_clipboard(&mut self, message: impl Into<Message>) -> Option<DataTransfer> {
+		if let Err(e) = self.eval_graph_until_finished().await {
+			panic!("Failed to evaluate graph: {e}");
+		}
+
+		let mut frontend_messages = self.dispatch(message);
+		self.runtime.update();
+		self.runtime.run().await;
+		frontend_messages.extend(self.dispatch(Message::Wake));
+
+		frontend_messages
+			.into_iter()
+			.filter_map(|message| match message {
+				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+				_ => None,
+			})
+			.last()
+	}
+
+	pub async fn paste_from_clipboard(&mut self, content: DataTransfer) -> Vec<FrontendMessage> {
+		self.handle_message(IngestMessage::Ingest { content, action: IngestAction::Paste }).await
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
-		let frontend_messages_from_msg = self.editor.handle_message(message);
+		let frontend_messages_from_msg = self.dispatch(message);
 
 		// Required to process any buffered messages
-		if let Err(e) = self.eval_graph().await {
+		if let Err(e) = self.eval_graph_until_finished().await {
 			panic!("Failed to evaluate graph: {e}");
 		}
 
@@ -165,12 +233,20 @@ impl EditorTestUtils {
 		.await;
 	}
 
+	pub fn portfolio_message_handler(&self) -> &PortfolioMessageHandler {
+		&self.editor.dispatcher.message_handlers.portfolio_message_handler
+	}
+
+	pub fn portfolio_message_handler_mut(&mut self) -> &mut PortfolioMessageHandler {
+		&mut self.editor.dispatcher.message_handlers.portfolio_message_handler
+	}
+
 	pub fn active_document(&self) -> &DocumentMessageHandler {
-		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap()
+		self.portfolio_message_handler().active_document().unwrap()
 	}
 
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap()
+		self.portfolio_message_handler_mut().active_document_mut().unwrap()
 	}
 
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
@@ -191,10 +267,29 @@ impl EditorTestUtils {
 	}
 
 	pub async fn press(&mut self, key: Key, modifier_keys: ModifierKeys) {
-		let key_repeat = false;
+		self.key_down(key, modifier_keys).await;
+		self.key_up(key, modifier_keys).await;
+	}
 
+	/// Puts a key down and leaves it held until `key_up`.
+	pub async fn key_down(&mut self, key: Key, modifier_keys: ModifierKeys) {
+		let key_repeat = false;
 		self.handle_message(InputPreprocessorMessage::KeyDown { key, modifier_keys, key_repeat }).await;
+	}
+
+	pub async fn key_up(&mut self, key: Key, modifier_keys: ModifierKeys) {
+		let key_repeat = false;
 		self.handle_message(InputPreprocessorMessage::KeyUp { key, modifier_keys, key_repeat }).await;
+	}
+
+	/// Sets the clock to a time in milliseconds and runs one animation frame, as the frontend does on each `requestAnimationFrame`.
+	pub async fn animation_frame(&mut self, timestamp: u64) {
+		let messages = Box::new([
+			InputPreprocessorMessage::CurrentTime { timestamp }.into(),
+			AnimationMessage::IncrementFrameCounter.into(),
+			BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame).into(),
+		]);
+		self.handle_message(Message::Batched { messages }).await;
 	}
 
 	pub async fn left_mousedown(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys) {
@@ -244,10 +339,12 @@ impl EditorTestUtils {
 
 	pub async fn create_raster_image(&mut self, image: graphene_std::raster::Image<Color>, mouse: Option<(f64, f64)>) {
 		self.handle_message(IngestMessage::Ingest {
-			data: image.to_png(),
+			content: TransferData::Raster {
+				format: image::ImageFormat::Png,
+				data: image.to_png(),
+			}
+			.into(),
 			action: mouse.map_or(IngestAction::Paste, |mouse| IngestAction::DropOnCanvas { mouse }),
-			mime_type: String::new(),
-			path: None,
 		})
 		.await;
 	}
@@ -317,6 +414,12 @@ impl EditorTestUtils {
 		self.create_node(node_type, None).await
 	}
 
+	/// Opens the subnetwork of `node_id` in the graph with its contents made editable.
+	pub async fn enter_editable_network(&mut self, node_id: NodeId) {
+		self.handle_message(DocumentMessage::EnterNestedNetwork { node_id }).await;
+		self.handle_message(DocumentMessage::MakeNetworkEditable).await;
+	}
+
 	pub async fn create_node_by_name_at(&mut self, node_type: DefinitionIdentifier, x: i32, y: i32) -> NodeId {
 		self.create_node(node_type, Some((x, y))).await
 	}
@@ -340,10 +443,98 @@ pub trait FrontendMessageTestUtils {
 
 impl FrontendMessageTestUtils for FrontendMessage {
 	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraphErrorDiagnostic { error } = self else { return };
-		if let Some(error) = error {
-			panic!("error: {:?}", error);
+		let FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors } = self else { return };
+		if !errors.is_empty() {
+			panic!("errors: {errors:?}");
 		}
+	}
+}
+
+#[derive(Debug)]
+pub enum TestGraphError {
+	Evaluation(EvaluationErrors),
+	Render,
+	Other(String),
+}
+
+impl std::fmt::Display for TestGraphError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Evaluation(errors) => write!(f, "Graph evaluation failed:\n{errors}"),
+			Self::Render => write!(f, "Graph should render"),
+			Self::Other(message) => write!(f, "{message}"),
+		}
+	}
+}
+
+thread_local! {
+	static CAPTURED_ERRORS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Prints like `env_logger`, and also records the errors logged on a thread while [`capture_logged_errors`] runs on it.
+struct TestLogger {
+	printer: env_logger::Logger,
+}
+
+impl log::Log for TestLogger {
+	fn enabled(&self, metadata: &log::Metadata) -> bool {
+		metadata.level() == log::Level::Error || self.printer.enabled(metadata)
+	}
+
+	fn log(&self, record: &log::Record) {
+		if record.level() == log::Level::Error {
+			CAPTURED_ERRORS.with_borrow_mut(|captured| {
+				if let Some(captured) = captured {
+					captured.push(record.args().to_string());
+				}
+			});
+		}
+
+		self.printer.log(record);
+	}
+
+	fn flush(&self) {
+		self.printer.flush();
+	}
+}
+
+/// Installs the logger shared by every test in the process, since only one can be installed.
+fn init_test_logger() {
+	static INSTALL: std::sync::Once = std::sync::Once::new();
+	INSTALL.call_once(|| {
+		let printer = env_logger::builder().is_test(true).build();
+		let max_level = printer.filter().max(log::LevelFilter::Error);
+		if log::set_boxed_logger(Box::new(TestLogger { printer })).is_ok() {
+			log::set_max_level(max_level);
+		}
+	});
+}
+
+/// Creates application IO with the GPU executor shared by every test in the process, since creating a device and its pipelines for each test is slow.
+/// Panics if no adapter is found, since tests render on the GPU like the app does.
+fn gpu_application_io() -> PlatformApplicationIo {
+	static GPU_EXECUTOR: LazyLock<Option<<PlatformApplicationIo as ApplicationIo>::Executor>> = LazyLock::new(|| futures::executor::block_on(PlatformApplicationIo::new()).gpu_executor().cloned());
+	let executor = GPU_EXECUTOR.clone().expect(
+		"Editor tests need a GPU adapter. Without a hardware GPU, install Mesa's lavapipe software Vulkan driver and point `VK_ADD_DRIVER_FILES` at its `lvp_icd.<arch>.json` (the Nix dev shell does this).",
+	);
+	PlatformApplicationIo::new_with_executor(executor)
+}
+
+/// Runs `operation`, returning its result along with the errors it logged.
+pub fn capture_logged_errors<T>(operation: impl FnOnce() -> T) -> (T, Vec<String>) {
+	init_test_logger();
+
+	CAPTURED_ERRORS.set(Some(Vec::new()));
+	let result = operation();
+	let errors = CAPTURED_ERRORS.take().unwrap_or_default();
+
+	(result, errors)
+}
+
+struct BlockingSpawner;
+impl Spawn for BlockingSpawner {
+	fn spawn(&self, task: Task) {
+		futures::executor::block_on(task);
 	}
 }
 
@@ -352,16 +543,16 @@ pub mod test_prelude {
 	pub use super::FrontendMessageTestUtils;
 	pub use crate::application::Editor;
 	pub use crate::float_eq;
-	pub use crate::messages::clipboard::utility_types::ClipboardContentRaw;
 	pub use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
 	pub use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
 	pub use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+	pub use crate::messages::portfolio::ingest::utility_types::{DataTransfer, DataTransferItem, TransferData};
 	pub use crate::messages::prelude::*;
 	pub use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, is_layer_fed_by_node_of_name};
 	pub use crate::messages::tool::utility_types::ToolType;
 	pub use crate::node_graph_executor::NodeRuntime;
-	pub use crate::test_utils::EditorTestUtils;
+	pub use crate::test_utils::{EditorTestUtils, TestGraphError};
 	pub use core::f64;
 	pub use glam::{DVec2, IVec2};
 	pub use graph_craft::document::DocumentNode;

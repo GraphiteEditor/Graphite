@@ -51,6 +51,7 @@
 	classes={{ "has-label": Boolean(label) }}
 	{value}
 	on:value
+	on:keydown
 	on:textFocused={onTextFocused}
 	on:textChanged={onTextChanged}
 	on:textChangeCanceled={onTextChangeCanceled}

@@ -45,7 +45,7 @@ Next, that is fed into the <img src="https://static.graphite.art/content/learn/i
 | <img src="https://static.graphite.art/content/learn/introduction/features-and-limitations/circular-repeat-node-parameters-4__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="" /> | <img src="https://static.graphite.art/content/learn/introduction/features-and-limitations/circular-repeat-node-output-4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="" /> |
 
 <!-- TODO: Rename "Angle Offset" to "Start Angle" and redo the screenshots which show that -->
-The node's properties offer controls over settings like *Angle Offset* (what angle to start at), *Radius* (distance from the center), and *Instances* (how many copies to distribute). These parameters can also be exposed into the graph so they are driven by the calculated numerical outputs of other nodes instead of values you pick by hand.
+The node's parameters in the Inspector offer controls over settings like *Angle Offset* (what angle to start at), *Radius* (distance from the center), and *Instances* (how many copies to distribute). These parameters can also be exposed into the graph so they are driven by the calculated numerical outputs of other nodes instead of values you pick by hand.
 
 ### Raster compositing
 

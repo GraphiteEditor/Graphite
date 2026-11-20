@@ -1,0 +1,16 @@
+// Create a new document
+
+{ "type": "resize", "size": [1600, 1000] }
+
+// Open the New Document dialog, then confirm it with its OK button, which sits here at this page size
+{ "type": "press", "key": "Control+KeyN" }
+{ "type": "waitIdle" }
+{ "type": "expect", "data": "text-button", "text": "OK", "count": 1 }
+{ "type": "click", "at": [802, 588] }
+{ "type": "waitIdle" }
+
+// The document opens in a tab with only its artboard
+{ "type": "expect", "data": "tab", "text": "Untitled Document" }
+{ "type": "expect", "data": "layer", "count": 1 }
+{ "type": "expect", "data": "layer", "value": "Artboard" }
+{ "type": "screenshot", "path": "scenarios/new-document.png" }

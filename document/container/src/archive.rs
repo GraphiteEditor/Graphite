@@ -3,7 +3,6 @@
 //! Each codec streams entries in both directions: writers wrap an `io::Write` sink, and
 //! `deserialize` reads from any `io::Read + Seek` source and streams entries into any [`Container`].
 
-#[cfg(any(feature = "xz", feature = "zip"))]
 use crate::AsyncContainer;
 #[cfg(any(feature = "zip", feature = "xz"))]
 use crate::ContainerError;

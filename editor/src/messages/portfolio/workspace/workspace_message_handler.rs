@@ -251,12 +251,12 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(WorkspaceMessage::UpdatePanelsLayout);
 			}
-			WorkspaceMessage::TogglePropertiesPanelOpen => {
+			WorkspaceMessage::ToggleInspectorOpen => {
 				if self.panel_layout.focus_document {
 					return;
 				}
 
-				let panel_type = PanelType::Properties;
+				let panel_type = PanelType::Inspector;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
 			WorkspaceMessage::ToggleLayersPanelOpen => {
@@ -267,12 +267,41 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				let panel_type = PanelType::Layers;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
+			WorkspaceMessage::FocusPanel { panel_type } => {
+				if self.panel_layout.focus_document {
+					return;
+				}
+				let Some(group) = self.panel_layout.find_panel(panel_type) else {
+					self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
+					return;
+				};
+				let Some(tab_index) = self.panel_layout.panel_group(group).and_then(|state| state.tabs.iter().position(|&tab| tab == panel_type)) else {
+					return;
+				};
+				responses.add(WorkspaceMessage::SetPanelGroupActiveTab { group, tab_index });
+			}
 			WorkspaceMessage::ToggleDataPanelOpen => {
 				if self.panel_layout.focus_document {
 					return;
 				}
 
 				let panel_type = PanelType::Data;
+				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
+			}
+			WorkspaceMessage::ToggleCollaborationPanelOpen => {
+				if self.panel_layout.focus_document {
+					return;
+				}
+
+				let panel_type = PanelType::Collaboration;
+				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
+			}
+			WorkspaceMessage::ToggleHistoryPanelOpen => {
+				if self.panel_layout.focus_document {
+					return;
+				}
+
+				let panel_type = PanelType::History;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
 			WorkspaceMessage::UpdatePanelsLayout => {
@@ -334,7 +363,7 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 		// Extend with actions that are disabled when focusing the document
 		if !self.panel_layout.focus_document {
 			common.extend(actions!(WorkspaceMessageDiscriminant;
-				TogglePropertiesPanelOpen,
+				ToggleInspectorOpen,
 				ToggleLayersPanelOpen,
 				ToggleDataPanelOpen,
 			));
@@ -387,10 +416,11 @@ impl WorkspaceMessageHandler {
 	/// This resets the backend's diffing state so it won't try to send updates to a frontend component that has been unmounted.
 	fn destroy_panel_layouts(panel_type: PanelType, responses: &mut VecDeque<Message>) {
 		let targets: &[LayoutTarget] = match panel_type {
-			PanelType::Properties => &[LayoutTarget::PropertiesPanel],
-			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelControlRightBar, LayoutTarget::LayersPanelBottomBar],
-			PanelType::Data => &[LayoutTarget::DataPanel],
-			PanelType::Document | PanelType::Welcome => return,
+			PanelType::Inspector => &[LayoutTarget::Inspector],
+			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelBottomLeftBar, LayoutTarget::LayersPanelBottomRightBar],
+			PanelType::Data => &[LayoutTarget::DataPanel, LayoutTarget::DataPanelContext, LayoutTarget::DataPanelPath],
+			PanelType::Collaboration => &[LayoutTarget::CollaborationPanel],
+			PanelType::Document | PanelType::Welcome | PanelType::History => return,
 		};
 
 		for &layout_target in targets {
@@ -403,8 +433,8 @@ impl WorkspaceMessageHandler {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 
 		match panel_type {
-			PanelType::Properties => {
-				responses.add(PropertiesPanelMessage::Refresh);
+			PanelType::Inspector => {
+				responses.add(InspectorMessage::Refresh);
 			}
 			PanelType::Layers => {
 				if has_active_document {
@@ -415,6 +445,12 @@ impl WorkspaceMessageHandler {
 			}
 			PanelType::Data => {
 				// The Data panel's content is populated automatically as a side effect of the graph run completing, so there's nothing to do here
+			}
+			PanelType::Collaboration => {
+				responses.add(SyncMessage::RefreshPanel);
+			}
+			PanelType::History => {
+				responses.add(HistoryMessage::Refresh);
 			}
 			PanelType::Document | PanelType::Welcome => {
 				// Re-send the welcome screen buttons layout to repopulate after a remount
@@ -440,15 +476,15 @@ mod tests {
 		};
 		let group_of = |handler: &WorkspaceMessageHandler, panel_type| handler.panel_layout.find_panel(panel_type).expect("the default layout has this panel");
 
-		// The Layers panel joins the Properties panel's group as its active tab
+		// Layers joins the Inspector's group ahead of it, which leaves the Inspector active
 		let join = WorkspaceMessage::MovePanelTab {
 			source_group: group_of(&handler, PanelType::Layers),
-			target_group: group_of(&handler, PanelType::Properties),
-			insert_index: 1,
+			target_group: group_of(&handler, PanelType::Inspector),
+			insert_index: 0,
 		};
 		handler.process_message(join, &mut VecDeque::new(), context());
 
-		// Splitting it back out beside the document leaves the Properties panel as the active tab of the group it left
+		// Splitting it back out beside the document leaves the Inspector as the active tab of the group it left
 		let split = WorkspaceMessage::SplitPanelGroup {
 			target_group: group_of(&handler, PanelType::Document),
 			direction: DockingSplitDirection::Right,
@@ -458,6 +494,6 @@ mod tests {
 		let mut responses = VecDeque::new();
 		handler.process_message(split, &mut responses, context());
 
-		assert!(responses.contains(&PropertiesPanelMessage::Refresh.into()));
+		assert!(responses.contains(&InspectorMessage::Refresh.into()));
 	}
 }

@@ -19,7 +19,9 @@ impl MessageHandler<PersistentStateMessage, PersistentStateMessageContext> for P
 
 		match message {
 			PersistentStateMessage::ReadState => {
-				responses.add(FrontendMessage::TriggerPersistenceReadState);
+				if !self.loaded {
+					responses.add(FrontendMessage::TriggerPersistenceReadState);
+				}
 			}
 			PersistentStateMessage::WriteState => {
 				if !self.loaded && (state.documents.is_empty() && (state.workspace_layout == Some(WorkspacePanelLayout::default()) || state.workspace_layout.is_none())) {

@@ -1,6 +1,5 @@
-use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
+use super::snap_session::{SnapSession, SnapView, anchor_positions};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
-use crate::consts::ROTATE_INCREMENT;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
@@ -10,13 +9,13 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{Node
 use crate::messages::tool::common_functionality::transformation_cage::SelectedEdges;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use crate::messages::tool::utility_types::ToolType;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
-use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
-use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
-use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, PathSeg, Point, Shape};
+use graphene_std::vector::algorithms::util::pathseg_tangent;
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::{HandleExt, PointId, SegmentId, VectorGeometry, VectorModificationType};
+use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, ParamCurveDeriv, PathSeg, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
@@ -50,7 +49,7 @@ fn closest_candidate_point(
 	goal: DVec2,
 	max_distance: f64,
 	layers: impl Iterator<Item = LayerNodeIdentifier>,
-	candidates: impl Fn(&Vector) -> Vec<PointId>,
+	candidates: impl Fn(&VectorGeometry) -> Vec<PointId>,
 ) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	let mut best = None;
 	let mut best_distance_squared = max_distance * max_distance;
@@ -64,7 +63,7 @@ fn closest_candidate_point(
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 		for id in candidates(&vector) {
-			let Some(point) = vector.point_domain.position_from_id(id) else { continue };
+			let Some(point) = vector.position_from_id(id) else { continue };
 
 			let distance_squared = viewspace.transform_point2(point).distance_squared(goal);
 			if distance_squared < best_distance_squared {
@@ -93,16 +92,16 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	Quad::from_box([DVec2::ZERO, far])
 }
 
-pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vector, prefer_handle_direction: bool) -> Option<f64> {
+pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &VectorGeometry, prefer_handle_direction: bool) -> Option<f64> {
 	let is_start = |point: PointId, segment: SegmentId| vector.segment_start_from_id(segment) == Some(point);
-	let anchor_position = vector.point_domain.position_from_id(anchor)?;
-	let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector);
-	let start_handle = ManipulatorPointId::PrimaryHandle(segment).get_position(vector);
+	let anchor_position = vector.position_from_id(anchor)?;
+	let end_handle = vector.position_of(ManipulatorPointId::EndHandle(segment));
+	let start_handle = vector.position_of(ManipulatorPointId::PrimaryHandle(segment));
 
 	let start_point = if is_start(anchor, segment) {
-		vector.segment_end_from_id(segment).and_then(|id| vector.point_domain.position_from_id(id))
+		vector.segment_end_from_id(segment).and_then(|id| vector.position_from_id(id))
 	} else {
-		vector.segment_start_from_id(segment).and_then(|id| vector.point_domain.position_from_id(id))
+		vector.segment_start_from_id(segment).and_then(|id| vector.position_from_id(id))
 	};
 
 	let required_handle = if is_start(anchor, segment) {
@@ -120,9 +119,9 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vec
 	required_handle.map(|handle| handle - anchor_position).and_then(|vector| DVec2::X.try_angle_to(vector))
 }
 
-pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector: &VectorGeometry, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 	let Some(other_handle) = vector.other_colinear_handle(handle) else { return };
-	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector) else {
+	let Some(handle_position) = vector.position_of(other_handle.to_manipulator_point()) else {
 		return;
 	};
 	let Some(direction) = (anchor_position - target_control_point).try_normalize() else { return };
@@ -137,12 +136,12 @@ pub fn restore_previous_handle_position(
 	handle: HandleId,
 	original_c: DVec2,
 	anchor_position: DVec2,
-	vector: &Vector,
+	vector: &VectorGeometry,
 	layer: LayerNodeIdentifier,
 	responses: &mut VecDeque<Message>,
 ) -> Option<HandleId> {
 	let other_handle = vector.other_colinear_handle(handle)?;
-	let handle_position = other_handle.to_manipulator_point().get_position(vector)?;
+	let handle_position = vector.position_of(other_handle.to_manipulator_point())?;
 	let direction = (anchor_position - original_c).try_normalize()?;
 
 	let old_relative_position = (handle_position - anchor_position).length() * direction;
@@ -156,8 +155,16 @@ pub fn restore_previous_handle_position(
 	Some(other_handle)
 }
 
-pub fn restore_g1_continuity(handle: HandleId, other_handle: HandleId, control_point: DVec2, anchor_position: DVec2, vector: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector) else {
+pub fn restore_g1_continuity(
+	handle: HandleId,
+	other_handle: HandleId,
+	control_point: DVec2,
+	anchor_position: DVec2,
+	vector: &VectorGeometry,
+	layer: LayerNodeIdentifier,
+	responses: &mut VecDeque<Message>,
+) {
+	let Some(handle_position) = vector.position_of(other_handle.to_manipulator_point()) else {
 		return;
 	};
 	let Some(direction) = (anchor_position - control_point).try_normalize() else { return };
@@ -174,7 +181,7 @@ pub fn restore_g1_continuity(handle: HandleId, other_handle: HandleId, control_p
 /// Check whether a point is visible in the current overlay mode.
 pub fn is_visible_point(
 	manipulator_point_id: ManipulatorPointId,
-	vector: &Vector,
+	vector: &VectorGeometry,
 	path_overlay_mode: PathOverlayMode,
 	frontier_handles_for_layer: Option<&HashMap<SegmentId, Vec<PointId>>>,
 	selected_segments: &[SegmentId],
@@ -191,14 +198,14 @@ pub fn is_visible_point(
 					}
 
 					// Either the segment is a part of selected segments or the opposite handle is a part of existing selection
-					let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector) else { return false };
+					let Some(handle_pair) = vector.handle_pair_of(manipulator_point_id) else { return false };
 					let other_handle = handle_pair[1].to_manipulator_point();
 
 					// Return whether the list of selected points contain the other handle
 					selected_points.contains(&other_handle)
 				}
 				(PathOverlayMode::FrontierHandles, false) => {
-					let Some(anchor) = manipulator_point_id.get_anchor(vector) else {
+					let Some(anchor) = vector.anchor_of(manipulator_point_id) else {
 						warn!("No anchor for selected handle");
 						return false;
 					};
@@ -214,28 +221,70 @@ pub fn is_visible_point(
 	}
 }
 
+/// The most anchors of the dragged layers that snap along with the box around them, which are those nearest where the pointer took hold.
+const MAX_SNAPPING_ANCHORS: usize = 8;
+
+/// The most visible layers, counting those inside dragged groups, for which a drag snaps their anchors as well as the box around them.
+const MAX_LAYERS_WITH_SNAPPING_ANCHORS: usize = 8;
+
+/// Adds the anchors of the dragged layers nearest the grip to where a gesture's features start, in document space, skipping any already there.
+pub fn push_nearest_anchors(starts: &mut Vec<DVec2>, document: &DocumentMessageHandler, layers: &[LayerNodeIdentifier], grip: DVec2) {
+	// Anchors far from the grip seldom decide where a drag lands, so only the nearest snap. O(n log n) in the anchors.
+	let mut anchors = dragged_anchors(document, layers);
+	anchors.sort_by(|a, b| a.distance_squared(grip).total_cmp(&b.distance_squared(grip)));
+
+	let mut pushed = 0;
+	for anchor in anchors {
+		if pushed >= MAX_SNAPPING_ANCHORS {
+			break;
+		}
+		if !starts.iter().any(|start| start.abs_diff_eq(anchor, 1e-6)) {
+			starts.push(anchor);
+			pushed += 1;
+		}
+	}
+}
+
+/// The anchors the dragged layers draw, in document space, when few enough layers are dragged for them to be worth snapping.
+fn dragged_anchors(document: &DocumentMessageHandler, layers: &[LayerNodeIdentifier]) -> Vec<DVec2> {
+	let metadata = document.metadata();
+	let with_everything_inside = layers.iter().flat_map(|&layer| std::iter::once(layer).chain(layer.descendants(metadata)));
+	let layers: Vec<_> = with_everything_inside
+		.filter(|&layer| !layer.has_children(metadata) && document.network_interface.is_layer_visible(layer))
+		.take(MAX_LAYERS_WITH_SNAPPING_ANCHORS + 1)
+		.collect();
+	if layers.len() > MAX_LAYERS_WITH_SNAPPING_ANCHORS {
+		return Vec::new();
+	}
+
+	let mut anchors = Vec::new();
+	for layer in layers {
+		let to_document = metadata.transform_to_document_as_rendered(layer);
+		for path in metadata.layer_outline(layer) {
+			let drawn = anchor_positions(&path).map(|position| to_document.transform_point2(position));
+			anchors.extend(drawn.filter(|position| position.is_finite()));
+		}
+	}
+	anchors
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn resize_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	dragging_layers: &mut Vec<LayerNodeIdentifier>,
-	snap_manager: &mut SnapManager,
-	snap_candidates: &mut Vec<SnapCandidatePoint>,
-	input: &InputPreprocessorMessageHandler,
-	viewport: &ViewportMessageHandler,
 	center: bool,
 	constrain: bool,
 	tool: ToolType,
 ) {
+	let document = view.document;
+
 	if let Some(movement) = &mut bounds.selected_edges {
 		let center = center.then_some(bounds.center_of_transformation);
-		let snap = Some(SizeSnapData {
-			manager: snap_manager,
-			points: snap_candidates,
-			snap_data: SnapData::ignore(document, input, viewport, dragging_layers),
-		});
-		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
+		let snap = Some(SizeSnapData { session: snap_session, view });
+		let (position, size) = movement.new_size(view.input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 		let pivot_transform = DAffine2::from_translation(pivot);
@@ -251,36 +300,42 @@ pub fn resize_bounds(
 		});
 
 		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, dragging_layers, responses, &document.network_interface, None, &tool, None);
-		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
+		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 	}
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn rotate_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	dragging_layers: &mut Vec<LayerNodeIdentifier>,
 	drag_start: DVec2,
-	mouse_position: DVec2,
 	snap_angle: bool,
 	tool: ToolType,
 ) {
-	let start_offset = drag_start - bounds.center_of_transformation;
-	let end_offset = mouse_position - bounds.center_of_transformation;
-	let Some(angle) = start_offset.try_angle_to(end_offset) else {
+	let document = view.document;
+	let pointer_angle = || {
+		let start_offset = drag_start - bounds.center_of_transformation;
+		let end_offset = view.input.mouse.position - bounds.center_of_transformation;
+		start_offset.try_angle_to(end_offset)
+	};
+
+	// A stepped angle comes from the pointer alone, with nothing snapped
+	let angle = if snap_angle {
+		snap_session.forget();
+		let snap_resolution = document.snapping_state.angle_step_radians();
+		pointer_angle().map(|angle| (angle / snap_resolution).round() * snap_resolution)
+	} else {
+		bounds.snap_turn(view, snap_session).or_else(pointer_angle)
+	};
+	let Some(angle) = angle else {
 		warn!("Unable to rotate bounds due to zero offset");
 		return;
 	};
 
-	let snapped_angle = if snap_angle {
-		let snap_resolution = ROTATE_INCREMENT.to_radians();
-		(angle / snap_resolution).round() * snap_resolution
-	} else {
-		angle
-	};
-
-	let delta = DAffine2::from_angle(snapped_angle);
+	let delta = DAffine2::from_angle(angle);
 
 	dragging_layers.retain(|layer| {
 		if *layer != LayerNodeIdentifier::ROOT_PARENT {
@@ -301,18 +356,21 @@ pub fn rotate_bounds(
 		&tool,
 		None,
 	);
-	selected.update_transforms(delta, None, None);
+	selected.update_transforms(delta, None);
 }
 
 pub fn skew_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	free_movement: bool,
 	layers: &mut Vec<LayerNodeIdentifier>,
-	mouse_position: DVec2,
 	tool: ToolType,
 ) {
+	let document = view.document;
+	let mouse_position = bounds.snap_skew(view, snap_session, free_movement);
+
 	if let Some(movement) = &mut bounds.selected_edges {
 		let mut pivot = DVec2::ZERO;
 
@@ -328,7 +386,7 @@ pub fn skew_bounds(
 		});
 
 		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, layers, responses, &document.network_interface, None, &tool, None);
-		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
+		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 	}
 }
 
@@ -367,6 +425,17 @@ pub fn transforming_transform_cage(
 
 		if let Some(bounds) = &mut bounding_box_manager {
 			bounds.original_bound_transform = bounds.transform;
+
+			// The resized layers' anchors nearest the grab snap along with the box, taken from where they are before the resize
+			if let Some(edges) = &mut bounds.selected_edges {
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let grab = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let mut anchors = Vec::new();
+				push_nearest_anchors(&mut anchors, document, layers_dragging, grab);
+
+				let document_to_cage = bounds.transform.inverse() * document_to_viewport;
+				edges.anchors = anchors.into_iter().map(|anchor| document_to_cage.transform_point2(anchor)).collect();
+			}
 
 			layers_dragging.retain(|layer| {
 				if *layer != LayerNodeIdentifier::ROOT_PARENT {
@@ -430,104 +499,120 @@ pub fn transforming_transform_cage(
 	(false, false, false)
 }
 
-/// Calculates similarity metric between new bezier curve and two old beziers by using sampled points.
-#[allow(clippy::too_many_arguments)]
-pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, points1: &[DVec2], n: usize) -> f64 {
-	let start_handle_length = a.exp();
-	let end_handle_length = b.exp();
+/// Points sampled along each of the two segments that [`fit_handles_to_segment_pair`] fits.
+const SEGMENT_PAIR_FIT_SAMPLES: usize = 16;
+/// Passes in [`fit_handles_to_segment_pair`] that each move the samples to their closest points on the fitted cubic and refit it.
+const SEGMENT_PAIR_FIT_PASSES: usize = 12;
+/// How much a sample's error along the fitted cubic counts relative to its distance from it, which damps each pass.
+const SEGMENT_PAIR_FIT_TANGENTIAL_WEIGHT: f64 = 0.01;
 
-	// Compute the handle positions of new bezier curve
-	let c1 = p1 + d1 * start_handle_length;
-	let c2 = p3 + d2 * end_handle_length;
+/// Finds the handles (relative to their anchors) that make the cubic from `start` to `end` best match `first_segment` followed by `second_segment`.
+/// The handles keep the given directions. The fit minimizes the squared distance from the segments to the cubic, so a pair split from one cubic is rebuilt exactly.
+pub fn fit_handles_to_segment_pair(start: DVec2, end: DVec2, start_direction: DVec2, end_direction: DVec2, first_segment: PathSeg, second_segment: PathSeg) -> (DVec2, DVec2) {
+	let start_direction = start_direction.try_normalize().unwrap_or_default();
+	let end_direction = end_direction.try_normalize().unwrap_or_default();
 
-	let new_curve = PathSeg::Cubic(CubicBez::new(Point::new(p1.x, p1.y), Point::new(c1.x, c1.y), Point::new(c2.x, c2.y), Point::new(p3.x, p3.y)));
-
-	// Sample 2*n points from new curve and get the L2 metric between all of points
-	let points = pathseg_compute_lookup_table(new_curve, Some(2 * n), false);
-
-	let dist = points1.iter().zip(points).map(|(p1, p2)| (p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sum::<f64>();
-
-	dist / (2 * n) as f64
-}
-
-/// Calculates optimal handle lengths with adam optimization.
-#[allow(clippy::too_many_arguments)]
-pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, min_len1: f64, min_len2: f64, further_segment: PathSeg, other_segment: PathSeg) -> (DVec2, DVec2) {
-	let h = 1e-6;
-	let tol = 1e-6;
-	let max_iter = 200;
-
-	let mut a = (5_f64).ln();
-	let mut b = (5_f64).ln();
-
-	let mut m_a = 0.;
-	let mut v_a = 0.;
-	let mut m_b = 0.;
-	let mut v_b = 0.;
-
-	let initial_alpha = 0.05;
-	let decay_rate: f64 = 0.99;
-
-	let beta1 = 0.9;
-	let beta2 = 0.999;
-	let epsilon = 1e-8;
-
-	let n = 20;
-
-	let further_segment = if further_segment.start().distance(dvec2_to_point(p1)) >= f64::EPSILON {
-		further_segment.reverse()
+	// Orient the segments to run from `start` through the anchor they share to `end`
+	let first_segment = if first_segment.start().distance(dvec2_to_point(start)) > first_segment.end().distance(dvec2_to_point(start)) {
+		first_segment.reverse()
 	} else {
-		further_segment
+		first_segment
+	};
+	let second_segment = if second_segment.end().distance(dvec2_to_point(end)) > second_segment.start().distance(dvec2_to_point(end)) {
+		second_segment.reverse()
+	} else {
+		second_segment
 	};
 
-	let other_segment = if other_segment.end().distance(dvec2_to_point(p3)) >= f64::EPSILON {
-		other_segment.reverse()
-	} else {
-		other_segment
-	};
+	// Each segment's samples count in proportion to its share of the total length
+	let first_length = first_segment.perimeter(DEFAULT_ACCURACY);
+	let second_length = second_segment.perimeter(DEFAULT_ACCURACY);
+	let first_weight = if first_length + second_length > 0. { first_length / (first_length + second_length) } else { 1. };
 
-	// Now we sample points proportional to the lengths of the beziers
-	let l1 = further_segment.perimeter(DEFAULT_ACCURACY);
-	let l2 = other_segment.perimeter(DEFAULT_ACCURACY);
-	let ratio = l1 / (l1 + l2);
-	let n_points1 = ((2 * n) as f64 * ratio).floor() as usize;
-	let mut points1 = pathseg_compute_lookup_table(further_segment, Some(n_points1), false).collect::<Vec<_>>();
-	let mut points2 = pathseg_compute_lookup_table(other_segment, Some(n), false).collect::<Vec<_>>();
-	points1.append(&mut points2);
+	// Start each sample at its parameter on the cubic the pair would have been split from, whose split is where the segments' speeds match
+	let first_speed = pathseg_tangent(first_segment, 1.).length();
+	let second_speed = pathseg_tangent(second_segment, 0.).length();
+	let joint = if first_speed > 0. { first_speed / (first_speed + second_speed) } else { first_weight };
+	let mut samples = (1..=SEGMENT_PAIR_FIT_SAMPLES)
+		.flat_map(|i| {
+			let t = i as f64 / SEGMENT_PAIR_FIT_SAMPLES as f64;
+			[
+				(joint * t, point_to_dvec2(first_segment.eval(t)), first_weight),
+				(joint + (1. - joint) * t, point_to_dvec2(second_segment.eval(t)), 1. - first_weight),
+			]
+		})
+		.collect::<Vec<_>>();
 
-	let f = |a: f64, b: f64| -> f64 { log_optimization(a, b, p1, p3, d1, d2, &points1, n) };
+	// Weighted least squares for the handle lengths, which the cubic is linear in, so this solves the 2x2 normal equations directly.
+	// Error is measured from each sample to its parameter's point on the cubic, mostly perpendicular to `fitted` there once a fit exists.
+	let solve = |samples: &[(f64, DVec2, f64)], fitted: Option<CubicBez>| -> DVec2 {
+		let fitted_derivative = fitted.map(|fitted| fitted.deriv());
+		let mut system = DMat2::ZERO;
+		let mut right_side = DVec2::ZERO;
 
-	for t in 1..=max_iter {
-		let dfa = (f(a + h, b) - f(a - h, b)) / (2. * h);
-		let dfb = (f(a, b + h) - f(a, b - h)) / (2. * h);
+		for &(parameter, target, weight) in samples {
+			// Split the Bernstein form into the part fixed by the anchors and the parts that scale with each handle length
+			let complement = 1. - parameter;
+			let start_basis = 3. * complement * complement * parameter;
+			let end_basis = 3. * complement * parameter * parameter;
+			let fixed = (complement * complement * complement + start_basis) * start + (end_basis + parameter * parameter * parameter) * end;
+			let jacobian = DMat2::from_cols(start_basis * start_direction, end_basis * end_direction);
 
-		m_a = beta1 * m_a + (1. - beta1) * dfa;
-		m_b = beta1 * m_b + (1. - beta1) * dfb;
+			let metric = match fitted_derivative {
+				Some(fitted_derivative) => {
+					let tangent = point_to_dvec2(fitted_derivative.eval(parameter)).try_normalize().unwrap_or(DVec2::X);
+					let normal = tangent.perp();
+					DMat2::from_cols(normal * normal.x, normal * normal.y) + DMat2::from_cols(tangent * tangent.x, tangent * tangent.y) * SEGMENT_PAIR_FIT_TANGENTIAL_WEIGHT
+				}
+				None => DMat2::IDENTITY,
+			} * weight;
 
-		v_a = beta2 * v_a + (1. - beta2) * dfa * dfa;
-		v_b = beta2 * v_b + (1. - beta2) * dfb * dfb;
-
-		let m_a_hat = m_a / (1. - beta1.powi(t));
-		let v_a_hat = v_a / (1. - beta2.powi(t));
-		let m_b_hat = m_b / (1. - beta1.powi(t));
-		let v_b_hat = v_b / (1. - beta2.powi(t));
-
-		let alpha_t = initial_alpha * decay_rate.powi(t);
-
-		// Update log-lengths
-		a -= alpha_t * m_a_hat / (v_a_hat.sqrt() + epsilon);
-		b -= alpha_t * m_b_hat / (v_b_hat.sqrt() + epsilon);
-
-		// Convergence check
-		if dfa.abs() < tol && dfb.abs() < tol {
-			break;
+			system += jacobian.transpose() * metric * jacobian;
+			right_side += jacobian.transpose() * metric * (target - fixed);
 		}
+
+		// Use the unconstrained optimum, unless it gives a handle negative length
+		if system.determinant() > f64::EPSILON * system.x_axis.x * system.y_axis.y {
+			let lengths = system.inverse() * right_side;
+			if lengths.x >= 0. && lengths.y >= 0. {
+				return lengths;
+			}
+		}
+
+		// Otherwise the optimum collapses one handle and gives the other its best length from there
+		let start_only = DVec2::new(if system.x_axis.x > 0. { (right_side.x / system.x_axis.x).max(0.) } else { 0. }, 0.);
+		let end_only = DVec2::new(0., if system.y_axis.y > 0. { (right_side.y / system.y_axis.y).max(0.) } else { 0. });
+		let error = |lengths: DVec2| lengths.dot(system * lengths) - 2. * right_side.dot(lengths);
+		if error(start_only) <= error(end_only) { start_only } else { end_only }
+	};
+
+	let mut lengths = solve(&samples, None);
+
+	// Tangent distance minimization: Gauss-Newton on each sample's distance to the cubic, rather than to its parameter's point
+	for _ in 0..SEGMENT_PAIR_FIT_PASSES {
+		let fitted = CubicBez::new(
+			dvec2_to_point(start),
+			dvec2_to_point(start + start_direction * lengths.x),
+			dvec2_to_point(end + end_direction * lengths.y),
+			dvec2_to_point(end),
+		);
+		let derivative = fitted.deriv();
+
+		// Move each sample's parameter toward its closest point on the cubic
+		for (parameter, target, _) in &mut samples {
+			for _ in 0..2 {
+				let offset = point_to_dvec2(fitted.eval(*parameter)) - *target;
+				let tangent = point_to_dvec2(derivative.eval(*parameter));
+				if tangent.length_squared() > 0. {
+					*parameter = (*parameter - offset.dot(tangent) / tangent.length_squared()).clamp(0., 1.);
+				}
+			}
+		}
+
+		lengths = solve(&samples, Some(fitted));
 	}
 
-	let len1 = a.exp().max(min_len1);
-	let len2 = b.exp().max(min_len2);
-
-	(d1 * len1, d2 * len2)
+	(start_direction * lengths.x, end_direction * lengths.y)
 }
 
 pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterface) -> Option<LayerNodeIdentifier> {
@@ -550,8 +635,9 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 
 	// Must not already have an existing Path node, in the right-most part of the layer chain, which has an empty set of modifications
 	// (otherwise users could repeatedly keep running this command and stacking up empty Path nodes)
-	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input(&DefinitionIdentifier::Network("Path".into()), 1)
-		&& modifications.as_ref() == &VectorModification::default()
+	if let Some(TaggedValue::VectorModification(modifications)) =
+		NodeGraphLayer::new(first_layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER), 1)
+		&& modifications.is_empty()
 	{
 		return None;
 	}
@@ -628,6 +714,52 @@ pub fn is_almost_colinear(point: DVec2, handle1: DVec2, handle2: DVec2) -> bool 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn hidden_layers_neither_offer_anchors_nor_count_toward_the_cutoff_for_snapping_them() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// One more rectangle than the cutoff allows, the last of which is then hidden
+		let mut layers = Vec::new();
+		let mut left = 100.;
+		for _ in 0..=MAX_LAYERS_WITH_SNAPPING_ANCHORS {
+			editor.draw_rect(left, 100., left + 60., 160.).await;
+			layers.push(editor.get_selected_layer().await.expect("the rectangle should be selected"));
+			left += 80.;
+		}
+		let hide = NodeGraphMessage::SetVisibility {
+			node_id: layers[MAX_LAYERS_WITH_SNAPPING_ANCHORS].to_node(),
+			network_path: Vec::new(),
+			visible: false,
+		};
+		editor.handle_message(hide).await;
+
+		let mut starts = Vec::new();
+		push_nearest_anchors(&mut starts, editor.active_document(), &layers, DVec2::new(100., 100.));
+		assert!(!starts.is_empty(), "the visible rectangles' anchors should snap");
+	}
+
+	#[test]
+	fn fitting_a_segment_pair_rebuilds_the_cubic_it_was_split_from() {
+		let original = CubicBez::new((0., 0.), (0., -400.), (600., -400.), (600., 0.));
+
+		// An anchor inserted along the cubic and slid further along it leaves two segments that one cubic covers exactly
+		for (inserted, slid) in [(0.1, 0.15), (0.3, 0.6), (0.5, 0.95)] {
+			let further_segment = PathSeg::Cubic(original.subsegment(0. ..inserted));
+			let absorbed_segment = PathSeg::Cubic(original.subsegment(inserted..slid));
+			let expected = original.subsegment(0. ..slid);
+
+			let start = point_to_dvec2(expected.p0);
+			let end = point_to_dvec2(expected.p3);
+			let (start_handle, end_handle) = fit_handles_to_segment_pair(start, end, point_to_dvec2(expected.p1) - start, point_to_dvec2(expected.p2) - end, further_segment, absorbed_segment);
+
+			assert!((start + start_handle).abs_diff_eq(point_to_dvec2(expected.p1), 1e-6), "start handle for {inserted} slid to {slid}");
+			assert!((end + end_handle).abs_diff_eq(point_to_dvec2(expected.p2), 1e-6), "end handle for {inserted} slid to {slid}");
+		}
+	}
+
 	#[test]
 	fn is_almost_colinear_test() {
 		assert!(!is_almost_colinear(DVec2::ZERO, DVec2::X, DVec2::X));

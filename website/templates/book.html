@@ -76,7 +76,10 @@
 					<span>{{ page.title }}</span>
 				</h1>
 			</div>
-			<article>
+			<article data-article>
+				{%- if page.extra.development_notice %}
+				<p class="development-notice">This page documents the development version of Graphite at <a href="https://dev.graphite.art">dev.graphite.art</a>, which may differ from the current release.</p>
+				{%- endif %}
 {{ page.content | safe }}
 			</article>
 

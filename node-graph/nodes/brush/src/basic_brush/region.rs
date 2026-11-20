@@ -17,6 +17,9 @@ impl Region {
 	pub(crate) fn new(footprint: &Footprint) -> Option<Self> {
 		let margin = DVec2::splat(2. / footprint.scale().max_element());
 		let viewport = footprint.viewport_bounds_in_local_space();
+		if !viewport.size().cmpgt(DVec2::ZERO).all() {
+			return None;
+		}
 		let bounds = AxisAlignedBbox {
 			start: viewport.start - margin,
 			end: viewport.end + margin,

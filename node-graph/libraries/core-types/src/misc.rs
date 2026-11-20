@@ -73,7 +73,7 @@ impl<T: Clampable> Clampable for Item<T> {
 		Item::from_parts(element.clamp_hard_max(max), attributes)
 	}
 }
-impl<T: Clampable> Clampable for List<T> {
+impl<T: Clampable + Clone> Clampable for List<T> {
 	fn clamp_hard_min(self, min: f64) -> Self {
 		self.into_iter().map(|item| item.clamp_hard_min(min)).collect()
 	}
@@ -90,8 +90,8 @@ struct LegacyTable<T> {
 }
 
 // TODO: Eventually remove this document upgrade code
-pub fn migrate_to_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<no_std_types::color::Color, D::Error> {
-	use no_std_types::color::Color;
+pub fn migrate_to_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<crate::color::Color, D::Error> {
+	use crate::color::Color;
 	use serde::Deserialize;
 
 	#[cfg_attr(feature = "serde", derive(serde::Deserialize))]

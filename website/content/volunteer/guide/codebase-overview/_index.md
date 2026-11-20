@@ -44,7 +44,7 @@ cargo run explore deps
 
 This diagram shows the structure of the crates that comprise the Graphite codebase and how they depend on each other. Every Arrow points from a crate to another which it depends on.
 
-<div class="crate-hierarchy">
+<div class="crate-hierarchy" data-crate-hierarchy>
 
 <!-- replacements::crate_hierarchy() -->
 

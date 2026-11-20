@@ -216,8 +216,11 @@ fn pathseg_self_intersection(segment: PathSeg, accuracy: Option<f64>) -> Vec<(f6
 		PathSeg::Cubic(cubic_bez) => cubic_bez,
 	};
 
+	let size = approx_bounding_box(segment).size();
+	let accuracy_for_size = DEFAULT_ACCURACY.max(size.width.max(size.height) * 1e-9);
+
 	// Get 2 copies of the reduced curves
-	let quads1 = cubic_bez.to_quads(DEFAULT_ACCURACY).map(|(t1, t2, quad_bez)| (t1, t2, PathSeg::Quad(quad_bez))).collect::<Vec<_>>();
+	let quads1 = cubic_bez.to_quads(accuracy_for_size).map(|(t1, t2, quad_bez)| (t1, t2, PathSeg::Quad(quad_bez))).collect::<Vec<_>>();
 	let quads2 = quads1.clone();
 
 	let num_curves = quads1.len();

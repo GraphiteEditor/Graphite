@@ -17,9 +17,7 @@ workspace = true
 [dependencies]
 # Local dependencies
 graphene-std = { workspace = true }
-interpreted-executor = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
-preprocessor = { workspace = true }
 
 # Workspace dependencies
 indoc = { workspace = true }

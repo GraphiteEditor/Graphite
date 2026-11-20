@@ -188,8 +188,21 @@ impl Footprint {
 		quality: RenderQuality::Full,
 	};
 
+	pub fn from_bounds(bounds: [DVec2; 2], quality: RenderQuality) -> Self {
+		Footprint {
+			transform: DAffine2::from_translation(bounds[0].min(bounds[1])),
+			resolution: (bounds[1] - bounds[0]).abs().ceil().as_uvec2().max(UVec2::ONE),
+			quality,
+		}
+	}
+
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
-		let inverse = self.transform.inverse();
+		// A singular or non-finite transform, like `BOUNDLESS`, can't map the viewport back into local space
+		let Some(inverse_matrix2) = self.transform.matrix2.try_inverse() else {
+			return AxisAlignedBbox::ZERO;
+		};
+		let inverse = DAffine2::from_mat2_translation(inverse_matrix2, -(inverse_matrix2 * self.transform.translation));
+
 		let res = self.resolution.as_dvec2();
 		let c0 = inverse.transform_point2(DVec2::ZERO);
 		let c1 = inverse.transform_point2(DVec2::new(res.x, 0.));
@@ -251,5 +264,23 @@ impl ApplyTransform for DVec2 {
 	}
 	fn left_apply_transform(&mut self, modification: &DAffine2) {
 		*self = modification.transform_point2(*self);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn non_invertible_footprints_have_empty_viewport_bounds() {
+		let singular = Footprint {
+			transform: DAffine2::from_scale(DVec2::new(1., 0.)),
+			..Footprint::DEFAULT
+		};
+
+		for footprint in [Footprint::BOUNDLESS, singular] {
+			let bounds = footprint.viewport_bounds_in_local_space();
+			assert_eq!((bounds.start, bounds.end), (DVec2::ZERO, DVec2::ZERO));
+		}
 	}
 }

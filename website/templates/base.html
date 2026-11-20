@@ -108,29 +108,29 @@
 	<nav>
 		<div class="row">
 			<div class="left">
-				<a href="/">
+				<a href="/" data-nav-button>
 					<img src="https://static.graphite.art/logos/graphite-logo-solid.svg" alt="Graphite Logo" />
 				</a>
 			</div>
 			<div class="right">
-				<a href="/learn">Learn</a>
-				<a href="/features">Features</a>
-				<a href="/about">About</a>
-				<a href="/blog">Blog</a>
-				<a href="/volunteer">Volunteer</a>
-				<a href="/donate" class="heart">Donate</a>
-				<a href="https://editor.graphite.art" class="button arrow">Launch</a>
+				<a href="/learn" data-nav-button>Learn</a>
+				<a href="/features" data-nav-button>Features</a>
+				<a href="/about" data-nav-button>About</a>
+				<a href="/blog" data-nav-button>Blog</a>
+				<a href="/volunteer" data-nav-button>Volunteer</a>
+				<a href="/donate" class="heart" data-nav-button>Donate</a>
+				<a href="https://editor.graphite.art" class="button arrow" data-nav-button>Launch</a>
 			</div>
 		</div>
 	</nav>
-	<svg class="ripple" xmlns="http://www.w3.org/2000/svg">
-		<path class="ripple-mask" d="M 0,15 l 10000,0" />
-		<path class="ripple-line" d="M 0,15 l 10000,0" />
-		<polygon class="ripple-taper-left" />
-		<polygon class="ripple-taper-right" />
+	<svg class="ripple" xmlns="http://www.w3.org/2000/svg" data-ripple>
+		<path class="ripple-mask" d="M 0,15 l 10000,0" data-ripple-mask />
+		<path class="ripple-line" d="M 0,15 l 10000,0" data-ripple-line />
+		<polygon class="ripple-taper-left" data-ripple-taper-left />
+		<polygon class="ripple-taper-right" data-ripple-taper-right />
 	</svg>
 </header>
-<main>
+<main data-main>
 {# This is a comment. It exists to prevent the {%- -%} on the lines below from removing the line break between `<main>` and the `content` block #}
 {%- filter replace(from = "<!-- replacements::blog_posts(count = 2) -->", to = replacements::blog_posts(count = 2)) -%}
 {%- filter replace(from = "<!-- replacements::text_balancer() -->", to = replacements::text_balancer()) -%}

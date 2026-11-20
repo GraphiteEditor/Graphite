@@ -7,6 +7,8 @@
 use crate::editor_wrapper::EditorWrapper;
 use graphite_proc_macros::editor_commands;
 use serde::{Deserialize, Serialize};
+#[cfg(target_family = "wasm")]
+use tsify::Ts;
 use tsify::Tsify;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;
@@ -14,12 +16,12 @@ use wasm_bindgen::prelude::*;
 #[editor_commands]
 mod editor_commands {
 	use crate::helpers::translate_key;
-	use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 	use editor::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 	use editor::messages::input_mapper::utility_types::pointer::{EditorPointerState, ScrollDelta};
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
+	use editor::messages::portfolio::ingest::utility_types::DataTransferItem;
 	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
 	use editor::messages::tool::tool_messages::tool_prelude::{DroppedFile, WidgetId};
@@ -53,30 +55,6 @@ mod editor_commands {
 
 	fn auto_save_all_documents() -> Message {
 		PortfolioMessage::AutoSaveAllDocuments.into()
-	}
-
-	fn add_primary_import() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddPrimaryImport.into()]),
-		}
-	}
-
-	fn add_secondary_import() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddSecondaryImport.into()]),
-		}
-	}
-
-	fn add_primary_export() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddPrimaryExport.into()]),
-		}
-	}
-
-	fn add_secondary_export() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddSecondaryExport.into()]),
-		}
 	}
 
 	fn app_window_direct_input(enabled: bool) -> Message {
@@ -118,7 +96,7 @@ mod editor_commands {
 	}
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
-	fn widget_value_update(layout_target: LayoutTarget, widget_id: u64, value: Any, resend_widget: bool) -> Message {
+	fn widget_value_update(layout_target: Ts<LayoutTarget>, widget_id: u64, value: Ts<Any>, resend_widget: bool) -> Message {
 		let widget_id = WidgetId(widget_id);
 		let update = LayoutMessage::WidgetValueUpdate {
 			layout_target,
@@ -135,7 +113,7 @@ mod editor_commands {
 	}
 
 	/// Commit the value of a given UI widget to the history
-	fn widget_value_commit(layout_target: LayoutTarget, widget_id: u64, value: Any) -> Message {
+	fn widget_value_commit(layout_target: Ts<LayoutTarget>, widget_id: u64, value: Ts<Any>) -> Message {
 		LayoutMessage::WidgetValueCommit {
 			layout_target,
 			widget_id: WidgetId(widget_id),
@@ -145,7 +123,7 @@ mod editor_commands {
 	}
 
 	/// Update the value of a given UI widget, and commit it to the history
-	fn widget_value_commit_and_update(layout_target: LayoutTarget, widget_id: u64, value: Any, resend_widget: bool) -> Message {
+	fn widget_value_commit_and_update(layout_target: Ts<LayoutTarget>, widget_id: u64, value: Ts<Any>, resend_widget: bool) -> Message {
 		let widget_id = WidgetId(widget_id);
 		let mut messages: Vec<Message> = vec![
 			LayoutMessage::WidgetValueCommit {
@@ -171,13 +149,13 @@ mod editor_commands {
 	}
 
 	/// Fire a widget's drag-drop action (e.g. when a draggable item is dropped on a button)
-	fn widget_value_drag_drop(layout_target: LayoutTarget, widget_id: u64) -> Message {
+	fn widget_value_drag_drop(layout_target: Ts<LayoutTarget>, widget_id: u64) -> Message {
 		let widget_id = WidgetId(widget_id);
 		LayoutMessage::WidgetValueDragDrop { layout_target, widget_id }.into()
 	}
 
 	/// Hand a file dropped on a UI widget to the widget's file drop callback
-	fn widget_value_file_drop(layout_target: LayoutTarget, widget_id: u64, name: String, mime_type: String, data: Vec<u8>) -> Message {
+	fn widget_value_file_drop(layout_target: Ts<LayoutTarget>, widget_id: u64, name: String, mime_type: String, data: Vec<u8>) -> Message {
 		let widget_id = WidgetId(widget_id);
 		let file = DroppedFile { name, mime_type, data };
 		LayoutMessage::WidgetValueFileDrop { layout_target, widget_id, file }.into()
@@ -185,7 +163,7 @@ mod editor_commands {
 
 	/// Tokenizes a math expression widget's text as it is typed, for the reply to color and typeset it, and offers names to finish
 	/// the one at the caret, where the caret is given. Unless they're `asked` for, names are offered only once part of one is typed.
-	fn analyze_math_expression(layout_target: LayoutTarget, widget_id: u64, source: String, caret: Option<u32>, asked: bool) -> Message {
+	fn analyze_math_expression(layout_target: Ts<LayoutTarget>, widget_id: u64, source: String, caret: Option<u32>, asked: bool) -> Message {
 		LayoutMessage::AnalyzeMathExpression {
 			layout_target,
 			widget_id: WidgetId(widget_id),
@@ -211,11 +189,7 @@ mod editor_commands {
 	}
 
 	fn load_preferences(preferences: Option<String>) -> Message {
-		let Some(preferences) = preferences else { return Message::NoOp };
-		let Ok(preferences) = serde_json::from_str(&preferences) else {
-			log::error!("Failed to deserialize preferences");
-			return Message::NoOp;
-		};
+		let preferences = PreferencesMessageHandler::from_stored(preferences.as_deref());
 		PreferencesMessage::Load { preferences }.into()
 	}
 
@@ -230,6 +204,11 @@ mod editor_commands {
 
 	fn new_document_dialog() -> Message {
 		DialogMessage::RequestNewDocumentDialog.into()
+	}
+
+	/// Join the live session under `token`
+	fn join_session(token: String) -> Message {
+		SyncMessage::Join { token }.into()
 	}
 
 	fn trigger_auto_save(document_id: u64) -> Message {
@@ -279,7 +258,49 @@ mod editor_commands {
 		.into()
 	}
 
-	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
+	/// Bring a panel to the front, reopening it if closed
+	fn focus_panel(panel_type: Ts<PanelType>) -> Message {
+		WorkspaceMessage::FocusPanel { panel_type }.into()
+	}
+
+	/// Show or hide an interaction's deltas
+	fn expand_history_interaction(id: String, expanded: bool) -> Message {
+		HistoryMessage::Expand { id, expanded }.into()
+	}
+
+	fn load_more_history() -> Message {
+		HistoryMessage::LoadMore.into()
+	}
+
+	fn go_back_to_history_interaction(id: String) -> Message {
+		HistoryMessage::GoBack { id }.into()
+	}
+
+	/// Remove one interaction and keep the later ones
+	fn remove_history_interaction(id: String) -> Message {
+		HistoryMessage::RemoveStep { id }.into()
+	}
+
+	/// Redo an undone interaction, or reapply an abandoned one
+	fn bring_back_history_interaction(id: String) -> Message {
+		HistoryMessage::BringBack { id }.into()
+	}
+
+	/// Show a branch's line, or the head's line when `id` is `None`
+	fn follow_history_branch(id: Option<String>) -> Message {
+		HistoryMessage::Follow { id }.into()
+	}
+
+	/// Name an interaction. An empty label removes the name
+	fn rename_history_interaction(id: String, label: String) -> Message {
+		HistoryMessage::Rename { id, label }.into()
+	}
+
+	fn tag_history_interaction(id: String, tag: String, on: bool) -> Message {
+		HistoryMessage::Tag { id, tag, on }.into()
+	}
+
+	fn split_panel_group(target_group: u64, direction: Ts<DockingSplitDirection>, tabs: Vec<Ts<PanelType>>, active_tab_index: usize) -> Message {
 		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),
 			direction,
@@ -459,7 +480,7 @@ mod editor_commands {
 	}
 
 	/// Update primary color from sRGB bytes (the wire format at the JS boundary).
-	fn update_primary_color(color: SRGBA8) -> Message {
+	fn update_primary_color(color: Ts<SRGBA8>) -> Message {
 		ToolMessage::SelectWorkingColor {
 			color: Color::from(color),
 			primary: true,
@@ -468,7 +489,7 @@ mod editor_commands {
 	}
 
 	/// Update secondary color from sRGB bytes (the wire format at the JS boundary).
-	fn update_secondary_color(color: SRGBA8) -> Message {
+	fn update_secondary_color(color: Ts<SRGBA8>) -> Message {
 		ToolMessage::SelectWorkingColor {
 			color: Color::from(color),
 			primary: false,
@@ -477,7 +498,7 @@ mod editor_commands {
 	}
 
 	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker />` opens).
-	fn open_color_picker(initial_value: FillChoiceSRGBA8, allow_none: bool, disabled: bool) -> Message {
+	fn open_color_picker(initial_value: Ts<FillChoiceSRGBA8>, allow_none: bool, disabled: bool) -> Message {
 		ColorPickerMessage::Open {
 			initial_value: FillChoice::from(&initial_value.0),
 			allow_none,
@@ -492,7 +513,7 @@ mod editor_commands {
 	}
 
 	/// Update the color of the currently-edited gradient stop, from sRGB bytes (the wire format at the JS boundary).
-	fn update_gradient_stop_color(color: SRGBA8) -> Message {
+	fn update_gradient_stop_color(color: Ts<SRGBA8>) -> Message {
 		GradientToolMessage::UpdateStopColor { color: Color::from(color) }.into()
 	}
 
@@ -521,6 +542,49 @@ mod editor_commands {
 		DocumentMessage::SelectLayer { id: NodeId(id), ctrl, shift }.into()
 	}
 
+	/// Outline in the viewport the layer under the pointer in the Layers panel, or nothing once the pointer leaves it.
+	fn set_layers_panel_hovered_layer(id: Option<u64>) -> Message {
+		DocumentMessage::SetLayersPanelHoveredLayer { id: id.map(NodeId) }.into()
+	}
+
+	/// Tell the backend which layers have a row in view in the Layers panel, and which of those the panel lacks the details of.
+	fn set_layers_panel_view(layers: Vec<u64>, layers_missing_details: Vec<u64>) -> Message {
+		DocumentMessage::SetLayersPanelView {
+			layers: layers.into_iter().map(NodeId).collect(),
+			layers_missing_details: layers_missing_details.into_iter().map(NodeId).collect(),
+		}
+		.into()
+	}
+
+	/// Tell the backend which rows of the Data panel's table to send, from `start` up to but not including `end`, being those in or near view.
+	fn set_data_panel_rows_in_view(start: u32, end: u32) -> Message {
+		DataPanelMessage::SetRowsInView { rows: start as usize..end as usize }.into()
+	}
+
+	/// Select exactly the given nodes.
+	fn select_nodes(ids: Vec<u64>) -> Message {
+		NodeGraphMessage::SelectedNodesSet {
+			nodes: ids.into_iter().map(NodeId).collect(),
+		}
+		.into()
+	}
+
+	/// Select a node in the document network and open the node graph centered on it.
+	fn show_node_in_graph(node_id: u64) -> Message {
+		DocumentMessage::ShowNodeInGraph { node_id: NodeId(node_id) }.into()
+	}
+
+	/// Modify the selection based on the node clicked in the chain feeding a layer, with the same <kbd>Ctrl</kbd> and <kbd>Shift</kbd> behavior as selecting layers.
+	fn select_chain_node(layer: u64, node_id: u64, ctrl: bool, shift: bool) -> Message {
+		DocumentMessage::SelectChainNode {
+			layer: NodeId(layer),
+			node_id: NodeId(node_id),
+			ctrl,
+			shift,
+		}
+		.into()
+	}
+
 	/// Deselect all layers
 	fn deselect_all_layers() -> Message {
 		DocumentMessage::DeselectAllLayers.into()
@@ -540,11 +604,33 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Reorder a draggable Properties panel section to the given index among its peers.
-	fn reorder_properties_section(node_id: u64, insert_index: usize) -> Message {
-		DocumentMessage::ReorderPropertiesSection {
+	/// Move nodes together into a layer's chain (their own or another) at the given gap among its reorderable nodes, where gap 0 is beside the layer.
+	fn move_chain_nodes(node_ids: Vec<u64>, layer: u64, insert_index: usize) -> Message {
+		DocumentMessage::MoveChainNodes {
+			node_ids: node_ids.into_iter().map(NodeId).collect(),
+			layer: NodeId(layer),
+			insert_index,
+		}
+		.into()
+	}
+
+	/// Insert and select copies of nodes together in a layer's chain (their own or another) at the given gap among its reorderable nodes, where gap 0 is beside the layer.
+	fn duplicate_chain_nodes(node_ids: Vec<u64>, layer: u64, insert_index: usize) -> Message {
+		DocumentMessage::DuplicateChainNodes {
+			node_ids: node_ids.into_iter().map(NodeId).collect(),
+			layer: NodeId(layer),
+			insert_index,
+			select_copies: true,
+		}
+		.into()
+	}
+
+	/// Reorder a draggable Inspector section to the given index among its peers, or for a layer's chain node, insert a copy there instead.
+	fn reorder_inspector_section(node_id: u64, insert_index: usize, duplicate: bool) -> Message {
+		DocumentMessage::ReorderInspectorSection {
 			node_id: NodeId(node_id),
 			insert_index,
+			duplicate,
 		}
 		.into()
 	}
@@ -560,7 +646,7 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Set the name for the layer
+	/// Set the name for the layer in the document network, as listed in the Layers panel
 	fn set_layer_name(id: u64, name: String) -> Message {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
 		NodeGraphMessage::SetDisplayName {
@@ -570,6 +656,11 @@ mod editor_commands {
 			skip_adding_history_step: false,
 		}
 		.into()
+	}
+
+	/// Set the name for a layer in the network shown by the node graph, which may be a subgraph
+	fn set_layer_name_in_graph(id: u64, name: String) -> Message {
+		DocumentMessage::SetLayerNameInGraph { node_id: NodeId(id), name }.into()
 	}
 
 	/// Translates document (in viewport coords)
@@ -589,6 +680,11 @@ mod editor_commands {
 	/// Translates document (in viewport coords)
 	fn pan_canvas_by_fraction(delta_x: f64, delta_y: f64) -> Message {
 		NavigationMessage::CanvasPanByViewportFraction { delta: (delta_x, delta_y).into() }.into()
+	}
+
+	/// Gives the network open in the graph its own editable copy of the built-in node contents it lies in
+	fn make_network_editable() -> Message {
+		DocumentMessage::MakeNetworkEditable.into()
 	}
 
 	/// Merge the selected nodes into a subnetwork
@@ -619,49 +715,18 @@ mod editor_commands {
 	}
 
 	/// The pixels of an export that `TriggerExportImage` had the frontend rasterize, which the editor encodes and saves as the chosen file type
-	fn save_rasterized_export(name: String, file_type: FileType, width: u32, height: u32, data: Vec<u8>) -> Message {
+	fn save_rasterized_export(name: String, file_type: Ts<FileType>, width: u32, height: u32, data: Vec<u8>) -> Message {
 		PortfolioMessage::SaveRasterizedExport { name, file_type, width, height, data }.into()
 	}
 
 	/// A file headed for a known action, picked in the dialog that `TriggerBrowse` opened
-	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: IngestAction) -> Message {
-		IngestMessage::Ingest {
-			data,
-			action,
-			mime_type,
-			path: Some(PathBuf::from(name)),
-		}
-		.into()
+	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: Ts<IngestAction>) -> Message {
+		let mime = Some(mime_type.as_str()).filter(|mime| !mime.is_empty());
+		let content = DataTransferItem::from_file(PathBuf::from(name), mime, data).into();
+		IngestMessage::Ingest { content, action }.into()
 	}
 
-	/// A file dropped on a panel or pasted, placed by the drop position or the layer slot it landed in
-	fn ingest_file(name: Option<String>, mime_type: String, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<u32>) -> Message {
-		let action = match (insert_parent_id.zip(insert_index), mouse_x.zip(mouse_y)) {
-			(Some((parent, insert_index)), _) => IngestAction::DropOnLayers {
-				parent: LayerNodeIdentifier::new_unchecked(NodeId(parent)),
-				insert_index,
-			},
-			(None, Some(mouse)) => IngestAction::DropOnCanvas { mouse },
-			(None, None) => IngestAction::Paste,
-		};
-		IngestMessage::Ingest {
-			data,
-			action,
-			mime_type,
-			path: name.map(PathBuf::from),
-		}
-		.into()
-	}
-
-	/// Paste from a serialized JSON representation
-	fn paste_text(data: String) -> Message {
-		ClipboardMessage::ReadClipboard {
-			content: ClipboardContentRaw::Text(data),
-		}
-		.into()
-	}
-
-	/// Toggle visibility of a layer or node given its node ID
+	/// Toggle visibility of a layer or node in the document network, as listed in the Layers panel
 	fn toggle_node_visibility_layer_panel(id: u64) -> Message {
 		NodeGraphMessage::ToggleVisibility {
 			node_id: NodeId(id),
@@ -670,14 +735,24 @@ mod editor_commands {
 		.into()
 	}
 
+	/// Toggle visibility of a node shown in the Inspector, which may be in a subgraph
+	fn toggle_node_visibility_inspector(id: u64) -> Message {
+		DocumentMessage::ToggleNodeVisibility { node_id: NodeId(id) }.into()
+	}
+
 	/// Pin or unpin a node given its node ID
 	fn set_node_pinned(id: u64, pinned: bool) -> Message {
 		DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned }.into()
 	}
 
-	/// Collapse or expand a node's section in the Properties panel
-	fn toggle_node_properties_section_expanded(id: u64) -> Message {
-		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id) }.into()
+	/// Collapse or expand a node's section in the Inspector, or recursively every section in its layer's chain
+	fn toggle_node_inspector_section_expanded(id: u64, recursive: bool) -> Message {
+		DocumentMessage::ToggleNodeInspectorSectionExpanded { node_id: NodeId(id), recursive }.into()
+	}
+
+	/// Expand or collapse a layer's chain into a row per node in the Layers panel
+	fn toggle_layer_chain_expanded(id: u64) -> Message {
+		DocumentMessage::ToggleLayerChainExpanded { layer_id: NodeId(id) }.into()
 	}
 
 	/// Delete a layer or node given its node ID
@@ -705,12 +780,17 @@ mod editor_commands {
 		DocumentMessage::SetActivePanel { active_panel: panel.into() }.into()
 	}
 
+	/// Give a node its own copy of the network it shares with other nodes
+	fn make_node_unique(id: u64) -> Message {
+		DocumentMessage::MakeNodeUnique { node_id: NodeId(id) }.into()
+	}
+
 	/// Toggle display type for a layer
 	fn set_to_node_or_layer(id: u64, is_layer: bool) -> Message {
 		DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer }.into()
 	}
 
-	/// Set the name of an import or export
+	/// Set the name of an import.
 	fn set_import_name(index: usize, name: String) -> Message {
 		NodeGraphMessage::SetImportExportName {
 			name,
@@ -719,7 +799,7 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Set the name of an export
+	/// Set the name of an export.
 	fn set_export_name(index: usize, name: String) -> Message {
 		NodeGraphMessage::SetImportExportName {
 			name,
@@ -727,11 +807,106 @@ mod editor_commands {
 		}
 		.into()
 	}
+
+	/// Set the description of an import.
+	fn set_import_description(index: usize, description: String) -> Message {
+		NodeGraphMessage::SetImportExportDescription {
+			description,
+			index: ImportOrExport::Import(index),
+		}
+		.into()
+	}
+
+	/// Set the description of an export.
+	fn set_export_description(index: usize, description: String) -> Message {
+		NodeGraphMessage::SetImportExportDescription {
+			description,
+			index: ImportOrExport::Export(index),
+		}
+		.into()
+	}
+
+	/// Remove an import, or hide it if it's the primary import.
+	fn remove_import(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::RemoveImportExport { index: ImportOrExport::Import(index) }.into(),
+			]),
+		}
+	}
+
+	/// Remove an export, or hide it if it's the primary export.
+	fn remove_export(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::RemoveImportExport { index: ImportOrExport::Export(index) }.into(),
+			]),
+		}
+	}
+
+	/// Move an import to the front so it becomes the primary import.
+	fn make_import_primary(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderImport { start_index: index, end_index: 0 }.into()]),
+		}
+	}
+
+	/// Move an export to the front so it becomes the primary export.
+	fn make_export_primary(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderExport { start_index: index, end_index: 0 }.into()]),
+		}
+	}
+
+	/// Move the primary import to the first secondary import, leaving the primary empty.
+	fn make_import_secondary() -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderImport { start_index: 0, end_index: 1 }.into()]),
+		}
+	}
+
+	/// Move the primary export to the first secondary export, leaving the primary empty.
+	fn make_export_secondary() -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderExport { start_index: 0, end_index: 1 }.into()]),
+		}
+	}
+
+	/// Show an import on its subgraph node as an input connector, or else as a parameter in the Inspector.
+	fn set_import_exposed(index: usize, exposed: bool) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::ExposeEncapsulatingInput { input_index: index, exposed }.into(),
+			]),
+		}
+	}
+
+	/// Disconnect every wire an import feeds.
+	fn disconnect_import(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::DisconnectImportExport { index: ImportOrExport::Import(index) }.into(),
+			]),
+		}
+	}
+
+	/// Disconnect the wire feeding an export.
+	fn disconnect_export(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::DisconnectImportExport { index: ImportOrExport::Export(index) }.into(),
+			]),
+		}
+	}
 }
 
 #[cfg(feature = "editor")]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
-#[tsify(from_wasm_abi)]
 pub struct FillChoiceSRGBA8(
 	/// Concrete wasm boundary form of the generic [`FillChoice`], since a `#[wasm_bindgen]` argument's TS declaration names its type without the generic's argument.
 	#[tsify(type = "FillChoice<SRGBA8>")]
@@ -741,7 +916,6 @@ pub struct FillChoiceSRGBA8(
 pub type FillChoiceSRGBA8 = Any;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
-#[tsify(from_wasm_abi)]
 pub struct Any(#[tsify(type = "any")] serde_json::Value);
 impl Any {
 	#[cfg(feature = "editor")]
@@ -766,6 +940,6 @@ editor_proxy_types! {
 	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
-	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;
+	PanelType = editor::messages::portfolio::utility_types::PanelType;
 	SRGBA8 = graphene_std::color::SRGBA8;
 }

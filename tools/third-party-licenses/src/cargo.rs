@@ -85,8 +85,12 @@ fn parse(parsed: Output) -> Vec<LicenseEntry> {
 }
 
 fn run() -> Result<Output, Error> {
+	// Written to a file because cargo-about refuses to write to stdout when any ancestor process is PowerShell
+	let output_file = std::env::temp_dir().join(format!("graphite-cargo-about-{}.json", std::process::id()));
+
 	let output = Command::new("cargo")
-		.args(["about", "generate", "--format", "json", "--locked"])
+		.args(["about", "generate", "--format", "json", "--locked", "--output-file"])
+		.arg(&output_file)
 		.current_dir(env!("CARGO_WORKSPACE_DIR"))
 		.output()
 		.map_err(|e| Error::Io(e, "Failed to run cargo about generate".into()))?;
@@ -95,7 +99,10 @@ fn run() -> Result<Output, Error> {
 		return Err(Error::Command(format!("cargo about generate failed:\n{}", String::from_utf8_lossy(&output.stderr))));
 	}
 
-	let stdout = String::from_utf8(output.stdout).map_err(|e| Error::Utf8(e, "cargo about generate returned invalid UTF-8".into()))?;
+	let json = fs::read(&output_file);
+	let _ = fs::remove_file(&output_file);
+	let json = json.map_err(|e| Error::Io(e, "Failed to read the cargo about generate output".into()))?;
+	let json = String::from_utf8(json).map_err(|e| Error::Utf8(e, "cargo about generate returned invalid UTF-8".into()))?;
 
-	serde_json::from_str(&stdout).map_err(|e| Error::Json(e, "Failed to parse cargo about generate JSON".into()))
+	serde_json::from_str(&json).map_err(|e| Error::Json(e, "Failed to parse cargo about generate JSON".into()))
 }

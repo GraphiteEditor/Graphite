@@ -1,4 +1,6 @@
 use wgpu::{Backends, Device, Features};
+#[cfg(target_family = "wasm")]
+use wgpu_sync::Surface;
 use wgpu_sync::{Adapter, Instance, Queue};
 
 #[derive(Debug, Clone)]
@@ -9,6 +11,7 @@ pub struct Context {
 	pub adapter: Adapter,
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl Context {
 	pub async fn new() -> Option<Self> {
 		ContextBuilder::new().build().await
@@ -19,6 +22,7 @@ impl Context {
 pub struct ContextBuilder {
 	backends: Backends,
 	features: Features,
+	optional_features: Features,
 	selection: Option<usize>,
 }
 impl ContextBuilder {
@@ -26,6 +30,7 @@ impl ContextBuilder {
 		Self {
 			backends: Backends::all(),
 			features: Features::empty(),
+			optional_features: Features::empty(),
 			selection: None,
 		}
 	}
@@ -35,6 +40,10 @@ impl ContextBuilder {
 	}
 	pub fn with_features(mut self, features: Features) -> Self {
 		self.features = features;
+		self
+	}
+	pub fn with_optional_features(mut self, features: Features) -> Self {
+		self.optional_features = features;
 		self
 	}
 	pub fn with_selection(mut self, index: usize) -> Self {
@@ -49,7 +58,7 @@ impl ContextBuilder {
 		let mut adapters = enumerate_sorted(&instance, self.backends).await;
 
 		if let Some(index) = self.selection
-			&& index >= adapters.len()
+			&& index < adapters.len()
 		{
 			let selected_adapter = adapters.remove(index);
 			adapters.insert(0, selected_adapter);
@@ -69,11 +78,19 @@ impl ContextBuilder {
 }
 #[cfg(target_family = "wasm")]
 impl ContextBuilder {
-	pub async fn build(self) -> Option<Context> {
+	pub async fn build_with_surface(self, target: impl Into<wgpu::SurfaceTarget<'static>>) -> Option<(Context, Surface)> {
 		let instance = self.build_instance();
-		let adapter = self.request_adapter(&instance).await?;
+		let surface = instance.create_surface(target).ok()?;
+		let request_adapter_options = wgpu::RequestAdapterOptions {
+			power_preference: wgpu::PowerPreference::HighPerformance,
+			compatible_surface: Some(surface.raw()),
+			force_fallback_adapter: false,
+			apply_limit_buckets: false,
+		};
+		let adapter = instance.request_adapter(&request_adapter_options).await.ok()?;
 		let (device, queue) = self.request_device(&adapter).await?;
-		Some(Context { device, queue, adapter, instance })
+
+		Some((Context { device, queue, adapter, instance }, surface))
 	}
 }
 impl ContextBuilder {
@@ -83,19 +100,10 @@ impl ContextBuilder {
 			..wgpu::InstanceDescriptor::new_without_display_handle()
 		}))
 	}
-	#[cfg(target_family = "wasm")]
-	async fn request_adapter(&self, instance: &Instance) -> Option<Adapter> {
-		let request_adapter_options = wgpu::RequestAdapterOptions {
-			power_preference: wgpu::PowerPreference::HighPerformance,
-			compatible_surface: None,
-			force_fallback_adapter: false,
-		};
-		instance.request_adapter(&request_adapter_options).await.ok()
-	}
 	async fn request_device(&self, adapter: &Adapter) -> Option<(Device, Queue)> {
 		let device_descriptor = wgpu::DeviceDescriptor {
 			label: None,
-			required_features: self.features,
+			required_features: self.features | (self.optional_features & adapter.features()),
 			required_limits: adapter.limits(),
 			memory_hints: Default::default(),
 			trace: wgpu::Trace::Off,

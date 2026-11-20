@@ -3,7 +3,6 @@ import type { DocumentStore } from "/src/stores/document";
 import { fullscreenModeChanged } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { triggerClipboardRead } from "/src/utility-functions/clipboard";
 import {
 	onBeforeUnload,
 	onKeyUp,
@@ -15,7 +14,6 @@ import {
 	onPotentialDoubleClick,
 	onWheelScroll,
 	onModifyInputField,
-	onFocusOut,
 	onContextMenu,
 	onDragOver,
 	onDrop,
@@ -39,14 +37,13 @@ const listeners: Listener[] = [
 	{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => editorWrapper && portfolioStore && onBeforeUnload(e, editorWrapper, portfolioStore) },
 	{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => editorWrapper && dialogStore && onKeyUp(e, editorWrapper, dialogStore) },
 	{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => editorWrapper && dialogStore && onKeyDown(e, editorWrapper, dialogStore) },
-	{ target: window, eventName: "pointermove", action: (e: PointerEvent) => editorWrapper && documentStore && onPointerMove(e, editorWrapper, documentStore) },
+	{ target: window, eventName: "pointermove", action: (e: PointerEvent) => editorWrapper && onPointerMove(e, editorWrapper) },
 	{ target: window, eventName: "pointerdown", action: (e: PointerEvent) => editorWrapper && dialogStore && onPointerDown(e, editorWrapper, dialogStore) },
 	{ target: window, eventName: "pointerup", action: (e: PointerEvent) => editorWrapper && onPointerUp(e, editorWrapper) },
 	{ target: window, eventName: "mousedown", action: (e: MouseEvent) => onMouseDown(e) },
 	{ target: window, eventName: "mouseup", action: (e: MouseEvent) => editorWrapper && onPotentialDoubleClick(e, editorWrapper) },
 	{ target: window, eventName: "wheel", action: (e: WheelEvent) => editorWrapper && onWheelScroll(e, editorWrapper), options: { passive: false } },
 	{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => editorWrapper && onModifyInputField(e, editorWrapper) },
-	{ target: window, eventName: "focusout", action: () => onFocusOut() },
 	{ target: window, eventName: "dragover", action: (e: DragEvent) => onDragOver(e) },
 	{ target: window, eventName: "drop", action: (e: DragEvent) => onDrop(e) },
 	{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e) },
@@ -71,10 +68,6 @@ export function createInputManager(subscriptions: SubscriptionsRouter, editor: E
 	portfolioStore = portfolio;
 	documentStore = doc;
 
-	subscriptions.subscribeFrontendMessage("TriggerClipboardRead", () => {
-		triggerClipboardRead(editor);
-	});
-
 	subscriptions.subscribeFrontendMessage("WindowPointerLockMove", (data) => {
 		// Desktop app only: dispatch custom pointer lock movement events
 		const event = new CustomEvent("pointerlockmove", { detail: { x: data.position[0], y: data.position[1] } });
@@ -96,7 +89,6 @@ export function destroyInputManager() {
 	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
-	subscriptions.unsubscribeFrontendMessage("TriggerClipboardRead");
 	subscriptions.unsubscribeFrontendMessage("WindowPointerLockMove");
 
 	// Remove event bindings after the lifetime of the application (or on hot-module replacement during development)

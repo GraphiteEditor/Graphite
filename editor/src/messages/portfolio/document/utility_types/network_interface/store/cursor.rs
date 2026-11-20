@@ -4,6 +4,7 @@
 //! reach the document without also reaching the delta buffer.
 
 use super::*;
+use graph_craft::document::NetworkLocation;
 use graph_craft::runtime_delta::RuntimeDelta;
 
 /// A network's selection undo and redo stacks, borrowed together since every operation on one is
@@ -24,11 +25,6 @@ impl<'a> NodeLocator<'a> {
 	pub fn new(node_id: NodeId, network_path: &'a [NodeId]) -> Self {
 		Self { node_id, network_path }
 	}
-
-	/// The path of the network this node owns, if it implements one.
-	pub fn owned_network_path(&self) -> Vec<NodeId> {
-		[self.network_path, &[self.node_id]].concat()
-	}
 }
 
 /// The graph and metadata halves of one node, resolved together so the two parallel trees are never
@@ -39,15 +35,40 @@ impl<'a> NodeLocator<'a> {
 pub(crate) struct NodeMut<'a> {
 	pub(super) node: &'a mut DocumentNode,
 	pub(super) metadata: &'a mut DocumentNodePersistentMetadata,
+	definition_metadata: Option<&'a mut NodeNetworkPersistentMetadata>,
 	deltas: NodeDeltas<'a>,
 }
 
 impl<'a> NodeMut<'a> {
-	pub(super) fn new(node: &'a mut DocumentNode, metadata: &'a mut DocumentNodePersistentMetadata, deltas: &'a mut Vec<EditorDelta>, locator: NodeLocator<'a>) -> Self {
+	pub(super) fn new(
+		node: &'a mut DocumentNode,
+		metadata: &'a mut DocumentNodePersistentMetadata,
+		definition_metadata: Option<&'a mut NodeNetworkPersistentMetadata>,
+		deltas: &'a mut Vec<EditorDelta>,
+		network: NetworkLocation,
+		node_id: NodeId,
+	) -> Self {
 		Self {
 			node,
 			metadata,
-			deltas: NodeDeltas { deltas, locator },
+			definition_metadata,
+			deltas: NodeDeltas { deltas, network, node_id },
+		}
+	}
+}
+
+pub(crate) struct InterfaceMut<'a> {
+	pub(crate) input_metadata: &'a mut Vec<InputMetadata>,
+	pub(crate) output_names: &'a mut Vec<String>,
+	pub(crate) output_descriptions: &'a mut Vec<String>,
+}
+
+impl<'m> InterfaceMut<'m> {
+	fn of_network(metadata: &'m mut NodeNetworkPersistentMetadata) -> Self {
+		Self {
+			input_metadata: &mut metadata.import_metadata,
+			output_names: &mut metadata.export_names,
+			output_descriptions: &mut metadata.export_descriptions,
 		}
 	}
 }
@@ -56,62 +77,41 @@ impl<'a> NodeMut<'a> {
 /// what it wrote without its caller repeating it.
 struct NodeDeltas<'a> {
 	pub(super) deltas: &'a mut Vec<EditorDelta>,
-	locator: NodeLocator<'a>,
+	network: NetworkLocation,
+	node_id: NodeId,
 }
 
 impl NodeDeltas<'_> {
 	fn metadata(&mut self, change: NodeMetadataChange) {
 		self.deltas.push(EditorDelta::NodeMetadata {
-			network_path: self.locator.network_path.to_vec(),
-			node_id: self.locator.node_id,
+			network: self.network(),
+			node_id: self.node_id,
 			change,
 		});
 	}
 
-	/// Records a change to the network this node owns, addressed by the node's path extended with its ID.
-	fn owned_network(&mut self, change: NetworkMetadataChange) {
-		self.deltas.push(EditorDelta::NetworkMetadata {
-			network_path: self.locator.owned_network_path(),
-			change,
-		});
+	fn owned_network(&mut self, network: NetworkId, change: NetworkMetadataChange) {
+		self.deltas.push(EditorDelta::NetworkMetadata { network: Some(network), change });
 	}
 
 	fn graph(&mut self, delta: RuntimeDelta) {
 		self.deltas.push(EditorDelta::Graph(delta));
 	}
 
-	fn input_metadata(&mut self, input_metadata: Vec<InputMetadata>) {
-		self.deltas.push(EditorDelta::NodeInputMetadata {
-			network_path: self.locator.network_path.to_vec(),
-			node_id: self.locator.node_id,
-			input_metadata,
-		});
-	}
-
 	fn snapshot(&mut self, metadata: Box<DocumentNodePersistentMetadata>) {
 		self.deltas.push(EditorDelta::NodeMetadataSnapshot {
-			network_path: self.locator.network_path.to_vec(),
-			node_id: self.locator.node_id,
+			network: self.network(),
+			node_id: self.node_id,
 			metadata,
 		});
 	}
 
-	/// Records a snapshot for a node inside the network this one owns, for metadata that arrived with a
-	/// new nested network rather than describing this node.
-	fn snapshot_owned(&mut self, node_id: NodeId, metadata: Box<DocumentNodePersistentMetadata>) {
-		self.deltas.push(EditorDelta::NodeMetadataSnapshot {
-			network_path: self.locator.owned_network_path(),
-			node_id,
-			metadata,
-		});
-	}
-
-	fn network_path(&self) -> Vec<NodeId> {
-		self.locator.network_path.to_vec()
+	fn network(&self) -> NetworkLocation {
+		self.network
 	}
 
 	fn node_id(&self) -> NodeId {
-		self.locator.node_id
+		self.node_id
 	}
 }
 
@@ -169,7 +169,7 @@ impl NodeMut<'_> {
 		self.node.visible = visible;
 		if changed {
 			let delta = RuntimeDelta::SetVisibility {
-				network_path: self.deltas.network_path(),
+				network: self.deltas.network(),
 				node_id: self.deltas.node_id(),
 				visible,
 			};
@@ -184,24 +184,9 @@ impl NodeMut<'_> {
 		self.node.call_argument = call_argument;
 		if changed {
 			let delta = RuntimeDelta::SetCallArgument {
-				network_path: self.deltas.network_path(),
+				network: self.deltas.network(),
 				node_id: self.deltas.node_id(),
 				call_argument: self.node.call_argument.clone(),
-			};
-			self.deltas.graph(delta);
-		}
-		changed
-	}
-
-	/// The Extract and Inject annotations the node declares for the Context.
-	pub(crate) fn set_context_features(&mut self, context_features: ContextDependencies) -> bool {
-		let changed = self.node.context_features != context_features;
-		self.node.context_features = context_features;
-		if changed {
-			let delta = RuntimeDelta::SetContextFeatures {
-				network_path: self.deltas.network_path(),
-				node_id: self.deltas.node_id(),
-				context_features: self.node.context_features,
 			};
 			self.deltas.graph(delta);
 		}
@@ -248,126 +233,162 @@ impl NodeMut<'_> {
 		changed
 	}
 
-	/// The definition this node's nested network was instantiated from. Only network nodes carry one.
-	pub(crate) fn set_reference(&mut self, reference: Option<String>) -> bool {
-		let Some(network_metadata) = self.metadata.network_metadata.as_mut() else { return false };
-		let changed = network_metadata.persistent_metadata.reference != reference;
-		network_metadata.persistent_metadata.reference = reference;
-		if changed {
-			let change = NetworkMetadataChange::Reference(network_metadata.persistent_metadata.reference.clone());
-			self.deltas.owned_network(change);
-		}
-		changed
+	/// The table entry the node's interface is stored in, or `None` for a node whose definition owns its interface.
+	pub(crate) fn interface(&mut self) -> Option<InterfaceMut<'_>> {
+		self.definition_metadata.as_deref_mut().map(InterfaceMut::of_network)
 	}
 
 	pub(crate) fn set_input_name(&mut self, input_index: usize, input_name: String) -> bool {
-		let Some(input_metadata) = self.metadata.input_metadata.get_mut(input_index) else { return false };
+		let Some(input_metadata) = self.interface().and_then(|interface| interface.input_metadata.get_mut(input_index)) else {
+			return false;
+		};
 		let changed = input_metadata.persistent_metadata.input_name != input_name;
 		input_metadata.persistent_metadata.input_name = input_name;
 		if changed {
-			let change = NodeMetadataChange::InputName {
-				index: input_index,
-				name: input_metadata.persistent_metadata.input_name.clone(),
-			};
-			self.deltas.metadata(change);
+			self.emit_input_metadata();
 		}
 		changed
 	}
 
-	/// The identifier of the widget override the properties panel uses for this input, or `None` for the
+	pub(crate) fn set_input_description(&mut self, input_index: usize, input_description: String) -> bool {
+		let Some(input_metadata) = self.interface().and_then(|interface| interface.input_metadata.get_mut(input_index)) else {
+			return false;
+		};
+		let changed = input_metadata.persistent_metadata.input_description != input_description;
+		input_metadata.persistent_metadata.input_description = input_description;
+		if changed {
+			self.emit_input_metadata();
+		}
+		changed
+	}
+
+	/// The identifier of the widget override the Inspector uses for this input, or `None` for the
 	/// widget generated from its type.
 	pub(crate) fn set_widget_override(&mut self, input_index: usize, widget_override: Option<String>) -> bool {
-		let Some(input_metadata) = self.metadata.input_metadata.get_mut(input_index) else { return false };
+		let Some(input_metadata) = self.interface().and_then(|interface| interface.input_metadata.get_mut(input_index)) else {
+			return false;
+		};
 		let changed = input_metadata.persistent_metadata.widget_override != widget_override;
 		input_metadata.persistent_metadata.widget_override = widget_override;
 		if changed {
-			let change = NodeMetadataChange::WidgetOverride {
-				index: input_index,
-				widget_override: input_metadata.persistent_metadata.widget_override.clone(),
-			};
-			self.deltas.metadata(change);
+			self.emit_input_metadata();
 		}
 		changed
 	}
 
 	pub(crate) fn set_output_name(&mut self, output_index: usize, output_name: String) -> bool {
-		let Some(existing) = self.metadata.output_names.get_mut(output_index) else { return false };
+		let Some(interface) = self.interface() else { return false };
+		let output_names = interface.output_names;
+		let Some(existing) = output_names.get_mut(output_index) else { return false };
 		let changed = *existing != output_name;
 		*existing = output_name;
 		if changed {
-			let change = NodeMetadataChange::OutputNames(self.metadata.output_names.clone());
-			self.deltas.metadata(change);
+			let output_names = output_names.clone();
+			self.record_output_names(output_names);
 		}
 		changed
 	}
 
-	/// The encapsulating node's names for every one of the network's exports, replaced together since
-	/// they are stored as one array.
-	pub(crate) fn set_output_names(&mut self, output_names: Vec<String>) -> bool {
-		let changed = self.metadata.output_names != output_names;
-		self.metadata.output_names = output_names;
+	pub(crate) fn set_output_description(&mut self, output_index: usize, output_description: String) -> bool {
+		let Some(interface) = self.interface() else { return false };
+		if output_index >= interface.output_names.len() {
+			return false;
+		}
+
+		let output_descriptions = interface.output_descriptions;
+		if output_descriptions.get(output_index).map_or("", String::as_str) == output_description {
+			return false;
+		}
+
+		if output_index >= output_descriptions.len() {
+			output_descriptions.resize(output_index + 1, String::new());
+		}
+		output_descriptions[output_index] = output_description;
+
+		let output_descriptions = output_descriptions.clone();
+		self.record_output_descriptions(output_descriptions);
+		true
+	}
+
+	/// The encapsulating node's descriptions for the network's exports, replaced together since they are stored as one array.
+	pub(crate) fn set_output_descriptions(&mut self, output_descriptions: Vec<String>) -> bool {
+		let Some(interface) = self.interface() else { return false };
+		let existing = interface.output_descriptions;
+		let changed = *existing != output_descriptions;
+		*existing = output_descriptions;
 		if changed {
-			let change = NodeMetadataChange::OutputNames(self.metadata.output_names.clone());
-			self.deltas.metadata(change);
+			let output_descriptions = existing.clone();
+			self.record_output_descriptions(output_descriptions);
 		}
 		changed
 	}
 
-	/// The metadata array the node's inputs index, one entry per input.
+	/// The table entry holding the node's interface, if the node names one.
+	fn interface_network(&self) -> Option<NetworkId> {
+		match self.node.implementation {
+			DocumentNodeImplementation::Definition(id) if self.definition_metadata.is_some() => Some(id),
+			_ => None,
+		}
+	}
+
+	fn record_output_names(&mut self, output_names: Vec<String>) {
+		if let Some(network) = self.interface_network() {
+			self.deltas.owned_network(network, NetworkMetadataChange::ExportNames(output_names));
+		}
+	}
+
+	fn record_output_descriptions(&mut self, output_descriptions: Vec<String>) {
+		if let Some(network) = self.interface_network() {
+			self.deltas.owned_network(network, NetworkMetadataChange::ExportDescriptions(output_descriptions));
+		}
+	}
+
+	/// The metadata array the node's inputs index, which only a node naming a table entry stores.
 	pub(crate) fn input_metadata(&self) -> &[InputMetadata] {
-		&self.metadata.input_metadata
+		self.definition_metadata.as_ref().map_or(&[], |definition_metadata| &definition_metadata.import_metadata)
 	}
 
 	/// Grows `output_names` to one entry per export, which an older document may be missing.
 	pub(crate) fn resize_output_names(&mut self, number_of_exports: usize) {
-		if self.metadata.output_names.len() == number_of_exports {
+		let Some(interface) = self.interface() else { return };
+		let output_names = interface.output_names;
+		if output_names.len() == number_of_exports {
 			return;
 		}
-		self.metadata.output_names.resize(number_of_exports, String::new());
+		output_names.resize(number_of_exports, String::new());
 
-		let change = NodeMetadataChange::OutputNames(self.metadata.output_names.clone());
-		self.deltas.metadata(change);
+		let output_names = output_names.clone();
+		self.record_output_names(output_names);
 	}
 
 	/// Appends input metadata until there is one entry per input, filling from `defaults` where it has an
 	/// entry for the added index. Restores the parallel-array invariant for an older document.
+	/// Entries past the last input are kept, since they can hold user-authored names and overrides.
 	pub(crate) fn pad_input_metadata(&mut self, number_of_inputs: usize, defaults: impl Fn(usize) -> Option<InputMetadata>) {
-		if self.metadata.input_metadata.len() >= number_of_inputs {
+		let Some(interface) = self.interface() else { return };
+		let input_metadata = interface.input_metadata;
+		if input_metadata.len() >= number_of_inputs {
 			return;
 		}
-		for added_input_index in self.metadata.input_metadata.len()..number_of_inputs {
-			self.metadata.input_metadata.push(defaults(added_input_index).unwrap_or_default());
+		for added_input_index in input_metadata.len()..number_of_inputs {
+			input_metadata.push(defaults(added_input_index).unwrap_or_default());
 		}
 		self.emit_input_metadata();
 	}
 
-	/// Swaps in a new implementation together with the nested network metadata that belongs to it.
-	///
-	/// Replaces the node and everything nested under it, since the nested network goes with the
-	/// implementation.
-	pub(crate) fn replace_implementation(&mut self, implementation: DocumentNodeImplementation, network_metadata: Option<NodeNetworkMetadata>) {
+	/// Swaps in a new implementation, which never carries an inline network since the store moves one into the definitions table first.
+	/// The new implementation brings its own interface, from its definition or the table entry it names.
+	pub(crate) fn replace_implementation(&mut self, implementation: DocumentNodeImplementation) {
 		self.node.implementation = implementation;
-		self.metadata.network_metadata = network_metadata;
+		self.metadata.network_metadata = None;
+		self.definition_metadata = None;
 
 		let delta = RuntimeDelta::ReplaceNode {
-			network_path: self.deltas.network_path(),
+			network: self.deltas.network(),
 			node_id: self.deltas.node_id(),
 			node: Box::new(self.node.clone()),
 		};
 		self.deltas.graph(delta);
-
-		// Only what the new implementation brought with it. A swap leaves the node's own metadata alone,
-		// and restating it would assert values this peer did not write, clobbering a concurrent rename.
-		let owned: Vec<_> = self
-			.metadata
-			.network_metadata
-			.iter()
-			.flat_map(|network_metadata| &network_metadata.persistent_metadata.node_metadata)
-			.map(|(child_id, child)| (*child_id, Box::new(child.persistent_metadata.clone())))
-			.collect();
-		for (child_id, metadata) in owned {
-			self.deltas.snapshot_owned(child_id, metadata);
-		}
 	}
 
 	/// Replaces the node's whole persistent metadata, including that of everything nested under it,
@@ -379,15 +400,11 @@ impl NodeMut<'_> {
 		self.deltas.snapshot(snapshot);
 	}
 
-	/// Replaces the metadata array the node's inputs index, leaving the inputs themselves alone.
-	pub(crate) fn set_input_metadata(&mut self, input_metadata: Vec<InputMetadata>) {
-		self.metadata.input_metadata = input_metadata;
-		self.emit_input_metadata();
-	}
-
-	/// Swaps in new inputs together with their metadata, returning the inputs replaced.
+	/// Swaps in new inputs together with their metadata, returning the inputs replaced. The metadata is kept only where the node stores its interface.
 	pub(crate) fn replace_inputs(&mut self, inputs: Vec<NodeInput>, input_metadata: Vec<InputMetadata>) -> Vec<NodeInput> {
-		self.metadata.input_metadata = input_metadata;
+		if let Some(interface) = self.interface() {
+			*interface.input_metadata = input_metadata;
+		}
 		let previous = std::mem::replace(&mut self.node.inputs, inputs);
 
 		self.emit_inputs();
@@ -397,18 +414,40 @@ impl NodeMut<'_> {
 	/// Records the node's input list and the metadata array indexed by it, which change together
 	/// whenever the number or order of slots does.
 	pub(super) fn emit_inputs(&mut self) {
+		self.emit_graph_inputs();
+		self.emit_input_metadata();
+	}
+
+	/// Inserts an input at `index`, clamped to the end, leaving the metadata its inputs index alone.
+	pub(crate) fn insert_input(&mut self, index: usize, input: NodeInput) {
+		let index = index.min(self.node.inputs.len());
+		self.node.inputs.insert(index, input);
+		self.emit_graph_inputs();
+	}
+
+	/// Removes the input at `index`, leaving the metadata its inputs index alone.
+	pub(crate) fn remove_input(&mut self, index: usize) -> Option<NodeInput> {
+		if index >= self.node.inputs.len() {
+			return None;
+		}
+		let input = self.node.inputs.remove(index);
+		self.emit_graph_inputs();
+		Some(input)
+	}
+
+	fn emit_graph_inputs(&mut self) {
 		let delta = RuntimeDelta::SetInputs {
-			network_path: self.deltas.network_path(),
+			network: self.deltas.network(),
 			node_id: self.deltas.node_id(),
 			inputs: self.node.inputs.clone(),
 		};
 		self.deltas.graph(delta);
-		self.emit_input_metadata();
 	}
 
 	fn emit_input_metadata(&mut self) {
-		let input_metadata = self.metadata.input_metadata.clone();
-		self.deltas.input_metadata(input_metadata);
+		let Some(network) = self.interface_network() else { return };
+		let input_metadata = self.input_metadata().to_vec();
+		self.deltas.owned_network(network, NetworkMetadataChange::ImportMetadata(input_metadata));
 	}
 }
 
@@ -419,12 +458,12 @@ impl NodeMut<'_> {
 pub(crate) struct NetworkMut<'a> {
 	pub(super) metadata: &'a mut NodeNetworkPersistentMetadata,
 	pub(super) deltas: &'a mut Vec<EditorDelta>,
-	pub(super) network_path: &'a [NodeId],
+	pub(super) network: NetworkLocation,
 }
 
 impl<'a> NetworkMut<'a> {
-	pub(super) fn new(metadata: &'a mut NodeNetworkPersistentMetadata, deltas: &'a mut Vec<EditorDelta>, network_path: &'a [NodeId]) -> Self {
-		Self { metadata, deltas, network_path }
+	pub(super) fn new(metadata: &'a mut NodeNetworkPersistentMetadata, deltas: &'a mut Vec<EditorDelta>, network: NetworkLocation) -> Self {
+		Self { metadata, deltas, network }
 	}
 }
 
@@ -447,7 +486,54 @@ impl NetworkMut<'_> {
 		changed
 	}
 
-	/// The display order of pinned nodes in the Properties panel.
+	pub(crate) fn insert_import_metadata(&mut self, index: usize, input_metadata: InputMetadata) {
+		let index = index.min(self.metadata.import_metadata.len());
+		self.metadata.import_metadata.insert(index, input_metadata);
+		let change = NetworkMetadataChange::ImportMetadata(self.metadata.import_metadata.clone());
+		self.emit(change);
+	}
+
+	pub(crate) fn remove_import_metadata(&mut self, index: usize) -> Option<InputMetadata> {
+		if index >= self.metadata.import_metadata.len() {
+			return None;
+		}
+		let removed = self.metadata.import_metadata.remove(index);
+		let change = NetworkMetadataChange::ImportMetadata(self.metadata.import_metadata.clone());
+		self.emit(change);
+		Some(removed)
+	}
+
+	pub(crate) fn set_import_metadata(&mut self, import_metadata: Vec<InputMetadata>) -> bool {
+		let changed = self.metadata.import_metadata != import_metadata;
+		self.metadata.import_metadata = import_metadata;
+		if changed {
+			let change = NetworkMetadataChange::ImportMetadata(self.metadata.import_metadata.clone());
+			self.emit(change);
+		}
+		changed
+	}
+
+	pub(crate) fn set_export_names(&mut self, export_names: Vec<String>) -> bool {
+		let changed = self.metadata.export_names != export_names;
+		self.metadata.export_names = export_names;
+		if changed {
+			let change = NetworkMetadataChange::ExportNames(self.metadata.export_names.clone());
+			self.emit(change);
+		}
+		changed
+	}
+
+	pub(crate) fn set_export_descriptions(&mut self, export_descriptions: Vec<String>) -> bool {
+		let changed = self.metadata.export_descriptions != export_descriptions;
+		self.metadata.export_descriptions = export_descriptions;
+		if changed {
+			let change = NetworkMetadataChange::ExportDescriptions(self.metadata.export_descriptions.clone());
+			self.emit(change);
+		}
+		changed
+	}
+
+	/// The display order of pinned nodes in the Inspector.
 	pub(crate) fn set_pinned_order(&mut self, pinned_node_order: Vec<NodeId>) -> bool {
 		let changed = self.metadata.pinned_node_order != pinned_node_order;
 		self.metadata.pinned_node_order = pinned_node_order;
@@ -495,10 +581,7 @@ impl NetworkMut<'_> {
 	}
 
 	fn emit(&mut self, change: NetworkMetadataChange) {
-		self.deltas.push(EditorDelta::NetworkMetadata {
-			network_path: self.network_path.to_vec(),
-			change,
-		});
+		self.deltas.push(EditorDelta::NetworkMetadata { network: self.network, change });
 	}
 
 	/// The transform from node graph space to viewport space.

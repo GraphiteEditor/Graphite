@@ -28,7 +28,8 @@ pub enum GraphOperationMessage {
 		gradient: Gradient,
 		gradient_form: GradientForm,
 		gradient_settings: GradientSettings,
-		transform: DAffine2,
+		/// `None` lets the gradient cover the layer's bounding box, following it as the layer changes.
+		transform: Option<DAffine2>,
 	},
 	BlendingFillSet {
 		layer: LayerNodeIdentifier,

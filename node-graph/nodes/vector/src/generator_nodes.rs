@@ -1,17 +1,16 @@
+use crate::grid_topology::Lattice;
 use core_types::list::{Item, List};
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
-use vector_types::vector::VectorExt;
-use vector_types::vector::algorithms::shapes;
-use vector_types::vector::misc::BezierHandles;
-use vector_types::vector::misc::{ArcType, BoxCorners, GridType};
-use vector_types::vector::misc::{HandleId, SpiralType};
-use vector_types::vector::{PointId, SegmentId};
+use vector_types::vector::SetVectorPaths;
+use vector_types::vector::algorithms::shapes::{self, PolygonError, SpiralError};
+use vector_types::vector::misc::SpiralType;
+use vector_types::vector::misc::{ArcType, BoxCorners, GridTopology, GridType};
 
 /// Generates a circle shape with a chosen radius.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeCircle"))]
 fn circle(
 	_: impl Ctx,
 	_primary: (),
@@ -20,11 +19,11 @@ fn circle(
 	radius: Item<f64>,
 ) -> Item<Vector> {
 	let radius = radius.element().abs();
-	Item::new_from_element(Vector::from_bezpath(shapes::ellipse_bezpath(DVec2::splat(-radius), DVec2::splat(radius))))
+	Vector::item_from_bezpath(&shapes::ellipse_bezpath(DVec2::splat(-radius), DVec2::splat(radius)))
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeArc"))]
 fn arc(
 	_: impl Ctx,
 	_primary: (),
@@ -43,16 +42,16 @@ fn arc(
 	arc_type: Item<ArcType>,
 ) -> Item<Vector> {
 	let (radius, start_angle, sweep_angle, arc_type) = (*radius.element(), *start_angle.element(), *sweep_angle.element(), arc_type.into_element());
-	Item::new_from_element(Vector::from_bezpath(shapes::arc_bezpath(
+	Vector::item_from_bezpath(&shapes::arc_bezpath(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
 		arc_type,
-	)))
+	))
 }
 
 /// Generates a spiral shape that winds from an inner to an outer radius.
-#[node_macro::node(category("Vector: Shape"), properties("spiral_properties"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeSpiral"), inspector("spiral_inspector"))]
 fn spiral(
 	_: impl Ctx,
 	_primary: (),
@@ -70,7 +69,7 @@ fn spiral(
 	#[unit("°")]
 	#[default(90.)]
 	angular_resolution: Item<f64>,
-) -> Item<Vector> {
+) -> Result<Item<Vector>, SpiralError> {
 	let (turns, start_angle, inner_radius, outer_radius, angular_resolution) = (
 		*turns.element(),
 		*start_angle.element(),
@@ -78,18 +77,19 @@ fn spiral(
 		*outer_radius.element(),
 		*angular_resolution.element(),
 	);
-	Item::new_from_element(Vector::from_bezpath(shapes::spiral_bezpath(
+
+	Ok(Vector::item_from_bezpath(&shapes::spiral_bezpath(
 		inner_radius,
 		outer_radius,
 		turns,
 		start_angle.to_radians(),
 		angular_resolution.to_radians(),
 		spiral_type.into_element(),
-	)))
+	)?))
 }
 
 /// Generates an ellipse shape (an oval or stretched circle) with the chosen radii.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeEllipse"))]
 fn ellipse(
 	_: impl Ctx,
 	_primary: (),
@@ -104,20 +104,19 @@ fn ellipse(
 	let corner1 = -radius;
 	let corner2 = radius;
 
-	let mut ellipse = Vector::from_bezpath(shapes::ellipse_bezpath(corner1, corner2));
+	let (mut ellipse, mut paths) = Vector::from_bezpath(&shapes::ellipse_bezpath(corner1, corner2));
 
-	let len = ellipse.segment_domain.ids().len();
-	for i in 0..len {
-		ellipse
-			.colinear_manipulators
-			.push([HandleId::end(ellipse.segment_domain.ids()[i]), HandleId::primary(ellipse.segment_domain.ids()[(i + 1) % len])]);
+	// Each junction between consecutive segments keeps its tangent pair smooth
+	for segment in ellipse.segment_ids(&paths) {
+		let Some(anchor) = ellipse.segment_end_from_id(&paths, segment) else { continue };
+		ellipse.set_smooth(&mut paths, anchor, true);
 	}
 
-	Item::new_from_element(ellipse)
+	Item::new_from_element(ellipse).with_paths(paths)
 }
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
-#[node_macro::node(category("Vector: Shape"), properties("rectangle_properties"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeRectangle"), inspector("rectangle_inspector"))]
 fn rectangle(
 	_: impl Ctx,
 	_primary: (),
@@ -133,6 +132,9 @@ fn rectangle(
 ) -> Item<Vector> {
 	let size = DVec2::new(*width.element(), *height.element());
 	let radii = corner_radius.element().to_corner_values();
+
+	let mirror = DVec2::new(if size.x < 0. { -1. } else { 1. }, if size.y < 0. { -1. } else { 1. });
+	let size = size * mirror;
 
 	// Scale down overlapping adjacent radii to fit, following the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
 	let radii = if *clamped.element() {
@@ -152,11 +154,16 @@ fn rectangle(
 		radii
 	};
 
-	Item::new_from_element(Vector::from_bezpath(shapes::rounded_rectangle_bezpath(size / -2., size / 2., radii)))
+	let mut bezpath = shapes::rounded_rectangle_bezpath(size / -2., size / 2., radii);
+	if mirror != DVec2::ONE {
+		bezpath.apply_affine(kurbo::Affine::scale_non_uniform(mirror.x, mirror.y));
+	}
+
+	Vector::item_from_bezpath(&bezpath)
 }
 
 /// Builds a set of four corner values, such as a rectangle's corner radii, from a list of one, two, three, or four values.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeBoxCorners"))]
 fn box_corners(
 	_: impl Ctx,
 	/// The corner values, filling the four corners clockwise from the top-left. Give one value for all corners, two for opposite pairs, three for top-left, the two sides, then bottom-right, or four for each corner.
@@ -167,7 +174,7 @@ fn box_corners(
 }
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeRegularPolygon"))]
 fn regular_polygon(
 	_: impl Ctx,
 	_primary: (),
@@ -177,13 +184,13 @@ fn regular_polygon(
 	#[unit(" px")]
 	#[default(50)]
 	radius: Item<f64>,
-) -> Item<Vector> {
+) -> Result<Item<Vector>, PolygonError> {
 	let points = *sides.element() as u64;
-	Item::new_from_element(Vector::from_bezpath(shapes::regular_polygon_bezpath(DVec2::ZERO, points, *radius.element())))
+	Ok(Vector::item_from_bezpath(&shapes::regular_polygon_bezpath(DVec2::ZERO, points, *radius.element())?))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeStar"))]
 fn star(
 	_: impl Ctx,
 	_primary: (),
@@ -196,9 +203,66 @@ fn star(
 	#[unit(" px")]
 	#[default(25)]
 	radius_2: Item<f64>,
-) -> Item<Vector> {
+) -> Result<Item<Vector>, PolygonError> {
 	let points = *sides.element() as u64;
-	Item::new_from_element(Vector::from_bezpath(shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element())))
+	Ok(Vector::item_from_bezpath(&shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element())?))
+}
+
+/// Generates a heart shape with adjustable lobes, cleft, sides, and point.
+#[node_macro::node(category("Vector: Geometry"), icon("NodeHeart"))]
+fn heart(
+	_: impl Ctx,
+	_primary: (),
+	/// How far the notch dips between the lobes: 0% at their tops, 100% level with the widest point.
+	#[unit("%")]
+	#[range]
+	#[hard(20..110)]
+	#[default(70.)]
+	cleft_depth: Item<f64>,
+	/// Opens the notch into a soft dip or pinches it into a sharp crease, with 0% following the lobes' natural round shape.
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	cleft_sharpness: Item<f64>,
+	/// Shifts the fullness of each lobe in toward the notch or out toward the sides, with 0% the natural round lobe.
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	lobe_lean: Item<f64>,
+	/// Height of the widest point: big lobes over a short point, or small lobes over a long point.
+	#[unit("%")]
+	#[range]
+	#[hard(58..80)]
+	#[default(70.)]
+	widest_point: Item<f64>,
+	/// Straight sides that taper into the point, or full sides that curve outward all the way down.
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(50.)]
+	side_fullness: Item<f64>,
+	/// Opening angle at the very tip of the bottom point.
+	#[unit("°")]
+	#[range]
+	#[hard(15..150)]
+	#[default(75.)]
+	tip_angle: Item<f64>,
+) -> Item<Vector> {
+	let proportions = shapes::HeartProportions {
+		cleft_depth: *cleft_depth.element() / 100.,
+		cleft_sharpness: *cleft_sharpness.element() / 100.,
+		lobe_lean: *lobe_lean.element() / 100.,
+		widest_point: *widest_point.element() / 100.,
+		side_fullness: *side_fullness.element() / 100.,
+		tip_angle: tip_angle.element().to_radians(),
+	};
+	let (mut heart, mut paths) = Vector::from_bezpath(&shapes::heart_bezpath(&proportions));
+
+	// The widest points join each lobe smoothly to its side, while the cleft and tip stay sharp
+	let widest_points: Vec<_> = heart.segment_iter(&paths).step_by(2).map(|(_, _, _, end)| end).collect();
+	heart.set_smooth_points(&mut paths, widest_points, true);
+
+	Item::new_from_element(heart).with_paths(paths)
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -217,8 +281,14 @@ pub enum QRCodeErrorCorrectionLevel {
 	High,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum QrCodeError {
+	#[error("The text is too long for a QR code at this error correction level ({0})")]
+	TextTooLong(#[from] qrcodegen::DataTooLong),
+}
+
 /// Generates a QR code from the input text.
-#[node_macro::node(category("Vector: Shape"), name("QR Code"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeQrCode"), name("QR Code"))]
 fn qr_code(
 	_: impl Ctx,
 	_primary: (),
@@ -232,7 +302,7 @@ fn qr_code(
 	size: Item<f64>,
 	error_correction: Item<QRCodeErrorCorrectionLevel>,
 	individual_squares: Item<bool>,
-) -> Item<Vector> {
+) -> Result<Item<Vector>, QrCodeError> {
 	let (text, error_correction) = (text.into_element(), error_correction.into_element());
 	let (has_size, size, individual_squares) = (*has_size.element(), *size.element(), *individual_squares.element());
 
@@ -243,25 +313,21 @@ fn qr_code(
 		QRCodeErrorCorrectionLevel::High => qrcodegen::QrCodeEcc::High,
 	};
 
-	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else {
-		return Item::new_from_element(Vector::default());
-	};
+	let qr_code = qrcodegen::QrCode::encode_text(&text, ecc)?;
 
-	let mut vector = match individual_squares {
+	let (mut vector, paths) = match individual_squares {
 		true => {
-			let mut vector = Vector::default();
+			let (mut vector, mut paths) = (Vector::default(), List::new());
 
-			let dimension = qr_code.size() as usize;
-			for y in 0..dimension {
-				for x in 0..dimension {
-					if qr_code.get_module(x as i32, y as i32) {
-						let corner1 = DVec2::new(x as f64, y as f64);
-						vector.append_bezpath(shapes::rectangle_bezpath(corner1, corner1 + DVec2::splat(1.)));
-					}
-				}
-			}
+			let dimension = qr_code.size();
+			let cells = (0..dimension).flat_map(|y| (0..dimension).map(move |x| (x, y)));
+			let squares = cells.filter(|&(x, y)| qr_code.get_module(x, y)).map(|(x, y)| {
+				let corner1 = DVec2::new(x as f64, y as f64);
+				shapes::rectangle_bezpath(corner1, corner1 + DVec2::splat(1.))
+			});
+			vector.append_bezpaths(&mut paths, squares);
 
-			vector
+			(vector, paths)
 		}
 		false => crate::merge_qr_squares::merge_qr_squares(&qr_code),
 	};
@@ -270,11 +336,11 @@ fn qr_code(
 		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size / qr_code.size() as f64)));
 	}
 
-	Item::new_from_element(vector)
+	Ok(Item::new_from_element(vector).with_paths(paths))
 }
 
 /// Generates an arrow from the origin to the chosen coordinate.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeArrow"))]
 fn arrow(
 	_: impl Ctx,
 	_primary: (),
@@ -295,10 +361,10 @@ fn arrow(
 	head_length: Item<f64>,
 ) -> Item<Vector> {
 	let (arrow_to, shaft_width, head_width, head_length) = (*arrow_to.element(), *shaft_width.element(), *head_width.element(), *head_length.element());
-	Item::new_from_element(Vector::from_bezpath(shapes::arrow_bezpath(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
+	Vector::item_from_bezpath(&shapes::arrow_bezpath(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length))
 }
 
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeLine"))]
 fn line(
 	_: impl Ctx,
 	_primary: (),
@@ -306,7 +372,7 @@ fn line(
 	#[default(100., 100.)]
 	line_to: Item<DVec2>,
 ) -> Item<Vector> {
-	Item::new_from_element(Vector::from_bezpath(shapes::line_bezpath(DVec2::ZERO, *line_to.element())))
+	Vector::item_from_bezpath(&shapes::line_bezpath(DVec2::ZERO, *line_to.element()))
 }
 
 trait GridSpacing {
@@ -323,29 +389,45 @@ impl GridSpacing for DVec2 {
 	}
 }
 
-/// Generates a rectangular or isometric grid with the chosen number of columns and rows. Line segments connect the points, forming a vector mesh.
-#[node_macro::node(category("Vector: Shape"), properties("grid_properties"))]
+#[derive(Debug, thiserror::Error)]
+pub enum GridError {
+	#[error("The isometric angles cancel out, which makes the cells infinitely wide")]
+	AnglesCancelOut,
+}
+
+/// Generates a rectangular or isometric grid of points with the chosen number of columns and rows, joined into paths by the chosen topology.
+#[node_macro::node(category("Vector: Geometry"), icon("NodeGrid"), inspector("grid_inspector"))]
 fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),
-	grid_type: Item<GridType>,
-	#[unit(" px")]
-	#[hard(0..)]
-	#[default(10)]
-	#[implementations(f64, DVec2)]
-	spacing: Item<T>,
+	lattice: Item<GridType>,
+	/// How the points join into paths.
+	topology: Item<GridTopology>,
+	/// Removes edges so each point keeps three of them, turning rectangular grids into a brick wall and isometric grids into a honeycomb.
+	staggered: Item<bool>,
 	#[default(10)]
 	#[hard(0..)]
 	columns: Item<i64>,
 	#[default(10)]
 	#[hard(0..)]
 	rows: Item<i64>,
+	#[unit(" px")]
+	#[hard(0..)]
+	#[default(10)]
+	#[implementations(f64, DVec2)]
+	spacing: Item<T>,
 	#[unit("°")]
 	#[default(30., 30.)]
 	angles: Item<DVec2>,
-	#[default(true)] connect_cells: Item<bool>,
-) -> Item<Vector> {
-	let (grid_type, columns, rows, angles, connect_cells) = (grid_type.into_element(), *columns.element(), *rows.element(), *angles.element(), *connect_cells.element());
+) -> Result<Item<Vector>, GridError> {
+	let (grid_type, topology, staggered, columns, rows, angles) = (
+		lattice.into_element(),
+		topology.into_element(),
+		*staggered.element(),
+		*columns.element(),
+		*rows.element(),
+		*angles.element(),
+	);
 	let (columns, rows) = (columns as u32, rows as u32);
 
 	let (x_spacing, y_spacing) = spacing.element().as_dvec2().into();
@@ -354,78 +436,119 @@ fn grid<T: GridSpacing>(
 	// Isometric grid spacing based on the two skew angles. Unused for rectangular grids.
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
+	if grid_type.is_isometric() && tan_a + tan_b == 0. {
+		return Err(GridError::AnglesCancelOut);
+	}
 	let isometric_spacing = DVec2::new(y_spacing / (tan_a + tan_b), y_spacing);
 
 	// The position of the grid point at column `x`, row `y`.
-	let position = |x: u32, y: u32| -> DVec2 {
-		match grid_type {
-			GridType::Rectangular => DVec2::new(x_spacing * x as f64, y_spacing * y as f64),
-			GridType::Isometric => {
-				// Odd columns are offset vertically so the cells skew into the isometric shape.
-				let a_angles_eaten = x.div_ceil(2) as f64;
-				let b_angles_eaten = (x / 2) as f64;
-				let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
-				DVec2::new(isometric_spacing.x * x as f64, isometric_spacing.y * y as f64 + offset_y_fraction * isometric_spacing.x)
-			}
+	let position = |x: u32, y: i64| -> DVec2 {
+		if !grid_type.is_isometric() {
+			return DVec2::new(x_spacing * x as f64, y_spacing * y as f64);
 		}
+
+		// Odd columns are offset vertically so the cells skew into the isometric shape.
+		let a_angles_eaten = x.div_ceil(2) as f64;
+		let b_angles_eaten = (x / 2) as f64;
+		let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
+		DVec2::new(isometric_spacing.x * x as f64, isometric_spacing.y * y as f64 + offset_y_fraction * isometric_spacing.x)
 	};
 
-	// When the cells aren't connected, each one is its own closed quadrilateral subpath.
-	// The vertices are ordered counter-clockwise to match the framework's fill winding.
-	if !connect_cells {
-		let mut cells = Vec::new();
-		for y in 0..rows.saturating_sub(1) {
-			for x in 0..columns.saturating_sub(1) {
-				cells.push(vec![position(x, y), position(x + 1, y), position(x + 1, y + 1), position(x, y + 1)]);
-			}
-		}
-		let mut vector = Vector::default();
-		crate::vector_nodes::replace_with_polygons(&mut vector, cells, connect_cells);
-		return Item::new_from_element(vector);
-	}
+	Ok(Lattice::new(grid_type, columns, rows, staggered && topology.supports_staggered(), position)
+		.layout(topology)
+		.into_item())
+}
 
-	let mut vector = Vector::default();
-	let mut segment_id = SegmentId::ZERO;
-	let mut point_id = PointId::ZERO;
+/// Draws paths by following a string of turtle commands, like the ones an **L-System** grows. `F` and `G` move forward a step while drawing, `f` and `g` move without drawing, `+` and `-` turn left and right, `|` turns around, and `[` and `]` begin and end a branch.
+///
+/// A number in parentheses gives one command its own amount, like `F(25)` or `+(30)`, and a second number on `F` or `G` is the width it draws to, like `F(25, 3)`.
+///
+/// `H` and `h` go half a step, drawing or not. `"` and `_` multiply and divide the step from then on, as `;` and `@` do the angle and `!` and `?` the width. `~` turns a random amount, and `T` bends the heading toward the ground. `'` and `#` count up two numbers, U and V, for coloring or anything else downstream.
+///
+/// `{` begins a filled shape, `.` adds an anchor where the turtle stands, and `}` closes it. Outside a shape, `.` places a point on no path instead, for **Vector to Points** and **Transform** to copy shapes onto. Its kind is 1, or a number like `.(2)` gives another, so different shapes can go to different points.
+///
+/// Each point records its branch depth, distance traveled, heading, width, step length, UV, and kind as attributes. Drawn points have a kind of 0.
+#[node_macro::node(category("String"), icon("NodeTurtlePath"))]
+fn turtle_path(
+	_: impl Ctx,
+	/// The commands for the turtle to follow, starting at the origin and facing up. Symbols without a meaning are skipped.
+	commands: Item<String>,
+	/// How far each step forward moves, unless a command gives its own distance like `F(25)`.
+	#[unit(" px")]
+	#[default(10.)]
+	step: Item<f64>,
+	/// The factor that `"` multiplies the step by and `_` divides it by, unless a command gives its own like `"(0.8)`.
+	#[unit("x")]
+	#[default(0.5)]
+	step_scale: Item<f64>,
+	/// How much longer or shorter each step may randomly be, as a fraction of its length.
+	#[range]
+	#[hard(0..1)]
+	step_jitter: Item<f64>,
+	/// How far `+` and `-` turn, unless a command gives its own angle like `+(30)`.
+	#[unit("°")]
+	#[default(90.)]
+	angle: Item<f64>,
+	/// The factor that `;` multiplies the angle by and `@` divides it by, unless a command gives its own like `;(0.8)`.
+	#[unit("x")]
+	#[default(0.5)]
+	angle_scale: Item<f64>,
+	/// How much wider or narrower each turn by `+` and `-` may randomly be, as a fraction of its angle.
+	#[range]
+	#[hard(0..1)]
+	angle_jitter: Item<f64>,
+	/// The width the turtle starts drawing with.
+	#[unit(" px")]
+	#[default(1.)]
+	width: Item<f64>,
+	/// The factor that `!` multiplies the width by and `?` divides it by, unless a command gives its own like `!(0.8)`.
+	#[unit("x")]
+	#[default(0.5)]
+	width_scale: Item<f64>,
+	/// How much thicker or thinner each line's width may randomly be, as a fraction of it.
+	#[range]
+	#[hard(0..1)]
+	width_jitter: Item<f64>,
+	/// How far `T` bends a sideways heading toward the ground like branches sagging under gravity, and less the nearer it is to vertical, unless a command gives its own amount like `T(5)`. A negative amount bends toward the sky instead.
+	#[unit("°")]
+	#[default(10.)]
+	#[range]
+	#[soft(-90..90)]
+	tropism: Item<f64>,
+	/// How much `'` and `#` count up U and V, unless a command gives its own amount like `'(2)`.
+	#[name("UV Increment")]
+	#[default(1., 1.)]
+	#[widget(ParsedWidgetOverride::Custom = "vec2_uv")]
+	uv_increment: Item<DVec2>,
+	/// Seed to determine unique variations on the random turns of `~` and the step, angle, and width jitters.
+	#[hard(0..)]
+	seed: Item<i64>,
+) -> Item<Vector> {
+	let settings = crate::turtle::TurtleSettings {
+		step: *step.element(),
+		step_scale: *step_scale.element(),
+		step_jitter: *step_jitter.element(),
+		angle: *angle.element(),
+		angle_scale: *angle_scale.element(),
+		angle_jitter: *angle_jitter.element(),
+		width: *width.element(),
+		width_scale: *width_scale.element(),
+		width_jitter: *width_jitter.element(),
+		tropism: *tropism.element(),
+		uv_increment: *uv_increment.element(),
+		seed: *seed.element() as u64,
+	};
 
-	for y in 0..rows {
-		for x in 0..columns {
-			// Add the current point to the grid.
-			let current_index = vector.point_domain.ids().len();
-			vector.point_domain.push(point_id.next_id(), position(x, y));
-
-			// Helper function to connect points with line segments.
-			let mut push_segment = |to_index: Option<usize>| {
-				if let Some(other_index) = to_index {
-					vector.segment_domain.push(segment_id.next_id(), other_index, current_index, BezierHandles::Linear);
-				}
-			};
-
-			// Connect to the point to the left (horizontal connection).
-			push_segment((x > 0).then(|| current_index - 1));
-
-			// Connect to the point directly above (vertical connection).
-			push_segment(current_index.checked_sub(columns as usize));
-
-			// Isometric grids additionally connect odd columns diagonally, splitting each cell into triangles.
-			if grid_type == GridType::Isometric && x % 2 == 1 {
-				// Connect to the point diagonally up-right (if not at the right edge).
-				push_segment(current_index.checked_sub(columns as usize - 1).filter(|_| x + 1 < columns));
-
-				// Connect to the point diagonally up-left.
-				push_segment(current_index.checked_sub(columns as usize + 1));
-			}
-		}
-	}
-
-	Item::new_from_element(vector)
+	crate::turtle::turtle_path(commands.element(), &settings)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use core_types::list::{ATTR_DEPTH, ATTR_DISTANCE, ATTR_HEADING, ATTR_KIND, ATTR_SMOOTH, ATTR_STEP, ATTR_UV, ATTR_WIDTH};
 	use kurbo::ParamCurve;
 	use vector_types::vector::misc::point_to_dvec2;
+	use vector_types::vector::shared_paths_from_item_attributes;
 
 	fn item<T>(value: T) -> Item<T> {
 		Item::new_from_element(value)
@@ -433,15 +556,51 @@ mod tests {
 
 	#[test]
 	fn isometric_grid_test() {
-		// Doesn't crash with weird angles
-		grid((), (), item(GridType::Isometric), item(0.), item(5_i64), item(5_i64), item((0., 0.).into()), item(true));
-		grid((), (), item(GridType::Isometric), item(90.), item(5_i64), item(5_i64), item((90., 90.).into()), item(true));
+		// Doesn't crash with weird angles, and errors where they cancel out
+		assert!(
+			grid(
+				(),
+				(),
+				item(GridType::IsometricTiling),
+				item(GridTopology::Edges),
+				item(false),
+				item(5_i64),
+				item(5_i64),
+				item(0.),
+				item((0., 0.).into()),
+			)
+			.is_err()
+		);
+		grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(90.),
+			item((90., 90.).into()),
+		)
+		.unwrap();
 
 		// Works properly
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_i64), item(5_i64), item((30., 30.).into()), item(true));
-		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.element().segment_iter().count(), 4 * 5 + 4 * 9);
-		for (_, segment, _, _) in grid.element().segment_iter() {
+		let grid = grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(10.),
+			item((30., 30.).into()),
+		)
+		.unwrap();
+		let paths = shared_paths_from_item_attributes(&grid);
+		assert_eq!(grid.element().anchor_points(&paths).count(), 5 * 5);
+		assert_eq!(grid.element().segment_iter(&paths).count(), 4 * 5 + 4 * 9);
+		for (_, segment, _, _) in grid.element().segment_iter(&paths) {
 			assert!(matches!(segment, kurbo::PathSeg::Line(_)));
 			let span = point_to_dvec2(segment.start()) - point_to_dvec2(segment.end());
 			assert!((span.length() - 10.).abs() < 1e-5, "Length of {} should be 10", span.length());
@@ -450,10 +609,22 @@ mod tests {
 
 	#[test]
 	fn skew_isometric_grid_test() {
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_i64), item(5_i64), item((40., 30.).into()), item(true));
-		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.element().segment_iter().count(), 4 * 5 + 4 * 9);
-		for (_, segment, _, _) in grid.element().segment_iter() {
+		let grid = grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(10.),
+			item((40., 30.).into()),
+		)
+		.unwrap();
+		let paths = shared_paths_from_item_attributes(&grid);
+		assert_eq!(grid.element().anchor_points(&paths).count(), 5 * 5);
+		assert_eq!(grid.element().segment_iter(&paths).count(), 4 * 5 + 4 * 9);
+		for (_, segment, _, _) in grid.element().segment_iter(&paths) {
 			assert!(matches!(segment, kurbo::PathSeg::Line(_)));
 			let vector = point_to_dvec2(segment.start()) - point_to_dvec2(segment.end());
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
@@ -462,21 +633,99 @@ mod tests {
 	}
 
 	#[test]
+	fn grid_edges_are_each_their_own_path() {
+		let grid = grid(
+			(),
+			(),
+			item(GridType::Rectangular),
+			item(GridTopology::Edges),
+			item(false),
+			item(3_i64),
+			item(3_i64),
+			item(10.),
+			item((30., 30.).into()),
+		)
+		.unwrap();
+		let paths = shared_paths_from_item_attributes(&grid);
+		let vector = grid.element();
+
+		assert_eq!(vector.segment_ids(&paths).len(), 2 * 3 + 2 * 3);
+		assert_eq!(paths.len(), 2 * 3 + 2 * 3);
+		assert_eq!(vector.anchor_points(&paths).count(), 3 * 3);
+	}
+
+	#[test]
+	fn grid_lines_run_along_each_row_and_column() {
+		let grid = grid(
+			(),
+			(),
+			item(GridType::Rectangular),
+			item(GridTopology::Lines),
+			item(false),
+			item(3_i64),
+			item(4_i64),
+			item(10.),
+			item((30., 30.).into()),
+		)
+		.unwrap();
+		let paths = shared_paths_from_item_attributes(&grid);
+		let vector = grid.element();
+
+		assert_eq!(paths.len(), 4 + 3);
+		assert_eq!(vector.segment_ids(&paths).len(), 4 * 2 + 3 * 3);
+		assert_eq!(vector.anchor_points(&paths).count(), 3 * 4);
+	}
+
+	#[test]
 	fn grid_disconnected_cells_test() {
 		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath.
-		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_i64), item(3_i64), item((30., 30.).into()), item(false));
+		let grid = grid(
+			(),
+			(),
+			item(GridType::Rectangular),
+			item(GridTopology::Cells),
+			item(false),
+			item(3_i64),
+			item(3_i64),
+			item(10.),
+			item((30., 30.).into()),
+		)
+		.unwrap();
+		let paths = shared_paths_from_item_attributes(&grid);
 		let vector = grid.element();
-		assert_eq!(vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count(), 4);
-		assert_eq!(vector.point_domain.ids().len(), 4 * 4);
-		assert_eq!(vector.segment_domain.ids().len(), 4 * 4);
+		assert_eq!(vector.stroke_manipulator_groups(&paths).filter(|(_, closed)| *closed).count(), 4);
+		assert_eq!(vector.anchor_points(&paths).count(), 4 * 4);
+		assert_eq!(vector.segment_ids(&paths).len(), 4 * 4);
 
 		// Each cell winds counter-clockwise (positive signed area), matching the shape generators.
-		for (group, closed) in vector.stroke_manipulator_groups() {
+		for (group, closed) in vector.stroke_manipulator_groups(&paths) {
 			assert!(closed);
 			let anchors: Vec<DVec2> = group.iter().map(|g| g.anchor).collect();
 			let signed_area: f64 = (0..anchors.len()).map(|i| anchors[i].perp_dot(anchors[(i + 1) % anchors.len()])).sum::<f64>() / 2.;
 			assert!(signed_area > 0., "grid cell should wind counter-clockwise");
 		}
+	}
+
+	#[test]
+	fn heart_fills_its_box_with_smooth_widest_points() {
+		let heart = heart((), (), item(70.), item(0.), item(0.), item(70.), item(50.), item(75.));
+		let paths = shared_paths_from_item_attributes(&heart);
+		let vector = heart.element();
+
+		assert_eq!(vector.anchor_points(&paths).count(), 4);
+		assert_eq!(vector.segment_ids(&paths).len(), 4);
+
+		let [min, max] = vector.bounding_box(&paths).expect("the heart has geometry");
+		assert!(min.abs_diff_eq(DVec2::splat(-50.), 1e-9) && max.abs_diff_eq(DVec2::splat(50.), 1e-9), "bounds {min} to {max}");
+
+		// Only the widest points, at the sides of the box, are smooth
+		let path = paths.element(0).expect("the heart is one path");
+		let smooth_positions: Vec<DVec2> = (0..path.references().len())
+			.filter(|&index| path.0.attribute::<bool>(ATTR_SMOOTH, index) == Some(&true))
+			.filter_map(|index| path.position(&vector.0, index))
+			.collect();
+		assert_eq!(smooth_positions.len(), 2);
+		assert!(smooth_positions.iter().all(|position| (position.x.abs() - 50.).abs() < 1e-9), "smooth anchors at {smooth_positions:?}");
 	}
 
 	#[test]
@@ -489,8 +738,287 @@ mod tests {
 			item(1.),
 			item(QRCodeErrorCorrectionLevel::Low),
 			item(true),
+		)
+		.unwrap();
+		let paths = shared_paths_from_item_attributes(&qr);
+		assert!(qr.element().anchor_points(&paths).count() > 0);
+		assert!(!qr.element().segment_ids(&paths).is_empty());
+	}
+
+	#[test]
+	fn qr_code_reports_text_too_long() {
+		let qr = qr_code((), (), item("x".repeat(3000)), item(false), item(1.), item(QRCodeErrorCorrectionLevel::High), item(true));
+		assert!(matches!(qr, Err(QrCodeError::TextTooLong(_))));
+	}
+
+	// A radius small enough to underflow leaves no direction from its anchor to the corner to put the handle along
+	#[test]
+	fn rectangle_with_a_vanishing_corner_radius() {
+		let rectangle = rectangle((), (), item(100.), item(100.), item(BoxCorners::from(vec![1e-160, 10., 0., 0.])), item(false), item(true));
+		assert!(rectangle.element().positions().all(|position| position.is_finite()));
+	}
+
+	// A negative width mirrors the rectangle, rounding its corners inward as at the positive width
+	#[test]
+	fn rectangle_with_a_negative_width_keeps_its_rounded_corners() {
+		let anchors = |width: f64, clamped: bool| {
+			let rectangle = rectangle((), (), item(width), item(100.), item(BoxCorners::from(vec![30.])), item(clamped), item(false));
+			rectangle.element().anchor_positions(&shared_paths_from_item_attributes(&rectangle))
+		};
+
+		for clamped in [false, true] {
+			let mirrored: Vec<DVec2> = anchors(50., clamped).into_iter().map(|position| position * DVec2::new(-1., 1.)).collect();
+			assert_eq!(anchors(-50., clamped), mirrored);
+		}
+	}
+
+	#[test]
+	fn polygons_report_more_sides_than_can_be_allocated() {
+		assert!(matches!(regular_polygon((), (), item(i64::MAX), item(50.)), Err(PolygonError::TooManySides(sides)) if sides == i64::MAX as u64));
+		assert!(matches!(star((), (), item(i64::MAX), item(50.), item(25.)), Err(PolygonError::TooManySides(sides)) if sides == i64::MAX as u64));
+		assert!(regular_polygon((), (), item(6), item(50.)).is_ok());
+	}
+
+	// With the inner and outer radius the same, the spiral doesn't grow, so it winds around a circle
+	#[test]
+	fn spiral_between_equal_radii_is_a_circle() {
+		for spiral_type in [SpiralType::Archimedean, SpiralType::Logarithmic] {
+			let spiral = spiral((), (), item(spiral_type), item(2.), item(0.), item(25.), item(25.), item(90.)).unwrap();
+			assert!(spiral.element().positions().all(|position| position.is_finite()));
+			let anchors = spiral.element().anchor_positions(&shared_paths_from_item_attributes(&spiral));
+			assert!(anchors.iter().all(|anchor| (anchor.length() - 25.).abs() < 1e-9));
+		}
+	}
+
+	fn turtle(commands: &str) -> Item<Vector> {
+		turtle_varied(commands, 0., 0)
+	}
+
+	fn turtle_varied(commands: &str, step_jitter: f64, seed: i64) -> Item<Vector> {
+		let text = |text: &str| item(text.to_string());
+		turtle_path(
+			(),
+			text(commands),
+			item(10.),
+			item(0.5),
+			item(step_jitter),
+			item(90.),
+			item(0.5),
+			item(0.),
+			item(1.),
+			item(0.5),
+			item(0.),
+			item(10.),
+			item(DVec2::ONE),
+			item(seed),
+		)
+	}
+
+	fn positions(drawing: &Item<Vector>) -> Vec<DVec2> {
+		drawing.element().positions().collect()
+	}
+
+	/// Each path's pool references and whether it closes.
+	fn turtle_runs(drawing: &Item<Vector>) -> Vec<(Vec<u32>, bool)> {
+		let paths = shared_paths_from_item_attributes(drawing);
+		paths.iter_element_values().map(|path| (path.references().collect(), path.is_closed())).collect()
+	}
+
+	fn point_attributes<T: Copy + 'static>(drawing: &Item<Vector>, key: &str) -> Vec<T> {
+		drawing.element().0.iter_attribute_values::<T>(key).map(|values| values.copied().collect()).unwrap_or_default()
+	}
+
+	#[test]
+	fn turtle_square_closes_on_its_start() {
+		let square = turtle("F+F+F+F");
+
+		assert_eq!(turtle_runs(&square), [(vec![0, 1, 2, 3, 0], true)]);
+		assert_eq!(
+			square.element().positions().collect::<Vec<_>>(),
+			[DVec2::ZERO, DVec2::new(0., -10.), DVec2::new(-10., -10.), DVec2::new(-10., 0.)]
 		);
-		assert!(!qr.element().point_domain.ids().is_empty());
-		assert!(!qr.element().segment_domain.ids().is_empty());
+
+		// Drawing on after closing leaves the square closed and starts a new path from its first point
+		assert_eq!(turtle_runs(&turtle("F+F+F+F+F")), [(vec![0, 1, 2, 3, 0], true), (vec![0, 4], false)]);
+	}
+
+	#[test]
+	fn turtle_branches_weld_to_one_trunk() {
+		let tree = turtle("F[+F]F");
+
+		// The trunk stays one run through the junction, where the branch begins
+		assert_eq!(turtle_runs(&tree), [(vec![0, 1, 3], false), (vec![1, 2], false)]);
+		assert_eq!(point_attributes::<i64>(&tree, ATTR_DEPTH), [0, 0, 1, 0]);
+		assert_eq!(point_attributes::<f64>(&tree, ATTR_DISTANCE), [0., 10., 20., 20.]);
+		assert_eq!(point_attributes::<f64>(&tree, ATTR_HEADING), [-90., -90., 180., -90.]);
+
+		// Branches leaving before anything is drawn still share their starting point
+		assert_eq!(turtle_runs(&turtle("[+F][-F]F")), [(vec![0, 1], false), (vec![0, 2], false), (vec![0, 3], false)]);
+	}
+
+	#[test]
+	fn turtle_moves_break_paths_and_parameters_override_amounts() {
+		let drawing = turtle("FfF(25)+(45)F");
+
+		assert_eq!(turtle_runs(&drawing), [(vec![0, 1], false), (vec![2, 3, 4], false)]);
+		let positions: Vec<DVec2> = drawing.element().positions().collect();
+		assert_eq!(positions[3], DVec2::new(0., -45.));
+		assert!((positions[4] - DVec2::new(-10. * 0.5_f64.sqrt(), -45. - 10. * 0.5_f64.sqrt())).length() < 1e-9);
+
+		// `g` moves just like `f`
+		let moved = turtle("FgF");
+		assert_eq!(turtle_runs(&moved), [(vec![0, 1], false), (vec![2, 3], false)]);
+		assert_eq!(moved.element().positions().nth(2), Some(DVec2::new(0., -20.)));
+	}
+
+	#[test]
+	fn turtle_width_scales_and_is_restored_after_a_branch() {
+		let drawing = turtle("F[!(3)F]F");
+		assert_eq!(point_attributes::<f64>(&drawing, ATTR_WIDTH), [1., 1., 3., 1.]);
+
+		// The width halves and doubles back, and dividing by zero leaves it alone
+		assert_eq!(point_attributes::<f64>(&turtle("F!F?F?(0)F"), ATTR_WIDTH), [1., 1., 0.5, 1., 1.]);
+
+		// `G` draws like `F`, and other letters mean nothing to the turtle
+		assert_eq!(turtle_runs(&turtle("FGAF")), [(vec![0, 1, 2, 3], false)]);
+		assert_eq!(point_attributes::<f64>(&turtle(""), ATTR_WIDTH), Vec::<f64>::new());
+		assert!(turtle("").element().0.iter_attribute_values::<f64>(ATTR_WIDTH).is_some(), "an empty drawing still has the attribute");
+
+		// A draw's second number stamps only the point it draws to
+		assert_eq!(point_attributes::<f64>(&turtle("F(10, 3)F"), ATTR_WIDTH), [1., 3., 1.]);
+	}
+
+	#[test]
+	fn turtle_half_steps_and_scaled_steps() {
+		let halves = turtle("HhH");
+		assert_eq!(turtle_runs(&halves), [(vec![0, 1], false), (vec![2, 3], false)]);
+		assert_eq!(positions(&halves), [DVec2::ZERO, DVec2::new(0., -5.), DVec2::new(0., -10.), DVec2::new(0., -15.)]);
+
+		// The step halves and doubles back, and dividing by zero leaves it alone
+		let ys: Vec<f64> = positions(&turtle("F\"F_F_(0)F")).iter().map(|position| position.y).collect();
+		assert_eq!(ys, [0., -10., -15., -25., -35.]);
+
+		// The angle halves to 45°, then doubles back to 90° once the branch ends
+		let angled = positions(&turtle("[;+F]+F"));
+		assert!((angled[1] - DVec2::new(-10. * 0.5_f64.sqrt(), -10. * 0.5_f64.sqrt())).length() < 1e-9);
+		assert_eq!(angled[2], DVec2::new(-10., 0.));
+	}
+
+	#[test]
+	fn turtle_bends_toward_the_ground_without_passing_it() {
+		// Heading left, the turtle bends 10° down
+		let bent = positions(&turtle("+T(10)F"));
+		assert!((bent[1] - 10. * DVec2::from_angle(170_f64.to_radians())).length() < 1e-9);
+
+		// A vertical heading doesn't bend, and a strong pull stops at straight down
+		assert_eq!(positions(&turtle("T(10)F"))[1], DVec2::new(0., -10.));
+		assert_eq!(positions(&turtle("+T(1000)F"))[1], DVec2::new(0., 10.));
+	}
+
+	#[test]
+	fn turtle_closes_polygons_through_recorded_anchors() {
+		let square = turtle("{.f.+f.+f.}");
+		assert_eq!(turtle_runs(&square), [(vec![0, 1, 2, 3, 0], true)]);
+		assert_eq!(positions(&square), [DVec2::ZERO, DVec2::new(0., -10.), DVec2::new(-10., -10.), DVec2::new(-10., 0.)]);
+
+		// A last anchor back on the first isn't repeated, and too few anchors make no shape
+		assert_eq!(turtle_runs(&turtle("{.f.+f.+f.+f.}")), [(vec![0, 1, 2, 3, 0], true)]);
+		assert_eq!(positions(&turtle("{.f.}")), []);
+
+		// A shape the commands leave open still closes, as if its `}` came last
+		assert_eq!(turtle_runs(&turtle("{.f.+f.+f.")), [(vec![0, 1, 2, 3, 0], true)]);
+	}
+
+	#[test]
+	fn turtle_counts_up_uv() {
+		let drawing = turtle("F'F#F'(2)F");
+		let expected = [DVec2::ZERO, DVec2::ZERO, DVec2::new(1., 0.), DVec2::new(1., 1.), DVec2::new(3., 1.)];
+		assert_eq!(point_attributes::<DVec2>(&drawing, ATTR_UV), expected);
+	}
+
+	#[test]
+	fn turtle_places_points_of_a_kind_on_no_path() {
+		let drawing = turtle("F[+F.(2)]\"F.");
+
+		// The placed points 3 and 5 join no path, but carry the turtle's state and their kind
+		assert_eq!(turtle_runs(&drawing), [(vec![0, 1, 4], false), (vec![1, 2], false)]);
+		assert_eq!(positions(&drawing)[3], DVec2::new(-10., -10.));
+		assert_eq!(positions(&drawing)[5], DVec2::new(0., -15.));
+		assert_eq!(point_attributes::<i64>(&drawing, ATTR_KIND), [0, 0, 0, 2, 0, 1]);
+		assert_eq!(point_attributes::<i64>(&drawing, ATTR_DEPTH), [0, 0, 1, 1, 0, 0]);
+		assert_eq!(point_attributes::<f64>(&drawing, ATTR_HEADING)[3], 180.);
+		assert_eq!(point_attributes::<f64>(&drawing, ATTR_STEP), [10., 10., 10., 10., 5., 5.]);
+
+		// Inside a shape, `.` adds an anchor, but a branch saved there can return after the shape closes to place a point
+		let shape = turtle("{.f.[+f.+f.}].");
+		assert_eq!(turtle_runs(&shape), [(vec![0, 1, 2, 3, 0], true)]);
+		assert_eq!(positions(&shape)[4], DVec2::new(0., -10.));
+		assert_eq!(point_attributes::<i64>(&shape, ATTR_KIND), [0, 0, 0, 0, 1]);
+
+		// Several spots saved inside a shape come back last first, one per `]`
+		let saved_twice = turtle("{.f.[+f.[+f.}].].");
+		assert_eq!(turtle_runs(&saved_twice), [(vec![0, 1, 2, 3, 0], true)]);
+		assert_eq!(positions(&saved_twice)[4..], [DVec2::new(-10., -10.), DVec2::new(0., -10.)]);
+		assert_eq!(point_attributes::<i64>(&saved_twice, ATTR_KIND), [0, 0, 0, 0, 1, 1]);
+		assert_eq!(point_attributes::<i64>(&saved_twice, ATTR_DEPTH), [0, 0, 1, 2, 1, 0]);
+	}
+
+	#[test]
+	fn turtle_randomness_follows_the_seed() {
+		let wander = |seed: i64| positions(&turtle_varied("~(30)F~(30)F", 0.2, seed));
+		assert_eq!(wander(3), wander(3));
+		assert_ne!(wander(3), wander(4));
+
+		// The first step stays within 20% of its length and 30° of straight up
+		let first = wander(3)[1];
+		assert!((8. ..=12.).contains(&first.length()));
+		assert!(first.angle_to(DVec2::NEG_Y).abs() <= 30_f64.to_radians() + 1e-9);
+		assert!((0..8).any(|seed| (wander(seed)[1].length() - 10.).abs() > 1.), "some seed should stray past 10%");
+	}
+
+	#[test]
+	fn turtle_jitters_turns_and_widths() {
+		let jittered = |seed: u64| {
+			let settings = crate::turtle::TurtleSettings {
+				angle_jitter: 0.5,
+				width_jitter: 0.5,
+				seed,
+				..Default::default()
+			};
+			crate::turtle::turtle_path("F+F", &settings)
+		};
+		let turn = |seed: u64| {
+			let points = positions(&jittered(seed));
+			(points[1] - points[0]).angle_to(points[2] - points[1]).to_degrees().abs()
+		};
+
+		// A 90° turn stays within half of itself either way, and so does the width each line draws to
+		assert!((0..8).all(|seed| (45. - 1e-9..=135. + 1e-9).contains(&turn(seed))));
+		assert!((0..8).any(|seed| (turn(seed) - 90.).abs() > 10.), "some seed should turn well off 90°");
+		let widths: Vec<f64> = (0..8).flat_map(|seed| point_attributes::<f64>(&jittered(seed), ATTR_WIDTH)[1..].to_vec()).collect();
+		assert!(widths.iter().all(|width| (0.5..=1.5).contains(width)));
+		assert!(widths.iter().any(|width| (width - 1.).abs() > 0.1), "some seed should vary the width");
+	}
+
+	#[test]
+	fn turtle_jitters_grow_gradually_and_leave_random_turns_alone() {
+		let drawn = |step_jitter: f64, angle_jitter: f64, width_jitter: f64| {
+			let settings = crate::turtle::TurtleSettings {
+				step_jitter,
+				angle_jitter,
+				width_jitter,
+				seed: 3,
+				..Default::default()
+			};
+			positions(&crate::turtle::turtle_path("~F+F~F", &settings))
+		};
+		let unjittered = drawn(0., 0., 0.);
+
+		// Width moves no points, so turning it up keeps the `~` turns as they were
+		assert_eq!(drawn(0., 0., 0.5), unjittered);
+
+		// Barely turning up the step and angle jitters barely moves the points
+		let nudged = drawn(1e-6, 1e-6, 0.);
+		assert!(nudged.iter().zip(&unjittered).all(|(nudged, unjittered)| nudged.distance(*unjittered) < 1e-3));
 	}
 }

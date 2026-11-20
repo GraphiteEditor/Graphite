@@ -107,7 +107,11 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 						self.gradient_cyclic = ramp.gradient_cyclic;
 						self.gradient_hue_direction = ramp.gradient_hue_direction;
 						self.gradient_interpolation = ramp.gradient_interpolation;
-						let gradient = Gradient::from(ramp);
+						let mut gradient = Gradient::from(ramp);
+						// An empty gradient renders solid black, so it's edited as black to black, which looks the same but has stops to edit
+						if gradient.is_empty() {
+							gradient = Gradient::from(vec![Color::BLACK, Color::BLACK]);
+						}
 						let first_color = gradient.color(0).unwrap_or(Color::BLACK);
 						self.gradient = Some(gradient);
 						self.adopt_color(first_color);
@@ -823,7 +827,6 @@ fn rgb_input(channel: RgbChannel, value: Option<f64>, tooltip_label: &'static st
 		.disabled(disabled)
 		.min(0.)
 		.max(255.)
-		.min_width(1)
 		.display_decimal_places(0)
 		.tooltip_label(tooltip_label)
 		.tooltip_description("Integers 0–255.")
@@ -837,7 +840,6 @@ fn hsv_input(channel: HsvChannel, value: Option<f64>, max: f64, unit: &'static s
 		.disabled(disabled)
 		.min(0.)
 		.max(max)
-		.min_width(1)
 		.unit(unit)
 		.display_decimal_places(1)
 		.tooltip_label(tooltip_label)

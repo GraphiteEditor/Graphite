@@ -8,25 +8,29 @@ use crate::MESSAGE_BUFFER;
 #[cfg(all(feature = "native", target_family = "wasm"))]
 use crate::editor_commands::EditorCommand;
 #[cfg(not(feature = "native"))]
-use crate::helpers::poll_node_graph_evaluation;
+use crate::helpers::run_node_runtime;
 #[cfg(any(not(feature = "native"), target_family = "wasm"))]
 use crate::helpers::wrapper;
-#[cfg(feature = "editor")]
-use crate::helpers::{calculate_hash, render_image_data_to_canvases};
 use crate::helpers::{request_animation_frame, set_timeout};
+#[cfg(not(feature = "native"))]
+use crate::intercept_frontend_message::intercept_frontend_message;
 use crate::{EDITOR_HAS_CRASHED, FRONTEND_READY};
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
-use editor::application::{Editor, Environment, Host, Platform};
+use editor::application::{Environment, Host, Platform};
+#[cfg(not(feature = "native"))]
+use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+#[cfg(not(feature = "native"))]
+use editor::messages::portfolio::ingest::utility_types::IngestAction;
 #[cfg(feature = "editor")]
 use editor::messages::prelude::*;
+#[cfg(not(feature = "native"))]
+use graph_craft::document::NodeId;
 #[cfg(feature = "editor")]
 use serde::Serialize;
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
-
-pub(crate) static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
 
 #[wasm_bindgen]
 #[derive(Clone)]
@@ -54,6 +58,7 @@ impl EditorWrapper {
 impl EditorWrapper {
 	#[cfg(all(not(feature = "native"), target_family = "wasm"))]
 	pub async fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
+		use editor::builder::{Builder, EditorBuilder, RuntimeBuilder};
 		use graph_craft::application_io::PlatformApplicationIo;
 		use graph_craft::application_io::resource::*;
 
@@ -64,6 +69,9 @@ impl EditorWrapper {
 			_ => unreachable!(),
 		};
 
+		let location = web_sys::window().expect("No global `window` exists").location();
+		let url = format!("{}{}", location.origin().unwrap_or_default(), location.pathname().unwrap_or_default());
+
 		let storage: std::sync::Arc<dyn ResourceStorage> = match OpfsResourceStorage::load("resources").await {
 			Ok(storage) => std::sync::Arc::new(storage),
 			Err(error) => {
@@ -73,13 +81,28 @@ impl EditorWrapper {
 		};
 
 		let application_io = PlatformApplicationIo::new().await;
-		let wake = crate::helpers::async_wake_callback();
 		let document_store = std::sync::Arc::new(editor::document_store::OpfsStore::new("documents"));
-		let editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage, document_store, application_io, wake);
+		let (editor, runtime) = Builder::new()
+			.with_editor(
+				EditorBuilder::new()
+					.with_wake(crate::helpers::wake_editor)
+					.with_environment(Environment {
+						platform: Platform::Web,
+						host,
+						url: url.leak(),
+					})
+					.with_resource_storage(storage)
+					.with_document_store(document_store),
+			)
+			.with_runtime(RuntimeBuilder::new().with_wake(crate::helpers::wake_runtime).with_application_io(application_io))
+			.with_spawner(crate::helpers::WasmSpawner)
+			.with_random_seed(uuid_random_seed)
+			.build();
 
 		if EDITOR.with(|slot| slot.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
+		*crate::NODE_RUNTIME.lock() = Some(runtime);
 
 		Self::initialize_wrapper(frontend_message_handler_callback)
 	}
@@ -109,24 +132,13 @@ impl EditorWrapper {
 		});
 
 		// Send each `FrontendMessage` to the JavaScript frontend
-		for message in frontend_messages.into_iter() {
+		for message in frontend_messages.into_iter().filter_map(intercept_frontend_message) {
 			self.send_frontend_message_to_js(message);
 		}
 	}
 
 	#[cfg(feature = "editor")]
 	pub(crate) fn send_frontend_message_to_js(&self, message: FrontendMessage) {
-		if let FrontendMessage::UpdateImageData { ref image_data } = message {
-			let new_hash = calculate_hash(image_data);
-			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
-
-			if new_hash != prev_hash {
-				render_image_data_to_canvases(image_data.iter());
-				IMAGE_DATA_HASH.store(new_hash, Ordering::Relaxed);
-			}
-			return;
-		}
-
 		let message_type = message.to_discriminant().local_name();
 
 		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
@@ -177,14 +189,14 @@ impl EditorWrapper {
 		#[cfg(target_family = "wasm")]
 		self.init_portfolio();
 
-		// Poll node graph evaluation on `requestAnimationFrame`
+		// Run the node runtime on `requestAnimationFrame`
 		{
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				#[cfg(not(feature = "native"))]
-				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
+				wasm_bindgen_futures::spawn_local(run_node_runtime(true));
 
 				#[cfg(any(not(feature = "native"), target_family = "wasm"))]
 				wrapper(|wrapper| {
@@ -241,12 +253,36 @@ impl EditorWrapper {
 	/// Load persisted browser storage state (web only; on desktop, persistence is handled natively and this is never triggered)
 	#[cfg(all(feature = "web", not(feature = "native")))]
 	#[wasm_bindgen(js_name = loadPersistedState)]
-	pub fn load_persisted_state(&self, state: editor::messages::frontend::utility_types::PersistedState) {
+	pub fn load_persisted_state(&self, state: tsify::Ts<editor::messages::frontend::utility_types::PersistedState>) {
+		let state = match state.to_rust() {
+			Ok(state) => state,
+			Err(e) => {
+				log::error!("Cannot convert state to type utility_types::PersistedState: {e:?}");
+				return;
+			}
+		};
 		self.dispatch(PersistentStateMessage::LoadState { state });
 	}
 	#[cfg(feature = "native")]
 	#[wasm_bindgen(js_name = loadPersistedState)]
 	pub fn load_persisted_state(&self, _state: JsValue) {
 		log::error!("loadPersistedState is unavailable on desktop; persistence is handled natively");
+	}
+
+	#[cfg(not(feature = "native"))]
+	pub fn ingest(&self, data: &web_sys::DataTransfer, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<u32>) {
+		let action = match (insert_parent_id.zip(insert_index), mouse_x.zip(mouse_y)) {
+			(Some((parent, insert_index)), _) => IngestAction::DropOnLayers {
+				parent: LayerNodeIdentifier::new_unchecked(NodeId(parent)),
+				insert_index,
+			},
+			(None, Some(mouse)) => IngestAction::DropOnCanvas { mouse },
+			(None, None) => IngestAction::Paste,
+		};
+		crate::data_transfer::ingest(data, action);
+	}
+	#[cfg(feature = "native")]
+	pub fn ingest(&self, _data: JsValue, _mouse_x: Option<f64>, _mouse_y: Option<f64>, _insert_parent_id: Option<u64>, _insert_index: Option<u32>) {
+		log::error!("ingest is unavailable on desktop; drops and pastes are handled natively");
 	}
 }

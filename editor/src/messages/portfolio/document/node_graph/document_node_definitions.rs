@@ -1,8 +1,9 @@
 mod document_node_derive;
 
-use super::node_properties::choice::enum_choice;
-use super::node_properties::{self, ParameterWidgetsInfo, SliderRange};
+use super::node_inspector::choice::enum_choice;
+use super::node_inspector::{self, ParameterWidgetsInfo, SliderRange};
 use super::utility_types::{FrontendNodeType, InputTypeConstraint};
+use crate::messages::frontend::IconName;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	InputMetadata, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, Vec2InputSettings, WidgetOverride,
@@ -15,16 +16,12 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::{concrete, list};
-use graphene_std::extract_xy::XY;
-use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
-use graphene_std::raster_types::{CPU, Raster};
-#[allow(unused_imports)]
-use graphene_std::transform::Footprint;
+use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType};
 use graphene_std::vector::Vector;
 use graphene_std::*;
 use std::collections::{HashMap, VecDeque};
 
-pub struct NodePropertiesContext<'a> {
+pub struct NodeInspectorContext<'a> {
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub document_id: DocumentId,
@@ -32,30 +29,16 @@ pub struct NodePropertiesContext<'a> {
 	pub resources: &'a ResourceMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
 	pub selection_network_path: &'a [NodeId],
-	pub document_name: &'a str,
-	/// The node IDs whose Properties panel sections the user has collapsed.
-	pub properties_panel_collapsed_sections: &'a [NodeId],
+	/// The node IDs whose Inspector sections the user has collapsed.
+	pub inspector_collapsed_sections: &'a [NodeId],
+	/// The input (if any) whose feeding chain a node's section shows, for each node where that differs from the default.
+	pub inspector_expanded_input_chains: &'a [(NodeId, Option<usize>)],
 }
 
-impl NodePropertiesContext<'_> {
+impl NodeInspectorContext<'_> {
 	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
-		let input_properties_row = self.network_interface.persistent_input_metadata(node_id, index, self.selection_network_path)?;
-
-		// The stored override wins, falling back to the definition's own so documents saved before it gained one still
-		// pick it up. Only `Custom` is recovered, since the other kinds also need input data stored at insertion time.
-		let widget_override = input_properties_row.widget_override.clone().or_else(|| {
-			let implementation = self.network_interface.implementation(node_id, self.selection_network_path)?;
-			let DocumentNodeImplementation::ProtoNode(proto_node_identifier) = implementation else {
-				return None;
-			};
-
-			let metadata = registry::NODE_METADATA.lock().unwrap();
-			let field = metadata.get(proto_node_identifier)?.fields.get(index)?;
-			match field.widget_override {
-				registry::RegistryWidgetOverride::Custom(name) => Some(name.to_string()),
-				_ => None,
-			}
-		})?;
+		let input_inspector_row = self.network_interface.persistent_input_metadata(node_id, index, self.selection_network_path)?;
+		let widget_override = input_inspector_row.widget_override.clone()?;
 
 		let Some(widget_override_lambda) = INPUT_OVERRIDES.get(&widget_override) else {
 			log::error!("Could not get widget override '{widget_override}' lambda in call_widget_override");
@@ -124,19 +107,26 @@ pub struct DocumentNodeDefinition {
 	/// Used to create the [`DefinitionIdentifier::Network`] identifier.
 	pub identifier: &'static str,
 
+	/// The definition's position in its lineage. Bump it, with a `network` migration, when a change would load existing instances wrongly.
+	/// Instances store it next to their reference. Proto-node definitions take theirs from the node macro.
+	pub version: u32,
+
 	/// The default [`NodeTemplate`] this definition instantiates.
 	pub node_template: NodeTemplate,
 
 	/// Definition specific data. In order for the editor to access this data, the reference will be used.
 	pub category: &'static str,
 
+	/// Name of the icon, from the frontend's icon registry, shown for this node in the node graph.
+	pub icon: Option<&'static str>,
+
 	/// User-facing description of the node's functionality.
 	pub description: Cow<'static, str>,
 
 	/// Node level overrides are stored based on the reference, not the instance. If the node is modified such that it becomes a local version
 	/// (for example an input is added), the reference is no longer to the definition, and the overrides are lost.
-	/// Most nodes should not use node based properties, since they are less flexible than input level properties.
-	pub properties: Option<&'static str>,
+	/// Most nodes should not use a node-level Inspector override, since it is less flexible than an input-level override.
+	pub inspector: Option<&'static str>,
 }
 
 // We use the once_cell to use the document node definitions throughout the editor without passing a reference
@@ -151,65 +141,42 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 	let custom = vec![
 		DocumentNodeDefinition {
 			identifier: "Custom Node",
-			category: "General",
+			version: 1,
+			category: "Routing",
+			icon: Some("NodeCustomNode"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate::default()),
 				..Default::default()
 			},
 			description: Cow::Borrowed("An empty node network you can use to create your own custom nodes."),
-			properties: None,
+			inspector: None,
 		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
-			category: "General",
+			version: 1,
+			category: "Graphic",
+			icon: Some("NodeMerge"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(5), 0)],
+					exports: vec![NodeInput::node(NodeId(2), 0)],
 					nodes: [
 						// Primary (bottom) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::as_graphic::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -2)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -2)),
 							..Default::default()
 						},
 						// Secondary (left) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 1)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::into_group::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -1)),
-							..Default::default()
-						},
-						// Derive the parent layer's NodeId from the document path
-						NodeTemplate {
-							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 0)),
-							..Default::default()
-						},
-						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
-						// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::node(NodeId(1), 0),
-								NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
-								NodeInput::node(NodeId(2), 0),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
-							..Default::default()
-						},
-						// The monitor node is used to display a thumbnail in the UI
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(3), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-							skip_deduplication: true,
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
 							..Default::default()
 						},
 						NodeTemplate {
 							call_argument: generic!(T),
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -2)),
 							..Default::default()
@@ -222,20 +189,26 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				}),
 				inputs: vec![NodeInput::type_default(list!(Graphic), true), NodeInput::type_default(list!(Graphic), true)],
-				input_metadata: vec![("Base", "TODO").into(), ("Content", "TODO").into()],
+				input_metadata: vec![
+					("Base", "The stack of layers below this one, which the content is placed above.").into(),
+					("Content", "The artwork this layer adds to the stack as a single item.").into(),
+				],
 				output_names: vec!["Out".to_string()],
+				output_descriptions: vec!["The stack of layers with this layer's content placed on top.".to_string()],
 				node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
 				..Default::default()
 			},
 			description: Cow::Borrowed("Merges the provided content as a new item in the layer's compositing stack."),
-			properties: None,
+			inspector: None,
 		},
 		DocumentNodeDefinition {
 			identifier: "Artboard",
-			category: "General",
+			version: 1,
+			category: "Graphic",
+			icon: Some("NodeArtboard"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(4), 0)],
+					exports: vec![NodeInput::node(NodeId(1), 0)],
 					nodes: [
 						NodeTemplate {
 							call_argument: generic!(T),
@@ -247,41 +220,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								NodeInput::import(item!(TaggedValue), 4),
 								NodeInput::import(item!(TaggedValue), 5),
 							],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
-							..Default::default()
-						},
-						// Derive the parent layer's NodeId from the document path
-						NodeTemplate {
-							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 3)),
-							..Default::default()
-						},
-						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
-						// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::node(NodeId(0), 0),
-								NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
-								NodeInput::node(NodeId(1), 0),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
-							..Default::default()
-						},
-						// The monitor node is used to display a thumbnail in the UI.
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(2), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-							call_argument: generic!(T),
-							skip_deduplication: true,
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
 							..Default::default()
 						},
 						NodeTemplate {
 							inputs: vec![
 								NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(list!(Artboard))), 0),
-								NodeInput::node(NodeId(3), 0),
+								NodeInput::node(NodeId(0), 0),
 							],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
@@ -303,11 +248,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					NodeInput::value(TaggedValue::Bool(true), false),
 				],
 				input_metadata: vec![
-					("Base", "TODO").into(),
-					InputMetadata::with_name_description_override("Content", "TODO", WidgetOverride::Hidden),
+					("Base", "The stack of artboards below this one, which this artboard is placed above.").into(),
+					("Content", "Graphics to include within the artboard.").into(),
 					InputMetadata::with_name_description_override(
 						"Location",
-						"TODO",
+						"Coordinate of the top-left corner of the artboard within the document.",
 						WidgetOverride::Vec2(Vec2InputSettings {
 							x: "X".to_string(),
 							y: "Y".to_string(),
@@ -318,7 +263,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					),
 					InputMetadata::with_name_description_override(
 						"Dimensions",
-						"TODO",
+						"Width and height of the artboard within the document.",
 						WidgetOverride::Vec2(Vec2InputSettings {
 							x: "W".to_string(),
 							y: "H".to_string(),
@@ -327,33 +272,36 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							..Default::default()
 						}),
 					),
-					InputMetadata::with_name_description_override("Background", "TODO", WidgetOverride::Custom("artboard_background".to_string())),
-					("Clip", "TODO").into(),
+					InputMetadata::with_name_description_override("Background", "Color of the artboard background.", WidgetOverride::Custom("artboard_background".to_string())),
+					("Clip", "Whether to cut off the contained content that extends outside the artboard, or keep it visible.").into(),
 				],
 				output_names: vec!["Out".to_string()],
+				output_descriptions: vec!["The stack of artboards with this artboard placed on top.".to_string()],
 				node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
 				..Default::default()
 			},
 			description: Cow::Borrowed("Creates a new Artboard which can be used as a working surface."),
-			properties: None,
+			inspector: None,
 		},
 		DocumentNodeDefinition {
 			identifier: "Blend",
-			category: "Vector",
+			version: 1,
+			category: "Vector: Deform",
+			icon: Some("NodeBlend"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(16), 0)],
 					nodes: [
-						// 0: Separate Subpaths (split path into individual subpaths)
+						// 0: Separate Paths (split the vector into its individual paths)
 						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::separate_subpaths::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(vector::separate_paths::IDENTIFIER),
 							inputs: vec![NodeInput::import(generic!(T), 4)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 0)),
 							..Default::default()
 						},
-						// 1: List Length (number of subpaths)
+						// 1: Count (number of subpaths)
 						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::list_length::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(vector::count::IDENTIFIER),
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 2)),
 							..Default::default()
@@ -498,22 +446,33 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					NodeInput::type_default(item!(Vector), false),
 				],
 				input_metadata: vec![
-					("Content", "TODO").into(),
-					("Count", "TODO").into(),
-					("Reverse", "TODO").into(),
-					("Distribution", "TODO").into(),
-					("Path", "TODO").into(),
+					("Content", "The vector objects to create intermediate shapes between.").into(),
+					(
+						"Count",
+						"The number of shapes spanning from the first object to the last, repeated for each subpath of the control path.",
+					)
+						.into(),
+					("Reverse", "Flip the stacking order of the shapes, so the ones nearest the first object are on top.").into(),
+					("Distribution", "What changes evenly from one shape to the next, which sets how the intermediate shapes are spaced.").into(),
+					(
+						"Path",
+						"An optional control path with one anchor point per object. Curved segments shape the trajectory of the blend instead of traveling straight.",
+					)
+						.into(),
 				],
 				output_names: vec!["Out".to_string()],
+				output_descriptions: vec!["The blended shapes, from the first object to the last.".to_string()],
 				node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 				..Default::default()
 			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
+			description: Cow::Borrowed("Creates a series of intermediate shapes that gradually transition between vector objects, optionally along a control path."),
+			inspector: None,
 		},
 		DocumentNodeDefinition {
 			identifier: "Origins to Polyline",
-			category: "Vector",
+			version: 1,
+			category: "Vector: Path",
+			icon: Some("NodeOriginsToPolyline"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(7), 0)],
@@ -582,17 +541,20 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				}),
 				inputs: vec![NodeInput::type_default(list!(Vector), true)],
-				input_metadata: vec![("Vector", "TODO").into()],
+				input_metadata: vec![("Vector", "The vector objects to connect in order by their origins.").into()],
 				output_names: vec!["Vector".to_string()],
+				output_descriptions: vec!["An open polyline with an anchor point at the origin of each object.".to_string()],
 				node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 				..Default::default()
 			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
+			description: Cow::Borrowed("Connects the origins of vector objects in order with an open polyline, such as to make a control path for the **Blend** and **Morph** nodes."),
+			inspector: None,
 		},
 		DocumentNodeDefinition {
 			identifier: "Load Image",
-			category: "Web Request",
+			version: 1,
+			category: "Data: I/O",
+			icon: Some("NodeLoadImage"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(1), 0)],
@@ -605,7 +567,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						},
 						NodeTemplate {
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::decode_image::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::bytes_to_image::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 							..Default::default()
 						},
@@ -616,190 +578,23 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					.collect(),
 					..Default::default()
 				}),
-				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String("graphite:null".to_string()), false)],
-				input_metadata: vec![("Empty", "TODO").into(), ("URL", "TODO").into()],
+				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String(String::new()), false)],
+				input_metadata: vec![
+					("Empty", "Has no effect, since the image is loaded from the URL.").into(),
+					("URL", "The web address or local asset path of the image to load.").into(),
+				],
 				output_names: vec!["Image".to_string()],
+				output_descriptions: vec!["The loaded image.".to_string()],
 				..Default::default()
 			},
 			description: Cow::Borrowed("Loads an image from a given URL."),
-			properties: None,
-		},
-		#[cfg(all(feature = "gpu", target_family = "wasm"))]
-		DocumentNodeDefinition {
-			identifier: "Rasterize",
-			category: "Raster",
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(2), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::create_canvas::IDENTIFIER),
-							skip_deduplication: true,
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::memoize::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(item!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![
-					NodeInput::type_default(list!(Vector), true),
-					NodeInput::value(
-						TaggedValue::Footprint(Footprint {
-							transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
-							resolution: UVec2::new(1000, 1000),
-							..Default::default()
-						}),
-						false,
-					),
-				],
-				input_metadata: vec![("Artwork", "TODO").into(), ("Footprint", "TODO").into()],
-				output_names: vec!["Canvas".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Split Channels",
-			category: "Raster: Channels",
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::node(NodeId(0), 0),
-						NodeInput::node(NodeId(1), 0),
-						NodeInput::node(NodeId(2), 0),
-						NodeInput::node(NodeId(3), 0),
-					],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 4)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 6)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![NodeInput::type_default(list!(Raster<CPU>), true)],
-				input_metadata: vec![("Image", "TODO").into()],
-				output_names: vec!["".to_string(), "Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Split Vec2",
-			category: "Math: Vec2",
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::value(TaggedValue::None, false), NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![NodeInput::import(item!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
-							implementation: NodeTemplateImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::import(item!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
-							implementation: NodeTemplateImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), true)],
-				input_metadata: vec![("Vec2", "TODO").into()],
-				output_names: vec!["".to_string(), "X".to_string(), "Y".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed(
-				"Decomposes the X and Y components of a vec2.\n\
-				\n\
-				The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.",
-			),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Extract",
-			category: "",
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Extract,
-				inputs: vec![NodeInput::type_default(concrete!(DocumentNode), true)],
-				input_metadata: vec![("Node", "TODO").into()],
-				output_names: vec!["Document Node".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
+			inspector: None,
 		},
 		DocumentNodeDefinition {
 			identifier: "Regex Find",
-			category: "Text: Regex",
+			version: 1,
+			category: "String: Regex",
+			icon: Some("NodeRegexFind"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![
@@ -862,116 +657,84 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					("Multiline", "Make `^` and `$` match the start and end of each line, not just the whole string.").into(),
 				],
 				output_names: vec!["Match".to_string(), "Captures".to_string()],
+				output_descriptions: vec![
+					"The whole portion of the string matching the pattern, or empty if there is no match.".to_string(),
+					"The text matched by each capture group in the pattern, in order.".to_string(),
+				],
 				..Default::default()
 			},
 			description: Cow::Borrowed(
 				r#"Finds a portion of the string matching a regular expression pattern. With "Match Index" at its default 0, it selects the first non-overlapping occurrence, but others may be selected. Capture groups, if any, are produced as a list in the "Captures" output."#,
 			),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Path",
-			category: "Vector",
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(1), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![NodeInput::import(generic!(T), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-							call_argument: generic!(T),
-							skip_deduplication: true,
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::node(NodeId(0), 0),
-								NodeInput::import(concrete!(graphene_std::vector::VectorModification), 1),
-								NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
-							],
-							call_argument: generic!(T),
-							implementation: NodeTemplateImplementation::ProtoNode(vector::path_modify::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![
-					NodeInput::type_default(item!(Vector), true),
-					NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
-				],
-				input_metadata: vec![("Content", "TODO").into(), ("Modification", "TODO").into()],
-				output_names: vec!["Modified".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
+			inspector: None,
 		},
 	];
 
 	document_node_derive::post_process_nodes(custom)
 }
 
-type NodeProperties = HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync>>;
+type NodeInspector = HashMap<String, Box<dyn Fn(NodeId, &mut NodeInspectorContext) -> Vec<LayoutGroup> + Send + Sync>>;
 
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
-pub static NODE_OVERRIDES: once_cell::sync::Lazy<NodeProperties> = once_cell::sync::Lazy::new(static_node_properties);
+pub static NODE_OVERRIDES: once_cell::sync::Lazy<NodeInspector> = once_cell::sync::Lazy::new(static_node_inspector);
 
-/// Defines the logic for inputs to display a custom Properties panel widget.
-fn static_node_properties() -> NodeProperties {
-	let mut map: NodeProperties = HashMap::new();
-	map.insert("brightness_contrast_properties".to_string(), Box::new(node_properties::brightness_contrast_properties));
-	map.insert("channel_mixer_properties".to_string(), Box::new(node_properties::channel_mixer_properties));
-	map.insert("levels_properties".to_string(), Box::new(node_properties::levels_properties));
-	map.insert("transfer_curves_properties".to_string(), Box::new(node_properties::transfer_curves_properties));
-	map.insert("hue_saturation_properties".to_string(), Box::new(node_properties::hue_saturation_properties));
-	map.insert("black_and_white_properties".to_string(), Box::new(node_properties::black_and_white_properties));
-	map.insert("threshold_properties".to_string(), Box::new(node_properties::threshold_properties));
-	map.insert("vibrance_properties".to_string(), Box::new(node_properties::vibrance_properties));
-	map.insert("color_balance_properties".to_string(), Box::new(node_properties::color_balance_properties));
-	map.insert("fill_properties".to_string(), Box::new(node_properties::fill_properties));
-	map.insert("stroke_properties".to_string(), Box::new(node_properties::stroke_properties));
-	map.insert("offset_path_properties".to_string(), Box::new(node_properties::offset_path_properties));
-	map.insert("selective_color_properties".to_string(), Box::new(node_properties::selective_color_properties));
-	map.insert("exposure_properties".to_string(), Box::new(node_properties::exposure_properties));
-	map.insert("format_number_properties".to_string(), Box::new(node_properties::format_number_properties));
-	map.insert("string_capitalization_properties".to_string(), Box::new(node_properties::string_capitalization_properties));
-	map.insert("rectangle_properties".to_string(), Box::new(node_properties::rectangle_properties));
-	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));
-	map.insert("spiral_properties".to_string(), Box::new(node_properties::spiral_properties));
-	map.insert("sample_polyline_properties".to_string(), Box::new(node_properties::sample_polyline_properties));
-	map.insert(
-		"monitor_properties".to_string(),
-		Box::new(|_node_id, _context| node_properties::string_properties("Used internally by the editor to obtain a layer thumbnail.")),
-	);
+/// Defines the logic for inputs to display a custom Inspector widget.
+fn static_node_inspector() -> NodeInspector {
+	let mut map: NodeInspector = HashMap::new();
+	map.insert("brightness_contrast_inspector".to_string(), Box::new(node_inspector::brightness_contrast_inspector));
+	map.insert("channel_mixer_inspector".to_string(), Box::new(node_inspector::channel_mixer_inspector));
+	map.insert("levels_inspector".to_string(), Box::new(node_inspector::levels_inspector));
+	map.insert("transfer_curves_inspector".to_string(), Box::new(node_inspector::transfer_curves_inspector));
+	map.insert("hue_saturation_inspector".to_string(), Box::new(node_inspector::hue_saturation_inspector));
+	map.insert("black_and_white_inspector".to_string(), Box::new(node_inspector::black_and_white_inspector));
+	map.insert("threshold_inspector".to_string(), Box::new(node_inspector::threshold_inspector));
+	map.insert("vibrance_inspector".to_string(), Box::new(node_inspector::vibrance_inspector));
+	map.insert("color_balance_inspector".to_string(), Box::new(node_inspector::color_balance_inspector));
+	map.insert("fill_inspector".to_string(), Box::new(node_inspector::fill_inspector));
+	map.insert("stroke_inspector".to_string(), Box::new(node_inspector::stroke_inspector));
+	map.insert("offset_path_inspector".to_string(), Box::new(node_inspector::offset_path_inspector));
+	map.insert("selective_color_inspector".to_string(), Box::new(node_inspector::selective_color_inspector));
+	map.insert("exposure_inspector".to_string(), Box::new(node_inspector::exposure_inspector));
+	map.insert("format_number_inspector".to_string(), Box::new(node_inspector::format_number_inspector));
+	map.insert("string_capitalization_inspector".to_string(), Box::new(node_inspector::string_capitalization_inspector));
+	map.insert("rectangle_inspector".to_string(), Box::new(node_inspector::rectangle_inspector));
+	map.insert("grid_inspector".to_string(), Box::new(node_inspector::grid_inspector));
+	map.insert("spiral_inspector".to_string(), Box::new(node_inspector::spiral_inspector));
+	map.insert("sample_polyline_inspector".to_string(), Box::new(node_inspector::sample_polyline_inspector));
 	map
 }
 
-type InputProperties = HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>>;
+type InputInspector = HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodeInspectorContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>>;
 
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
-static INPUT_OVERRIDES: once_cell::sync::Lazy<InputProperties> = once_cell::sync::Lazy::new(static_input_properties);
+static INPUT_OVERRIDES: once_cell::sync::Lazy<InputInspector> = once_cell::sync::Lazy::new(static_input_inspector);
 
-/// Defines the logic for inputs to display a custom Properties panel widget.
-fn static_input_properties() -> InputProperties {
-	let mut map: InputProperties = HashMap::new();
-	map.insert("hidden".to_string(), Box::new(|_node_id, _index, _context| Ok(Vec::new())));
+/// Defines the logic for inputs to display a custom Inspector widget.
+fn static_input_inspector() -> InputInspector {
+	let mut map: InputInspector = HashMap::new();
+	map.insert(
+		"hidden".to_string(),
+		Box::new(|node_id, index, context| {
+			Ok(node_inspector::exposed_parameter_row(&ParameterWidgetsInfo::at_index(node_id, index, true, context))
+				.into_iter()
+				.collect())
+		}),
+	);
 	map.insert(
 		"string".to_string(),
 		Box::new(|node_id, index, context| {
-			let Some(value) = context.network_interface.input_data(&node_id, index, "string_properties", context.selection_network_path) else {
-				return Err(format!("Could not get string properties for node {node_id}"));
+			// Falls back to the legacy key
+			let network_interface = &context.network_interface;
+			let Some(value) = network_interface
+				.input_data(&node_id, index, "string_inspector", context.selection_network_path)
+				.or_else(|| network_interface.input_data(&node_id, index, "string_properties", context.selection_network_path))
+			else {
+				return Err(format!("Could not get string Inspector input data for node {node_id}"));
 			};
 			let Some(string) = value.as_str() else {
-				return Err(format!("Could not downcast string properties for node {node_id}"));
+				return Err(format!("Could not downcast string Inspector input data for node {node_id}"));
 			};
-			Ok(node_properties::string_properties(string))
+			Ok(node_inspector::string_inspector(string))
 		}),
 	);
 	map.insert(
@@ -1042,7 +805,7 @@ fn static_input_properties() -> InputProperties {
 					true
 				});
 
-			Ok(vec![LayoutGroup::row(node_properties::number_widget(
+			Ok(vec![LayoutGroup::row(node_inspector::number_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, blank_assist, context),
 				number_input,
 			))])
@@ -1052,19 +815,18 @@ fn static_input_properties() -> InputProperties {
 		// The custom number input settings are only available on proto nodes
 		"optional_f64".to_string(),
 		Box::new(|node_id, index, context| {
-			let node_metadata = registry::NODE_METADATA.lock().unwrap();
 			let mut number_input = NumberInput::default();
+			// The field is cloned so the lock is released before building the row below, which locks the node metadata again
 			if let Some(field) = context
 				.network_interface
 				.implementation(&node_id, context.selection_network_path)
 				.and_then(|implementation| if let DocumentNodeImplementation::ProtoNode(id) = implementation { Some(id) } else { None })
-				.and_then(|proto_node_identifier| node_metadata.get(proto_node_identifier))
-				.and_then(|metadata| metadata.fields.get(index))
+				.and_then(|proto_node_identifier| registry::NODE_METADATA.lock().unwrap().get(proto_node_identifier)?.fields.get(index).cloned())
 			{
 				if let Some(unit) = field.unit {
 					number_input = number_input.unit(unit);
 				}
-				// Typing is clamped only by the hard bounds; the slider extent prefers the soft bounds (see `property_from_type`)
+				// Typing is clamped only by the hard bounds; the slider extent prefers the soft bounds (see `inspector_row_from_type`)
 				if let Some(hard_min) = field.number_hard_min {
 					number_input = number_input.min(hard_min);
 				}
@@ -1083,7 +845,7 @@ fn static_input_properties() -> InputProperties {
 				}
 			};
 			// NOTE: The bool input MUST be at the input index directly before the f64 input!
-			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
+			Ok(vec![LayoutGroup::row(node_inspector::optional_f64_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
@@ -1102,7 +864,7 @@ fn static_input_properties() -> InputProperties {
 				max: 100.,
 				default: Some(100.),
 			};
-			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
+			Ok(vec![LayoutGroup::row(node_inspector::optional_f64_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
@@ -1113,7 +875,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		// A type-witness input, whose stored value's type selects the node's row: the dropdown lists the types the rows accept there
 		"type_choice".to_string(),
-		Box::new(|node_id, index, context| Ok(vec![node_properties::type_choice_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context))])),
+		Box::new(|node_id, index, context| Ok(vec![node_inspector::type_choice_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context))])),
 	);
 	map.insert(
 		"vec2".to_string(),
@@ -1155,7 +917,7 @@ fn static_input_properties() -> InputProperties {
 				.and_then(|value| value.as_bool())
 				.unwrap_or_default();
 
-			Ok(vec![node_properties::vec2_widget(
+			Ok(vec![node_inspector::vec2_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				&x,
 				&y,
@@ -1166,10 +928,10 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"noise_properties_scale".to_string(),
+		"noise_inspector_scale".to_string(),
 		Box::new(|node_id, index, context| {
-			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let scale = node_properties::number_widget(
+			let (_, coherent_noise_active, _, _, _, _) = node_inspector::query_noise_pattern_state(node_id, context)?;
+			let scale = node_inspector::number_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active),
 			);
@@ -1177,28 +939,28 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"noise_properties_noise_type".to_string(),
+		"noise_inspector_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let noise_type_row = enum_choice::<NoiseType>().for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context)).property_row();
+			let noise_type_row = enum_choice::<NoiseType>().for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context)).inspector_row();
 			Ok(vec![noise_type_row, LayoutGroup::row(Vec::new())])
 		}),
 	);
 	map.insert(
-		"noise_properties_domain_warp_type".to_string(),
+		"noise_inspector_domain_warp_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let (_, coherent_noise_active, _, _, _, _) = node_inspector::query_noise_pattern_state(node_id, context)?;
 			let domain_warp_type = enum_choice::<DomainWarpType>()
 				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active)
-				.property_row();
+				.inspector_row();
 			Ok(vec![domain_warp_type])
 		}),
 	);
 	map.insert(
-		"noise_properties_domain_warp_amplitude".to_string(),
+		"noise_inspector_domain_warp_amplitude".to_string(),
 		Box::new(|node_id, index, context| {
-			let (_, coherent_noise_active, _, _, domain_warp_active, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let domain_warp_amplitude = node_properties::number_widget(
+			let (_, coherent_noise_active, _, _, domain_warp_active, _) = node_inspector::query_noise_pattern_state(node_id, context)?;
+			let domain_warp_amplitude = node_inspector::number_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
 			);
@@ -1206,21 +968,21 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"noise_properties_fractal_type".to_string(),
+		"noise_inspector_fractal_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let (_, coherent_noise_active, _, _, _, _) = node_inspector::query_noise_pattern_state(node_id, context)?;
 			let fractal_type_row = enum_choice::<FractalType>()
 				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active)
-				.property_row();
+				.inspector_row();
 			Ok(vec![fractal_type_row])
 		}),
 	);
 	map.insert(
-		"noise_properties_fractal_octaves".to_string(),
+		"noise_inspector_fractal_octaves".to_string(),
 		Box::new(|node_id, index, context| {
-			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let fractal_octaves = node_properties::number_widget(
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_inspector::query_noise_pattern_state(node_id, context)?;
+			let fractal_octaves = node_inspector::number_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
@@ -1234,10 +996,10 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"noise_properties_fractal_lacunarity".to_string(),
+		"noise_inspector_fractal_lacunarity".to_string(),
 		Box::new(|node_id, index, context| {
-			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let fractal_lacunarity = node_properties::number_widget(
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_inspector::query_noise_pattern_state(node_id, context)?;
+			let fractal_lacunarity = node_inspector::number_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
@@ -1249,10 +1011,10 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"noise_properties_fractal_gain".to_string(),
+		"noise_inspector_fractal_gain".to_string(),
 		Box::new(|node_id, index, context| {
-			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let fractal_gain = node_properties::number_widget(
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_inspector::query_noise_pattern_state(node_id, context)?;
+			let fractal_gain = node_inspector::number_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
@@ -1264,10 +1026,10 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"noise_properties_fractal_weighted_strength".to_string(),
+		"noise_inspector_fractal_weighted_strength".to_string(),
 		Box::new(|node_id, index, context| {
-			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let fractal_weighted_strength = node_properties::range_slider_widget(
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_inspector::query_noise_pattern_state(node_id, context)?;
+			let fractal_weighted_strength = node_inspector::range_slider_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.min(0.)
@@ -1279,10 +1041,10 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"noise_properties_ping_pong_strength".to_string(),
+		"noise_inspector_ping_pong_strength".to_string(),
 		Box::new(|node_id, index, context| {
-			let (fractal_active, coherent_noise_active, _, ping_pong_active, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let fractal_ping_pong_strength = node_properties::number_widget(
+			let (fractal_active, coherent_noise_active, _, ping_pong_active, _, domain_warp_only_fractal_type_wrongly_active) = node_inspector::query_noise_pattern_state(node_id, context)?;
+			let fractal_ping_pong_strength = node_inspector::number_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
@@ -1294,32 +1056,32 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"noise_properties_cellular_distance_function".to_string(),
+		"noise_inspector_cellular_distance_function".to_string(),
 		Box::new(|node_id, index, context| {
-			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_inspector::query_noise_pattern_state(node_id, context)?;
 			let cellular_distance_function_row = enum_choice::<CellularDistanceFunction>()
 				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active || !cellular_noise_active)
-				.property_row();
+				.inspector_row();
 			Ok(vec![cellular_distance_function_row])
 		}),
 	);
 	map.insert(
-		"noise_properties_cellular_return_type".to_string(),
+		"noise_inspector_cellular_return_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_inspector::query_noise_pattern_state(node_id, context)?;
 			let cellular_return_type = enum_choice::<CellularReturnType>()
 				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active || !cellular_noise_active)
-				.property_row();
+				.inspector_row();
 			Ok(vec![cellular_return_type])
 		}),
 	);
 	map.insert(
-		"noise_properties_cellular_jitter".to_string(),
+		"noise_inspector_cellular_jitter".to_string(),
 		Box::new(|node_id, index, context| {
-			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let cellular_jitter = node_properties::number_widget(
+			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_inspector::query_noise_pattern_state(node_id, context)?;
+			let cellular_jitter = node_inspector::number_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
@@ -1331,40 +1093,57 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"assign_colors_gradient".to_string(),
+		"vary_fill_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
-			let gradient_row = node_properties::color_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), ColorInput::default().allow_none(false));
+			let gradient_row = node_inspector::color_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), ColorInput::default().allow_none(false));
 			Ok(vec![gradient_row])
 		}),
 	);
 	map.insert(
-		"assign_colors_seed".to_string(),
+		"vary_fill_colors_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, vector::vary_fill_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_fill_colors_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, vector::vary_fill_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_stroke_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
-			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
-			let seed_row = node_properties::number_widget(
-				ParameterWidgetsInfo::at_index(node_id, index, true, context),
-				NumberInput::default().min(0.).int().disabled(!randomize_enabled),
-			);
-			Ok(vec![seed_row.into()])
+			let gradient_row = node_inspector::color_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), ColorInput::default().allow_none(false));
+			Ok(vec![gradient_row])
 		}),
 	);
 	map.insert(
-		"assign_colors_repeat_every".to_string(),
-		Box::new(|node_id, index, context| {
-			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
-			let repeat_every_row = node_properties::number_widget(
-				ParameterWidgetsInfo::at_index(node_id, index, true, context),
-				NumberInput::default().min(0.).int().disabled(randomize_enabled),
-			);
-			Ok(vec![repeat_every_row.into()])
-		}),
+		"vary_stroke_colors_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, vector::vary_stroke_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_stroke_colors_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, vector::vary_stroke_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_rotations_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, transform_nodes::vary_rotations::RandomizeInput)),
+	);
+	map.insert(
+		"vary_rotations_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, transform_nodes::vary_rotations::RandomizeInput)),
+	);
+	map.insert(
+		"vary_scales_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, transform_nodes::vary_scales::RandomizeInput)),
+	);
+	map.insert(
+		"vary_scales_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, transform_nodes::vary_scales::RandomizeInput)),
 	);
 	map.insert(
 		"transform_rotation".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut widgets = node_properties::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
+			let mut widgets = node_inspector::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
 
-			let document_node = node_properties::get_document_node(node_id, context)?;
+			let document_node = node_inspector::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
 				return Err("Input not found in transform rotation input override".to_string());
 			};
@@ -1376,12 +1155,12 @@ fn static_input_properties() -> InputProperties {
 						.mode(NumberInputMode::Range)
 						.range_min(Some(-180.))
 						.range_max(Some(180.))
-						.on_update(node_properties::update_value_at_index(
+						.on_update(node_inspector::update_value_at_index(
 							|number_input: &NumberInput| TaggedValue::Number(number_input.value.unwrap()),
 							node_id,
 							index,
 						))
-						.on_commit(node_properties::commit_value)
+						.on_commit(node_inspector::commit_value)
 						.widget_instance(),
 				]);
 			}
@@ -1393,7 +1172,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"transform_translation".to_string(),
 		Box::new(|node_id, index, context| {
-			Ok(vec![node_properties::vec2_widget(
+			Ok(vec![node_inspector::vec2_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				"X",
 				"Y",
@@ -1407,7 +1186,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"transform_scale".to_string(),
 		Box::new(|node_id, index, context| {
-			Ok(vec![node_properties::vec2_widget(
+			Ok(vec![node_inspector::vec2_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				"W",
 				"H",
@@ -1421,9 +1200,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"transform_skew".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut widgets = node_properties::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
+			let mut widgets = node_inspector::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
 
-			let document_node = node_properties::get_document_node(node_id, context)?;
+			let document_node = node_inspector::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
 				return Err("Input not found in transform skew input override".to_string());
 			};
@@ -1435,12 +1214,12 @@ fn static_input_properties() -> InputProperties {
 						.unit("°")
 						.min(-89.9)
 						.max(89.9)
-						.on_update(node_properties::update_value_at_index(
+						.on_update(node_inspector::update_value_at_index(
 							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), val.y)),
 							node_id,
 							index,
 						))
-						.on_commit(node_properties::commit_value)
+						.on_commit(node_inspector::commit_value)
 						.widget_instance(),
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					NumberInput::new(Some(val.y))
@@ -1448,12 +1227,12 @@ fn static_input_properties() -> InputProperties {
 						.unit("°")
 						.min(-89.9)
 						.max(89.9)
-						.on_update(node_properties::update_value_at_index(
+						.on_update(node_inspector::update_value_at_index(
 							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, input.value.unwrap())),
 							node_id,
 							index,
 						))
-						.on_commit(node_properties::commit_value)
+						.on_commit(node_inspector::commit_value)
 						.widget_instance(),
 				]);
 			}
@@ -1463,22 +1242,22 @@ fn static_input_properties() -> InputProperties {
 	);
 	map.insert(
 		"text_area".to_string(),
-		Box::new(|node_id, index, context| Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context)))])),
+		Box::new(|node_id, index, context| Ok(vec![LayoutGroup::row(node_inspector::text_area_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context)))])),
 	);
 	map.insert(
 		// A math expression, flagged with a warning icon while it fails to parse
 		"math_expression".to_string(),
 		Box::new(|node_id, index, context| {
 			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
-			Ok(vec![LayoutGroup::row(node_properties::math_expression_widget(info, false))])
+			Ok(vec![LayoutGroup::row(node_inspector::math_expression_widget(info, false))])
 		}),
 	);
 	map.insert(
-		// Like `math_expression`, where a lone reducer token like `+` or `min` applied across the node's items is also valid
-		"math_expression_or_reducer".to_string(),
+		// Like `math_expression`, but taking only a lone operator or function name like `+` or `min` to apply across the node's items
+		"math_operator".to_string(),
 		Box::new(|node_id, index, context| {
 			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
-			Ok(vec![LayoutGroup::row(node_properties::math_expression_widget(info, true))])
+			Ok(vec![LayoutGroup::row(node_inspector::math_expression_widget(info, true))])
 		}),
 	);
 	map.insert(
@@ -1488,7 +1267,7 @@ fn static_input_properties() -> InputProperties {
 			if context.fonts.font_catalog.is_empty() {
 				context.responses.add(FontsMessage::LoadCatalog);
 			}
-			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::at_index(node_id, index, true, context));
+			let (font, style) = node_inspector::font_inputs(ParameterWidgetsInfo::at_index(node_id, index, true, context));
 			let mut result = vec![LayoutGroup::row(font)];
 			if let Some(style) = style {
 				result.push(LayoutGroup::row(style));
@@ -1499,21 +1278,21 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"image_file".to_string(),
 		Box::new(|node_id, index, context| {
-			let widgets = node_properties::resource_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), vec![TypeFilter::raster()]);
+			let widgets = node_inspector::resource_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), vec![TypeFilter::raster()]);
 			Ok(vec![LayoutGroup::row(widgets)])
 		}),
 	);
 	map.insert(
 		"lut_file".to_string(),
 		Box::new(|node_id, index, context| {
-			let widgets = node_properties::resource_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), vec![TypeFilter::lut()]);
+			let widgets = node_inspector::resource_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), vec![TypeFilter::lut()]);
 			Ok(vec![LayoutGroup::row(widgets)])
 		}),
 	);
 	map.insert(
 		"artboard_background".to_string(),
 		Box::new(|node_id, index, context| {
-			Ok(vec![node_properties::color_widget(
+			Ok(vec![node_inspector::color_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				ColorInput::default().allow_none(false),
 			)])
@@ -1524,8 +1303,15 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let choices = enum_choice::<text::TextAlign>()
 				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
-				.property_row();
+				.inspector_row();
 			Ok(vec![choices])
+		}),
+	);
+	map.insert(
+		"vec2_uv".to_string(),
+		Box::new(|node_id, index, context| {
+			let parameter_widgets_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![node_inspector::vec2_widget(parameter_widgets_info, "U", "V", "", None, false)])
 		}),
 	);
 	map
@@ -1536,11 +1322,32 @@ pub fn resolve_network_node_type(identifier: &str) -> Option<&'static DocumentNo
 }
 
 pub fn resolve_proto_node_type(identifier: ProtoNodeIdentifier) -> Option<&'static DocumentNodeDefinition> {
-	resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier))
+	resolve_proto_node_definition(&identifier)
+}
+
+/// The proto node definitions keyed by their identifier, so a lookup can borrow it.
+static PROTO_NODE_DEFINITIONS: once_cell::sync::Lazy<HashMap<ProtoNodeIdentifier, &'static DocumentNodeDefinition>> = once_cell::sync::Lazy::new(|| {
+	DOCUMENT_NODE_TYPES
+		.iter()
+		.filter_map(|(identifier, definition)| match identifier {
+			DefinitionIdentifier::ProtoNode(identifier) => Some((identifier.clone(), definition)),
+			_ => None,
+		})
+		.collect()
+});
+
+/// Looks up a proto node's definition without taking its identifier, for reads frequent enough that a clone per call would show.
+pub fn resolve_proto_node_definition(identifier: &ProtoNodeIdentifier) -> Option<&'static DocumentNodeDefinition> {
+	PROTO_NODE_DEFINITIONS.get(identifier).copied()
 }
 
 pub fn resolve_document_node_type(identifier: &DefinitionIdentifier) -> Option<&'static DocumentNodeDefinition> {
 	DOCUMENT_NODE_TYPES.get(identifier)
+}
+
+/// The current version of the network definition `identifier`, or 1 for a reference that names no definition.
+pub fn network_definition_version(identifier: &str) -> u32 {
+	resolve_network_node_type(identifier).map_or(1, |definition| definition.version)
 }
 
 impl InputTypeConstraint {
@@ -1582,8 +1389,8 @@ impl InputTypeConstraint {
 		}
 	}
 
-	/// Check if a type reaches the constraint through an `input_adapter`, the per-connector node which the preprocessor places ahead of
-	/// every ranked connector to convert or embed a convertible element, such as a color literal feeding a `Graphic` paint wire.
+	/// Check if a type reaches the constraint through any `input_adapter`, which converts or embeds a convertible element (such as a color literal feeding a
+	/// `Graphic` paint wire) ahead of an input registered with one ranked type. Whether this input is one that gets an adapter isn't checked.
 	#[must_use]
 	fn satisfies_through_input_adapter(&self, ty: &Type) -> bool {
 		let provided = Self::type_name(ty);
@@ -1641,8 +1448,8 @@ impl InputTypeConstraint {
 				}
 				result_accepted
 			}
-			NodeTemplateImplementation::Extract => {
-				warn!("Input types for extract node {name} not supported");
+			NodeTemplateImplementation::Definition(_) => {
+				warn!("Input types for definition node {name} not supported");
 				Self::All
 			}
 		}
@@ -1668,10 +1475,13 @@ impl InputTypeConstraint {
 	}
 }
 
+/// The node catalog's entries, ordered by category and then by name.
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
-	DOCUMENT_NODE_TYPES
+	let mut node_types: Vec<FrontendNodeType> = DOCUMENT_NODE_TYPES
 		.iter()
-		.filter(|(_, definition)| !definition.category.is_empty())
+		// A Passthrough is placed as a redirect dot on a wire, so it isn't offered as a node
+		.filter(|(identifier, definition)| !registry::is_hidden_category(definition.category) && **identifier != DefinitionIdentifier::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER))
+		.filter(|(_, definition)| cfg!(debug_assertions) || !registry::is_development_category(definition.category))
 		.map(|(identifier, definition)| {
 			let mut name = definition.node_template.display_name.clone();
 			if name.is_empty() {
@@ -1684,18 +1494,35 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 				category: definition.category.to_string(),
 			}
 		})
-		.collect()
+		.collect();
+
+	node_types.sort_by(|a, b| {
+		registry::category_sort_key(&a.category)
+			.cmp(&registry::category_sort_key(&b.category))
+			.then_with(|| a.name.cmp(&b.name))
+	});
+	node_types
 }
 
 pub fn collect_node_descriptions() -> Vec<(String, String)> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.map(|(identifier, definition)| {
-			(
-				identifier.serialized(),
-				if definition.description != "TODO" { definition.description.to_string() } else { String::new() },
-			)
-		})
+		.map(|(identifier, definition)| (identifier.serialized(), definition.description.to_string()))
+		.collect()
+}
+
+/// The identifiers of the catalog's network nodes.
+pub fn network_node_identifiers() -> impl Iterator<Item = &'static str> {
+	DOCUMENT_NODE_TYPES.keys().filter_map(|identifier| match identifier {
+		DefinitionIdentifier::Network(name) => Some(name.as_str()),
+		DefinitionIdentifier::ProtoNode(_) => None,
+	})
+}
+
+pub fn collect_node_icons() -> Vec<(String, IconName)> {
+	DOCUMENT_NODE_TYPES
+		.iter()
+		.filter_map(|(identifier, definition)| Some((identifier.serialized(), definition.icon?.to_string())))
 		.collect()
 }
 
@@ -1714,7 +1541,7 @@ impl DocumentNodeDefinition {
 			}
 		});
 
-		// Ensure that the input properties are initialized for every input of every node
+		// Ensure that the input metadata is initialized for every input of every node
 		template.normalize_input_metadata();
 
 		template
@@ -1728,9 +1555,41 @@ impl DocumentNodeDefinition {
 
 #[cfg(test)]
 mod test {
-	use super::resolve_network_node_type;
+	use super::{DOCUMENT_NODE_TYPES, DefinitionIdentifier, resolve_network_node_type};
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::document::NodeId;
+
+	#[test]
+	fn rasterize_defaults_to_a_1000_px_square_at_full_resolution() {
+		use glam::{DAffine2, UVec2};
+		use graph_craft::document::value::TaggedValue;
+		use graphene_std::platform_application_io::rasterize;
+
+		let definition = super::resolve_proto_node_definition(&rasterize::IDENTIFIER).expect("Rasterize should have a definition");
+		let footprint = definition.node_template.input(rasterize::FootprintInput).and_then(|input| input.as_value());
+
+		let expected = Footprint {
+			transform: DAffine2::from_scale(DVec2::splat(1000.)),
+			resolution: UVec2::splat(1000),
+			..Default::default()
+		};
+		assert_eq!(footprint, Some(&TaggedValue::Footprint(expected)));
+	}
+
+	// The executor input the compiler fills in has no type yet, which mustn't rule out every implementation
+	#[tokio::test]
+	async fn a_new_rasterize_node_offers_types_for_its_artwork() {
+		use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+		use graphene_std::platform_application_io::rasterize;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let node_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(rasterize::IDENTIFIER)).await;
+
+		let interface = &editor.active_document().network_interface;
+		let artwork_types = interface.potential_valid_input_types(&InputConnector::node_at_index(node_id, 0), &[]);
+		assert!(!artwork_types.is_empty(), "the artwork input should accept the types Rasterize is implemented for");
+	}
 
 	// Guards the embedded Map body chain (Read Vector -> Extract Transform -> Decompose Translation -> As Vector) against registry drift
 	#[tokio::test]
@@ -1751,8 +1610,6 @@ mod test {
 			})
 			.await;
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
-
-		editor.eval_graph().await.expect("the Origins to Polyline chain should type-resolve and evaluate");
 	}
 
 	// Guards the unconnected Path input, whose default must match the rank of the Morph connector it feeds
@@ -1772,8 +1629,53 @@ mod test {
 			})
 			.await;
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
+	}
 
-		editor.eval_graph().await.expect("the Blend network should type-resolve and evaluate");
+	// Guards the `optional_f64` widget override against holding the node metadata lock while building rows that lock it again
+	#[tokio::test]
+	async fn optional_f64_inspector_row_builds() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let node_id = editor
+			.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::qr_code::IDENTIFIER))
+			.await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }).await;
+		editor.handle_message(InspectorMessage::Refresh).await;
+	}
+
+	// Every category the catalog lists has a place in its order, and every place in the order still holds nodes
+	#[test]
+	fn catalog_categories_match_the_category_order() {
+		use super::DOCUMENT_NODE_TYPES;
+		use graphene_std::registry::{CATEGORY_ORDER, is_development_category, is_hidden_category};
+		use std::collections::HashSet;
+
+		let categories: HashSet<&str> = DOCUMENT_NODE_TYPES
+			.values()
+			.map(|definition| definition.category)
+			.filter(|category| !is_hidden_category(category) && !is_development_category(category))
+			.collect();
+
+		let unordered: Vec<_> = categories.iter().filter(|category| !CATEGORY_ORDER.contains(category)).collect();
+		assert!(unordered.is_empty(), "categories missing from `CATEGORY_ORDER`: {unordered:?}");
+
+		let empty: Vec<_> = CATEGORY_ORDER.iter().filter(|category| !categories.contains(*category)).collect();
+		assert!(empty.is_empty(), "`CATEGORY_ORDER` lists categories with no nodes: {empty:?}");
+	}
+
+	#[test]
+	fn every_bumped_network_definition_has_a_migration_leading_to_it() {
+		let targets: Vec<_> = migration_core::registered_migrations().iter().map(|migration| migration.target()).collect();
+
+		for (identifier, definition) in DOCUMENT_NODE_TYPES.iter() {
+			if !matches!(identifier, DefinitionIdentifier::Network(_)) || definition.version == 1 {
+				continue;
+			}
+
+			let declaration = migration_core::Declaration::network(definition.identifier, definition.version);
+			assert!(targets.contains(&declaration), "{declaration} has no migration leading to it");
+		}
 	}
 }
 

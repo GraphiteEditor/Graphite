@@ -2,21 +2,24 @@ use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::ProtoNetwork;
-use graph_craft::util::{DEMO_ART, compile, load_from_name};
+use graph_craft::util::{DEMO_ART, compile};
 use graphene_std::transform::Footprint;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
+use std::path::Path;
 
 fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
-	let network = load_from_name(name);
+	let network = futures::executor::block_on(document_loader::open_document(Path::new(&format!("../../demo-artwork/{name}.graphite"))))
+		.unwrap()
+		.network;
 	let proto_network = compile(network);
 	let empty = ProtoNetwork::default();
 
-	let executor = futures::executor::block_on(DynamicExecutor::new(empty)).unwrap();
+	let executor = DynamicExecutor::new(empty).unwrap();
 
 	c.bench_function(name, |b| {
 		b.iter_batched(
 			|| (executor.clone(), proto_network.clone()),
-			|(mut executor, network)| futures::executor::block_on(executor.update(std::hint::black_box(network))),
+			|(mut executor, network)| executor.update(std::hint::black_box(network)),
 			criterion::BatchSize::SmallInput,
 		)
 	});
@@ -30,13 +33,15 @@ fn update_executor_demo(c: &mut Criterion) {
 }
 
 fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
-	let network = load_from_name(name);
+	let network = futures::executor::block_on(document_loader::open_document(Path::new(&format!("../../demo-artwork/{name}.graphite"))))
+		.unwrap()
+		.network;
 	let proto_network = compile(network);
 
-	let executor = futures::executor::block_on(DynamicExecutor::new(proto_network)).unwrap();
+	let executor = DynamicExecutor::new(proto_network).unwrap();
 	let footprint = Footprint::default();
 
-	c.bench_function(name, |b| b.iter(|| futures::executor::block_on((&executor).execute(footprint))));
+	c.bench_function(name, |b| b.iter(|| (&executor).execute(footprint)));
 }
 fn run_once_demo(c: &mut Criterion) {
 	let mut g = c.benchmark_group("Run Once no render");

@@ -49,12 +49,12 @@ function initializeRipples() {
 		requestAnimate();
 	});
 
-	navButtons = document.querySelectorAll("header nav a");
-	rippleSvg = document.querySelector("header .ripple") || undefined;
-	rippleMaskPath = rippleSvg?.querySelector(".ripple-mask") || undefined;
-	rippleLinePath = rippleSvg?.querySelector(".ripple-line") || undefined;
-	rippleTaperLeft = rippleSvg?.querySelector(".ripple-taper-left") || undefined;
-	rippleTaperRight = rippleSvg?.querySelector(".ripple-taper-right") || undefined;
+	navButtons = document.querySelectorAll("[data-nav-button]");
+	rippleSvg = document.querySelector("[data-ripple]") || undefined;
+	rippleMaskPath = rippleSvg?.querySelector("[data-ripple-mask]") || undefined;
+	rippleLinePath = rippleSvg?.querySelector("[data-ripple-line]") || undefined;
+	rippleTaperLeft = rippleSvg?.querySelector("[data-ripple-taper-left]") || undefined;
+	rippleTaperRight = rippleSvg?.querySelector("[data-ripple-taper-right]") || undefined;
 	refreshMetrics();
 
 	ripples = Array.from(navButtons)
@@ -199,20 +199,20 @@ function setRipples() {
 	const suppressionHalfWidth = WAVE_SUPPRESSION_HALF_WIDTH * mediaQueryScaleFactor;
 	const bumps = ripples
 		.map((ripple) => {
-			if (ripple.animationStartTime === 0 && ripple.animationEndTime === 0) return null;
+			if (ripple.animationStartTime === 0 && ripple.animationEndTime === 0) return undefined;
 
 			const elapsed = now - ripple.animationStartTime;
 			const duration = ripple.animationEndTime - ripple.animationStartTime;
 			const t = ease(clamp01(elapsed / duration));
 			const liftFraction = clamp01(ripple.goingUp ? t : 1 - t);
-			if (liftFraction <= 0) return null;
+			if (liftFraction <= 0) return undefined;
 
 			const buttonRect = ripple.element.getBoundingClientRect();
 			const centerX = buttonRect.left - rippleSvgRect.left + buttonRect.width / 2;
 
 			return { centerX, height: maxBumpHeight * liftFraction * mediaQueryScaleFactor, halfWidth: bumpHalfWidth, liftFraction, suppressionHalfWidth };
 		})
-		.filter((bump) => bump !== null);
+		.filter((bump) => bump !== undefined);
 
 	// Snapshot per-pulse propagation state for this frame
 	const pulses = wavePulses.map((pulse) => {

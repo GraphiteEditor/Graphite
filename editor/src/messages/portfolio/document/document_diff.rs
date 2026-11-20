@@ -1,6 +1,5 @@
-//! Human-readable pretty-printers for the dual-write soak's validation checks: registry-vs-registry and
-//! runtime-network-vs-runtime-network diffs. The callers are gated behind the `validate_storage_round_trip`
-//! preference, so these ship in release but only run when the soak is turned on.
+//! Human-readable pretty-printers for storage test failures: registry-vs-registry and
+//! runtime-network-vs-runtime-network diffs.
 
 use std::fmt::Write;
 
@@ -188,8 +187,8 @@ fn diff_attributes(out: &mut String, label: &str, stored: &document_graph_storag
 	let (differing_values, differing_timestamps): (Vec<_>, Vec<_>) = stored_keys
 		.intersection(&target_keys)
 		.copied()
-		.filter(|k| stored.get(*k) != target.get(*k))
-		.partition(|k| stored.get(*k).map(|v| &v.value) != target.get(*k).map(|v| &v.value));
+		.filter(|k| stored.get(k) != target.get(k))
+		.partition(|k| stored.get(k).map(|v| &v.value) != target.get(k).map(|v| &v.value));
 
 	let _ = writeln!(
 		out,
@@ -263,11 +262,8 @@ fn diff_document_node(out: &mut String, expected: &graph_craft::document::Docume
 	if expected.visible != actual.visible {
 		let _ = writeln!(out, "      visible: expected={} actual={}", expected.visible, actual.visible);
 	}
-	if expected.skip_deduplication != actual.skip_deduplication {
-		let _ = writeln!(out, "      skip_deduplication: expected={} actual={}", expected.skip_deduplication, actual.skip_deduplication);
-	}
-	if expected.context_features != actual.context_features {
-		let _ = writeln!(out, "      context_features: expected={:?} actual={:?}", expected.context_features, actual.context_features);
+	if expected.compile_metadata != actual.compile_metadata {
+		let _ = writeln!(out, "      compile_metadata: expected={:?} actual={:?}", expected.compile_metadata, actual.compile_metadata);
 	}
 	if expected.original_location != actual.original_location {
 		let _ = writeln!(out, "      original_location differs (recomputed at load, not stored):");

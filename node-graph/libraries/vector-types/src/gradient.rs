@@ -1,7 +1,7 @@
 use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::list::{ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_MIDPOINT, ATTR_POSITION, Item, List};
-use core_types::render_complexity::RenderComplexity;
+use core_types::math::midpoint::{apply_midpoint, sanitized_midpoint};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
@@ -40,6 +40,12 @@ pub struct GradientStops<C> {
 
 unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for GradientStops<C> {
 	type Static = GradientStops<C::Static>;
+}
+
+impl<C> GradientStops<C> {
+	pub fn is_empty(&self) -> bool {
+		self.color.is_empty()
+	}
 }
 
 impl From<&Gradient> for GradientStops<Color> {
@@ -314,36 +320,9 @@ impl From<Vec<Color>> for Gradient {
 	}
 }
 
-impl RenderComplexity for Gradient {
-	fn render_complexity(&self) -> usize {
-		1
-	}
-}
-
 /// Controls accuracy vs. number of samples tradeoff. 2/255 means the linear approximation will
 /// deviate by no more than 2 gradations of 8-bit color from the theoretically perfect curve.
 const SAMPLE_THRESHOLD: f64 = 2. / 255.;
-
-/// The effective midpoint domain shared by sampling and rendering: NaN reads as the linear default, and extremes are bounded to `0.01..=0.99` so curves stay finite and cheap to subdivide.
-fn sanitized_midpoint(midpoint: f64) -> f64 {
-	if midpoint.is_nan() { 0.5 } else { midpoint.clamp(0.01, 0.99) }
-}
-
-/// Apply the midpoint curve to a normalized parameter `t` (0 to 1) given a `midpoint` (0 to 1, where 0.5 is linear).
-fn apply_midpoint(t: f64, midpoint: f64) -> f64 {
-	let midpoint = sanitized_midpoint(midpoint);
-	if (midpoint - 0.5).abs() < 1e-6 {
-		return t;
-	}
-
-	if midpoint < 0.5 {
-		let q = -1. / (1. - midpoint).log2();
-		1. - (1. - t).powf(q)
-	} else {
-		let p = -1. / midpoint.log2();
-		t.powf(p)
-	}
-}
 
 /// Calls a color-space-generic function with the `color` crate space matching a [`GradientSpace`] variant.
 macro_rules! with_space {
@@ -1784,7 +1763,7 @@ impl GradientInterpolation {
 
 /// The whole-ramp attributes governing how a gradient plays back, read together off a gradient item so the
 /// sampling entry points take one argument instead of a widening list of same-typed positional ones.
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GradientSettings {
 	pub spread: GradientSpread,

@@ -60,19 +60,6 @@ macro_rules! list {
 	};
 }
 
-// The `List<...>`/`Item<...>` rules must appear before the generic `$type:ty` rules, and in each macro that sees the literal tokens,
-// because a type captured as `ty` becomes opaque to any inner macro's ranked pattern
-#[macro_export]
-macro_rules! future {
-	(List<$inner:ty>) => {
-		$crate::Type::Future(Box::new($crate::list!($inner)))
-	};
-	(Item<$inner:ty>) => {
-		$crate::Type::Future(Box::new($crate::item!($inner)))
-	};
-	($type:ty) => {{ $crate::Type::Future(Box::new(concrete!($type))) }};
-}
-
 #[macro_export]
 macro_rules! fn_type {
 	(List<$inner:ty>) => {
@@ -92,27 +79,6 @@ macro_rules! fn_type {
 	};
 	($in_type:ty, $type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
-	};
-}
-#[macro_export]
-macro_rules! fn_type_fut {
-	(List<$inner:ty>) => {
-		$crate::Type::Fn(Box::new(concrete!(())), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
-	};
-	(Item<$inner:ty>) => {
-		$crate::Type::Fn(Box::new(concrete!(())), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))
-	};
-	($type:ty) => {
-		$crate::Type::Fn(Box::new(concrete!(())), Box::new(future!($type)))
-	};
-	($in_type:ty, List<$inner:ty>) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
-	};
-	($in_type:ty, Item<$inner:ty>) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))
-	};
-	($in_type:ty, $type:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type)))
 	};
 }
 
@@ -269,8 +235,6 @@ pub enum Type {
 	Concrete(TypeDescriptor),
 	/// Runtime type information for a function. Given some input, gives some output.
 	Fn(Box<Type>, Box<Type>),
-	/// Represents a future which promises to return the inner type.
-	Future(Box<Type>),
 	/// Represents a recursive [Type] allowing nested levels of types to represent the type of an Item<T>.
 	Item(Box<Type>),
 	/// Represents a list of this recursive [Type] allowing nested levels of types to represent the type of a List<T>.
@@ -346,7 +310,6 @@ impl Type {
 			Self::Generic(_) => None,
 			Self::Concrete(ty) => Some(ty.size),
 			Self::Fn(_, _) => None,
-			Self::Future(_) => None,
 			Self::Item(_) => None,
 			Self::List(_) => None,
 		}
@@ -357,7 +320,6 @@ impl Type {
 			Self::Generic(_) => None,
 			Self::Concrete(ty) => Some(ty.align),
 			Self::Fn(_, _) => None,
-			Self::Future(_) => None,
 			Self::Item(_) => None,
 			Self::List(_) => None,
 		}
@@ -368,7 +330,6 @@ impl Type {
 			Self::Generic(_) => self,
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
-			Self::Future(output) => output.nested_type(),
 			Self::Item(_) => self,
 			Self::List(_) => self,
 		}
@@ -382,7 +343,6 @@ impl Type {
 			Self::Generic(_) => None,
 			Self::Concrete(_) => None,
 			Self::Fn(_, output) => output.replace_nested(f),
-			Self::Future(output) => output.replace_nested(f),
 			Self::Item(_) => None,
 			Self::List(_) => None,
 		}
@@ -393,7 +353,6 @@ impl Type {
 			Type::Generic(name) => name.to_string(),
 			Type::Concrete(ty) => simplify_identifier_name(&ty.name),
 			Type::Fn(call_arg, return_value) => format!("{} called with {}", return_value.identifier_name(), call_arg.identifier_name()),
-			Type::Future(ty) => ty.identifier_name(),
 			Type::Item(element) => element.identifier_name(),
 			Type::List(element) => format!("{}[]", element.identifier_name()),
 		}
@@ -445,7 +404,6 @@ impl Type {
 				Type::Concrete(descriptor)
 			}
 			Type::Fn(input, output) => Type::Fn(Box::new(input.normalize_rank()), Box::new(output.normalize_rank())),
-			Type::Future(inner) => Type::Future(Box::new(inner.normalize_rank())),
 			Type::Item(element) => Type::Item(Box::new(element.normalize_rank())),
 			Type::List(element) => Type::List(Box::new(element.normalize_rank())),
 			Type::Generic(_) => self,
@@ -566,7 +524,6 @@ impl std::fmt::Display for Type {
 			Type::Generic(name) => write!(f, "{}", make_type_user_readable(name)),
 			Type::Concrete(ty) => write!(f, "{ty}"),
 			Type::Fn(_, return_value) => write!(f, "{return_value}"),
-			Type::Future(ty) => write!(f, "{ty}"),
 			Type::Item(element) => write!(f, "{element}"),
 			Type::List(element) => write!(f, "{element}[]"),
 		}

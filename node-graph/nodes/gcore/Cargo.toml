@@ -32,11 +32,13 @@ graphene-hash = { workspace = true }
 raster-types = { workspace = true }
 graphic-types = { workspace = true }
 node-macro = { workspace = true }
+graphene-animation = { workspace = true }
 
 # Workspace dependencies
 dyn-any = { workspace = true }
 glam = { workspace = true }
 log = { workspace = true }
+thiserror = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

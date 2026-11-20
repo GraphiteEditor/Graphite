@@ -20,6 +20,7 @@ let
     pkgs.libGL
     pkgs.openssl
     pkgs.libraw
+    self.packages.${system}.graphite-cef
     # X11 Support
     pkgs.libxkbcommon
     pkgs.libXcursor
@@ -34,7 +35,6 @@ let
         inherit (deps.crane.lib.findCargoFiles (deps.crane.lib.cleanCargoSource info.src)) cargoConfigs;
         cargoLockList = [
           "${info.src}/Cargo.lock"
-          "${deps.rustGPU.toolchain.availableComponents.rust-src}/lib/rustlib/src/rust/library/Cargo.lock"
         ];
       }
     );
@@ -50,7 +50,7 @@ let
         pkgs.pkg-config
         pkgs.lld
       ];
-      env.CEF_PATH = self.packages.${system}.graphite-cef;
+      env.CEF_PATH = "${self.packages.${system}.graphite-cef}/lib";
       buildPhase =
         let
           profile = if dev then "dev" else "release";
@@ -83,8 +83,8 @@ deps.crane.lib.buildPackage (
       pkgs.lld
       pkgs.nodejs
       pkgs.binaryen
-      pkgs.wasm-bindgen-cli_0_2_121
-      pkgs.cargo-about
+      pkgs.wasm-bindgen-cli_0_2_129
+      deps.cargoAbout
       pkgs.removeReferencesTo
       pkgs.importNpmLock.npmConfigHook
     ];
@@ -96,10 +96,9 @@ deps.crane.lib.buildPackage (
     makeCacheWritable = true;
 
     env = {
-      RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
       GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
       GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
-      CEF_PATH = self.packages.${system}.graphite-cef;
+      CEF_PATH = "${self.packages.${system}.graphite-cef}/lib";
     };
 
     postPatch = ''
@@ -148,7 +147,7 @@ deps.crane.lib.buildPackage (
       remove-references-to -t "${common.cargoVendorDir}" $out/bin/graphite
 
       patchelf \
-        --set-rpath "${pkgs.lib.makeLibraryPath libs}:${self.packages.${system}.graphite-cef}" \
+        --set-rpath "${pkgs.lib.makeLibraryPath libs}" \
         --add-needed libGL.so \
         --add-needed libEGL.so \
         $out/bin/graphite

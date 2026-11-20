@@ -136,9 +136,9 @@ export default defineConfig([
 		rules: { "import/order": ["error", { ...importOrder, "newlines-between": "ignore" }] },
 	},
 	{
-		files: ["**/*.svelte"],
+		files: ["**/*.svelte", "**/*.svelte.ts"],
 		languageOptions: {
-			// Parse the `<script>` in `.svelte` as TypeScript by adding the following configuration.
+			// Parse the `<script>` in `.svelte` (and `.svelte.ts` modules using runes) as TypeScript by adding the following configuration.
 			parserOptions: {
 				projectService: true,
 				parser: ts.parser,
