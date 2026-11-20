@@ -7,10 +7,12 @@
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { HistoryStore } from "/src/stores/history";
+	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const editor = getContext<EditorWrapper>("editor");
 	const history = getContext<HistoryStore>("history");
+	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	// Relative times age while the panel stays open
 	let now = Date.now();
@@ -30,6 +32,9 @@
 		if (days < 7) return days === 1 ? "yesterday" : `${days} days ago`;
 		return new Date(ms).toLocaleDateString();
 	}
+
+	// Alone, the newest step not yet in history is where the document is
+	$: pendingHead = !$history.collaborating && $history.progress.length > 0;
 
 	function count(n: number, one: string, many: string): string {
 		return `${n} ${n === 1 ? one : many}`;
@@ -57,9 +62,14 @@
 		const input = node.querySelector("[data-input-element]");
 		if (input instanceof HTMLElement) input.focus();
 	}
+
+	// Alone, steps not yet in history enter it once the pointer reaches the panel, so they can be acted on
+	function retirePending() {
+		if (pendingHead) editor.retirePendingHistory();
+	}
 </script>
 
-<LayoutCol class="history-panel">
+<LayoutCol class="history-panel" on:pointerenter={retirePending}>
 	{#if $history.following}
 		<LayoutRow class="following">
 			<TextLabel>Viewing a branch</TextLabel>
@@ -67,28 +77,42 @@
 		</LayoutRow>
 	{/if}
 	<LayoutCol class="body" scrollableY={true}>
-		{#each $history.progress as row}
-			<div class="row progress">
-				<span class="rail"><span class="dot hollow" style:border-color={row.color}></span></span>
+		{#each $history.progress as row, index}
+			<!-- Alone, work not yet in history is shown as an ordinary step -->
+			<div class="row" class:head={pendingHead && index === 0}>
+				<span class="gutter"></span>
+				<!-- A dot marks whose step it is, so it shows only while there are others -->
+				<span class="rail"
+					>{#if $history.collaborating}<span class="dot hollow" style:border-color={row.color}></span>{/if}</span
+				>
 				<div class="text">
-					<span class="label">{row.label || (row.open ? "In progress" : "Waiting to enter history")}</span>
+					<span class="label">{row.label || (row.open ? "In Progress" : "Waiting to Enter History")}</span>
 					<span class="meta">
-						<span class="author" class:anonymous={row.anonymous}>{authorLabel(row)}</span>
-						· {count(row.ops, "change", "changes")}
-						· {row.open ? "in progress" : "not yet in history"}
+						{#if $history.collaborating}<span class="author" class:anonymous={row.anonymous}>{authorLabel(row)}</span> ·{/if}
+						{count(row.ops, "change", "changes")}
+						{#if $history.collaborating}· {row.open ? "in progress" : "not yet in history"}{/if}
 					</span>
+					{#if pendingHead && index === 0}
+						<span class="tags"><span class="marker">Current</span></span>
+					{/if}
 				</div>
 			</div>
 		{/each}
 		{#each $history.rows as row (row.id)}
-			<div class="row" class:head={row.head} class:undone={row.undone} class:abandoned={row.abandoned}>
-				<button
-					class="expand"
-					class:expanded={row.expanded}
-					data-tooltip-label={row.expanded ? "Hide the changes" : "Show the changes"}
-					on:click={() => editor.expandHistoryInteraction(row.id, !row.expanded)}
-				></button>
-				<span class="rail"><span class="dot" style:background={row.color}></span></span>
+			<div class="row" class:head={row.head && !pendingHead} class:undone={row.undone} class:abandoned={row.abandoned}>
+				{#if row.deltas > 1}
+					<button
+						class="expand"
+						class:expanded={row.expanded}
+						data-tooltip-label={row.expanded ? "Hide the changes" : "Show the changes"}
+						on:click={() => editor.expandHistoryInteraction(row.id, !row.expanded)}
+					></button>
+				{:else}
+					<span class="gutter"></span>
+				{/if}
+				<span class="rail"
+					>{#if $history.collaborating || !row.mine}<span class="dot" style:background={row.color}></span>{/if}</span
+				>
 				<div class="text">
 					{#if renamingId === row.id}
 						<span class="editing" use:focusInput on:focusout={() => (renamingId = undefined)}>
@@ -98,12 +122,15 @@
 						<span class="label" class:named={row.named}>{row.label}</span>
 					{/if}
 					<span class="meta">
-						<span class="author" class:anonymous={row.anonymous}>{authorLabel(row)}</span>
-						{#if row.time}· {when(row.time, now)}{/if}
-						· {count(row.deltas, "change", "changes")}
+						{#if $history.collaborating || !row.mine}<span class="author" class:anonymous={row.anonymous}>{authorLabel(row)}</span> ·{/if}
+						{#if row.time}{when(row.time, now)} ·{/if}
+						{count(row.deltas, "change", "changes")}
 					</span>
-					{#if row.tags.length > 0 || taggingId === row.id}
+					{#if row.tags.length > 0 || taggingId === row.id || (row.head && !pendingHead) || row.undone || row.abandoned}
 						<span class="tags">
+							{#if row.head && !pendingHead}<span class="marker">Current</span>{/if}
+							{#if row.undone}<span class="marker">Undone</span>{/if}
+							{#if row.abandoned}<span class="marker">Branch</span>{/if}
 							{#each row.tags as tag (tag)}
 								<span class="tag">{tag}<button class="remove" data-tooltip-label="Remove the tag" on:click={() => editor.tagHistoryInteraction(row.id, tag, false)}>×</button></span>
 							{/each}
@@ -139,7 +166,7 @@
 								icon="HistoryUndo"
 								size={16}
 								tooltipLabel="Go back to here"
-								tooltipDescription={$history.session
+								tooltipDescription={$history.collaborating
 									? "Move everyone's document back to this step. The steps since stay as a branch."
 									: "Move the document back to this step. The steps since stay as a branch."}
 								action={() => editor.goBackToHistoryInteraction(row.id)}
@@ -154,19 +181,17 @@
 						/>
 					{/if}
 				</span>
-				{#if row.head}<span class="marker">Now</span>{/if}
-				{#if row.undone}<span class="marker">Undone</span>{/if}
-				{#if row.abandoned}<span class="marker">Branch</span>{/if}
 			</div>
 			{#if row.expanded}
 				{#each row.details as delta (delta.id)}
 					<div class="row delta" class:undone={row.undone}>
-						<span class="rail"><span class="tick"></span></span>
+						<span class="gutter"></span>
+						<span class="rail"></span>
 						<div class="text">
 							<span class="label">{delta.label}</span>
 							<span class="meta">
-								<span class="author">{delta.author}</span>
-								{#if delta.time}· {when(delta.time, now)}{/if}
+								{#if $history.collaborating || !delta.mine}<span class="author">{delta.author}</span>{/if}
+								{#if delta.time && when(delta.time, now) !== when(row.time, now)}{$history.collaborating || !delta.mine ? "· " : ""}{when(delta.time, now)}{/if}
 							</span>
 						</div>
 					</div>
@@ -178,7 +203,7 @@
 				<TextButton label="Show older" action={() => editor.loadMoreHistory()} />
 			</div>
 		{/if}
-		{#if $history.rows.length === 0 && $history.progress.length === 0}
+		{#if $portfolio.documents.length > 0 && $history.rows.length === 0 && $history.progress.length === 0}
 			<TextLabel italic={true}>Nothing in the history yet.</TextLabel>
 		{/if}
 	</LayoutCol>
@@ -217,7 +242,6 @@
 
 			&.delta {
 				min-height: 24px;
-				padding-left: 28px;
 				font-size: 11px;
 			}
 
@@ -250,28 +274,35 @@
 				}
 			}
 
+			.gutter {
+				flex: 0 0 16px;
+			}
+
 			.expand {
 				flex: 0 0 auto;
 				width: 16px;
 				height: 16px;
 				padding: 0;
 				border: none;
+				border-radius: 2px;
 				background: none;
-				position: relative;
-				cursor: pointer;
-				color: var(--color-8-uppergray);
-
-				&:hover {
-					color: var(--color-e-nearwhite);
-				}
+				display: flex;
+				align-items: center;
+				justify-content: center;
 
 				&::after {
 					content: "";
-					position: absolute;
-					left: 5px;
-					top: 4px;
-					border: 4px solid transparent;
-					border-left: 5px solid currentColor;
+					width: 8px;
+					height: 8px;
+					background: var(--icon-expand-collapse-arrow);
+				}
+
+				&:hover {
+					background: var(--color-5-dullgray);
+
+					&::after {
+						background: var(--icon-expand-collapse-arrow-hover);
+					}
 				}
 
 				&.expanded::after {
@@ -288,6 +319,7 @@
 					width: 8px;
 					height: 8px;
 					border-radius: 50%;
+					background: var(--color-8-uppergray);
 
 					&.hollow {
 						background: none;
@@ -295,13 +327,6 @@
 						width: 6px;
 						height: 6px;
 					}
-				}
-
-				.tick {
-					width: 4px;
-					height: 4px;
-					border-radius: 50%;
-					background: var(--color-6-lowergray);
 				}
 			}
 

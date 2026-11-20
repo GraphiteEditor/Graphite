@@ -11,7 +11,7 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
 use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
 use crate::messages::tool::common_functionality::transformation_cage::MIN_FEATURE_TRAVEL;
-use crate::messages::tool::common_functionality::utility_functions::{is_almost_colinear, push_nearest_anchors};
+use crate::messages::tool::common_functionality::utility_functions::{is_almost_colinear, name_layer_action, push_nearest_anchors};
 use crate::messages::tool::tool_messages::path_tool::MAX_SNAPPING_POINTS;
 use crate::messages::tool::tool_messages::select_tool;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
@@ -321,6 +321,12 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 			// Messages
 			TransformLayerMessage::ApplyTransformOperation { final_transform } => {
+				let verb = match self.transform_operation {
+					TransformOperation::Grabbing(_) => Some("Moved"),
+					TransformOperation::Rotating(_) => Some("Rotated"),
+					TransformOperation::Scaling(_) => Some("Scaled"),
+					TransformOperation::None => None,
+				};
 				selected.original_transforms.clear();
 				self.typing.clear();
 				if final_transform {
@@ -337,6 +343,12 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				} else {
 					update_colinear_handles(&selected_layers, document, responses);
 					responses.add(DocumentMessage::EndTransaction);
+					if let Some(verb) = verb {
+						responses.add(match using_path_tool {
+							true => DocumentMessage::NameInteraction { action: format!("{verb} Points") },
+							false => name_layer_action(verb, selected_layers.len()),
+						});
+					}
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}

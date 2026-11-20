@@ -481,6 +481,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.change_history_line(document_id, rev, change, &resource_storage.resources_mut(), responses);
 				self.resolve_unresolved_resources(document_id, responses);
 			}
+			DocumentMessage::NameInteraction { action } => {
+				if let Some(storage) = self.history.storage_mut() {
+					storage.name_interaction(&action);
+				}
+			}
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -1050,6 +1055,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::NameInteraction { action: "Added an Image".into() });
 
 				let layer = graph_modification_utils::new_image_layer(data, layer_node_id, layer_parent, responses);
 
@@ -1111,6 +1117,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
+				responses.add(DocumentMessage::NameInteraction { action: "Added an SVG".into() });
 
 				let layer = graph_modification_utils::new_svg_layer(svg, transform, !place_at_origin, layer_node_id, layer_parent, responses);
 
@@ -2449,6 +2456,10 @@ impl DocumentMessageHandler {
 		self.history.storage()
 	}
 
+	pub fn declarations(&self) -> &document_graph_storage::Declarations {
+		self.history.declarations()
+	}
+
 	/// Mutable access to the `Gdd` working copy.
 	pub fn storage_mut(&mut self) -> Option<&mut document_format::GddV1> {
 		self.history.storage_mut()
@@ -3012,6 +3023,10 @@ impl DocumentMessageHandler {
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 
 		let stored_name = self.stored_name().map(str::to_string);
+		// Alone, the step enters history first so it stays on the History panel once undone
+		if !self.is_in_session() {
+			self.history.retire_storage_interaction();
+		}
 		if self.history.undo(self.is_in_session()) {
 			self.follow_storage_changes(stored_name, responses);
 			responses.add(PortfolioMessage::AutoSaveDocument { document_id });

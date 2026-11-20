@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::ingest::utility_types::{ApplicationDataItem, ApplicationDataLayer, ApplicationDataResource, DataTransferItem, ResourceData, TransferData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::utility_functions::{name_layer_action, name_node_action};
 use crate::messages::tool::utility_types::ToolType;
 use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
@@ -167,6 +168,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					return;
 				}
 				responses.add(DocumentMessage::AddTransaction);
+				responses.add(name_node_action("Cut", deleted_with_children.len() + chain_nodes.len(), layers.len()));
 				if !deleted_with_children.is_empty() {
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: deleted_with_children,
@@ -365,6 +367,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 
 					let mut added_nodes = false;
 
+					let pasted = entries.iter().filter(|entry| entry.nodes.iter().any(|(id, _)| *id == NodeId(0))).count();
 					for entry in entries.into_iter().rev() {
 						let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 						let Some(&root_id) = new_ids.get(&NodeId(0)) else {
@@ -376,6 +379,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						if !added_nodes {
 							responses.add(DocumentMessage::DeselectAllLayers);
 							responses.add(DocumentMessage::AddTransaction);
+							responses.add(name_layer_action("Pasted", pasted));
 							added_nodes = true;
 						}
 
