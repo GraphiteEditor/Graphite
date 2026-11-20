@@ -186,13 +186,9 @@ impl Window {
 		self.winit_window.set_cursor(cursor);
 	}
 
-	pub(crate) fn start_pointer_lock(&self) -> bool {
-		let locked = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked).is_ok();
-		// Hide the cursor only when the grab took, so a refused lock still leaves the user a cursor
-		if locked {
-			self.winit_window.set_cursor_visible(false);
-		}
-		locked
+	pub(crate) fn start_pointer_lock(&self) {
+		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
+		self.winit_window.set_cursor_visible(false);
 	}
 
 	pub(crate) fn end_pointer_lock(&self) {
@@ -200,18 +196,36 @@ impl Window {
 		self.winit_window.set_cursor_visible(true);
 	}
 
-	/// Moves the OS cursor, returning false when the platform refuses.
-	pub(crate) fn set_cursor_position(&self, position: winit::dpi::PhysicalPosition<f64>) -> bool {
-		match self.winit_window.set_cursor_position(position.into()) {
-			Ok(()) => true,
-			Err(e) => {
-				tracing::warn!("Failed to place the cursor: {e}");
-				false
-			}
+	pub(crate) fn has_focus(&self) -> bool {
+		self.winit_window.has_focus()
+	}
+
+	/// Moves the pointer to a position in the window.
+	pub(crate) fn warp_pointer(&self, position: winit::dpi::PhysicalPosition<f64>) -> Result<PointerWarp, winit::error::RequestError> {
+		if self.winit_window.set_cursor_position(position.into()).is_ok() {
+			return Ok(PointerWarp::Moved);
 		}
+
+		// Wayland only moves a locked pointer, to the position hinted while locked, once it's unlocked
+		self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked)?;
+		if let Err(e) = self.winit_window.set_cursor_position(position.into()) {
+			self.end_pointer_warp();
+			return Err(e);
+		}
+		Ok(PointerWarp::Locked)
+	}
+
+	pub(crate) fn end_pointer_warp(&self) {
+		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::None);
 	}
 
 	pub(crate) fn update_menu(&self, entries: Vec<MenuItem>) {
 		self.native_handle.update_menu(entries);
 	}
+}
+
+pub(crate) enum PointerWarp {
+	Moved,
+	/// Moves once `Window::end_pointer_warp` unlocks it, after a presented frame has committed the position.
+	Locked,
 }

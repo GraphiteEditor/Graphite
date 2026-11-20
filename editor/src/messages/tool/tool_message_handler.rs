@@ -64,7 +64,14 @@ impl ToolMessageHandler {
 					snap_session: &mut self.snap_session,
 					viewport,
 				};
+				let was_transforming = self.transform_layer_handler.is_transforming();
 				self.transform_layer_handler.process_message(message, responses, context);
+
+				// Wrap the pointer around the viewport while G/R/S runs
+				let transforming = self.transform_layer_handler.is_transforming();
+				if transforming != was_transforming {
+					responses.add(AppWindowMessage::PointerWrap { enabled: transforming });
+				}
 
 				self.keep_snapping_ticks_as_wanted(responses);
 			}
@@ -228,11 +235,6 @@ impl ToolMessageHandler {
 					on: EventMessage::SelectionChanged,
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
-
-				// A transform can outlive the tools that started it, so end it here
-				if self.transform_layer_handler.is_transforming() {
-					responses.add(TransformLayerMessage::CancelTransformOperation);
-				}
 
 				responses.add(OverlaysMessage::RemoveProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 				responses.add(OverlaysMessage::RemoveProvider { provider: SNAPPING_OVERLAY_PROVIDER });

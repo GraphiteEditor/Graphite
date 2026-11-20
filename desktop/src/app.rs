@@ -24,7 +24,7 @@ use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::spawner::TokioSpawner;
 use crate::ui::{Acceleration, InputEvent, UiCommand, UiConfig, UiInstance};
-use crate::window::Window;
+use crate::window::{PointerWarp, Window};
 use crate::wrapper::messages::{DataTransfer, DesktopFrontendMessage, DesktopWrapperMessage, IngestAction};
 use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, WgpuContext, WgpuExecutor, serialize_frontend_messages};
 
@@ -37,6 +37,7 @@ pub(crate) struct App {
 	window_maximized: bool,
 	window_fullscreen: bool,
 	window_pending_drag: bool,
+	pointer_warp_lock: Option<PointerWarpLock>,
 	transfer_reads: TransferReads,
 	input_state: InputState,
 	app_event_receiver: Receiver<AppEvent>,
@@ -147,6 +148,7 @@ impl App {
 			window_maximized: false,
 			window_fullscreen: false,
 			window_pending_drag: false,
+			pointer_warp_lock: None,
 			transfer_reads: TransferReads::default(),
 			input_state: InputState::new(),
 			app_event_receiver,
@@ -386,9 +388,9 @@ impl App {
 				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite(content));
 			}
 			DesktopFrontendMessage::PointerLock => {
-				let locked = self.window.as_ref().is_some_and(|window| window.start_pointer_lock());
-				if locked {
-					self.input_state.lock_pointer();
+				self.input_state.lock_pointer();
+				if let Some(window) = &self.window {
+					window.start_pointer_lock();
 				}
 			}
 			DesktopFrontendMessage::PointerWrap { enabled } => {
@@ -610,8 +612,26 @@ impl ApplicationHandler for App {
 			));
 		}
 
-		if let WindowEvent::Focused(focused) = &event {
-			self.input_state.set_window_focused(*focused);
+		// Wrap the pointer around the viewport
+		if let WindowEvent::PointerMoved { position, .. } = &event
+			&& let Some(window) = &self.window
+			&& window.has_focus()
+			&& let Some(target) = self.input_state.wrap_pointer(*position)
+		{
+			match window.warp_pointer(target) {
+				Ok(PointerWarp::Moved) => {}
+				Ok(PointerWarp::Locked) => {
+					self.pointer_warp_lock = Some(PointerWarpLock::Locked);
+					if let Some(render_state) = &mut self.render_state {
+						render_state.request_present();
+					}
+					window.request_redraw();
+				}
+				Err(e) => {
+					tracing::warn!("Failed to wrap the pointer around the viewport: {e}");
+					self.input_state.stop_pointer_wrap();
+				}
+			}
 		}
 
 		self.input_state.process(
@@ -619,14 +639,6 @@ impl ApplicationHandler for App {
 			|message| self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Input(message))),
 			|input| self.ui.send(UiCommand::Input(input)),
 		);
-
-		if let Some(position) = self.input_state.take_pending_warp() {
-			let moved = self.window.as_ref().is_some_and(|window| window.set_cursor_position(position));
-			// Wayland refuses to move the pointer, so the wrap turns itself off
-			if !moved {
-				self.input_state.set_pointer_wrap(false);
-			}
-		}
 
 		match event {
 			WindowEvent::CloseRequested => {
@@ -656,6 +668,20 @@ impl ApplicationHandler for App {
 						Err(other) => tracing::error!("Render error: {:?}", other),
 					}
 					let _ = self.runtime_command_sender.send(RuntimeCommand::Update);
+
+					// Unlock once a presented frame has committed the position hint, a frame later as some drivers present off-thread
+					self.pointer_warp_lock = match self.pointer_warp_lock {
+						Some(PointerWarpLock::Locked) => {
+							window.request_redraw();
+							Some(PointerWarpLock::Committed)
+						}
+						Some(PointerWarpLock::Committed) => {
+							window.end_pointer_warp();
+							self.input_state.settle_pointer_wrap();
+							None
+						}
+						None => None,
+					};
 				}
 
 				if !self.ui_frame_received
@@ -738,6 +764,13 @@ enum RuntimeCommand {
 	RequestQueued,
 	Run,
 	Exit,
+}
+
+/// A pointer locked so Wayland moves it to the hinted position once unlocked.
+#[derive(Clone, Copy)]
+enum PointerWarpLock {
+	Locked,
+	Committed,
 }
 
 pub(crate) enum ExitReason {

@@ -352,7 +352,6 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(OverlaysMessage::RemoveProvider {
 						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 					});
-					responses.add(AppWindowMessage::PointerWrap { enabled: false });
 					self.end_snapping(snap_session, responses);
 				}
 			}
@@ -426,7 +425,6 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(OverlaysMessage::AddProvider {
 					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 				});
-				responses.add(AppWindowMessage::PointerWrap { enabled: true });
 				// Find a way better than this hack
 				responses.add(TransformLayerMessage::PointerMove {
 					slow_key: SLOW_KEY,
@@ -514,7 +512,6 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(OverlaysMessage::AddProvider {
 						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 					});
-					responses.add(AppWindowMessage::PointerWrap { enabled: true });
 				}
 				responses.add(TransformLayerMessage::BeginTransformOperation { operation: transform_type });
 				responses.add(TransformLayerMessage::PointerMove {
@@ -554,7 +551,6 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(OverlaysMessage::RemoveProvider {
 					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 				});
-				responses.add(AppWindowMessage::PointerWrap { enabled: false });
 				self.end_snapping(snap_session, responses);
 			}
 			TransformLayerMessage::ConstrainX | TransformLayerMessage::ConstrainY => {

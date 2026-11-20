@@ -209,6 +209,11 @@ impl RenderState {
 		self.surface_outdated = true;
 	}
 
+	/// Presents a frame on the next render even if nothing changed.
+	pub(crate) fn request_present(&mut self) {
+		self.surface_outdated = true;
+	}
+
 	pub(crate) fn render(&mut self, window: &Window) -> Result<(), RenderError> {
 		if !self.surface_outdated {
 			return Ok(());
