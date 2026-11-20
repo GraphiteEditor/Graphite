@@ -887,6 +887,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
+				if self.workspace.panel_layout.is_panel_visible(PanelType::Palette) {
+					responses.add(PaletteMessage::Refresh);
+				}
 
 				let Some(document) = self.documents.get_mut(&document_id) else {
 					warn!("Tried to read non existent document");

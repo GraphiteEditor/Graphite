@@ -247,7 +247,13 @@ impl PaletteMessageHandler {
 					widgets.push(LayoutGroup::table(table_rows, true));
 				}
 			}
-			let left_bottom_bar = LayoutGroup::row(vec![TextLabel::new("Hello").widget_instance()]);
+			let left_bottom_bar = LayoutGroup::row(vec![
+				TextLabel::new("Hello").widget_instance(),
+				IconButton::new("Add", 24)
+					.tooltip_label("Add Palette")
+					.on_update(|_| IngestMessage::ImportPalette.into())
+					.widget_instance(),
+			]);
 
 			responses.add(LayoutMessage::SendLayout {
 				layout: Layout(widgets),
@@ -308,29 +314,29 @@ impl PaletteMessageHandler {
 			let line = lines.next().unwrap();
 			let idx = line.iter().position(|x| *x == b':').unwrap();
 			let (_, name) = line.split_at(idx);
-			palette.columns = Some(std::str::from_utf8(name)?.trim().parse()?);
+			palette.columns = Some(std::str::from_utf8(&name[1..])?.trim().parse()?);
 		}
 
 		for line in lines {
 			if line.is_empty() || line.trim_ascii_start().starts_with(b"#") {
 				continue;
 			}
-			let colors_and_name = String::from_utf8(line.to_vec())?;
-			let (red, remaining) = colors_and_name.split_once(' ').ok_or("Invalid Format")?;
-			let (green, remaining) = remaining.split_once(' ').ok_or("Invalid Format")?;
-			let (blue, name) = remaining.split_once(' ').map_or((remaining, None), |(a, b)| (a, Some(b)));
+			let line_str = std::str::from_utf8(line)?.trim();
+			if line_str.is_empty() {
+				continue;
+			}
 
-			let color = SRGBA8::new_opaque(red.trim().parse()?, green.trim().parse()?, blue.trim().parse()?);
+			let mut parts = line_str.split_whitespace();
+			let red: u8 = parts.next().ok_or("Missing red")?.parse()?;
+			let green: u8 = parts.next().ok_or("Missing green")?.parse()?;
+			let blue: u8 = parts.next().ok_or("Missing blue")?.parse()?;
+			let remaining_name = parts.collect::<Vec<_>>().join(" ");
+			let name = if remaining_name.is_empty() { "Untitled Color".to_string() } else { remaining_name };
+
+			let color = SRGBA8::new_opaque(red, green, blue);
 			let id = SwatchId { 0: generate_uuid() };
 			palette.grid.push(Some(id));
-			palette.swatches.insert(
-				id,
-				ColorSwatch {
-					id,
-					name: name.unwrap_or("Untitle Color").to_string(),
-					color: color.into(),
-				},
-			);
+			palette.swatches.insert(id, ColorSwatch { id, name, color: color.into() });
 		}
 
 		self.order.push(palette_id);
