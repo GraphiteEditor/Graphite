@@ -54,6 +54,8 @@ pub struct NodeRuntime {
 	pending_thumbnails: Option<DocumentId>,
 	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
+	/// Whether the latest network failed to compile, leaving the executor with an older one that mustn't be shown in its place.
+	compile_failed: bool,
 	async_runtime: Option<AsyncRuntime>,
 
 	editor_api: Arc<PlatformEditorApi>,
@@ -167,6 +169,7 @@ impl NodeRuntime {
 			pending_eyedropper: None,
 			pending_thumbnails: None,
 			old_graph: None,
+			compile_failed: false,
 			resources: ResourceRegistry::default(),
 			async_runtime: None,
 
@@ -255,6 +258,7 @@ impl NodeRuntime {
 		self.node_graph_errors.clear();
 		self.node_graph_warnings.clear();
 		let result = self.update_network(&network);
+		self.compile_failed = result.is_err();
 		if result.is_ok() {
 			self.thumbnails.update_sources(&layers, &network, &self.executor);
 			self.old_graph = Some(network);
@@ -284,6 +288,7 @@ impl NodeRuntime {
 
 			if let Some(document_id) = self.pending_thumbnails.take()
 				&& viewport.is_none()
+				&& !self.compile_failed
 			{
 				let mut responses = VecDeque::new();
 				self.thumbnails.render_stale(&self.executor, &self.editor_api, &mut responses).await;
@@ -417,6 +422,10 @@ impl NodeRuntime {
 	}
 
 	fn evaluate(&mut self, request: ExecutionRequest) -> Option<ExecutionResult> {
+		if self.compile_failed {
+			return Some(ExecutionResult::Uncompiled);
+		}
+
 		let ExecutionRequest { execution_id, mut render_config } = request;
 
 		// Render via the SVG pipeline even though raster was requested if SVG Preview render mode is active or there's no GPU
@@ -452,7 +461,9 @@ impl NodeRuntime {
 
 	async fn respond(&mut self, execution_id: u64, result: ExecutionResult) {
 		let mut responses = VecDeque::new();
-		let dropped_thumbnails = self.update_thumbnails(&mut responses).await;
+
+		// While the graph fails to compile, thumbnails stay stale to render once it compiles, not from the last network that did
+		let dropped_thumbnails = if self.compile_failed { Vec::new() } else { self.update_thumbnails(&mut responses).await };
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 
 		let response = ExecutionResponse {
@@ -615,6 +626,7 @@ impl Spawn for NodeTaskExecutor {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 	use crate::test_utils::EditorTestUtils;
 	use glam::DVec2;
 	use graph_craft::document::DocumentNode;
@@ -714,6 +726,109 @@ mod tests {
 		editor.runtime.update();
 		editor.runtime.run().await;
 		assert!(evaluated(&mut editor));
+	}
+
+	/// Asks for a render of the unchanged graph at this device pixel ratio, as a pan or zoom does.
+	fn send_render(editor: &mut EditorTestUtils, scale: f64) {
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+		let message = executor
+			.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, scale, Default::default(), DVec2::ZERO)
+			.unwrap();
+		editor.dispatch(message);
+	}
+
+	/// Wires the rectangle into a 'Read Attribute' node's name, which must be a fixed value, so the graph fails to compile.
+	/// Gives back the layer's content input and the value that restores it.
+	fn break_compile(editor: &mut EditorTestUtils) -> (InputConnector, NodeInput) {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_proto_node_type};
+		use graphene_std::graphic::read_attribute_number;
+		use graphene_std::vector::generator_nodes::rectangle;
+
+		let rectangle_reference = DefinitionIdentifier::ProtoNode(rectangle::IDENTIFIER);
+		let interface = &editor.active_document().network_interface;
+		let rectangle_node = interface
+			.document_network()
+			.nodes
+			.keys()
+			.copied()
+			.find(|node_id| interface.reference(node_id, &[]) == Some(rectangle_reference.clone()))
+			.unwrap();
+		let layer_content = InputConnector::node_at_index(editor.active_document().metadata().all_layers().next().unwrap().to_node(), 1);
+		let original_content = editor.active_document().network_interface.input_from_connector(&layer_content, &[]).unwrap().clone();
+
+		let read_node = NodeId::new();
+		let template = resolve_proto_node_type(read_attribute_number::IDENTIFIER).unwrap().default_node_template();
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.insert_node(read_node, template, &[]);
+		network_interface.set_input(&InputConnector::node(read_node, read_attribute_number::NameInput), NodeInput::node(rectangle_node, 0), &[]);
+		network_interface.set_input(&layer_content, NodeInput::node(read_node, 0), &[]);
+
+		(layer_content, original_content)
+	}
+
+	#[tokio::test]
+	async fn a_graph_that_fails_to_compile_keeps_its_error_up_until_it_compiles() {
+		use crate::messages::frontend::utility_types::RenderStatus;
+
+		/// Lets the runtime handle what was sent and gives back whether the editor drew artwork and whether it shows the error.
+		async fn drawn_and_errored(editor: &mut EditorTestUtils) -> (bool, bool) {
+			editor.runtime.update();
+			editor.runtime.run().await;
+			let messages = editor.dispatch(Message::Wake);
+			let drawn = messages.iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. }));
+			let errored = messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+			(drawn, errored)
+		}
+
+		let mut editor = editor().await;
+		send_update(&mut editor);
+		assert_eq!(drawn_and_errored(&mut editor).await, (true, false));
+
+		let (layer_content, original_content) = break_compile(&mut editor);
+		send_update(&mut editor);
+		assert_eq!(drawn_and_errored(&mut editor).await, (false, true));
+
+		send_render(&mut editor, 1.);
+		assert_eq!(
+			drawn_and_errored(&mut editor).await,
+			(false, true),
+			"the last graph that compiled shouldn't be drawn in place of the error"
+		);
+
+		editor.active_document_mut().network_interface.set_input(&layer_content, original_content, &[]);
+		send_update(&mut editor);
+		assert_eq!(drawn_and_errored(&mut editor).await, (true, false));
+	}
+
+	#[tokio::test]
+	async fn thumbnails_wait_for_a_graph_that_fails_to_compile() {
+		/// Lets the runtime handle what was sent and gives back whether the layer's thumbnail is left to render.
+		async fn thumbnail_stale(editor: &mut EditorTestUtils, layer: NodeId) -> bool {
+			editor.runtime.update();
+			editor.runtime.run().await;
+			editor.dispatch(Message::Wake);
+			editor.runtime.thumbnails.is_stale(layer)
+		}
+
+		let mut editor = editor().await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap().to_node();
+		editor.runtime.thumbnails.set_in_view(HashSet::from([layer]));
+		send_update(&mut editor);
+		assert!(!thumbnail_stale(&mut editor, layer).await);
+
+		// A new device pixel ratio makes the thumbnail stale, but the network to render it from has yet to compile
+		let (layer_content, original_content) = break_compile(&mut editor);
+		send_update(&mut editor);
+		thumbnail_stale(&mut editor, layer).await;
+		send_render(&mut editor, 2.);
+		assert!(thumbnail_stale(&mut editor, layer).await, "the thumbnail shouldn't render from the last network that compiled");
+
+		editor.active_document_mut().network_interface.set_input(&layer_content, original_content, &[]);
+		send_update(&mut editor);
+		assert!(!thumbnail_stale(&mut editor, layer).await, "the thumbnail should render once the graph compiles");
 	}
 
 	#[tokio::test]
