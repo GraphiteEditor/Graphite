@@ -60,7 +60,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 						style: Some(style_name),
 					},
 				);
-				responses.add(ResourceMessage::Resolve { resource_id });
+				let message = ResourceMessage::Resolve { resource_id }.into();
+				responses.add(PortfolioMessage::DocumentPassMessage { document_id, message });
 			}
 			ResourceMessage::ResolveAll => {
 				let storage = resource_storage.resources_mut();
@@ -69,7 +70,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					if self.pending_resolves.contains(&id) {
 						continue;
 					}
-					responses.add(ResourceMessage::Resolve { resource_id: id });
+					let message = ResourceMessage::Resolve { resource_id: id }.into();
+					responses.add(PortfolioMessage::DocumentPassMessage { document_id, message });
 				}
 			}
 			ResourceMessage::Resolve { resource_id } => {
@@ -134,7 +136,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					let mut response: Option<Message> = None;
 					for (source, hash) in sources {
 						if let Some(hash) = hash {
-							response = Some(ResourceMessage::Resolved { resource_id, source, hash }.into());
+							let message = ResourceMessage::Resolved { resource_id, source, hash }.into();
+							response = Some(PortfolioMessage::DocumentPassMessage { document_id, message }.into());
 							break;
 						}
 
@@ -351,7 +354,11 @@ mod tests {
 			},
 		);
 
-		let resolve_requested = |id: ResourceId| responses.contains(&Message::from(ResourceMessage::Resolve { resource_id: id }));
+		// Addressed to this document, which may be in the background
+		let resolve_requested = |id: ResourceId| {
+			let message = ResourceMessage::Resolve { resource_id: id }.into();
+			responses.contains(&PortfolioMessage::DocumentPassMessage { document_id: DocumentId(0), message }.into())
+		};
 		assert!(resolve_requested(evicted), "a resource whose bytes are gone should be resolved again");
 		assert!(!resolve_requested(cached), "a resource whose bytes are in storage should be left alone");
 		assert_eq!(handler.registry.hash(&evicted), Some(evicted_hash), "the hash keeps naming the content");
