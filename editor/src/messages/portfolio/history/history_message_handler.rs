@@ -1,19 +1,22 @@
-use super::utility_types::{HistoryBranch, HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow, LineChange};
+use super::changes::{Change, ChangedArea, close_up, tint_changes};
+use super::utility_types::{CaptureImage, DocumentCapture, HistoryBranch, HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow, HistoryThumbnail, LineChange, Pixels};
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_proto_node_definition};
 use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
 use crate::messages::portfolio::sync::identity::{anonymous_name, user_color};
 use crate::messages::portfolio::sync::now_ms;
 use crate::messages::prelude::*;
+use crate::node_graph_executor::NodeGraphExecutor;
 use document_format::GddV1;
 use document_graph_storage::attr::{delta as delta_attr, network as network_attr, node as node_attr, session as session_attr};
 use document_graph_storage::{
-	AttributeDelta, Declarations, Delta, HistoryMetadata, HotOp, HotOpId, Implementation, InputMetadataEntry, Node, NodeId, PeerId, Registry, RegistryDelta, Rev, Session, Subject, UserId, Value,
-	coarsen, rev_attr,
+	AttributeDelta, Declarations, Delta, HistoryMetadata, HotOp, HotOpId, Implementation, InputMetadataEntry, Node, NodeId, PeerId, Registry, RegistryDelta, Rev, Session, Subject, TimeStamp, UserId,
+	Value, coarsen, rev_attr,
 };
+use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use peer_transport::RemotePeer;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 #[derive(ExtractField)]
@@ -21,6 +24,7 @@ pub struct HistoryMessageContext<'a> {
 	pub documents: &'a mut HashMap<DocumentId, DocumentMessageHandler>,
 	pub active_document_id: Option<DocumentId>,
 	pub panel_open: bool,
+	pub executor: &'a NodeGraphExecutor,
 }
 
 /// Sends the History panel the active document's history and turns its actions into head moves.
@@ -33,10 +37,61 @@ pub struct HistoryMessageHandler {
 	/// The head last sent, to stop following a branch once the head moves.
 	seen_head: Option<Rev>,
 	last_sent: Option<u64>,
+	/// Each document's steps as they looked once done, captured while the panel was open, by the stamp of their newest change.
+	captures: HashMap<DocumentId, HashMap<TimeStamp, Capture>>,
+	/// The one capture asked for and not yet back.
+	requested: Option<(DocumentId, TimeStamp)>,
+	/// The past state asked for, kept to ask for its close-up.
+	past: Option<PastState>,
+	/// The steps whose past state didn't render, which aren't asked for again.
+	failed: HashSet<(DocumentId, TimeStamp)>,
+	/// Counts the images the frontend got, so the panel is sent again once a step's capture or its close-up arrives.
+	images_sent: u64,
+}
+
+/// A step's document as history folds it, for rendering a step captured neither live nor before.
+#[derive(Debug)]
+struct PastState {
+	step: TimeStamp,
+	network: graph_craft::document::NodeNetwork,
+	/// Full path from the root network to every layer.
+	layers: Vec<Vec<graph_craft::document::NodeId>>,
+	/// The layers holding other layers, as groups and artboards do.
+	containers: HashSet<graph_craft::document::NodeId>,
+}
+
+/// What a captured step showed. The frontend keeps its images.
+#[derive(Debug)]
+struct Capture {
+	frame: [DVec2; 2],
+	layers: BTreeMap<graph_craft::document::NodeId, LayerShot>,
+	/// The whole document's pixels, kept by the newest few captures for the steps after them to compare with.
+	pixels: Option<Pixels>,
+	/// The frontend got a close-up of what the step changed.
+	detailed: bool,
+	/// The area to render close up once the document shows this step and no tool is mid-gesture.
+	close_up: Option<[DVec2; 2]>,
+	/// Orders the captures so the oldest is dropped first.
+	taken: u64,
+}
+
+#[derive(Debug, PartialEq)]
+struct LayerShot {
+	bounds: Option<[DVec2; 2]>,
+	/// Changes with what the layer itself shows.
+	source: Option<graph_craft::document::NodeId>,
+	/// A group or artboard, which changes with its children and is only shown coming and going.
+	container: bool,
 }
 
 /// How many interactions each request adds.
 const PAGE: usize = 100;
+/// The most recent captures kept for each document, as many as the frontend keeps images.
+const MAX_CAPTURES: usize = 300;
+/// How many of the newest captures keep their pixels.
+const PIXELS_KEPT: usize = 16;
+/// How many of the newest steps are rendered from their past state when they weren't captured.
+const PAST_STEPS: usize = 24;
 
 #[message_handler_data]
 impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessageHandler {
@@ -55,7 +110,21 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 			}
 			HistoryMessage::Tick => {
 				if context.panel_open {
+					self.request_capture(&context);
 					self.send(&context, responses);
+				}
+			}
+			HistoryMessage::Captured { document_id, step, capture } => {
+				if self.requested == Some((document_id, step)) {
+					self.requested = None;
+				}
+				match capture {
+					Some(capture) => self.receive_capture(document_id, step, *capture, &context, responses),
+					None if self.past.as_ref().is_some_and(|past| past.step == step) => {
+						self.past = None;
+						self.failed.insert((document_id, step));
+					}
+					None => {}
 				}
 			}
 			HistoryMessage::Expand { id, expanded } => {
@@ -126,6 +195,155 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 }
 
 impl HistoryMessageHandler {
+	/// Asks for the newest step to be captured once no tool is mid-gesture and no past step is previewed, since a capture
+	/// shows the document as it renders now, and once it is, for the steps before it that weren't. One capture is asked for
+	/// at a time.
+	fn request_capture(&mut self, context: &HistoryMessageContext) {
+		self.captures.retain(|id, _| context.documents.contains_key(id));
+		let Some(document_id) = context.active_document_id else { return };
+		let Some(document) = context.documents.get(&document_id) else { return };
+		if self.requested.is_some() || document.network_interface.transaction_status() != TransactionStatus::Finished {
+			return;
+		}
+		let Some(step) = document.storage().and_then(|gdd| current_stamp(gdd.session())) else { return };
+		// The whole document until the step is captured, then its close-up, with `None` asking for the whole document
+		let live_render = match self.captures.get(&document_id).and_then(|captures| captures.get(&step)) {
+			None => Some(None),
+			Some(own) if !own.detailed => own.close_up.map(Some),
+			Some(_) => None,
+		};
+		let shows_current_step = document.previewed_history_step().is_none();
+		if shows_current_step && let Some(close_up) = live_render {
+			if context.executor.submit_document_capture(document, document_id, step, close_up) {
+				self.requested = Some((document_id, step));
+			}
+			return;
+		}
+		self.request_past_capture(document_id, document, context.executor);
+	}
+
+	/// Asks for the newest step in history without a capture to be rendered from its past state, starting with the oldest
+	/// of them, so each close-up can compare with the step before it.
+	fn request_past_capture(&mut self, document_id: DocumentId, document: &DocumentMessageHandler, executor: &NodeGraphExecutor) {
+		let Some(gdd) = document.storage() else { return };
+		let captures = self.captures.get(&document_id);
+		let missing = recent_steps(gdd.session(), PAST_STEPS)
+			.into_iter()
+			.rev()
+			.find(|&(_, step)| captures.is_none_or(|captures| !captures.contains_key(&step)) && !self.failed.contains(&(document_id, step)));
+		let Some((rev, step)) = missing else { return };
+		let Some(past) = past_state(gdd, document.declarations(), rev, step) else {
+			self.failed.insert((document_id, step));
+			return;
+		};
+		if executor.submit_past_capture(document_id, step, past.network.clone(), past.layers.clone(), None) {
+			self.requested = Some((document_id, step));
+			self.past = Some(past);
+		}
+	}
+
+	/// Keeps a capture that still shows its step, with where each layer was, and gives the frontend its image. When the
+	/// step before kept its pixels, notes the area that changed to be rendered close up, which comes back to be tinted by
+	/// how it changed. A past state asks for it at once, while the document waits until it shows the step with no tool
+	/// mid-gesture.
+	fn receive_capture(&mut self, document_id: DocumentId, step: TimeStamp, capture: DocumentCapture, context: &HistoryMessageContext, responses: &mut VecDeque<Message>) {
+		let Some(document) = context.documents.get(&document_id) else { return };
+		let Some(session) = document.storage().map(GddV1::session) else { return };
+		let past = self.past.take_if(|past| past.step == step);
+		if past.is_none() && current_stamp(session) != Some(step) {
+			return;
+		}
+		let captures = self.captures.entry(document_id).or_default();
+		let before = parent_stamp(session, step)
+			.and_then(|parent| captures.get(&parent))
+			.and_then(|before| Some((before, before.pixels.as_ref()?)));
+
+		if let Some(own) = captures.get(&step) {
+			let tinted = before.zip(capture.detail).and_then(|((before, before_pixels), (frame, image))| match image {
+				CaptureImage::Pixels(close_up) => Some(tint_changes(&close_up, frame, before_pixels, before.frame, &changed_areas(&before.layers, &own.layers))),
+				CaptureImage::Svg(_) => None,
+			});
+			if let Some(own) = captures.get_mut(&step) {
+				own.close_up = None;
+				own.detailed = tinted.is_some();
+			}
+			let Some(tinted) = tinted else { return };
+			responses.add(image_message(detail_id(step), CaptureImage::Pixels(tinted)));
+			self.images_sent += 1;
+			return;
+		}
+
+		// The runtime measures layers alike for every state, and a past one has no metadata to measure them from
+		let bounds = |node: &graph_craft::document::NodeId, metadata: Option<[DVec2; 2]>| match &capture.layer_bounds {
+			Some(layer_bounds) => layer_bounds.get(node).copied(),
+			None => metadata,
+		};
+		let layers: BTreeMap<_, _> = match &past {
+			Some(past) => past
+				.layers
+				.iter()
+				.filter_map(|path| path.last())
+				.map(|node| {
+					let shot = LayerShot {
+						bounds: bounds(node, None),
+						source: capture.layer_sources.get(node).copied(),
+						container: past.containers.contains(node),
+					};
+					(*node, shot)
+				})
+				.collect(),
+			None => {
+				let metadata = document.metadata();
+				metadata
+					.all_layers()
+					.map(|layer| {
+						let node = layer.to_node();
+						let shot = LayerShot {
+							bounds: bounds(&node, metadata.bounding_box_document(layer)),
+							source: capture.layer_sources.get(&node).copied(),
+							container: layer.has_children(metadata) || document.network_interface.is_artboard(&node, &[]),
+						};
+						(node, shot)
+					})
+					.collect()
+			}
+		};
+		let pixels = match &capture.image {
+			CaptureImage::Pixels(pixels) => Some(pixels.clone()),
+			CaptureImage::Svg(_) => None,
+		};
+		let detail = before.filter(|_| pixels.is_some()).and_then(|(before, _)| close_up(&changed_areas(&before.layers, &layers)));
+
+		let taken = captures.values().map(|capture| capture.taken + 1).max().unwrap_or(0);
+		if captures.len() >= MAX_CAPTURES
+			&& let Some(&oldest) = captures.iter().min_by_key(|(_, capture)| capture.taken).map(|(stamp, _)| stamp)
+		{
+			captures.remove(&oldest);
+		}
+		if let Some(oldest_kept) = taken.checked_sub(PIXELS_KEPT as u64) {
+			captures.values_mut().filter(|capture| capture.taken <= oldest_kept).for_each(|capture| capture.pixels = None);
+		}
+		let own = Capture {
+			frame: capture.frame,
+			layers,
+			pixels,
+			detailed: false,
+			close_up: detail.filter(|_| past.is_none()),
+			taken,
+		};
+		captures.insert(step, own);
+		responses.add(image_message(shot_id(step), capture.image));
+		self.images_sent += 1;
+
+		if let Some(past) = past
+			&& let Some(detail) = detail
+			&& context.executor.submit_past_capture(document_id, step, past.network.clone(), past.layers.clone(), Some(detail))
+		{
+			self.past = Some(past);
+			self.requested = Some((document_id, step));
+		}
+	}
+
 	fn send(&mut self, context: &HistoryMessageContext, responses: &mut VecDeque<Message>) {
 		let document = context.active_document_id.and_then(|id| context.documents.get(&id));
 		let gdd = document.and_then(|document| document.storage());
@@ -138,7 +356,8 @@ impl HistoryMessageHandler {
 
 		let previewing = document.and_then(|document| document.previewed_history_step());
 		let limit = self.limit.max(PAGE);
-		let fingerprint = fingerprint(context.active_document_id, gdd, limit, &self.expanded, self.following, previewing);
+		let captures = context.active_document_id.and_then(|id| self.captures.get(&id));
+		let fingerprint = fingerprint(context.active_document_id, gdd, limit, &self.expanded, self.following, previewing, self.images_sent);
 		if self.last_sent == Some(fingerprint) {
 			return;
 		}
@@ -147,7 +366,7 @@ impl HistoryMessageHandler {
 			.zip(gdd)
 			.map(|(document, gdd)| HistoryPanelState {
 				previewing: previewing.map(|rev| rev.to_string()),
-				..panel_state(gdd, document.declarations(), limit, &self.expanded, self.following)
+				..panel_state(gdd, document.declarations(), captures, limit, &self.expanded, self.following)
 			})
 			.unwrap_or_default();
 		responses.add(FrontendMessage::UpdateHistoryPanel { state });
@@ -190,9 +409,9 @@ pub(crate) fn place(session: &Session, rev: Rev) -> Option<Place> {
 }
 
 /// A hash of the panel's inputs, cheap enough for every frame.
-fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>, previewing: Option<Rev>) -> u64 {
+fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>, previewing: Option<Rev>, images_sent: u64) -> u64 {
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
-	(document_id, limit, expanded, following, previewing).hash(&mut hasher);
+	(document_id, limit, expanded, following, previewing, images_sent).hash(&mut hasher);
 	if let Some(gdd) = gdd {
 		let session = gdd.session();
 		(session.history_len(), session.head_rev(), session.redo_stack(), session.hot_log().len(), session.pending_action()).hash(&mut hasher);
@@ -206,7 +425,7 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usiz
 	hasher.finish()
 }
 
-fn panel_state(gdd: &GddV1, declarations: &Declarations, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>) -> HistoryPanelState {
+fn panel_state(gdd: &GddV1, declarations: &Declarations, captures: Option<&HashMap<TimeStamp, Capture>>, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>) -> HistoryPanelState {
 	let session = gdd.session();
 	let names = Names {
 		registry: gdd.registry(),
@@ -243,6 +462,7 @@ fn panel_state(gdd: &GddV1, declarations: &Declarations, limit: usize, expanded:
 		head,
 		people: &people,
 		names: &names,
+		captures,
 		expanded,
 		session,
 		metadata: gdd.metadata(),
@@ -254,7 +474,7 @@ fn panel_state(gdd: &GddV1, declarations: &Declarations, limit: usize, expanded:
 	let collaborating = gdd.peers().next().is_some();
 	HistoryPanelState {
 		rows,
-		progress: progress_rows(session, &people, &names),
+		progress: progress_rows(session, &people, &names, captures),
 		more,
 		following: following.map(|tip| tip.to_string()),
 		previewing: None,
@@ -263,7 +483,27 @@ fn panel_state(gdd: &GddV1, declarations: &Declarations, limit: usize, expanded:
 }
 
 /// Open interactions first, then closed ones waiting to retire, newest first.
-fn progress_rows(session: &Session, people: &People, names: &Names) -> Vec<HistoryProgressRow> {
+fn progress_rows(session: &Session, people: &People, names: &Names, captures: Option<&HashMap<TimeStamp, Capture>>) -> Vec<HistoryProgressRow> {
+	hot_steps(session)
+		.into_iter()
+		.map(|step| {
+			let thumbnail = newest_change(step.ops.iter().copied()).and_then(|stamp| thumbnail(captures?, stamp));
+			progress_row(people, names, step.author, &retired_kinds(step.ops), step.open, step.action, thumbnail)
+		})
+		.collect()
+}
+
+/// A step still in the hot log.
+struct HotStep<'a> {
+	author: PeerId,
+	ops: Vec<&'a HotOp>,
+	/// Still being made, not closed and waiting.
+	open: bool,
+	action: Option<String>,
+}
+
+/// Each author's open interaction first, then the closed ones waiting to retire, newest first.
+fn hot_steps(session: &Session) -> Vec<HotStep<'_>> {
 	let hot_log = session.hot_log();
 	let closed = session.closed_interactions();
 	let in_closed: HashSet<HotOpId> = closed.iter().flat_map(|interaction| interaction.ops.iter().copied()).collect();
@@ -274,20 +514,100 @@ fn progress_rows(session: &Session, people: &People, names: &Names) -> Vec<Histo
 			None => open_by_peer.push((hot_op.timestamp.peer, vec![hot_op])),
 		}
 	}
-	let mut progress: Vec<HistoryProgressRow> = open_by_peer
+	let mut steps: Vec<HotStep> = open_by_peer
 		.into_iter()
-		.map(|(peer, ops)| {
-			let action = session.pending_action().filter(|_| peer == session.peer()).map(str::to_string);
-			progress_row(people, names, peer, &retired_kinds(ops), true, action)
+		.map(|(author, ops)| {
+			let action = session.pending_action().filter(|_| author == session.peer()).map(str::to_string);
+			HotStep { author, ops, open: true, action }
 		})
 		.collect();
 	for interaction in closed.iter().rev() {
 		let ids: HashSet<HotOpId> = interaction.ops.iter().copied().collect();
 		let ops: Vec<&HotOp> = hot_log.iter().filter(|hot_op| ids.contains(&hot_op.id())).collect();
 		let action = ops.iter().find_map(|hot_op| hot_op.attributes.get_typed::<String>(delta_attr::ACTION));
-		progress.push(progress_row(people, names, interaction.author, &retired_kinds(ops), false, action));
+		steps.push(HotStep {
+			author: interaction.author,
+			ops,
+			open: false,
+			action,
+		});
 	}
-	progress
+	steps
+}
+
+/// The stamp of the newest change among `ops`, which keys a step's capture. Retiring keeps each op's stamp and merging
+/// keeps a step's newest op, so a step keeps its key from the hot log into history.
+fn newest_change<'a>(ops: impl IntoIterator<Item = &'a HotOp>) -> Option<TimeStamp> {
+	ops.into_iter().filter(|hot_op| !matches!(hot_op.op, RegistryDelta::Meta)).map(|hot_op| hot_op.timestamp).max()
+}
+
+fn head_stamp(session: &Session) -> Option<TimeStamp> {
+	session.head_rev().and_then(|rev| session.delta(rev)).map(|delta| delta.timestamp)
+}
+
+/// The key of the step the document shows now: the newest change still hot, else the head.
+fn current_stamp(session: &Session) -> Option<TimeStamp> {
+	newest_change(session.hot_log()).or_else(|| head_stamp(session))
+}
+
+/// The key of the step before `step`: for a hot step, the one whose newest change came last before its own, else the
+/// head; for a step in history, the one before its interaction.
+fn parent_stamp(session: &Session, step: TimeStamp) -> Option<TimeStamp> {
+	let hot: Vec<TimeStamp> = hot_steps(session).iter().filter_map(|hot_step| newest_change(hot_step.ops.iter().copied())).collect();
+	if hot.contains(&step) {
+		return hot.into_iter().filter(|&other| other < step).max().or_else(|| head_stamp(session));
+	}
+	let (deltas, _) = line(session, session.head_rev(), None, usize::MAX);
+	let groups = interactions(&deltas);
+	let group = groups.iter().find(|group| group[0].timestamp == step)?;
+	group.last()?.parent.and_then(|rev| session.delta(rev)).map(|delta| delta.timestamp)
+}
+
+/// The closing rev and capture key of the newest `count` steps in history the panel shows, undone ones first, newest first.
+fn recent_steps(session: &Session, count: usize) -> Vec<(Rev, TimeStamp)> {
+	let head = session.head_rev();
+	let undone = match session.redo_stack().first() {
+		Some(&checkpoint) => line(session, Some(checkpoint), head, usize::MAX).0,
+		None => Vec::new(),
+	};
+	let (shown, _) = line(session, head, None, count);
+	interactions(&undone)
+		.into_iter()
+		.chain(interactions(&shown))
+		.take(count)
+		.map(|group| (group[0].id, group[0].timestamp))
+		.collect()
+}
+
+/// The document as history folds it once `rev` was done, as the network the runtime compiles.
+fn past_state(gdd: &GddV1, declarations: &Declarations, rev: Rev, step: TimeStamp) -> Option<PastState> {
+	let registry = gdd.session().registry_at(rev).ok()?;
+	let (network, entries) = registry.to_runtime_with_metadata(declarations, gdd.blobs()).ok()?;
+	// A layer in a shared network has a path per use, so only the root network's are shown
+	let layers: HashSet<graph_craft::document::NodeId> = entries.iter().filter(|entry| entry.is_layer && entry.network.is_none()).map(|entry| entry.local_id).collect();
+	let containers = layers.iter().copied().filter(|&layer| holds_layers(&network, layer, &layers)).collect();
+	let mut layers: Vec<_> = layers.into_iter().map(|layer| vec![layer]).collect();
+	layers.sort();
+	Some(PastState { step, network, layers, containers })
+}
+
+/// Whether what feeds a layer, besides the stack below it, holds other layers.
+fn holds_layers(network: &graph_craft::document::NodeNetwork, layer: graph_craft::document::NodeId, layers: &HashSet<graph_craft::document::NodeId>) -> bool {
+	let upstream = |node: &graph_craft::document::DocumentNode| node.inputs.iter().filter_map(|input| input.as_node()).collect::<Vec<_>>();
+	let Some(node) = network.nodes.get(&layer) else { return false };
+	let mut pending: Vec<_> = upstream(node).into_iter().skip(1).collect();
+	let mut seen = HashSet::new();
+	while let Some(id) = pending.pop() {
+		if layers.contains(&id) {
+			return true;
+		}
+		if seen.insert(id)
+			&& let Some(node) = network.nodes.get(&id)
+		{
+			pending.extend(upstream(node));
+		}
+	}
+	false
 }
 
 /// The deltas from `from` back along first parents to `until` (exclusive) or the root, newest first. Stops after
@@ -331,6 +651,7 @@ struct View<'a> {
 	head: Option<Rev>,
 	people: &'a People<'a>,
 	names: &'a Names<'a>,
+	captures: Option<&'a HashMap<TimeStamp, Capture>>,
 	expanded: &'a BTreeSet<Rev>,
 	session: &'a Session,
 	metadata: &'a HistoryMetadata,
@@ -382,6 +703,7 @@ impl View<'_> {
 			head: Some(closing.id) == self.head,
 			expanded: is_expanded,
 			details,
+			thumbnail: self.captures.and_then(|captures| thumbnail(captures, closing.timestamp)),
 		}
 	}
 
@@ -409,7 +731,57 @@ fn retired_kinds(ops: Vec<&HotOp>) -> Vec<&RegistryDelta> {
 	coarsen(ops).into_iter().map(|hot_op| &hot_op.op).collect()
 }
 
-fn progress_row(people: &People, names: &Names, peer: PeerId, ops: &[&RegistryDelta], open: bool, action: Option<String>) -> HistoryProgressRow {
+/// The images captured for `step`.
+fn thumbnail(captures: &HashMap<TimeStamp, Capture>, step: TimeStamp) -> Option<HistoryThumbnail> {
+	let capture = captures.get(&step)?;
+	Some(HistoryThumbnail {
+		whole: shot_id(step),
+		detail: capture.detailed.then(|| detail_id(step)),
+	})
+}
+
+/// The ID the frontend keeps a capture's image by.
+fn shot_id(stamp: TimeStamp) -> String {
+	format!("{}-{}", stamp.counter, stamp.peer.0)
+}
+
+fn detail_id(stamp: TimeStamp) -> String {
+	format!("{}-detail", shot_id(stamp))
+}
+
+fn image_message(id: String, image: CaptureImage) -> FrontendMessage {
+	match image {
+		CaptureImage::Pixels(pixels) => FrontendMessage::UpdateHistoryThumbnailPixels {
+			id,
+			width: pixels.size.x,
+			height: pixels.size.y,
+			pixels: serde_bytes::ByteBuf::from(pixels.rgba),
+		},
+		CaptureImage::Svg(svg) => FrontendMessage::UpdateHistoryThumbnail { id, svg },
+	}
+}
+
+/// Where each layer came, went or changed between two captures. A container counts only coming or going, since its
+/// children show what changed within it.
+fn changed_areas(before: &BTreeMap<graph_craft::document::NodeId, LayerShot>, after: &BTreeMap<graph_craft::document::NodeId, LayerShot>) -> Vec<ChangedArea> {
+	let area = |change, bounds: Option<[DVec2; 2]>| bounds.map(|bounds| ChangedArea { change, bounds });
+	let mut areas = Vec::new();
+	for (layer, now) in after {
+		match before.get(layer) {
+			None => areas.extend(area(Change::Added, now.bounds)),
+			Some(then) if !now.container && then != now => areas.extend([area(Change::Changed, then.bounds), area(Change::Changed, now.bounds)].into_iter().flatten()),
+			Some(_) => {}
+		}
+	}
+	for (layer, then) in before {
+		if !after.contains_key(layer) {
+			areas.extend(area(Change::Removed, then.bounds));
+		}
+	}
+	areas
+}
+
+fn progress_row(people: &People, names: &Names, peer: PeerId, ops: &[&RegistryDelta], open: bool, action: Option<String>, thumbnail: Option<HistoryThumbnail>) -> HistoryProgressRow {
 	let person = people.person(peer);
 	HistoryProgressRow {
 		label: action.unwrap_or_else(|| names.summarize(ops.iter().copied())),
@@ -419,6 +791,7 @@ fn progress_row(people: &People, names: &Names, peer: PeerId, ops: &[&RegistryDe
 		color: person.color,
 		ops: foreground(ops, |kind| kind).len() as u32,
 		open,
+		thumbnail,
 	}
 }
 
@@ -669,7 +1042,7 @@ mod tests {
 		gdd.undo().expect("undo");
 		gdd.undo().expect("undo");
 
-		assert_eq!(panel_state(&gdd, &Declarations::new(), PAGE, &BTreeSet::new(), None).rows.len(), 3);
+		assert_eq!(panel_state(&gdd, &Declarations::new(), None, PAGE, &BTreeSet::new(), None).rows.len(), 3);
 	}
 
 	#[test]
@@ -715,6 +1088,255 @@ mod tests {
 		assert_eq!(names.summarize([&import_type, &reflection_metadata, &import_type, &moved]), "Moved a Node in the Graph");
 	}
 
+	#[test]
+	fn layers_that_came_went_and_changed_mark_their_areas() {
+		use graph_craft::document::NodeId as LayerId;
+
+		let layer = |x: f64, source: u64, container: bool| LayerShot {
+			bounds: Some([DVec2::splat(x), DVec2::splat(x + 1.)]),
+			source: Some(LayerId(source)),
+			container,
+		};
+		let layers = |layers: Vec<(u64, LayerShot)>| layers.into_iter().map(|(id, shot)| (LayerId(id), shot)).collect::<BTreeMap<_, _>>();
+		let before = layers(vec![(1, layer(0., 1, false)), (2, layer(5., 2, false)), (3, layer(9., 3, false)), (4, layer(0., 4, true))]);
+		let after = layers(vec![(1, layer(0., 1, false)), (2, layer(6., 2, false)), (4, layer(0., 5, true)), (5, layer(3., 6, false))]);
+
+		let areas: Vec<(Change, f64)> = changed_areas(&before, &after).into_iter().map(|area| (area.change, area.bounds[0].x)).collect();
+		assert_eq!(
+			areas,
+			[(Change::Changed, 5.), (Change::Changed, 6.), (Change::Added, 3.), (Change::Removed, 9.)],
+			"a moved layer marks where it was and where it is, and a container changing with its children marks nothing"
+		);
+	}
+
+	/// Runs the graph and captures the current step, then lets the editor take in what comes back, a close-up included.
+	async fn capture_now(editor: &mut crate::test_utils::EditorTestUtils) -> (TimeStamp, Vec<FrontendMessage>) {
+		let (step, mut responses) = capture_whole_now(editor).await;
+
+		// The panel asks for the close-up on a later tick, once the document is idle
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let close_up = portfolio
+			.history
+			.captures
+			.get(&document_id)
+			.and_then(|captures| captures.get(&step))
+			.and_then(|capture| capture.close_up);
+		if let Some(close_up) = close_up {
+			let document = &portfolio.documents[&document_id];
+			assert!(portfolio.executor.submit_document_capture(document, document_id, step, Some(close_up)));
+			responses.extend(take_in_capture(editor).await);
+		}
+		(step, responses)
+	}
+
+	/// Runs the graph and captures the whole document at the current step, leaving its close-up to be asked for.
+	async fn capture_whole_now(editor: &mut crate::test_utils::EditorTestUtils) -> (TimeStamp, Vec<FrontendMessage>) {
+		let gdd = editor.active_document().storage().expect("every document has a working copy");
+		let step = current_stamp(gdd.session()).expect("the document has a step");
+		evaluate_graph(editor);
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = &portfolio.documents[&document_id];
+		assert!(portfolio.executor.submit_document_capture(document, document_id, step, None), "the runtime holds this document's graph");
+		(step, take_in_capture(editor).await)
+	}
+
+	/// Hands the runtime the active document's graph to run, as the viewport does before the panel captures it.
+	fn evaluate_graph(editor: &mut crate::test_utils::EditorTestUtils) {
+		use glam::UVec2;
+		use graphene_std::application_io::TimingInformation;
+
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = portfolio.documents.get_mut(&document_id).unwrap();
+		portfolio
+			.executor
+			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO)
+			.unwrap();
+	}
+
+	async fn take_in_capture(editor: &mut crate::test_utils::EditorTestUtils) -> Vec<FrontendMessage> {
+		let mut responses = Vec::new();
+		for _ in 0..2 {
+			editor.runtime.update();
+			editor.runtime.run().await;
+			responses.extend(editor.dispatch(Message::Wake));
+		}
+		responses
+	}
+
+	/// The pixels, or else the SVG, the frontend got under `id`.
+	fn image(responses: &[FrontendMessage], id: &str) -> Option<Result<Vec<u8>, String>> {
+		responses.iter().find_map(|message| match message {
+			FrontendMessage::UpdateHistoryThumbnailPixels { id: sent, pixels, .. } if sent == id => Some(Ok(pixels.to_vec())),
+			FrontendMessage::UpdateHistoryThumbnail { id: sent, svg } if sent == id => Some(Err(svg.clone())),
+			_ => None,
+		})
+	}
+
+	/// A step made before the panel captured anything is rendered from its past state, compiled next to the document's
+	/// current graph, and shows only what was there then.
+	#[tokio::test]
+	async fn a_step_never_captured_is_rendered_from_its_past_state() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		let retire = |editor: &mut EditorTestUtils| {
+			editor
+				.active_document_mut()
+				.storage_mut()
+				.expect("every document has a working copy")
+				.retire_pending_interaction()
+				.expect("retire")
+		};
+		retire(&mut editor);
+		editor.draw_rect(200., 0., 300., 100.).await;
+		editor.handle_message(DocumentMessage::StartTransaction).await;
+		retire(&mut editor);
+		let (now, responses) = capture_now(&mut editor).await;
+		let current = image(&responses, &shot_id(now)).expect("the current step is captured live");
+
+		let gdd = editor.active_document().storage().expect("every document has a working copy");
+		let (_, first) = recent_steps(gdd.session(), PAST_STEPS)[1];
+		let mut responses = Vec::new();
+		for _ in 0..PAST_STEPS {
+			let portfolio = editor.portfolio_message_handler_mut();
+			let document_id = portfolio.active_document_id.unwrap();
+			if portfolio.history.requested.is_none() {
+				portfolio.history.request_past_capture(document_id, &portfolio.documents[&document_id], &portfolio.executor);
+			}
+			editor.runtime.update();
+			editor.runtime.run().await;
+			responses.extend(editor.dispatch(Message::Wake));
+		}
+
+		let past = image(&responses, &shot_id(first)).expect("the first rectangle's step is rendered from its past state");
+		assert_ne!(past, current, "the past state shows one rectangle and the current one two");
+		match past {
+			Ok(pixels) => {
+				assert!(pixels.chunks(4).any(|pixel| pixel[3] > 0), "the first rectangle should be drawn");
+				assert!(image(&responses, &detail_id(first)).is_some(), "the step before it was rendered first, so it has a close-up");
+			}
+			Err(svg) => assert!(svg.contains("<path"), "the first rectangle should be drawn: {svg}"),
+		}
+
+		// Captured again from scratch
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		portfolio.history.captures.get_mut(&document_id).map(|captures| captures.remove(&now));
+		let (_, responses) = capture_now(&mut editor).await;
+		assert_eq!(image(&responses, &shot_id(now)), Some(current), "the document renders as before once its past was compiled next to it");
+	}
+
+	#[tokio::test]
+	async fn a_step_still_hot_is_captured_once_the_runtime_has_run() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 10., 10.).await;
+		let (step, responses) = capture_now(&mut editor).await;
+
+		match image(&responses, &shot_id(step)).expect("the step's capture should reach the frontend") {
+			Ok(pixels) => assert!(pixels.chunks(4).any(|pixel| pixel[3] > 0), "the rectangle should be drawn"),
+			Err(svg) => assert!(svg.contains("<path"), "the rectangle should be drawn: {svg}"),
+		}
+	}
+
+	#[tokio::test]
+	async fn deleting_a_layer_shows_it_close_up_tinted_as_removed() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		capture_now(&mut editor).await;
+		editor.handle_message(DocumentMessage::DeleteSelectedLayers).await;
+		editor.handle_message(DocumentMessage::StartTransaction).await;
+		let (step, responses) = capture_now(&mut editor).await;
+
+		let Some(whole) = image(&responses, &shot_id(step)) else {
+			panic!("an empty document is captured too")
+		};
+		// Without a GPU, captures are SVGs, which aren't compared
+		if whole.is_err() {
+			return;
+		}
+		let detail = image(&responses, &detail_id(step)).expect("the deletion should be shown close up").unwrap();
+		let reddened = detail.chunks(4).any(|pixel| pixel[3] > 0 && pixel[0] > pixel[1] + 40);
+		assert!(reddened, "the rectangle should show where it was, tinted as removed");
+	}
+
+	/// A close-up renders the document as it is, so it waits for a gesture underway to end rather than show it half done
+	/// in the area measured before it.
+	#[tokio::test]
+	async fn a_close_up_waits_for_the_gesture_underway_to_end() {
+		use crate::test_utils::test_prelude::*;
+
+		fn asks_for_a_capture(editor: &mut EditorTestUtils) -> bool {
+			let portfolio = editor.portfolio_message_handler_mut();
+			let context = HistoryMessageContext {
+				documents: &mut portfolio.documents,
+				active_document_id: portfolio.active_document_id,
+				panel_open: true,
+				executor: &portfolio.executor,
+			};
+			portfolio.history.request_capture(&context);
+			portfolio.history.requested.is_some()
+		}
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		capture_now(&mut editor).await;
+		editor.drag_tool(ToolType::Ellipse, 150., 0., 250., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::StartTransaction).await;
+		capture_whole_now(&mut editor).await;
+
+		assert!(!asks_for_a_capture(&mut editor), "the close-up waits while a transaction is open");
+		editor.handle_message(DocumentMessage::EndTransaction).await;
+		evaluate_graph(&mut editor);
+		assert!(asks_for_a_capture(&mut editor), "and is asked for once it ends");
+	}
+
+	#[tokio::test]
+	async fn a_capture_taken_while_hot_stays_with_its_step_in_history() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let gdd = document.storage().expect("every document has a working copy");
+		let step = current_stamp(gdd.session()).expect("the rectangle is a step");
+		let capture = Capture {
+			frame: [DVec2::ZERO, DVec2::ONE],
+			layers: BTreeMap::new(),
+			pixels: None,
+			detailed: false,
+			close_up: None,
+			taken: 0,
+		};
+		let captures = HashMap::from([(step, capture)]);
+		let state = panel_state(gdd, document.declarations(), Some(&captures), PAGE, &BTreeSet::new(), None);
+		assert!(state.progress[0].thumbnail.is_some(), "the step shows its capture before it enters history");
+
+		let gdd = editor.active_document_mut().storage_mut().expect("every document has a working copy");
+		gdd.retire_pending_interaction().expect("retire");
+		let document = editor.active_document();
+		let gdd = document.storage().expect("every document has a working copy");
+		let state = panel_state(gdd, document.declarations(), Some(&captures), PAGE, &BTreeSet::new(), None);
+		assert!(state.progress.is_empty());
+		assert_eq!(
+			state.rows[0].thumbnail.as_ref().map(|thumbnail| thumbnail.whole.clone()),
+			Some(shot_id(step)),
+			"and keeps it once it has"
+		);
+	}
+
 	#[tokio::test]
 	async fn a_tool_names_its_step() {
 		use crate::test_utils::test_prelude::*;
@@ -741,7 +1363,7 @@ mod tests {
 
 		let document = editor.active_document();
 		let gdd = document.storage().expect("every document has a working copy");
-		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
+		let state = panel_state(gdd, document.declarations(), None, PAGE, &BTreeSet::new(), None);
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
 		assert_eq!(labels, ["Drew a Rectangle", "Drew a Rectangle"], "the open draw and the closed one waiting to retire");
 	}
@@ -760,7 +1382,7 @@ mod tests {
 
 		let document = editor.active_document();
 		let gdd = document.storage().expect("every document has a working copy");
-		let pending = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None).progress[0].ops;
+		let pending = panel_state(gdd, document.declarations(), None, PAGE, &BTreeSet::new(), None).progress[0].ops;
 
 		editor.active_document_mut().retire_storage_interaction();
 		assert_eq!(rows(&editor)[0].deltas, pending);
@@ -778,7 +1400,7 @@ mod tests {
 
 		let document = editor.active_document();
 		let gdd = document.storage().expect("every document has a working copy");
-		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
+		let state = panel_state(gdd, document.declarations(), None, PAGE, &BTreeSet::new(), None);
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
 		assert_eq!(labels, ["Deleted a Layer", "Drew a Rectangle"]);
 	}
@@ -807,7 +1429,7 @@ mod tests {
 
 		let document = editor.active_document();
 		let gdd = document.storage().expect("every document has a working copy");
-		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
+		let state = panel_state(gdd, document.declarations(), None, PAGE, &BTreeSet::new(), None);
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
 		assert!(labels.contains(&"Added an Image"), "{labels:?}");
 	}
@@ -829,7 +1451,7 @@ mod tests {
 	fn rows(editor: &crate::test_utils::EditorTestUtils) -> Vec<HistoryRow> {
 		let document = editor.active_document();
 		let gdd = document.storage().expect("every document has a working copy");
-		panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None).rows
+		panel_state(gdd, document.declarations(), None, PAGE, &BTreeSet::new(), None).rows
 	}
 
 	#[tokio::test]
@@ -860,7 +1482,7 @@ mod tests {
 		fn panel_rows(editor: &EditorTestUtils, following: Option<Rev>) -> Vec<HistoryRow> {
 			let document = editor.active_document();
 			let gdd = document.storage().expect("every document has a working copy");
-			panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), following).rows
+			panel_state(gdd, document.declarations(), None, PAGE, &BTreeSet::new(), following).rows
 		}
 
 		let mut editor = EditorTestUtils::create();
