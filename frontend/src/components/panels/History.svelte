@@ -2,6 +2,7 @@
 	import { getContext, onDestroy } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import HistoryShot from "/src/components/views/HistoryShot.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
@@ -13,6 +14,7 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const history = getContext<HistoryStore>("history");
 	const portfolio = getContext<PortfolioStore>("portfolio");
+	const thumbnails = history.thumbnails;
 
 	// Relative times age while the panel stays open
 	let now = Date.now();
@@ -98,6 +100,7 @@
 				<span class="rail"
 					>{#if $history.collaborating}<span class="dot hollow" style:border-color={row.color}></span>{/if}</span
 				>
+				<HistoryShot thumbnail={row.thumbnail} images={$thumbnails} />
 				<div class="text">
 					<span class="label">{row.label || (row.open ? "In Progress" : "Waiting to Enter History")}</span>
 					<span class="meta">
@@ -122,7 +125,7 @@
 				on:click={(e) => preview(e, row)}
 				on:dblclick={(e) => goBackTo(e, row)}
 			>
-				{#if row.deltas > 1}
+				{#if row.deltas > 1 || row.thumbnail?.detail}
 					<button
 						class="expand"
 						data-row-control
@@ -136,6 +139,7 @@
 				<span class="rail"
 					>{#if $history.collaborating || !row.mine}<span class="dot" style:background={row.color}></span>{/if}</span
 				>
+				<HistoryShot thumbnail={row.thumbnail} images={$thumbnails} />
 				<div class="text">
 					{#if renamingId === row.id}
 						<span class="editing" data-row-control use:focusInput on:focusout={() => (renamingId = undefined)}>
@@ -206,6 +210,13 @@
 				</span>
 			</div>
 			{#if row.expanded}
+				{#if row.thumbnail?.detail}
+					<div class="row comparison" class:undone={row.undone}>
+						<span class="gutter"></span>
+						<span class="rail"></span>
+						<HistoryShot thumbnail={row.thumbnail} images={$thumbnails} large={true} />
+					</div>
+				{/if}
 				{#each row.details as delta (delta.id)}
 					<div class="row delta" class:undone={row.undone}>
 						<span class="gutter"></span>
@@ -313,6 +324,16 @@
 			&.delta {
 				min-height: 24px;
 				font-size: 11px;
+
+				// Lines up with the step's label, past its thumbnail and the gap after it
+				.text {
+					padding-left: 42px;
+				}
+			}
+
+			&.comparison {
+				padding-top: 4px;
+				padding-bottom: 4px;
 			}
 
 			.actions {

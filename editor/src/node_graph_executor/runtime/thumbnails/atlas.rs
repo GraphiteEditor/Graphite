@@ -1,5 +1,5 @@
 use super::{ThumbnailContent, cell_size};
-use glam::{DAffine2, UVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::NodeId;
 use graphene_std::renderer::vello_scene_builder::VelloSceneBuilder;
 use graphene_std::renderer::{RenderOutputType, RenderParams};
@@ -43,44 +43,57 @@ impl ThumbnailAtlasLayout {
 	}
 
 	pub fn cell_pixels(&self, atlas_pixels: &[u8], index: usize) -> Vec<u8> {
-		let atlas_row_length = self.size().x as usize * 4;
-		let row_length = self.cell_size.x as usize * 4;
-		let origin = self.cell_origin(index).as_usizevec2();
-
-		(origin.y..origin.y + self.cell_size.y as usize)
-			.filter_map(|row| {
-				let start = row * atlas_row_length + origin.x * 4;
-				atlas_pixels.get(start..start + row_length)
-			})
-			.flatten()
-			.copied()
-			.collect()
+		cell_pixels(atlas_pixels, self.size().x, self.cell_size, self.cell_origin(index))
 	}
+}
+
+/// The pixels of the cell at `origin` in an atlas `atlas_width` pixels wide, row by row.
+pub fn cell_pixels(atlas_pixels: &[u8], atlas_width: u32, cell_size: UVec2, origin: UVec2) -> Vec<u8> {
+	let atlas_row_length = atlas_width as usize * 4;
+	let row_length = cell_size.x as usize * 4;
+	let origin = origin.as_usizevec2();
+
+	(origin.y..origin.y + cell_size.y as usize)
+		.filter_map(|row| {
+			let start = row * atlas_row_length + origin.x * 4;
+			atlas_pixels.get(start..start + row_length)
+		})
+		.flatten()
+		.copied()
+		.collect()
 }
 
 /// Draws the content of each layer in the layout centered within its cell.
 pub fn draw_atlas(scene: &mut VelloSceneBuilder, layout: &ThumbnailAtlasLayout, contents: &HashMap<NodeId, ThumbnailContent>) {
+	for (index, layer) in layout.layers.iter().enumerate() {
+		let Some(content) = contents.get(layer) else { continue };
+		draw_cell(scene, layout.cell_origin(index), layout.cell_size, content, content.bounds());
+	}
+}
+
+/// Draws the area `frame` of the content into each cell of a row of them, one per frame.
+pub fn draw_frames(scene: &mut VelloSceneBuilder, cell_size: UVec2, content: &ThumbnailContent, frames: &[[DVec2; 2]]) {
+	for (index, &frame) in frames.iter().enumerate() {
+		draw_cell(scene, UVec2::new(index as u32 * cell_size.x, 0), cell_size, content, frame);
+	}
+}
+
+fn draw_cell(scene: &mut VelloSceneBuilder, origin: UVec2, cell_size: UVec2, content: &ThumbnailContent, frame: [DVec2; 2]) {
 	let render_params = RenderParams {
 		footprint: Footprint::BOUNDLESS,
 		render_output_type: RenderOutputType::Vello,
 		thumbnail: true,
 		..Default::default()
 	};
-	let cell_size = layout.cell_size.as_dvec2();
+	let (origin, cell_size) = (origin.as_dvec2(), cell_size.as_dvec2());
+	let [min, max] = frame;
+	let transform = DAffine2::from_translation(origin) * DAffine2::from_scale(cell_size / (max - min)) * DAffine2::from_translation(-min);
 
-	for (index, layer) in layout.layers.iter().enumerate() {
-		let Some(content) = contents.get(layer) else { continue };
-
-		let origin = layout.cell_origin(index).as_dvec2();
-		let [min, max] = content.bounds();
-		let transform = DAffine2::from_translation(origin) * DAffine2::from_scale(cell_size / (max - min)) * DAffine2::from_translation(-min);
-
-		// The clip also limits content filling the whole scene, like a background, to the cell
-		let cell = Rect::new(origin.x, origin.y, origin.x + cell_size.x, origin.y + cell_size.y);
-		scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &cell);
-		content.graphic().render_to_vello(scene, transform, &render_params);
-		scene.pop_layer();
-	}
+	// The clip also limits content filling the whole scene, like a background, to the cell
+	let cell = Rect::new(origin.x, origin.y, origin.x + cell_size.x, origin.y + cell_size.y);
+	scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &cell);
+	content.graphic().render_to_vello(scene, transform, &render_params);
+	scene.pop_layer();
 }
 
 /// The RGBA pixels with runs of fully transparent ones left out, which most of a thumbnail's margins are.
