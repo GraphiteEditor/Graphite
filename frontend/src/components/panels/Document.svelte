@@ -718,7 +718,7 @@
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll}></div>
 							{/if}
 						</div>
-						{#if isWeb && $document.renderStatus === "Rendering"}
+						{#if isWeb && !["Error", "Panic"].includes($document.renderStatus)}
 							<TextLabel class="shader-compiling-overlay" italic={true} classes={{ show: !firstArtworkReceived }}>Initializing Renderer…</TextLabel>
 						{/if}
 						{#if $document.renderStatus === "Error"}
