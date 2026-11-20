@@ -624,8 +624,7 @@ impl ApplicationHandler for App {
 		// Wrap the pointer around the viewport
 		if let WindowEvent::PointerMoved { position, .. } = &event
 			&& let Some(window) = &self.window
-			&& window.has_focus()
-			&& let Some(target) = self.input_state.wrap_pointer(*position)
+			&& let Some(target) = self.input_state.wrap_pointer(*position, window.has_focus())
 		{
 			match window.warp_pointer(target) {
 				Ok(PointerWarp::Moved) => {}

@@ -96,7 +96,7 @@ impl InputState {
 	}
 
 	/// Returns where to move the pointer to wrap it around the viewport.
-	pub(crate) fn wrap_pointer(&mut self, position: PhysicalPosition<f64>) -> Option<PhysicalPosition<f64>> {
+	pub(crate) fn wrap_pointer(&mut self, position: PhysicalPosition<f64>, can_warp: bool) -> Option<PhysicalPosition<f64>> {
 		// Without direct input the UI forwards positions to the editor, which would see wraps as jumps
 		if !self.direct_input {
 			return None;
@@ -104,7 +104,7 @@ impl InputState {
 		let viewport = self.viewport_info.as_ref()?;
 		let wrap = self.pointer_wrap.as_mut()?;
 
-		let target = wrap.update(DVec2::new(position.x, position.y), viewport)?;
+		let target = wrap.update(DVec2::new(position.x, position.y), viewport, can_warp)?;
 		Some(PhysicalPosition::new(target.x, target.y))
 	}
 
@@ -413,7 +413,7 @@ impl PointerWrap {
 	}
 
 	/// Returns where to move the pointer if it has left the viewport.
-	fn update(&mut self, position: DVec2, viewport: &ViewportInfo) -> Option<DVec2> {
+	fn update(&mut self, position: DVec2, viewport: &ViewportInfo, can_warp: bool) -> Option<DVec2> {
 		match self.warp {
 			Warp::Idle => {}
 			Warp::Pending { from, to, settled } => {
@@ -430,6 +430,9 @@ impl PointerWrap {
 				self.warp = Warp::Idle;
 			}
 			Warp::Unsupported => return None,
+		}
+		if !can_warp {
+			return None;
 		}
 
 		let to = viewport.wrap(position)?;
@@ -580,9 +583,9 @@ mod tests {
 	}
 
 	/// Reports a position as `App::window_event` does, returning where to move the pointer and where the editor sees it.
-	fn report(input_state: &mut InputState, x: f64, y: f64) -> (Option<(f64, f64)>, (f64, f64)) {
+	fn report(input_state: &mut InputState, x: f64, y: f64, focused: bool) -> (Option<(f64, f64)>, (f64, f64)) {
 		let position = PhysicalPosition::new(x, y);
-		let target = input_state.wrap_pointer(position);
+		let target = input_state.wrap_pointer(position, focused);
 		input_state.pointer_position = position;
 		let editor_position = input_state.editor_pointer_position();
 		(target.map(|target| (target.x, target.y)), (editor_position.x, editor_position.y))
@@ -592,50 +595,38 @@ mod tests {
 	fn wraps_around_edges_without_editor_jumps() {
 		let mut input_state = wrapping_input_state();
 
-		assert_eq!(report(&mut input_state, 299., 80.), (None, (299., 80.)));
-		assert_eq!(report(&mut input_state, 302., 80.), (Some((102., 80.)), (302., 80.)));
-		assert_eq!(report(&mut input_state, 103., 80.), (None, (303., 80.)));
-
-		assert_eq!(report(&mut input_state, 99., 80.), (Some((299., 80.)), (299., 80.)));
-		assert_eq!(report(&mut input_state, 298., 80.), (None, (298., 80.)));
-
-		assert_eq!(report(&mut input_state, 98., 49.), (Some((298., 149.)), (98., 49.)));
-		assert_eq!(report(&mut input_state, 297., 148.), (None, (97., 48.)));
-	}
-
-	#[test]
-	fn wraps_only_the_axis_that_left() {
-		let mut input_state = wrapping_input_state();
-
-		assert_eq!(report(&mut input_state, 301., 150.), (Some((101., 149.)), (301., 150.)));
+		assert_eq!(report(&mut input_state, 302., 80., true), (Some((102., 80.)), (302., 80.)));
+		assert_eq!(report(&mut input_state, 103., 80., true), (None, (303., 80.)));
+		assert_eq!(report(&mut input_state, 98., 49., true), (Some((298., 149.)), (298., 49.)));
+		assert_eq!(report(&mut input_state, 297., 148., true), (None, (297., 48.)));
 	}
 
 	#[test]
 	fn reports_from_before_a_wrap_carry_on_from_before_it() {
 		let mut input_state = wrapping_input_state();
 
-		assert_eq!(report(&mut input_state, 302., 80.), (Some((102., 80.)), (302., 80.)));
-		assert_eq!(report(&mut input_state, 305., 80.), (None, (305., 80.)));
-		assert_eq!(report(&mut input_state, 106., 80.), (None, (306., 80.)));
+		assert_eq!(report(&mut input_state, 302., 80., true), (Some((102., 80.)), (302., 80.)));
+		assert_eq!(report(&mut input_state, 305., 80., true), (None, (305., 80.)));
+		assert_eq!(report(&mut input_state, 106., 80., true), (None, (306., 80.)));
 	}
 
 	#[test]
 	fn ignored_wrap_stops_wrapping() {
 		let mut input_state = wrapping_input_state();
 
-		assert_eq!(report(&mut input_state, 302., 80.), (Some((102., 80.)), (302., 80.)));
+		assert_eq!(report(&mut input_state, 302., 80., true), (Some((102., 80.)), (302., 80.)));
 		input_state.settle_pointer_wrap();
-		assert_eq!(report(&mut input_state, 303., 80.), (None, (303., 80.)));
-		assert_eq!(report(&mut input_state, 320., 80.), (None, (320., 80.)));
+		assert_eq!(report(&mut input_state, 303., 80., true), (None, (303., 80.)));
+		assert_eq!(report(&mut input_state, 320., 80., true), (None, (320., 80.)));
 	}
 
 	#[test]
-	fn ending_the_wrap_returns_the_reported_position() {
+	fn unfocused_positions_carry_on_without_wrapping() {
 		let mut input_state = wrapping_input_state();
-		report(&mut input_state, 302., 80.);
-		report(&mut input_state, 103., 80.);
 
-		input_state.set_pointer_wrap(false);
-		assert_eq!(report(&mut input_state, 302., 80.), (None, (302., 80.)));
+		assert_eq!(report(&mut input_state, 302., 80., true), (Some((102., 80.)), (302., 80.)));
+		assert_eq!(report(&mut input_state, 103., 80., false), (None, (303., 80.)));
+		assert_eq!(report(&mut input_state, 99., 80., false), (None, (299., 80.)));
+		assert_eq!(report(&mut input_state, 97., 80., true), (Some((297., 80.)), (297., 80.)));
 	}
 }
