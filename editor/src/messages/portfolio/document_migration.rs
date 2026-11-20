@@ -4395,7 +4395,6 @@ mod tests {
 		assert_eq!(opened.network_interface.reference(&node_id, &[]), Some(DefinitionIdentifier::ProtoNode(passthrough::IDENTIFIER)));
 	}
 
-	// Opening documents with 'Merge' layers from before the 'As Graphic' and 'Into Group' nodes resets every node definition
 	#[tokio::test]
 	async fn resetting_node_definitions_on_open_leaves_built_in_subgraphs_alone() {
 		use crate::messages::portfolio::document_storage_io::load_legacy_document;
@@ -4409,6 +4408,7 @@ mod tests {
 		editor.draw_rect(50., 50., 100., 100.).await;
 		let serialized = editor.active_document().serialize_document();
 
+		// Reset every node definition, as opening a document with layers from before the 'As Graphic' and 'Into Group' nodes does
 		let (opened, errors) = capture_logged_errors(|| load_legacy_document(serialized, &HashMapResourceStorage::new(), true));
 		opened.expect("the document should open");
 		assert!(errors.is_empty(), "opening the document logged errors: {errors:?}");
