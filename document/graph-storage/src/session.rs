@@ -542,9 +542,6 @@ impl Session {
 		self.document.redo_stack.clear();
 		self.document.rebuild_working();
 		self.runtime_base = None;
-		if let Some(head) = self.document.head {
-			self.publish_up_to(head);
-		}
 		Ok((
 			HeadMove {
 				from,
@@ -555,14 +552,15 @@ impl Session {
 		))
 	}
 
-	/// Move the shared head back to its ancestor `target`, leaving the line since as a branch. Returns the move to
-	/// broadcast and what the steps left behind named. Only the retirer does this; a guest asks it to.
+	/// Move the shared head to `target`, back to an ancestor or over to a branch, leaving the line it was on as a
+	/// branch. Returns the move to broadcast and what the steps between the two lines named. Only the retirer does
+	/// this; a guest asks it to.
 	pub fn move_head_to(&mut self, target: Rev) -> Result<(HeadMove, Touched), CrdtError> {
 		let from = self.document.head;
 		if from == Some(target) {
 			return Err(CrdtError::NothingToUndo);
 		}
-		let touched = self.touched_since(Some(target))?;
+		let touched = self.touched_between_lines(Some(target))?;
 		let snapshot = self.fold_at(Some(target))?;
 
 		self.document.head = Some(target);
@@ -570,7 +568,6 @@ impl Session {
 		self.document.redo_stack.clear();
 		self.document.rebuild_working();
 		self.runtime_base = None;
-		self.publish_up_to(target);
 		Ok((
 			HeadMove {
 				from,
@@ -582,8 +579,8 @@ impl Session {
 	}
 
 	/// Follow a peer's [`HeadMove`], returning what the walked-over ops named. Changes nothing when the head is not
-	/// where the move started, since this peer has then diverged, or when the copies don't chain from an ancestor of
-	/// the head to the move's head.
+	/// where the move started, since this peer has then diverged, or when the copies don't chain from a known rev to the
+	/// move's head.
 	pub fn apply_head_move(&mut self, moved: &HeadMove) -> Result<Touched, CrdtError> {
 		if self.document.head != moved.from {
 			return Err(CrdtError::CursorMismatch {
@@ -592,7 +589,7 @@ impl Session {
 			});
 		}
 		let base = moved.copies.first().map_or(moved.head, |copy| copy.parent);
-		let touched = self.touched_since(base)?;
+		let touched = self.touched_between_lines(base)?;
 		let mut tip = base;
 		for copy in &moved.copies {
 			if copy.parent != tip || matches!(copy.kind, RegistryDelta::Merge { .. }) {
@@ -636,26 +633,26 @@ impl Session {
 		touched
 	}
 
-	/// What the deltas on the head's line but not on `base`'s named, merged branches included. Fails unless `base` is
-	/// on the head's line.
-	fn touched_since(&self, base: Option<Rev>) -> Result<Touched, CrdtError> {
+	/// What the deltas on just one of the head's and `other`'s lines named, merged branches included.
+	fn touched_between_lines(&self, other: Option<Rev>) -> Result<Touched, CrdtError> {
 		let history = &self.document.history;
-		let line = history.ancestors(self.document.head);
-		if let Some(base) = base
-			&& !line.contains(&base)
+		if let Some(other) = other
+			&& !history.contains(other)
 		{
-			return Err(CrdtError::NotAncestor(base));
+			return Err(CrdtError::NotFoundInHistory(other));
 		}
-		let kept = history.ancestors(base);
+		let line = history.ancestors(self.document.head);
+		let other_line = history.ancestors(other);
 		let mut touched = Touched::default();
-		for delta in history.iter().filter(|delta| line.contains(&delta.id) && !kept.contains(&delta.id)) {
+		for delta in history.iter().filter(|delta| line.contains(&delta.id) != other_line.contains(&delta.id)) {
 			touched.record(&delta.kind);
 		}
 		Ok(touched)
 	}
 
 	/// Mint a dropped interaction's deltas again on top of the line as one interaction. They keep their
-	/// original stamps, so a field someone wrote since keeps the newer value. Returns the new revs.
+	/// original stamps, so a field someone wrote since keeps the newer value, and the graph is repaired where that
+	/// left it broken (see [`repair_ops`](crate::repair::repair_ops)). Returns the new revs.
 	pub fn restore_interaction(&mut self, dropped: Rev) -> Result<Vec<Rev>, CrdtError> {
 		let base = self.interaction_start_parent(dropped, false).ok_or(CrdtError::NotUndoable(dropped))?;
 		let mut originals = Vec::new();
@@ -1564,8 +1561,6 @@ pub enum CrdtError {
 	NotUndoable(Rev),
 	#[error("Cursor is at {found:?}, the move expected {expected:?}")]
 	CursorMismatch { expected: Option<Rev>, found: Option<Rev> },
-	#[error("Delta {0} is not on the head's line")]
-	NotAncestor(Rev),
 	#[error("Head move copies do not chain from its base to its head")]
 	MalformedHeadMove,
 	#[error("Node {0} already exists")]

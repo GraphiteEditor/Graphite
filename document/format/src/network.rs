@@ -286,6 +286,9 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 
 	fn drop_interaction(&mut self, rev: Rev) -> Result<HeadMove, TargetError> {
 		let (moved, touched) = self.session.drop_interaction(rev)?;
+		if let Some(head) = moved.head {
+			self.session.publish_up_to(head);
+		}
 		self.remote_changes.touched.extend(touched);
 		self.pending_persist.history = true;
 		self.pending_persist.hot_log = true;
@@ -311,6 +314,9 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 
 	fn move_head_to(&mut self, rev: Rev) -> Result<HeadMove, TargetError> {
 		let (moved, touched) = self.session.move_head_to(rev)?;
+		if let Some(head) = moved.head {
+			self.session.publish_up_to(head);
+		}
 		self.remote_changes.touched.extend(touched);
 		self.pending_persist.snapshot = true;
 		Ok(moved)
