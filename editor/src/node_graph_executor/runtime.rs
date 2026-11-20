@@ -4,12 +4,12 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
 use crate::task::{Spawn, Spawner, Task};
 use glam::UVec2;
-use graph_craft::application_io::resource::ResourceRegistry;
+use graph_craft::application_io::resource::{Resource, ResourceRegistry};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::{CompileError, CompiledNetwork, Compiler};
-use graph_craft::proto::GraphErrors;
+use graph_craft::proto::{GraphError, GraphErrorType, GraphErrors};
 use graphene_hash::CacheHash;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, Texture};
 use graphene_std::ops::ConvertAsync;
@@ -119,6 +119,28 @@ pub(crate) fn apply_previews(network: &mut NodeNetwork, previewed: &[(Vec<NodeId
 		let Some(export) = nested.exports.first_mut() else { continue };
 		*export = NodeInput::node(previewed.node_id, previewed.output_index);
 	}
+}
+
+/// A warning for each input holding a resource the registry can't resolve, placed in the first instance of a network that several nodes share.
+fn missing_resource_warnings(network: &NodeNetwork, resources: &ResourceRegistry) -> GraphErrors {
+	network
+		.recursive_nodes()
+		.flat_map(|(node_id, node, network_path)| {
+			node.inputs.iter().enumerate().filter_map(move |(index, input)| {
+				let NodeInput::Value { tagged_value, .. } = input else { return None };
+				let TaggedValue::Resource(resource_id) = &**tagged_value else { return None };
+
+				resources.hash(resource_id).is_none().then(|| GraphError {
+					node_path: [network_path.as_slice(), &[*node_id]].concat(),
+					identifier: match &node.implementation {
+						DocumentNodeImplementation::ProtoNode(identifier) => identifier.as_str().to_string().into(),
+						_ => Default::default(),
+					},
+					error: GraphErrorType::MissingResource { index },
+				})
+			})
+		})
+		.collect()
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -232,7 +254,7 @@ impl NodeRuntime {
 
 		self.node_graph_errors.clear();
 		self.node_graph_warnings.clear();
-		let result = self.update_network(network.clone());
+		let result = self.update_network(&network);
 		if result.is_ok() {
 			self.thumbnails.update_sources(&layers, &network, &self.executor);
 			self.old_graph = Some(network);
@@ -457,11 +479,22 @@ impl NodeRuntime {
 		Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await
 	}
 
-	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
-		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone(), self.async_runtime().handle());
+	fn update_network(&mut self, graph: &NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+		let mut scoped_network = wrap_network_in_scope(graph.clone(), self.editor_api.clone(), self.async_runtime().handle());
 
-		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
+		// A missing resource compiles as the empty one, which its consumers draw with a fallback, and warns on the nodes using it
+		let resource_missing = std::cell::Cell::new(false);
+		let resolve_resource = |resource_id| {
+			self.resources.hash(&resource_id).or_else(|| {
+				resource_missing.set(true);
+				Some(Resource::empty().hash())
+			})
+		};
+		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &resolve_resource) {
 			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));
+		}
+		if resource_missing.get() {
+			self.node_graph_warnings = missing_resource_warnings(graph, &self.resources);
 		}
 
 		// We assume only one output
@@ -477,7 +510,7 @@ impl NodeRuntime {
 			}
 			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
 		};
-		self.node_graph_warnings = warnings;
+		self.node_graph_warnings.extend(warnings);
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
@@ -681,6 +714,153 @@ mod tests {
 		editor.runtime.update();
 		editor.runtime.run().await;
 		assert!(evaluated(&mut editor));
+	}
+
+	#[tokio::test]
+	async fn a_missing_resource_renders_with_a_warning_on_its_node() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use graph_craft::application_io::resource::ResourceId;
+		use graphene_std::raster_nodes::std_nodes::image;
+
+		let mut editor = editor().await;
+
+		// The layer shows an 'Image' node holding an image the document has no record of
+		let image_node = NodeId::new();
+		let missing_image = NodeInput::value(TaggedValue::Resource(ResourceId::new()), false);
+		let template = resolve_proto_node_type(image::IDENTIFIER).unwrap().node_template_input_override([None, Some(missing_image)]);
+		editor.active_document_mut().network_interface.insert_node(image_node, template, &[]);
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(image_node),
+			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+		});
+
+		send_update(&mut editor);
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor), "the graph should render with the missing image left empty");
+		assert!(editor.portfolio_message_handler_mut().executor.take_evaluation_errors().is_none());
+
+		let resolved_types = &editor.active_document().network_interface.resolved_types;
+		assert!(resolved_types.node_graph_errors.is_empty(), "{:?}", resolved_types.node_graph_errors);
+		let warnings = resolved_types.node_graph_warnings.as_slice();
+		let expected = GraphErrorType::MissingResource { index: 1 };
+		assert!(matches!(warnings, [warning] if warning.node_path == [image_node] && warning.error == expected), "{warnings:?}");
+	}
+
+	#[tokio::test]
+	async fn a_resource_that_fails_to_load_renders_with_a_fallback_until_it_loads() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use crate::test_utils::test_prelude::{Color, Image};
+		use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
+		use graphene_std::raster_nodes::std_nodes::image;
+
+		/// Handles the message, lets the runtime compile and evaluate whatever it queued, and gives back the graph's warnings and whether it drew an image.
+		async fn render_after(editor: &mut EditorTestUtils, message: impl Into<Message>) -> (GraphErrors, bool) {
+			editor.dispatch(message);
+			editor.runtime.update();
+			editor.runtime.run().await;
+			let messages = editor.dispatch(Message::Wake);
+			let image_drawn = messages
+				.iter()
+				.any(|message| matches!(message, FrontendMessage::UpdateImageData { canvas_ids_in_use, .. } if !canvas_ids_in_use.is_empty()));
+
+			let resolved_types = &editor.active_document().network_interface.resolved_types;
+			assert!(resolved_types.node_graph_errors.is_empty(), "{:?}", resolved_types.node_graph_errors);
+			(resolved_types.node_graph_warnings.clone(), image_drawn)
+		}
+
+		let mut editor = editor().await;
+		let document_id = editor.portfolio_message_handler().active_document_id.unwrap();
+		editor.dispatch(ViewportMessage::Update {
+			x: 0.,
+			y: 0.,
+			width: 100.,
+			height: 100.,
+			scale: 1.,
+		});
+
+		// The layer shows an 'Image' node whose image is known only by where to load it from
+		let resource_id = ResourceId::new();
+		let source = DataSource::Url("https://example.com/image.png".parse().unwrap());
+		editor.active_document_mut().resources.registry.push_source_back(&resource_id, source.clone());
+		let image_node = NodeId::new();
+		let input = NodeInput::value(TaggedValue::Resource(resource_id), false);
+		let template = resolve_proto_node_type(image::IDENTIFIER).unwrap().node_template_input_override([None, Some(input)]);
+		editor.active_document_mut().network_interface.insert_node(image_node, template, &[]);
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(image_node),
+			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+		});
+
+		let (warnings, _) = render_after(&mut editor, NodeGraphMessage::RunDocumentGraph).await;
+		assert!(warnings.is_empty(), "the graph shouldn't run while the image may still load: {warnings:?}");
+
+		let failed = ResourceMessage::ResolveFailed { resource_id }.into();
+		let (warnings, image_drawn) = render_after(&mut editor, PortfolioMessage::DocumentPassMessage { document_id, message: failed }).await;
+		let expected = GraphErrorType::MissingResource { index: 1 };
+		assert!(
+			matches!(warnings.as_slice(), [warning] if warning.node_path == [image_node] && warning.error == expected),
+			"{warnings:?}"
+		);
+		assert!(!image_drawn, "the image that failed to load should be left empty");
+
+		// Loading it later, as a retry would, has to recompile the unchanged network
+		let data: Arc<[u8]> = Image::new(2, 2, Color::BLACK).to_png().into();
+		let hash = ResourceHash::from(data.as_ref());
+		editor.dispatch(ResourceStorageMessage::Store { data });
+		let resolved = ResourceMessage::Resolved { resource_id, source, hash }.into();
+		let (warnings, image_drawn) = render_after(&mut editor, PortfolioMessage::DocumentPassMessage { document_id, message: resolved }).await;
+		assert!(warnings.is_empty(), "the warning should clear once the image loads: {warnings:?}");
+		assert!(image_drawn, "the image should be drawn once it loads");
+	}
+
+	#[tokio::test]
+	async fn an_export_is_refused_while_its_resources_load() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use graph_craft::application_io::resource::{DataSource, ResourceId};
+		use graphene_std::raster_nodes::std_nodes::image;
+
+		/// Requests an export and lets the runtime evaluate whatever was sent, giving back whether it explained a refusal and whether it exported.
+		async fn refused_and_exported(editor: &mut EditorTestUtils) -> (bool, bool) {
+			let messages = editor.dispatch(PortfolioMessage::SubmitDocumentExport {
+				name: "export".to_string(),
+				file_type: FileType::Svg,
+				scale_factor: 1.,
+				bounds: ExportBounds::AllArtwork,
+				artboard_name: None,
+				artboard_count: 0,
+			});
+			let refused = messages.iter().any(|message| matches!(message, FrontendMessage::DisplayDialog { .. }));
+
+			editor.runtime.update();
+			editor.runtime.run().await;
+			(refused, exported(editor))
+		}
+
+		let mut editor = editor().await;
+		let document_id = editor.portfolio_message_handler().active_document_id.unwrap();
+
+		// An 'Image' node whose image is known only by where to load it from
+		let resource_id = ResourceId::new();
+		let source = DataSource::Url("https://example.com/image.png".parse().unwrap());
+		editor.active_document_mut().resources.registry.push_source_back(&resource_id, source);
+		let template = resolve_proto_node_type(image::IDENTIFIER)
+			.unwrap()
+			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Resource(resource_id), false))]);
+		editor.active_document_mut().network_interface.insert_node(NodeId::new(), template, &[]);
+
+		let outcome = refused_and_exported(&mut editor).await;
+		assert_eq!(outcome, (true, false), "the export shouldn't capture the image's fallback while it may still load");
+
+		// Once the image fails to load, its fallback is all there is to export
+		let failed = ResourceMessage::ResolveFailed { resource_id }.into();
+		editor.dispatch(PortfolioMessage::DocumentPassMessage { document_id, message: failed });
+		let outcome = refused_and_exported(&mut editor).await;
+		assert_eq!(outcome, (false, true), "the export should go ahead once nothing is left loading");
 	}
 
 	#[tokio::test]
