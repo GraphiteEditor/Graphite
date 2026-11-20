@@ -62,6 +62,8 @@ pub enum ExecutionResult {
 	Fallback(TaggedValue, EvaluationErrors),
 	Error(EvaluationErrors),
 	Panic(Box<dyn Any + Send>),
+	/// The graph failed to compile, so nothing was evaluated.
+	Uncompiled,
 }
 
 #[derive(Debug)]
@@ -597,7 +599,7 @@ impl NodeGraphExecutor {
 									})
 									.collect()
 							}
-							ExecutionResult::Pending | ExecutionResult::Value(_) | ExecutionResult::Panic(_) => Vec::new(),
+							ExecutionResult::Pending | ExecutionResult::Value(_) | ExecutionResult::Panic(_) | ExecutionResult::Uncompiled => Vec::new(),
 						};
 						responses.add(NodeGraphMessage::UpdateEvaluationErrors { errors });
 					}
@@ -622,21 +624,25 @@ impl NodeGraphExecutor {
 							{
 								self.evaluation_errors = Some(errors);
 							}
-							Err(message)
+							Err(Some(message))
 						}
 						ExecutionResult::Panic(payload) => {
 							let message = payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
-							Err(format!("Panicked: {}", message.unwrap_or("no message")))
+							Err(Some(format!("Panicked: {}", message.unwrap_or("no message"))))
 						}
+						// The compile response already reported why
+						ExecutionResult::Uncompiled => Err(None),
 					};
 					let node_graph_output = match node_graph_output {
 						Ok(output) => output,
-						Err(e) => {
+						Err(message) => {
 							// Clear the click targets while the graph is in an un-renderable state
 							document.network_interface.update_click_targets(HashMap::new(), HashSet::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
-							log::error!("Node graph evaluation failed:\n{e}");
+							if let Some(message) = message {
+								log::error!("Node graph evaluation failed:\n{message}");
+							}
 							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
 							break;
 						}
@@ -707,7 +713,12 @@ impl NodeGraphExecutor {
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 
-							log::trace!("{e}");
+							// The graph only shows errors tied to nodes, so the console gets the others
+							if node_graph_errors.is_empty() {
+								log::error!("The node graph failed to compile:\n{e}");
+							} else {
+								log::trace!("{e}");
+							}
 
 							responses.add(NodeGraphMessage::UpdateTypes {
 								resolved_types: incomplete_delta,

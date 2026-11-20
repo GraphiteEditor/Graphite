@@ -68,6 +68,12 @@ impl Thumbnails {
 		self.in_view = layers;
 	}
 
+	/// Whether the layer's thumbnail is waiting to be rendered.
+	#[cfg(test)]
+	pub fn is_stale(&self, layer: NodeId) -> bool {
+		self.stale.contains(&layer)
+	}
+
 	/// Thumbnails rendered at another device pixel ratio are rendered again.
 	pub fn set_scale(&mut self, scale: f64) {
 		if scale != self.scale {
