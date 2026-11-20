@@ -291,6 +291,13 @@ async fn resource(
 	application_io: Item<Arc<PlatformApplicationIo>>,
 ) -> Result<Item<Resource>, ResourceError> {
 	let hash = hash.into_element();
+
+	// The empty resource needs no storage, and stands in for one the document can't find so its consumers draw a fallback
+	let empty = Resource::empty();
+	if hash == empty.hash() {
+		return Ok(Item::new_from_element(empty));
+	}
+
 	let resource = application_io.element().load_resource(hash).await.ok_or(ResourceError(hash))?;
 	Ok(Item::new_from_element(resource))
 }
