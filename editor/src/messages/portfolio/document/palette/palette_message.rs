@@ -22,7 +22,6 @@ pub enum PaletteMessage {
 	Refresh,
 	InsertPaletteGPL {
 		palette_name: Option<String>,
-		palette_path: Option<PathBuf>,
 		content: Vec<u8>,
 	},
 	InsertPaletteKPL {

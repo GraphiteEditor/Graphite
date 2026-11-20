@@ -119,11 +119,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						return;
 					}
 					DataType::PaletteGPL => {
-						responses.add(PaletteMessage::InsertPaletteGPL {
-							palette_name: name,
-							palette_path: document_path,
-							content: data,
-						});
+						responses.add(PaletteMessage::InsertPaletteGPL { palette_name: name, content: data });
 						return;
 					}
 					DataType::PaletteKPL => {

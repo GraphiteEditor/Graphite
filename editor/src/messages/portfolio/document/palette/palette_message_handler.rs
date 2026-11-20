@@ -117,7 +117,7 @@ impl Default for PaletteMessageHandler {
 					id,
 					ColorSwatch {
 						id,
-						name: "Some Color".to_string(),
+						name: "Untitled Color".to_string(),
 						color: (*color).into(),
 					},
 				);
@@ -127,7 +127,7 @@ impl Default for PaletteMessageHandler {
 			palettes.insert(
 				palette_id,
 				Palette {
-					id: PaletteId { 0: generate_uuid() },
+					id: palette_id,
 					name: name.to_string(),
 					columns: Some(columns),
 					grid,
@@ -166,7 +166,16 @@ impl MessageHandler<PaletteMessage, PaletteMessageContext> for PaletteMessageHan
 			}
 			PaletteMessage::AddColor { color } => todo!(),
 			PaletteMessage::DeleteColor { swatch_id } => todo!(),
-			PaletteMessage::InsertPaletteGPL { palette_name, palette_path, content } => self.parse_gpl_palette(palette_name, palette_path, content),
+			PaletteMessage::InsertPaletteGPL { palette_name, content } => {
+				if let Err(err) = self.parse_gpl_palette(palette_name, content) {
+					responses.add(DialogMessage::DisplayDialogError {
+						title: "Failed to load palette".into(),
+						description: format!("Could not parse Gimp palete file: {err}"),
+					});
+				} else {
+					responses.add(PaletteMessage::Refresh);
+				}
+			}
 			PaletteMessage::InsertPaletteKPL { palette_name, palette_path, content } => self.parse_kpl_palette(palette_name, palette_path, content),
 		}
 	}
@@ -253,7 +262,84 @@ impl PaletteMessageHandler {
 		}
 	}
 
-	fn parse_gpl_palette(&mut self, palette_name: Option<String>, palette_path: Option<PathBuf>, content: Vec<u8>) {}
+	// Since the specification doesn't specify the string to be purely utf8, this parsing
+	// tries to respect the approach.
+	fn parse_gpl_palette(&mut self, palette_name: Option<String>, content: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+		if content.is_empty() || content.len() < 12 {
+			warn!("Failed to parse Gimp palette due to invalid format");
+			return Err("Invalid format".into());
+		}
+		let mut lines = content.split(|b| *b == b'\n').peekable();
+
+		let mut magic = lines.next().unwrap_or_default();
+		magic = magic.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(magic);
+		magic.trim_ascii_start();
+		if !magic.starts_with(b"GIMP Palette") {
+			warn!("Failed to parse Gimp palette due to invalid format");
+			return Err("Invalid format".into());
+		}
+
+		let mut is_gpl_version_1 = true;
+		let palette_id = PaletteId { 0: generate_uuid() };
+		let mut palette = Palette {
+			id: palette_id,
+			name: String::new(),
+			columns: None,
+			grid: Vec::new(),
+			swatches: HashMap::new(),
+		};
+
+		if let Some(x) = lines.peek()
+			&& x.starts_with(b"Name:")
+		{
+			let line = lines.next().unwrap();
+			is_gpl_version_1 = false;
+			let idx = line.iter().position(|x| *x == b':').unwrap();
+			let (_, name) = line.split_at(idx);
+			palette.name = String::from_utf8(name[1..].to_vec())?;
+		} else {
+			palette.name = palette_name.unwrap_or("Untitled".to_string());
+		}
+
+		if let Some(x) = lines.peek()
+			&& !is_gpl_version_1
+			&& x.starts_with(b"Columns: ")
+		{
+			let line = lines.next().unwrap();
+			let idx = line.iter().position(|x| *x == b':').unwrap();
+			let (_, name) = line.split_at(idx);
+			palette.columns = Some(std::str::from_utf8(name)?.trim().parse()?);
+		}
+
+		for line in lines {
+			if line.is_empty() || line.trim_ascii_start().starts_with(b"#") {
+				continue;
+			}
+			let colors_and_name = String::from_utf8(line.to_vec())?;
+			let (red, remaining) = colors_and_name.split_once(' ').ok_or("Invalid Format")?;
+			let (green, remaining) = remaining.split_once(' ').ok_or("Invalid Format")?;
+			let (blue, name) = remaining.split_once(' ').map_or((remaining, None), |(a, b)| (a, Some(b)));
+
+			let color = SRGBA8::new_opaque(red.trim().parse()?, green.trim().parse()?, blue.trim().parse()?);
+			let id = SwatchId { 0: generate_uuid() };
+			palette.grid.push(Some(id));
+			palette.swatches.insert(
+				id,
+				ColorSwatch {
+					id,
+					name: name.unwrap_or("Untitle Color").to_string(),
+					color: color.into(),
+				},
+			);
+		}
+
+		self.order.push(palette_id);
+		self.palettes.insert(palette_id, palette);
+		self.active_palette = palette_id;
+
+		return Ok(());
+	}
+
 	fn parse_kpl_palette(&mut self, palette_name: Option<String>, palette_path: Option<PathBuf>, content: Vec<u8>) {
 		// TODO: Add a kpl parsing implementation
 	}
