@@ -24,6 +24,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, FlowType, InputConnector, NodeTemplate, OutputConnector, ReconcileError, Reconciled};
 use crate::messages::portfolio::history::utility_types::LineChange;
+use crate::messages::portfolio::history::{Place, place};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::edit_target::EditTarget;
@@ -169,9 +170,12 @@ pub struct DocumentMessageHandler {
 	/// Path to network that is currently selected. Updated based on the most recently clicked panel.
 	#[serde(skip)]
 	selection_network_path: Vec<NodeId>,
-	/// Undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor.
+	/// Undo/redo state over the `Gdd` working copy.
 	#[serde(skip)]
 	history: DocumentHistory,
+	/// A past step shown in place of the current state, which it keeps to return to.
+	#[serde(skip)]
+	history_preview: Option<HistoryPreview>,
 	/// The document's container in the document store. `None` for a document created this session until its store entry opens.
 	#[serde(skip)]
 	#[derivative(Debug = "ignore")]
@@ -201,6 +205,12 @@ pub struct DocumentMessageHandler {
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
+}
+
+#[derive(Clone, Debug)]
+struct HistoryPreview {
+	rev: Rev,
+	current: NodeNetworkInterface,
 }
 
 impl Default for DocumentMessageHandler {
@@ -241,6 +251,7 @@ impl Default for DocumentMessageHandler {
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			history: DocumentHistory::default(),
+			history_preview: None,
 			container: None,
 			pending_remote: Default::default(),
 			saved_hash: None,
@@ -478,8 +489,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.resolve_unresolved_resources(document_id, responses);
 			}
 			DocumentMessage::ChangeHistoryLine { rev, change } => {
-				self.change_history_line(document_id, rev, change, &resource_storage.resources_mut(), responses);
+				self.change_history_line(document_id, rev, change, viewport, &resource_storage.resources_mut(), responses);
 				self.resolve_unresolved_resources(document_id, responses);
+			}
+			DocumentMessage::PreviewHistoryStep { rev: Some(rev) } => self.preview_history_step(rev, viewport, &resource_storage.resources_mut(), responses),
+			DocumentMessage::PreviewHistoryStep { rev: None } => {
+				self.end_history_preview(viewport, responses);
 			}
 			DocumentMessage::NameInteraction { action } => {
 				if let Some(storage) = self.history.storage_mut() {
@@ -1142,7 +1157,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
 			DocumentMessage::Redo => {
-				if self.network_interface.transaction_status() != TransactionStatus::Finished {
+				if self.network_interface.transaction_status() != TransactionStatus::Finished || self.end_history_preview(viewport, responses).is_some() {
 					return;
 				}
 				responses.add(SelectToolMessage::Abort);
@@ -1267,6 +1282,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 			}
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
+				self.end_history_preview(viewport, responses);
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
 				let include_history = preferences.save_with_history;
@@ -1696,6 +1712,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
+				self.continue_from_history_preview(document_id, viewport, &resource_storage.resources_mut(), responses);
 				self.stage_edits_outside_transaction(&resource_storage.resources_mut());
 				self.end_storage_interaction();
 
@@ -1923,7 +1940,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.network_interface.update_appearance_attributes(layer_appearance_attributes);
 			}
 			DocumentMessage::Undo => {
-				if self.network_interface.transaction_status() != TransactionStatus::Finished {
+				if self.network_interface.transaction_status() != TransactionStatus::Finished || self.end_history_preview(viewport, responses).is_some() {
 					return;
 				}
 
@@ -2160,6 +2177,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			ZoomCanvasTo200Percent,
 			ZoomCanvasToFitAll,
 		);
+
+		if self.history_preview.is_some() {
+			common.extend(actions!(DocumentMessageDiscriminant::PreviewHistoryStep));
+		}
 
 		// Additional actions available on desktop
 		#[cfg(not(target_family = "wasm"))]
@@ -2602,6 +2623,9 @@ impl DocumentMessageHandler {
 
 	/// Updates the interface with peer changes, in place unless a rebuild is needed. Returns false and keeps what it can't apply.
 	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) -> bool {
+		if self.history_preview.is_some() {
+			return false;
+		}
 		let changes = std::mem::take(&mut self.pending_remote);
 		if changes.is_empty() {
 			return true;
@@ -3070,12 +3094,75 @@ impl DocumentMessageHandler {
 	}
 
 	/// Makes a History panel change in storage and drops the steps redo could bring back, which are off the head's line.
-	fn change_history_line(&mut self, document_id: DocumentId, rev: Rev, change: LineChange, byte_store: &dyn ResourceStorage, responses: &mut VecDeque<Message>) {
+	fn change_history_line(&mut self, document_id: DocumentId, rev: Rev, change: LineChange, viewport: &ViewportMessageHandler, byte_store: &dyn ResourceStorage, responses: &mut VecDeque<Message>) {
 		if self.network_interface.transaction_status() != TransactionStatus::Finished {
 			return;
 		}
+		self.end_history_preview(viewport, responses);
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 		responses.add(EventMessage::ToolAbort);
+		self.apply_history_line_change(document_id, rev, change, byte_store, responses);
+	}
+
+	/// Shows the document as it was once `rev` was done, in place of the current state until the preview ends.
+	fn preview_history_step(&mut self, rev: Rev, viewport: &ViewportMessageHandler, byte_store: &dyn ResourceStorage, responses: &mut VecDeque<Message>) {
+		if self.network_interface.transaction_status() != TransactionStatus::Finished {
+			return;
+		}
+		if self.history_preview.is_none() {
+			self.stage_edits_outside_transaction(byte_store);
+		}
+		let Some(past) = self.history.interface_at(rev) else { return };
+
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
+		responses.add(EventMessage::ToolAbort);
+		let replaced = self.install_history_snapshot(past, viewport);
+		let current = self.history_preview.take().map_or(replaced, |preview| preview.current);
+		self.history_preview = Some(HistoryPreview { rev, current });
+		self.show_installed_interface(responses);
+	}
+
+	/// Returns from a preview to the current state, and gives the step it showed.
+	fn end_history_preview(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<Rev> {
+		let preview = self.history_preview.take()?;
+		self.install_history_snapshot(preview.current, viewport);
+		self.show_installed_interface(responses);
+		self.apply_remote_changes(responses);
+		Some(preview.rev)
+	}
+
+	/// The step shown in place of the current state.
+	pub fn previewed_history_step(&self) -> Option<Rev> {
+		self.history_preview.as_ref().map(|preview| preview.rev)
+	}
+
+	/// An edit while previewing continues from the previewed step, leaving the steps after it as a branch. In a session
+	/// it applies to the current state instead, since moving the head would move everyone's document.
+	fn continue_from_history_preview(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, byte_store: &dyn ResourceStorage, responses: &mut VecDeque<Message>) {
+		let Some(rev) = self.end_history_preview(viewport, responses) else { return };
+		if self.is_in_session() {
+			return;
+		}
+
+		let place = self.storage().and_then(|gdd| place(gdd.session(), rev));
+		match place {
+			Some(Place::Undone(steps)) => (0..steps).for_each(|_| self.redo_with_history(document_id, responses)),
+			Some(Place::Line(0)) => {}
+			Some(Place::Line(_)) | None => self.apply_history_line_change(document_id, rev, LineChange::MoveHead, byte_store, responses),
+		}
+	}
+
+	fn show_installed_interface(&self, responses: &mut VecDeque<Message>) {
+		responses.add(NodeGraphMessage::SelectedNodesUpdated);
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::UnloadWires);
+		responses.add(NodeGraphMessage::SendWires);
+		responses.add(DocumentMessage::DocumentStructureChanged);
+		responses.add(OverlaysMessage::Draw);
+		responses.add(EventMessage::SelectionChanged);
+	}
+
+	fn apply_history_line_change(&mut self, document_id: DocumentId, rev: Rev, change: LineChange, byte_store: &dyn ResourceStorage, responses: &mut VecDeque<Message>) {
 		self.stage_edits_outside_transaction(byte_store);
 		self.history.retire_storage_interaction();
 		let stored_name = self.stored_name().map(str::to_string);
@@ -3087,6 +3174,20 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::AutoSaveDocument { document_id });
 		responses.add(OverlaysMessage::Draw);
 		responses.add(EventMessage::SelectionChanged);
+	}
+
+	/// Swaps in `snapshot`, keeping the current view, and returns the interface it replaced.
+	fn install_history_snapshot(&mut self, mut snapshot: NodeNetworkInterface, viewport: &ViewportMessageHandler) -> NodeNetworkInterface {
+		snapshot.copy_all_navigation_metadata(&self.network_interface);
+		std::mem::swap(&mut snapshot.resolved_types, &mut self.network_interface.resolved_types);
+
+		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+		snapshot.set_document_to_viewport_transform(transform);
+
+		// Updating the selected nodes needs the structure's metadata
+		snapshot.load_structure();
+
+		std::mem::replace(&mut self.network_interface, snapshot)
 	}
 
 	/// Reconciles the interface with storage. The tab takes the stored name only if it changed from `name_before`.
