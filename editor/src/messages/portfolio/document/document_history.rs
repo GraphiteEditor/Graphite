@@ -31,6 +31,14 @@ pub struct DocumentHistory {
 	needs_whole_document_stage: bool,
 	/// How storage undid each step that redo can bring back, latest last.
 	undo_notes: VecDeque<UndoNote>,
+	/// The History panel's head moves, newest last, for undo to take back.
+	line_undo: Vec<LineMove>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LineMove {
+	from: document_graph_storage::Rev,
+	to: document_graph_storage::Rev,
 }
 
 #[derive(Clone, Debug)]
@@ -41,6 +49,8 @@ enum UndoNote {
 	Dropped(document_graph_storage::Rev),
 	/// The storage cursor moved back over the step.
 	Cursor,
+	/// A History panel change was taken back.
+	LineMove(LineMove),
 }
 
 impl DocumentHistory {
@@ -123,6 +133,9 @@ impl DocumentHistory {
 		if let Some(ops) = retracted {
 			return Some(UndoNote::Retracted(ops));
 		}
+		if let Some(line_move) = self.undo_line_move() {
+			return Some(UndoNote::LineMove(line_move));
+		}
 		// A session's history is shared, so its cursor never moves
 		if in_session {
 			return self.undo_retired_step().map(UndoNote::Dropped);
@@ -139,6 +152,7 @@ impl DocumentHistory {
 			UndoNote::Retracted(ops) => self.restage_ops(ops.clone()),
 			UndoNote::Dropped(rev) => line_reachable && self.redo_retired_step(*rev),
 			UndoNote::Cursor => self.move_cursor(false),
+			UndoNote::LineMove(line_move) => self.redo_line_move(*line_move),
 		};
 		if !redone {
 			self.undo_notes.push_back(note);
@@ -198,12 +212,62 @@ impl DocumentHistory {
 		let Some(storage) = self.storage.as_mut().filter(|storage| storage.can_change_line()) else {
 			return false;
 		};
+		let from = storage.session().head_rev();
 		let result = match change {
 			LineChange::MoveHead => storage.move_head(rev),
 			LineChange::Remove => storage.drop_step(rev),
 			LineChange::Restore => storage.redo_retired_step(rev),
 		};
-		result.inspect_err(|error| log::error!("Changing the history line with {change:?} failed: {error}")).is_ok()
+		if result.inspect_err(|error| log::error!("Changing the history line with {change:?} failed: {error}")).is_err() {
+			return false;
+		}
+		// A guest's change is made by the host, so its head has not moved yet
+		if let (Some(from), Some(to)) = (from, storage.session().head_rev())
+			&& from != to
+		{
+			self.line_undo.push(LineMove { from, to });
+			self.line_undo.drain(..self.line_undo.len().saturating_sub(crate::consts::MAX_UNDO_HISTORY_LEN));
+		}
+		true
+	}
+
+	/// Moves the head back over the newest History panel change, if the head is still where that change left it.
+	fn undo_line_move(&mut self) -> Option<LineMove> {
+		let storage = self.storage.as_mut().filter(|storage| storage.can_change_line())?;
+		let line_move = *self.line_undo.last()?;
+		if storage.session().head_rev() != Some(line_move.to) {
+			return None;
+		}
+		if let Err(error) = storage.move_head(line_move.from) {
+			log::error!("Taking the History panel change back failed: {error}");
+			return None;
+		}
+
+		self.line_undo.pop();
+		self.forget_unreachable_cursor_notes();
+		Some(line_move)
+	}
+
+	/// Makes a History panel change taken back by [`undo_line_move`](Self::undo_line_move) again. Returns whether the head moved.
+	fn redo_line_move(&mut self, line_move: LineMove) -> bool {
+		let Some(storage) = self.storage.as_mut().filter(|storage| storage.can_change_line()) else {
+			return false;
+		};
+		if storage.session().head_rev() != Some(line_move.from) {
+			return false;
+		}
+		if let Err(error) = storage.move_head(line_move.to) {
+			log::error!("Making the History panel change again failed: {error}");
+			return false;
+		}
+
+		self.line_undo.push(line_move);
+		true
+	}
+
+	/// Moving the head clears storage's redo stack, so cursor steps can no longer be redone.
+	fn forget_unreachable_cursor_notes(&mut self) {
+		self.undo_notes.retain(|note| !matches!(note, UndoNote::Cursor));
 	}
 
 	pub fn retire_storage_interaction(&mut self) {

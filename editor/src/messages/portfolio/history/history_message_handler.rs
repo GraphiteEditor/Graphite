@@ -79,8 +79,7 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 				match place(gdd.session(), rev) {
 					Some(Place::Undone(steps)) => (0..steps).for_each(|_| responses.add(DocumentMessage::Redo)),
 					Some(Place::Line(0)) => {}
-					Some(Place::Line(_)) => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::MoveHead }),
-					None => log::warn!("The History panel asked to go to {rev:?}, which is not on the head's line"),
+					Some(Place::Line(_)) | None => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::MoveHead }),
 				}
 			}
 			HistoryMessage::RemoveStep { id } => {
@@ -906,5 +905,33 @@ mod tests {
 		let interface = build_interface_from_storage(network, nodes, networks);
 		let violations = interface.validate_invariants();
 		assert!(violations.is_empty(), "{violations:#?}");
+	}
+
+	#[tokio::test]
+	async fn removing_a_step_is_undone_and_redone_like_any_other() {
+		let mut editor = three_rectangles().await;
+		let second = rows(&editor)[1].id.clone();
+		editor.handle_message(HistoryMessage::RemoveStep { id: second }).await;
+		assert_eq!(layer_count(&editor), 2);
+
+		editor.handle_message(DocumentMessage::DocumentHistoryBackward).await;
+		assert_eq!(layer_count(&editor), 3, "undo brings the removed rectangle back");
+		editor.handle_message(DocumentMessage::DocumentHistoryForward).await;
+		assert_eq!(layer_count(&editor), 2, "redo removes it again");
+		editor.handle_message(DocumentMessage::DocumentHistoryBackward).await;
+		assert_eq!(layer_count(&editor), 3, "and undo takes the removal back again");
+	}
+
+	#[tokio::test]
+	async fn undo_continues_past_a_taken_back_head_move() {
+		let mut editor = three_rectangles().await;
+		let first = rows(&editor)[2].id.clone();
+		editor.handle_message(HistoryMessage::GoBack { id: first }).await;
+		assert_eq!(layer_count(&editor), 1);
+
+		editor.handle_message(DocumentMessage::DocumentHistoryBackward).await;
+		assert_eq!(layer_count(&editor), 3, "undo takes the head move back");
+		editor.handle_message(DocumentMessage::DocumentHistoryBackward).await;
+		assert_eq!(layer_count(&editor), 2, "and then undoes the third rectangle");
 	}
 }
