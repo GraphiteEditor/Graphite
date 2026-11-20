@@ -37,7 +37,8 @@ pub(crate) struct App {
 	window_maximized: bool,
 	window_fullscreen: bool,
 	window_pending_drag: bool,
-	pointer_warp_lock: Option<PointerWarpLock>,
+	/// The presented frame count at which to unlock a pointer locked for Wayland to move it.
+	pointer_warp_unlock_frame: Option<u64>,
 	transfer_reads: TransferReads,
 	input_state: InputState,
 	app_event_receiver: Receiver<AppEvent>,
@@ -148,7 +149,7 @@ impl App {
 			window_maximized: false,
 			window_fullscreen: false,
 			window_pending_drag: false,
-			pointer_warp_lock: None,
+			pointer_warp_unlock_frame: None,
 			transfer_reads: TransferReads::default(),
 			input_state: InputState::new(),
 			app_event_receiver,
@@ -395,6 +396,14 @@ impl App {
 			}
 			DesktopFrontendMessage::PointerWrap { enabled } => {
 				self.input_state.set_pointer_wrap(enabled);
+
+				// A lock outliving the wrap would leave the pointer stuck
+				if !enabled
+					&& self.pointer_warp_unlock_frame.take().is_some()
+					&& let Some(window) = &self.window
+				{
+					window.end_pointer_warp();
+				}
 			}
 			DesktopFrontendMessage::WindowClose => {
 				self.app_event_scheduler.schedule(AppEvent::Exit);
@@ -620,13 +629,18 @@ impl ApplicationHandler for App {
 		{
 			match window.warp_pointer(target) {
 				Ok(PointerWarp::Moved) => {}
-				Ok(PointerWarp::Locked) => {
-					self.pointer_warp_lock = Some(PointerWarpLock::Locked);
-					if let Some(render_state) = &mut self.render_state {
+				Ok(PointerWarp::Locked) => match &mut self.render_state {
+					Some(render_state) => {
+						// A presented frame commits the position hint, and one more covers drivers that present off-thread
+						self.pointer_warp_unlock_frame = Some(render_state.presented_frames() + 2);
 						render_state.request_present();
+						window.request_redraw();
 					}
-					window.request_redraw();
-				}
+					None => {
+						window.end_pointer_warp();
+						self.input_state.stop_pointer_wrap();
+					}
+				},
 				Err(e) => {
 					tracing::warn!("Failed to wrap the pointer around the viewport: {e}");
 					self.input_state.stop_pointer_wrap();
@@ -669,19 +683,16 @@ impl ApplicationHandler for App {
 					}
 					let _ = self.runtime_command_sender.send(RuntimeCommand::Update);
 
-					// Unlock once a presented frame has committed the position hint, a frame later as some drivers present off-thread
-					self.pointer_warp_lock = match self.pointer_warp_lock {
-						Some(PointerWarpLock::Locked) => {
-							window.request_redraw();
-							Some(PointerWarpLock::Committed)
-						}
-						Some(PointerWarpLock::Committed) => {
+					if let Some(unlock_frame) = self.pointer_warp_unlock_frame {
+						if render_state.presented_frames() >= unlock_frame {
 							window.end_pointer_warp();
 							self.input_state.settle_pointer_wrap();
-							None
+							self.pointer_warp_unlock_frame = None;
+						} else {
+							render_state.request_present();
+							window.request_redraw();
 						}
-						None => None,
-					};
+					}
 				}
 
 				if !self.ui_frame_received
@@ -764,13 +775,6 @@ enum RuntimeCommand {
 	RequestQueued,
 	Run,
 	Exit,
-}
-
-/// A pointer locked so Wayland moves it to the hinted position once unlocked.
-#[derive(Clone, Copy)]
-enum PointerWarpLock {
-	Locked,
-	Committed,
 }
 
 pub(crate) enum ExitReason {
