@@ -1762,11 +1762,12 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		})
 		.collect();
 
-	// Apply upgrades to each unmodified node.
+	// Apply upgrades to each unmodified node, except those inside the read-only built-in subgraphs
 	let nodes = document
 		.network_interface
 		.document_network()
 		.recursive_nodes()
+		.filter(|(_, _, path)| !document.network_interface.is_read_only(path))
 		.map(|(node_id, node, path)| (*node_id, node.clone(), path))
 		.collect::<Vec<(NodeId, graph_craft::document::DocumentNode, Vec<NodeId>)>>();
 	for (node_id, node, network_path) in &nodes {
@@ -4392,6 +4393,25 @@ mod tests {
 
 		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
 		assert_eq!(opened.network_interface.reference(&node_id, &[]), Some(DefinitionIdentifier::ProtoNode(passthrough::IDENTIFIER)));
+	}
+
+	// Opening documents with 'Merge' layers from before the 'As Graphic' and 'Into Group' nodes resets every node definition
+	#[tokio::test]
+	async fn resetting_node_definitions_on_open_leaves_built_in_subgraphs_alone() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::capture_logged_errors;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 0., 0., 200., 200., ModifierKeys::empty()).await;
+		editor.draw_rect(50., 50., 100., 100.).await;
+		let serialized = editor.active_document().serialize_document();
+
+		let (opened, errors) = capture_logged_errors(|| load_legacy_document(serialized, &HashMapResourceStorage::new(), true));
+		opened.expect("the document should open");
+		assert!(errors.is_empty(), "opening the document logged errors: {errors:?}");
 	}
 
 	#[tokio::test]
