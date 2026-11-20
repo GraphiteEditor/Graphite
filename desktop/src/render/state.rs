@@ -221,6 +221,19 @@ impl RenderState {
 			self.surface.configure(&self.executor.context().device, &self.config);
 		}
 
+		let mut texture = self.surface.get_current_texture(&self.executor.context().queue);
+		if matches!(texture, WgpuCurrentSurfaceTexture::Outdated | WgpuCurrentSurfaceTexture::Lost) {
+			let size = window.surface_size();
+			if size.width > 0 && size.height > 0 {
+				self.config.width = size.width;
+				self.config.height = size.height;
+				self.desired_width = size.width;
+				self.desired_height = size.height;
+				self.surface.configure(&self.executor.context().device, &self.config);
+				texture = self.surface.get_current_texture(&self.executor.context().queue);
+			}
+		}
+
 		let ui_scale = if let Some(ui_texture) = &self.ui_texture
 			&& (self.desired_width != ui_texture.width() || self.desired_height != ui_texture.height())
 		{
@@ -229,7 +242,7 @@ impl RenderState {
 			None
 		};
 
-		let (surface_texture, suboptimal) = match self.surface.get_current_texture(&self.executor.context().queue) {
+		let (surface_texture, suboptimal) = match texture {
 			WgpuCurrentSurfaceTexture::Success(t) => (t, false),
 			WgpuCurrentSurfaceTexture::Suboptimal(t) => (t, true),
 			WgpuCurrentSurfaceTexture::Occluded => return Ok(()),
