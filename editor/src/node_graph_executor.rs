@@ -280,12 +280,13 @@ impl NodeGraphExecutor {
 			self.inspect_context_overrides = ContextOverrides::default();
 		}
 
-		let network_hash = document.network_interface.network_hash();
-		if network_hash != self.node_graph_hash || self.node_graph_document != Some(document_id) || ignore_hash {
+		// The compile looks up each resource's data in the registry, so a resource that loads reruns it like an edit to the network does
+		let graph_hash = document.network_interface.network_hash().wrapping_add(document.resources.resolved_hash());
+		if graph_hash != self.node_graph_hash || self.node_graph_document != Some(document_id) || ignore_hash {
 			let network = document.network_interface.document_network().clone();
 			let previewed = document.network_interface.previewed_nodes();
 			let layers = document.network_interface.layer_paths();
-			self.node_graph_hash = network_hash;
+			self.node_graph_hash = graph_hash;
 			self.node_graph_document = Some(document_id);
 
 			let resources = document.resources.registry.clone();

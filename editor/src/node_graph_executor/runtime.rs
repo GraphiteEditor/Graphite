@@ -750,6 +750,120 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn a_resource_that_fails_to_load_renders_with_a_fallback_until_it_loads() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use crate::test_utils::test_prelude::{Color, Image};
+		use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
+		use graphene_std::raster_nodes::std_nodes::image;
+
+		/// Handles the message, lets the runtime compile and evaluate whatever it queued, and gives back the graph's warnings and whether it drew an image.
+		async fn render_after(editor: &mut EditorTestUtils, message: impl Into<Message>) -> (GraphErrors, bool) {
+			editor.dispatch(message);
+			editor.runtime.update();
+			editor.runtime.run().await;
+			let messages = editor.dispatch(Message::Wake);
+			let image_drawn = messages
+				.iter()
+				.any(|message| matches!(message, FrontendMessage::UpdateImageData { canvas_ids_in_use, .. } if !canvas_ids_in_use.is_empty()));
+
+			let resolved_types = &editor.active_document().network_interface.resolved_types;
+			assert!(resolved_types.node_graph_errors.is_empty(), "{:?}", resolved_types.node_graph_errors);
+			(resolved_types.node_graph_warnings.clone(), image_drawn)
+		}
+
+		let mut editor = editor().await;
+		let document_id = editor.portfolio_message_handler().active_document_id.unwrap();
+		editor.dispatch(ViewportMessage::Update {
+			x: 0.,
+			y: 0.,
+			width: 100.,
+			height: 100.,
+			scale: 1.,
+		});
+
+		// The layer shows an 'Image' node whose image is known only by where to load it from
+		let resource_id = ResourceId::new();
+		let source = DataSource::Url("https://example.com/image.png".parse().unwrap());
+		editor.active_document_mut().resources.registry.push_source_back(&resource_id, source.clone());
+		let image_node = NodeId::new();
+		let input = NodeInput::value(TaggedValue::Resource(resource_id), false);
+		let template = resolve_proto_node_type(image::IDENTIFIER).unwrap().node_template_input_override([None, Some(input)]);
+		editor.active_document_mut().network_interface.insert_node(image_node, template, &[]);
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(image_node),
+			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+		});
+
+		let (warnings, _) = render_after(&mut editor, NodeGraphMessage::RunDocumentGraph).await;
+		assert!(warnings.is_empty(), "the graph shouldn't run while the image may still load: {warnings:?}");
+
+		let failed = ResourceMessage::ResolveFailed { resource_id }.into();
+		let (warnings, image_drawn) = render_after(&mut editor, PortfolioMessage::DocumentPassMessage { document_id, message: failed }).await;
+		let expected = GraphErrorType::MissingResource { index: 1 };
+		assert!(
+			matches!(warnings.as_slice(), [warning] if warning.node_path == [image_node] && warning.error == expected),
+			"{warnings:?}"
+		);
+		assert!(!image_drawn, "the image that failed to load should be left empty");
+
+		// Loading it later, as a retry would, has to recompile the unchanged network
+		let data: Arc<[u8]> = Image::new(2, 2, Color::BLACK).to_png().into();
+		let hash = ResourceHash::from(data.as_ref());
+		editor.dispatch(ResourceStorageMessage::Store { data });
+		let resolved = ResourceMessage::Resolved { resource_id, source, hash }.into();
+		let (warnings, image_drawn) = render_after(&mut editor, PortfolioMessage::DocumentPassMessage { document_id, message: resolved }).await;
+		assert!(warnings.is_empty(), "the warning should clear once the image loads: {warnings:?}");
+		assert!(image_drawn, "the image should be drawn once it loads");
+	}
+
+	#[tokio::test]
+	async fn an_export_is_refused_while_its_resources_load() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use graph_craft::application_io::resource::{DataSource, ResourceId};
+		use graphene_std::raster_nodes::std_nodes::image;
+
+		/// Requests an export and lets the runtime evaluate whatever was sent, giving back whether it explained a refusal and whether it exported.
+		async fn refused_and_exported(editor: &mut EditorTestUtils) -> (bool, bool) {
+			let messages = editor.dispatch(PortfolioMessage::SubmitDocumentExport {
+				name: "export".to_string(),
+				file_type: FileType::Svg,
+				scale_factor: 1.,
+				bounds: ExportBounds::AllArtwork,
+				artboard_name: None,
+				artboard_count: 0,
+			});
+			let refused = messages.iter().any(|message| matches!(message, FrontendMessage::DisplayDialog { .. }));
+
+			editor.runtime.update();
+			editor.runtime.run().await;
+			(refused, exported(editor))
+		}
+
+		let mut editor = editor().await;
+		let document_id = editor.portfolio_message_handler().active_document_id.unwrap();
+
+		// An 'Image' node whose image is known only by where to load it from
+		let resource_id = ResourceId::new();
+		let source = DataSource::Url("https://example.com/image.png".parse().unwrap());
+		editor.active_document_mut().resources.registry.push_source_back(&resource_id, source);
+		let template = resolve_proto_node_type(image::IDENTIFIER)
+			.unwrap()
+			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Resource(resource_id), false))]);
+		editor.active_document_mut().network_interface.insert_node(NodeId::new(), template, &[]);
+
+		let outcome = refused_and_exported(&mut editor).await;
+		assert_eq!(outcome, (true, false), "the export shouldn't capture the image's fallback while it may still load");
+
+		// Once the image fails to load, its fallback is all there is to export
+		let failed = ResourceMessage::ResolveFailed { resource_id }.into();
+		editor.dispatch(PortfolioMessage::DocumentPassMessage { document_id, message: failed });
+		let outcome = refused_and_exported(&mut editor).await;
+		assert_eq!(outcome, (false, true), "the export should go ahead once nothing is left loading");
+	}
+
+	#[tokio::test]
 	async fn an_export_goes_ahead_of_what_was_sent_after_it() {
 		let mut editor = editor().await;
 		let last = last_request(&editor);
