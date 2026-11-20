@@ -73,3 +73,8 @@ harness = false
 name = "brush_stroke_gungraun"
 harness = false
 required-features = ["gpu"]
+
+[[bench]]
+name = "artwork_gungraun"
+harness = false
+required-features = ["gpu"]
