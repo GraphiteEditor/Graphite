@@ -1,4 +1,5 @@
 use super::*;
+use crate::messages::portfolio::document::overlays::utility_types::LayerVectorSource;
 use graphene_std::list::Item;
 use graphene_std::vector::VectorGeometry;
 
@@ -22,6 +23,17 @@ impl NodeNetworkInterface {
 		self.document_metadata.layer_vector_data.get(&layer).map(|item| VectorGeometry::from_item(item))
 	}
 
+	/// Where [`Self::compute_modified_vector`] and the layer's transform come from, for overlays to look them up in the render they're shown over.
+	pub fn layer_vector_source(&self, layer: LayerNodeIdentifier) -> LayerVectorSource {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
+
+		LayerVectorSource {
+			layer,
+			path_node: graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER)),
+			local_transform_feeds: self.document_metadata.local_transform_feeds(layer, self),
+		}
+	}
+
 	/// The vector geometry an upstream Path node would surface for editing.
 	/// This is the result of `compute_modified_vector`, but only if a visible 'Path' node is actually upstream.
 	/// Useful for tool overlays and snap target collection usages that want to match the Path tool's view
@@ -37,22 +49,7 @@ impl NodeNetworkInterface {
 	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer); returns `None` otherwise so the
 	/// caller can fall back to the layer's recorded `outlines`/`click_targets`.
 	pub fn path_aware_outline_targets(&self, layer: LayerNodeIdentifier) -> Option<Vec<ClickTargetType>> {
-		let vector = self.upstream_path_node_vector(layer)?;
-
-		let mut targets = Vec::new();
-		let mut combined = BezPath::new();
-		for bezpath in vector.stroke_bezpath_iter() {
-			combined.extend(bezpath.elements().iter().copied());
-		}
-		if !combined.is_empty() {
-			targets.push(ClickTargetType::Path(combined));
-		}
-
-		for (point_id, position) in vector.free_points() {
-			targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
-		}
-
-		Some(targets)
+		self.upstream_path_node_vector(layer).map(|vector| vector_outline_targets(&vector))
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -200,4 +197,22 @@ impl NodeNetworkInterface {
 	pub fn update_appearance_attributes(&mut self, new_layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>) {
 		self.document_metadata.layer_appearance_attributes = new_layer_appearance_attributes;
 	}
+}
+
+/// The vector's paths combined into one outline target, followed by a target for each free point.
+pub fn vector_outline_targets(vector: &VectorGeometry) -> Vec<ClickTargetType> {
+	let mut targets = Vec::new();
+	let mut combined = BezPath::new();
+	for bezpath in vector.stroke_bezpath_iter() {
+		combined.extend(bezpath.elements().iter().copied());
+	}
+	if !combined.is_empty() {
+		targets.push(ClickTargetType::Path(combined));
+	}
+
+	for (point_id, position) in vector.free_points() {
+		targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
+	}
+
+	targets
 }
