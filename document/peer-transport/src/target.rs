@@ -48,7 +48,7 @@ pub trait SyncTarget {
 	fn drop_interaction(&mut self, rev: Rev) -> Result<HeadMove, TargetError>;
 	/// Host only. Mint a dropped interaction again on top of the line. See [`Session::restore_interaction`].
 	fn restore_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, TargetError>;
-	/// Host only. Move the shared head to an ancestor, leaving the line since as a branch. See [`Session::move_head_to`].
+	/// Host only. Move the shared head to an ancestor or a branch, leaving the line it was on as a branch. See [`Session::move_head_to`].
 	fn move_head_to(&mut self, _rev: Rev) -> Result<HeadMove, TargetError> {
 		Err("this target cannot move its head".into())
 	}

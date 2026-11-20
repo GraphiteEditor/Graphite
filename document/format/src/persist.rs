@@ -507,6 +507,9 @@ impl<L: Layout> Gdd<L> {
 		self.persist_rewritten_line()?;
 		#[cfg(feature = "network")]
 		if let Some(replica) = &mut self.network {
+			if let Some(head) = moved.head {
+				self.session.publish_up_to(head);
+			}
 			replica.broadcast_head_move(moved)?;
 		}
 		#[cfg(not(feature = "network"))]
@@ -514,7 +517,7 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Move the head back to an ancestor, keeping the later line as a branch. A non-retiring peer asks the retirer.
+	/// Move the head to an ancestor or a branch, keeping the line it was on as a branch. A non-retiring peer asks the retirer.
 	#[cfg(feature = "network")]
 	pub fn move_head(&mut self, rev: Rev) -> Result<(), Error> {
 		if self.retires_locally() {
@@ -523,6 +526,9 @@ impl<L: Layout> Gdd<L> {
 			self.persist_registry_snapshot()?;
 			self.persist_session_state()?;
 			if let Some(replica) = &mut self.network {
+				if let Some(head) = moved.head {
+					self.session.publish_up_to(head);
+				}
 				replica.broadcast_head_move(moved)?;
 			}
 		} else if let Some(replica) = &mut self.network {
