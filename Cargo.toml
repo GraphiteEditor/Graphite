@@ -198,7 +198,6 @@ web-sys = { version = "=0.3.106", features = [
 	"Navigator",
 	"WebGl2RenderingContext",
 	"Gpu",
-	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 	"Lock",
 	"LockInfo",

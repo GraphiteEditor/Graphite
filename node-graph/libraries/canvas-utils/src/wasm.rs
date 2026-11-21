@@ -71,18 +71,28 @@ const PREMULTIPLY_ALPHA: wgpu::BlendState = wgpu::BlendState {
 #[cfg(feature = "wgpu")]
 static DEVICE_CANVAS: OnceLock<(CanvasHandle, Arc<WgpuSurface>)> = OnceLock::new();
 
+/// The GPU executor of that device.
+#[cfg(feature = "wgpu")]
+static DEVICE_EXECUTOR: OnceLock<WgpuExecutor> = OnceLock::new();
+
 #[cfg(feature = "wgpu")]
 pub async fn create_wgpu_executor() -> Option<WgpuExecutor> {
+	// An editor created again, as after a hot reload, reuses the device since it can't present to another canvas
+	if let Some(executor) = DEVICE_EXECUTOR.get() {
+		return Some(executor.clone());
+	}
+
 	// WebGL2 makes its adapter from a canvas's context, so the canvas has to exist first
 	let canvas = CanvasImpl::new();
 	let (context, surface) = WgpuContextBuilder::new().build_with_surface(wgpu::SurfaceTarget::Canvas(canvas.canvas.clone())).await?;
+	let executor = WgpuExecutor::with_context(context)?;
 
-	if DEVICE_CANVAS.set((CanvasHandle(Some(Arc::new(canvas))), Arc::new(surface))).is_err() {
+	if DEVICE_CANVAS.set((CanvasHandle(Some(Arc::new(canvas))), Arc::new(surface))).is_err() || DEVICE_EXECUTOR.set(executor.clone()).is_err() {
 		log::error!("A second GPU executor was created, which can't present to the viewport canvas");
 		return None;
 	}
 
-	WgpuExecutor::with_context(context)
+	Some(executor)
 }
 
 #[cfg(feature = "wgpu")]

@@ -442,7 +442,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph for export
-	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
+	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
 		let previewed = document.network_interface.previewed_nodes();
 		let resources = document.resources.registry.clone();
@@ -484,7 +484,6 @@ impl NodeGraphExecutor {
 			for_export: true,
 			for_eyedropper: false,
 		};
-		export_config.size = resolution;
 
 		// Execute the node graph
 		self.sender
@@ -1098,7 +1097,6 @@ impl NodeGraphExecutor {
 		let ExportConfig {
 			file_type,
 			name,
-			size,
 			artboard_name,
 			artboard_count,
 			..
@@ -1116,18 +1114,13 @@ impl NodeGraphExecutor {
 			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Svg { svg, .. },
 				..
-			}) => {
-				if file_type == FileType::Svg {
-					responses.add(FrontendMessage::TriggerSaveFile {
-						name,
-						folder,
-						filters,
-						content: svg.into_bytes().into(),
-					});
-				} else {
-					let size = size.as_dvec2().into();
-					responses.add(FrontendMessage::TriggerExportImage { svg, name, file_type, size });
-				}
+			}) if file_type == FileType::Svg => {
+				responses.add(FrontendMessage::TriggerSaveFile {
+					name,
+					folder,
+					filters,
+					content: svg.into_bytes().into(),
+				});
 			}
 			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Buffer { data, width, height },
@@ -1135,15 +1128,18 @@ impl NodeGraphExecutor {
 			}) if file_type != FileType::Svg => {
 				let content = match file_type.encode(width, height, data) {
 					Ok(content) => content.into(),
-					Err(e) => {
-						log::error!("Failed to encode image: {e}");
+					Err(description) => {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unable to export document".to_string(),
+							description,
+						});
 						return;
 					}
 				};
 				responses.add(FrontendMessage::TriggerSaveFile { name, folder, filters, content });
 			}
 			_ => {
-				log::error!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})");
+				log::error!("Incorrect render type for exporting to {file_type:?}: {node_graph_output}");
 			}
 		}
 	}

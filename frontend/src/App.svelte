@@ -11,22 +11,32 @@
 
 	let subscriptions: SubscriptionsRouter | undefined = undefined;
 	let editor: EditorWrapper | undefined = undefined;
+	// Why the editor couldn't start, such as the browser lacking the GPU support it renders with
+	let startupError: string | undefined = undefined;
 
 	onMount(async () => {
-		// Initialize the editor wrapper
-		const wrapper = await initWasm();
-		for (const [name, f] of Object.entries(wrapper)) {
-			if (name.startsWith("__node_registry") || name.startsWith("__migration_registry")) f();
-		}
-		window.imageCanvases = {};
-		window.receiveNativeMessage = receiveNativeMessage;
+		try {
+			// Initialize the editor wrapper
+			const wrapper = await initWasm();
+			for (const [name, f] of Object.entries(wrapper)) {
+				if (name.startsWith("__node_registry") || name.startsWith("__migration_registry")) f();
+			}
+			// The Wasm module outlives a remount, along with the canvases it already registered
+			window.imageCanvases ||= {};
+			window.receiveNativeMessage = receiveNativeMessage;
 
-		// Create the editor and subscriptions router
-		const randomSeed = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
-		subscriptions = createSubscriptionsRouter();
-		editor = await EditorWrapper.create(operatingSystem(), randomSeed, (messageType: MessageName, messageData: FrontendMessage) => {
-			subscriptions?.handleFrontendMessage(messageType, messageData);
-		});
+			// Create the editor and subscriptions router
+			const randomSeed = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
+			subscriptions = createSubscriptionsRouter();
+			editor = await EditorWrapper.create(operatingSystem(), randomSeed, (messageType: MessageName, messageData: FrontendMessage) => {
+				subscriptions?.handleFrontendMessage(messageType, messageData);
+			});
+		} catch (error) {
+			// eslint-disable-next-line no-console
+			console.error(error);
+			startupError = error instanceof Error ? error.message : String(error);
+			return;
+		}
 
 		await loadDemoArtwork(editor);
 		joinSessionFromUrl(editor);
@@ -37,6 +47,41 @@
 	});
 </script>
 
-{#if subscriptions !== undefined && editor !== undefined}
+{#if startupError !== undefined}
+	<div class="startup-error">
+		<h1>Graphite can't start</h1>
+		<p>{startupError}</p>
+	</div>
+{:else if subscriptions !== undefined && editor !== undefined}
 	<Editor {subscriptions} {editor} />
 {/if}
+
+<style lang="scss">
+	.startup-error {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 16px;
+		padding: 32px;
+		background: var(--color-2-mildblack);
+		text-align: center;
+		text-wrap: balance;
+		user-select: text;
+
+		h1 {
+			margin: 0;
+			font-size: 24px;
+			font-weight: 700;
+		}
+
+		p {
+			margin: 0;
+			max-width: 480px;
+			line-height: 1.5;
+			color: var(--color-b-lightgray);
+		}
+	}
+</style>

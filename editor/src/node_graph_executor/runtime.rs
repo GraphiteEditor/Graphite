@@ -3,7 +3,6 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, RenderedLayers};
 use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
 use crate::task::{Spawn, Spawner, Task};
-use glam::UVec2;
 use graph_craft::application_io::resource::{Resource, ResourceRegistry};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
@@ -163,7 +162,6 @@ pub struct ExportConfig {
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
-	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
 }
@@ -378,11 +376,10 @@ impl NodeRuntime {
 			let frame = self.composite_viewport_frame();
 
 			#[cfg(all(target_family = "wasm", feature = "wasm"))]
-			if self.editor_api.application_io.as_ref().is_some_and(|application_io| application_io.gpu_executor().is_some())
-				&& let Some(RenderOutput {
-					data: RenderOutputType::Svg { svg, .. },
-					..
-				}) = result.render_output()
+			if let Some(RenderOutput {
+				data: RenderOutputType::Svg { svg, .. },
+				..
+			}) = result.render_output()
 			{
 				let end = svg.rfind("</svg>").unwrap_or(svg.len());
 				svg.insert_str(end, &viewport_canvas_placeholder(self.wasm_canvas_cache.id(), resolution));
@@ -484,8 +481,8 @@ impl NodeRuntime {
 
 		let ExecutionRequest { execution_id, mut render_config } = request;
 
-		// Render via the SVG pipeline even though raster was requested if SVG Preview render mode is active or there's no GPU
-		if render_config.export_format == ExportFormat::Raster && (render_config.render_mode == RenderMode::SvgPreview || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none()) {
+		// Render via the SVG pipeline even though raster was requested if SVG Preview render mode is active
+		if render_config.export_format == ExportFormat::Raster && render_config.render_mode == RenderMode::SvgPreview {
 			render_config.export_format = ExportFormat::Svg;
 		}
 
@@ -706,7 +703,7 @@ mod tests {
 	use crate::messages::frontend::utility_types::RenderStatus;
 	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 	use crate::test_utils::EditorTestUtils;
-	use glam::DVec2;
+	use glam::{DVec2, UVec2};
 	use graph_craft::document::DocumentNode;
 	use graphene_std::SourceId;
 	use graphene_std::runtime::Runtime;

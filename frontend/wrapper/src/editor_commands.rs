@@ -724,11 +724,6 @@ mod editor_commands {
 		ClipboardMessage::ReadSelection { content, cut }.into()
 	}
 
-	/// The pixels of an export that `TriggerExportImage` had the frontend rasterize, which the editor encodes and saves as the chosen file type
-	fn save_rasterized_export(name: String, file_type: Ts<FileType>, width: u32, height: u32, data: Vec<u8>) -> Message {
-		PortfolioMessage::SaveRasterizedExport { name, file_type, width, height, data }.into()
-	}
-
 	/// A file headed for a known action, picked in the dialog that `TriggerBrowse` opened
 	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: Ts<IngestAction>) -> Message {
 		let mime = Some(mime_type.as_str()).filter(|mime| !mime.is_empty());
@@ -946,7 +941,6 @@ macro_rules! editor_proxy_types {
 }
 
 editor_proxy_types! {
-	FileType = editor::messages::frontend::utility_types::FileType;
 	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
