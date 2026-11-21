@@ -944,6 +944,95 @@ fn dropping_a_peers_first_step_keeps_the_registration_its_later_steps_need() {
 	assert_eq!(host.user_of(PeerId(2)), Some(UserId(2)), "the later step still names the guest's person");
 }
 
+/// Removing a step repairs the steps after it without changing which output of a node they take.
+#[test]
+fn removing_a_step_keeps_the_output_a_later_step_takes() {
+	let (taken, unrelated) = (NodeId(1), NodeId(2));
+	let node = || Node::new(NetworkId(5), Implementation::ProtoNode(ResourceId::new()), 1);
+
+	let mut session = Session::with_peer(PeerId(1));
+	step(&mut session, add_network(5));
+	step(&mut session, RegistryDelta::AddNode { id: taken, node: node() });
+	let dropped = step(&mut session, RegistryDelta::AddNode { id: unrelated, node: node() });
+	let second_output = NodeInput::Node { id: taken, index: 1 };
+	let export = RegistryDelta::SetNetworkExport {
+		id: NetworkId(5),
+		index: 0,
+		export: Some(second_output.clone()),
+	};
+	step(&mut session, export);
+
+	session.drop_interaction(dropped).expect("drop");
+	let exports = &session.retired_registry().networks[&NetworkId(5)].exports;
+	assert_eq!(exports[0].target, Some(second_output));
+}
+
+/// Bringing back a step that set what a chain rests on keeps its value, rather than the one the line had before.
+#[test]
+fn bringing_back_a_step_keeps_the_value_it_gave_a_chain_bottom() {
+	let (layer, unrelated) = (NodeId(1), NodeId(2));
+	let value = |text: &str| NodeInput::Value {
+		value: Value::from(serde_json::json!(text)),
+		exposed: false,
+	};
+	let node = || Node::new(NetworkId(5), Implementation::ProtoNode(ResourceId::new()), 1);
+
+	let mut session = Session::with_peer(PeerId(1));
+	step(&mut session, add_network(5));
+	step(&mut session, RegistryDelta::AddNode { id: layer, node: node() });
+	let export = RegistryDelta::SetNetworkExport {
+		id: NetworkId(5),
+		index: 0,
+		export: Some(NodeInput::Node { id: layer, index: 0 }),
+	};
+	let exported = step(&mut session, export);
+	let set_bottom = RegistryDelta::ChangeNodeInput {
+		id: layer,
+		index: 0,
+		new_input: value("set by the step"),
+	};
+	let changed = step(&mut session, set_bottom);
+	session.move_head_to(exported).expect("go back to before the change");
+	step(&mut session, RegistryDelta::AddNode { id: unrelated, node: node() });
+
+	session.restore_interaction(changed).expect("bring the change back");
+	assert_eq!(session.retired_registry().node_instances[&layer].inputs()[0].input, value("set by the step"));
+}
+
+/// Bringing back the deletion of a node without inputs, wired since into a node the deletion predates, gives that input
+/// back its value from before, as there is nothing to reconnect it to.
+#[test]
+fn deleting_a_node_without_inputs_gives_the_input_it_fed_its_earlier_value() {
+	let (source, consumer) = (NodeId(1), NodeId(2));
+	let source_node = Node::new(NetworkId(5), Implementation::ProtoNode(ResourceId::new()), 0);
+	let consumer_node = Node::new(NetworkId(5), Implementation::ProtoNode(ResourceId::new()), 2);
+	let earlier_value = consumer_node.inputs()[1].input.clone();
+
+	let mut session = Session::with_peer(PeerId(1));
+	step(&mut session, add_network(5));
+	let added = step(
+		&mut session,
+		RegistryDelta::AddNode {
+			id: source,
+			node: source_node.clone(),
+		},
+	);
+	let deleted = step(&mut session, RegistryDelta::RemoveNode { id: source, snapshot: source_node });
+	session.move_head_to(added).expect("go back to before the deletion");
+	step(&mut session, RegistryDelta::AddNode { id: consumer, node: consumer_node });
+	let wire = RegistryDelta::ChangeNodeInput {
+		id: consumer,
+		index: 1,
+		new_input: NodeInput::Node { id: source, index: 0 },
+	};
+	step(&mut session, wire);
+
+	session.restore_interaction(deleted).expect("bring the deletion back");
+	let registry = session.retired_registry();
+	assert!(!registry.node_instances.contains_key(&source));
+	assert_eq!(registry.node_instances[&consumer].inputs()[1].input, earlier_value);
+}
+
 /// Undo of a retired step names the person's latest step, not the device's. A fresh copy of the document under a new
 /// peer id still undoes what its user did from the old one, and nobody else's.
 #[test]

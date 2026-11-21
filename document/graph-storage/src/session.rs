@@ -1048,25 +1048,42 @@ impl Session {
 		}
 	}
 
-	/// Each node's network and newest primary input anywhere in history, branches included.
+	/// Each node's network and newest primary input, and each input's newest value, anywhere in history, branches included.
 	fn known_inputs(&self) -> crate::repair::KnownInputs {
-		let mut networks: HashMap<NodeId, NetworkId> = HashMap::new();
-		let mut inputs: HashMap<NodeId, (TimeStamp, Option<crate::NodeInput>)> = HashMap::new();
+		let mut networks: HashMap<NodeId, (TimeStamp, NetworkId)> = HashMap::new();
+		let mut primary: HashMap<NodeId, (TimeStamp, Option<crate::NodeInput>)> = HashMap::new();
+		let mut values: HashMap<(NodeId, u32), (TimeStamp, crate::NodeInput)> = HashMap::new();
 		for delta in self.document.history.iter() {
-			let (id, input) = match &delta.kind {
+			let whole_list = |slots: &[crate::InputSlot]| -> Vec<(u32, crate::NodeInput)> { slots.iter().enumerate().map(|(index, slot)| (index as u32, slot.input.clone())).collect() };
+			// The inputs the delta writes, and whether it writes the whole list, so an empty one ends the primary input
+			let (id, written, whole) = match &delta.kind {
 				RegistryDelta::AddNode { id, node } | RegistryDelta::RemoveNode { id, snapshot: node } => {
-					networks.insert(*id, node.network);
-					(*id, node.inputs.first().map(|slot| slot.input.clone()))
+					if networks.get(id).is_none_or(|(newest, _)| *newest < delta.timestamp) {
+						networks.insert(*id, (delta.timestamp, node.network));
+					}
+					(*id, whole_list(&node.inputs), true)
 				}
-				RegistryDelta::ChangeNodeInput { id, index: 0, new_input } => (*id, Some(new_input.clone())),
-				RegistryDelta::SetNodeInputs { id, inputs } => (*id, inputs.first().map(|slot| slot.input.clone())),
+				RegistryDelta::ChangeNodeInput { id, index, new_input } => (*id, vec![(*index, new_input.clone())], false),
+				RegistryDelta::SetNodeInputs { id, inputs } => (*id, whole_list(inputs), true),
 				_ => continue,
 			};
-			if inputs.get(&id).is_none_or(|(newest, _)| *newest < delta.timestamp) {
-				inputs.insert(id, (delta.timestamp, input));
+			let newer = |newest: &TimeStamp| *newest < delta.timestamp;
+
+			let first = written.iter().find(|(index, _)| *index == 0).map(|(_, input)| input.clone());
+			if (whole || first.is_some()) && primary.get(&id).is_none_or(|(newest, _)| newer(newest)) {
+				primary.insert(id, (delta.timestamp, first));
+			}
+			for (index, input) in written {
+				if !matches!(input, crate::NodeInput::Node { .. }) && values.get(&(id, index)).is_none_or(|(newest, _)| newer(newest)) {
+					values.insert((id, index), (delta.timestamp, input));
+				}
 			}
 		}
-		inputs.into_iter().filter_map(|(id, (_, input))| Some((id, (*networks.get(&id)?, input?)))).collect()
+
+		crate::repair::KnownInputs {
+			primary: primary.into_iter().filter_map(|(id, (_, input))| Some((id, (networks.get(&id)?.1, input?)))).collect(),
+			values: values.into_iter().map(|(slot, (_, input))| (slot, input)).collect(),
+		}
 	}
 
 	/// Commit repair ops on top of the line, authored by whoever made the interaction they finish.

@@ -10,8 +10,23 @@
 use crate::{NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-/// Each node's network and newest primary input anywhere in history, for nodes this line no longer or never had.
-pub(crate) type KnownInputs = HashMap<NodeId, (NetworkId, NodeInput)>;
+/// What history holds of inputs the line no longer has.
+#[derive(Default)]
+pub(crate) struct KnownInputs {
+	/// Each node's network and newest primary input, for nodes this line no longer or never had.
+	pub primary: HashMap<NodeId, (NetworkId, NodeInput)>,
+	/// Each input's newest value not naming a node, for an input left naming a removed node that leads nowhere.
+	pub values: HashMap<(NodeId, u32), NodeInput>,
+}
+
+impl KnownInputs {
+	fn value(&self, slot: Slot) -> Option<NodeInput> {
+		match slot {
+			Slot::Input(id, index) => self.values.get(&(id, index)).cloned(),
+			Slot::Export(..) => None,
+		}
+	}
+}
 
 /// A slot that can name a node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -100,7 +115,8 @@ pub(crate) fn still_needed(registry: &Registry, dropped: &[RegistryDelta], later
 ///   their place from `intended`, after the node they followed there. A node the step added lands the same way.
 /// - A node on no chain any more, which was on one, goes back where it was.
 /// - An input naming a removed node takes that node's primary input instead, as deleting a node reconnects what it
-///   sat between. A node this line never had counts as removed, with the primary input `known` gives it.
+///   sat between. A node this line never had counts as removed, with the primary input `known` gives it. Without
+///   one, the input goes back to its newest value in `known`.
 pub(crate) fn repair_ops(before: &Registry, registry: &Registry, intended: &Registry, replayed: &[RegistryDelta], gone: &HashSet<NodeId>, known: &KnownInputs) -> Vec<RegistryDelta> {
 	let mut registry = registry.clone();
 	let mut ops = Vec::new();
@@ -139,6 +155,7 @@ pub(crate) fn repair_ops(before: &Registry, registry: &Registry, intended: &Regi
 			Slot::Export(..) => None,
 		};
 		let fits = |id: &NodeId| live(id) && Some(*id) != owner && home(id) == Some(&head);
+		let current = chain(&registry, head);
 		let earlier = chain(before, head);
 		let wanted = chain(intended, head);
 		// A node the step placed counts as moved when it sits on the other side of a node both orders have
@@ -159,10 +176,11 @@ pub(crate) fn repair_ops(before: &Registry, registry: &Registry, intended: &Regi
 			let after = wanted.nodes[..position].iter().rev().find_map(|above| nodes.iter().position(|node| node == above));
 			nodes.insert(after.map_or(0, |index| index + 1), *id);
 		}
-		// What the chain rests on, as long as nothing else sits on it. A chain of nodes rests on what the last node rested
-		// on in an order that had nodes too, since an empty one holds the head slot's own value, of another type.
+		// What the chain rests on, as long as nothing else sits on it, preferring the replayed line's, which holds the newer
+		// of the step's write and the line's since. A chain of nodes rests on what the last node rested on in an order that
+		// had nodes too, since an empty one holds the head slot's own value, of another type.
 		let alike = |order: &Chain| order.nodes.is_empty() == nodes.is_empty();
-		let mut orders = [&earlier, &wanted];
+		let mut orders = [&current, &earlier, &wanted];
 		orders.sort_by_key(|order| !alike(order));
 		let bottom = orders.into_iter().filter_map(|order| order.bottom.clone()).find(|bottom| match bottom {
 			NodeInput::Node { id, .. } => live(id) && home(id).is_none(),
@@ -172,10 +190,23 @@ pub(crate) fn repair_ops(before: &Registry, registry: &Registry, intended: &Regi
 		chains.push(Chain { head, nodes, bottom });
 	}
 
+	// The output each node is taken from, where its order came from
+	let (outputs_before, outputs_now, outputs_intended) = (chain_outputs(before, &heads), chain_outputs(&registry, &heads), chain_outputs(intended, &heads));
+	let outputs: HashMap<NodeId, u32> = taken
+		.iter()
+		.map(|id| {
+			let orders = match placed_by_step.contains(id) {
+				true => [&outputs_intended, &outputs_now, &outputs_before],
+				false => [&outputs_before, &outputs_now, &outputs_intended],
+			};
+			(*id, orders.into_iter().find_map(|outputs| outputs.get(id).copied()).unwrap_or(0))
+		})
+		.collect();
+
 	for chain in &chains {
 		let mut slot = chain.head;
 		for &id in &chain.nodes {
-			set(&mut registry, &mut ops, slot, Some(output_of(id)));
+			set(&mut registry, &mut ops, slot, Some(NodeInput::Node { id, index: outputs[&id] }));
 			slot = Slot::Input(id, 0);
 		}
 		if let Some(bottom) = &chain.bottom {
@@ -186,7 +217,9 @@ pub(crate) fn repair_ops(before: &Registry, registry: &Registry, intended: &Regi
 			// Resting on a node another chain holds, or one gone, it rests on nothing instead
 			let cleared = match slot {
 				Slot::Export(..) => None,
-				Slot::Input(..) => reconnect(&registry, id, slot_network(&registry, slot), known).filter(|input| !matches!(input, NodeInput::Node { .. })),
+				Slot::Input(..) => reconnect(&registry, id, slot_network(&registry, slot), known)
+					.filter(|input| !matches!(input, NodeInput::Node { .. }))
+					.or_else(|| known.value(slot)),
 			};
 			if cleared.is_some() || matches!(slot, Slot::Export(..)) {
 				set(&mut registry, &mut ops, slot, cleared);
@@ -199,7 +232,9 @@ pub(crate) fn repair_ops(before: &Registry, registry: &Registry, intended: &Regi
 		if registry.node_instances.contains_key(&named) {
 			continue;
 		}
-		let reconnected = reconnect(&registry, named, slot_network(&registry, slot), known).or_else(|| slot_value(before, slot).filter(|earlier| !names_missing(&registry, earlier)));
+		let reconnected = reconnect(&registry, named, slot_network(&registry, slot), known)
+			.or_else(|| slot_value(before, slot).filter(|earlier| !names_missing(&registry, earlier)))
+			.or_else(|| known.value(slot));
 		if reconnected.is_some() || matches!(slot, Slot::Export(..)) {
 			set(&mut registry, &mut ops, slot, reconnected);
 		}
@@ -233,8 +268,18 @@ fn restore_subgraphs(registry: &mut Registry, intended: &Registry, ops: &mut Vec
 	}
 }
 
-fn output_of(id: NodeId) -> NodeInput {
-	NodeInput::Node { id, index: 0 }
+/// The output each node on the chains below `heads` is taken from.
+fn chain_outputs(registry: &Registry, heads: &BTreeSet<Slot>) -> HashMap<NodeId, u32> {
+	let mut outputs = HashMap::new();
+	for &head in heads {
+		let mut below = slot_value(registry, head);
+		while let Some(NodeInput::Node { id, index }) = below
+			&& outputs.insert(id, index).is_none()
+		{
+			below = slot_value(registry, Slot::Input(id, 0));
+		}
+	}
+	outputs
 }
 
 fn names_missing(registry: &Registry, input: &NodeInput) -> bool {
@@ -339,7 +384,7 @@ fn reconnect(registry: &Registry, removed: NodeId, network: Option<NetworkId>, k
 		}
 		let (in_network, input) = match registry.removed_nodes.get(&current) {
 			Some(tombstone) => (tombstone.content.network, tombstone.content.inputs.first()?.input.clone()),
-			None => known.get(&current).cloned()?,
+			None => known.primary.get(&current).cloned()?,
 		};
 		if Some(in_network) != network {
 			return None;
