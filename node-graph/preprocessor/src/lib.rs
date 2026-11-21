@@ -214,6 +214,7 @@ impl Preprocessor {
 				forwards_input: *forwards_input,
 				constant_inputs: input_mask(&|field| field.constant),
 				loop_body_inputs: if pushes_index { input_mask(&|field| field.lazy) } else { 0 },
+				used_as_index_inputs: input_mask(&|field| field.index_role == FieldIndexRole::UsedAsIndex),
 				index_level_input: fields.iter().position(|field| field.index_role == FieldIndexRole::Level).map(|index| index as u8),
 				..context_metadata
 			};
@@ -879,6 +880,7 @@ mod tests {
 		let compile_metadata = |identifier: &ProtoNodeIdentifier| preprocessor.compile_metadata.get(identifier).copied().unwrap_or_default();
 
 		let map_metadata = compile_metadata(&map::IDENTIFIER);
+		assert!(map_metadata.is_used_as_index_input(<map::ContentInput as NodeParameter>::INDEX));
 		assert!(map_metadata.is_loop_body_input(<map::MappedInput as NodeParameter>::INDEX));
 		assert_eq!(map_metadata.loop_body_inputs.count_ones(), 1, "Only the mapped lambda runs inside the loop");
 

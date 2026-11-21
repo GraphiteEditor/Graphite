@@ -2046,7 +2046,9 @@ fn path_is_closed(
 #[node_macro::node(category("Vector: Point"), icon("NodeMapPoints"), path(graphene_core::vector), version(2))]
 fn map_points<V: MapVectorItems + Send>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectIndex,
-	#[implementations(Graphic, Vector)] content: Item<V>,
+	#[implementations(Graphic, Vector)]
+	#[used_as_index]
+	content: Item<V>,
 	mapped: impl Node<Context<'static>, Output = Item<DVec2>>,
 ) -> Result<Item<V>, Interrupt> {
 	let mut content = content;

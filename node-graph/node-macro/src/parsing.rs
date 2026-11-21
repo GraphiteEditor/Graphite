@@ -123,11 +123,13 @@ impl Parse for ParsedWidgetOverride {
 	}
 }
 
-/// How a field takes part in loop index tracking, from `#[index_level]`.
+/// How a field takes part in loop index tracking, from `#[used_as_index]` or `#[index_level]`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ParsedIndexRole {
 	#[default]
 	None,
+	/// The loop index enumerates this field's rows.
+	UsedAsIndex,
 	/// This field's constant value selects which loop level's index the node reads.
 	Level,
 }
@@ -867,9 +869,11 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 
 	let exposed = extract_attribute(attrs, "expose").is_some();
 
-	let index_role = match extract_attribute(attrs, "index_level") {
-		Some(_) => ParsedIndexRole::Level,
-		None => ParsedIndexRole::None,
+	let index_role = match (extract_attribute(attrs, "used_as_index"), extract_attribute(attrs, "index_level")) {
+		(None, None) => ParsedIndexRole::None,
+		(Some(_), None) => ParsedIndexRole::UsedAsIndex,
+		(None, Some(_)) => ParsedIndexRole::Level,
+		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "A field cannot be both #[used_as_index] and #[index_level]")),
 	};
 
 	// The `#[constant]` marker makes the compiler reject inputs not fed by a value known at compile time.
@@ -906,7 +910,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			));
 		}
 		if index_role != ParsedIndexRole::None {
-			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot be #[index_level]"));
+			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot be #[used_as_index] or #[index_level]"));
 		}
 		if source_id {
 			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[source_id] attribute"));

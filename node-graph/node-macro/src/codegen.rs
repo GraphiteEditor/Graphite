@@ -322,6 +322,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.iter()
 		.map(|field| match field.index_role {
 			ParsedIndexRole::None => quote!(gcore::registry::FieldIndexRole::None),
+			ParsedIndexRole::UsedAsIndex => quote!(gcore::registry::FieldIndexRole::UsedAsIndex),
 			ParsedIndexRole::Level => quote!(gcore::registry::FieldIndexRole::Level),
 		})
 		.collect();

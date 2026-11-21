@@ -966,7 +966,7 @@ fn string_join(
 #[node_macro::node(category("String"), icon("NodeStringMap"), version(2))]
 fn string_map(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectIndex,
-	strings: List<String>,
+	#[used_as_index] strings: List<String>,
 	#[expose]
 	#[implementations(Context -> Item<String>)]
 	mapped: impl Node<Context<'static>, Output = Item<String>>,

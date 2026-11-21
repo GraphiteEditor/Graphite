@@ -290,6 +290,24 @@ impl ProtoNetwork {
 			.collect()
 	}
 
+	/// Loops whose body reads the pushed index while the rows it enumerates depend on the footprint.
+	pub(crate) fn footprint_dependent_index_violations(&self) -> GraphErrors {
+		self.nodes
+			.iter()
+			.filter(|(_, node)| {
+				let ConstructionArgs::Nodes(inputs) = &node.construction_args else { return false };
+				let metadata = node.compile_metadata;
+				let input = |index: usize| &self.nodes[inputs[index].0 as usize].1;
+
+				let body_reads_pushed_index = (0..inputs.len()).any(|index| metadata.is_loop_body_input(index) && input(index).upstream_index_levels & 1 != 0);
+				let index_follows_footprint = (0..inputs.len()).any(|index| metadata.is_used_as_index_input(index) && input(index).upstream_context_features.contains(ContextFeatures::FOOTPRINT));
+
+				body_reads_pushed_index && index_follows_footprint
+			})
+			.map(|(_, node)| GraphError::new(node, GraphErrorType::FootprintDependentIndex))
+			.collect()
+	}
+
 	pub(crate) fn non_constant_inputs(&self) -> GraphErrors {
 		self.nodes
 			.iter()
@@ -648,6 +666,7 @@ pub enum GraphErrorType {
 		valid: Vec<NodeIOTypes>,
 	},
 	FootprintDependentInput,
+	FootprintDependentIndex,
 	NonConstantInput {
 		index: usize,
 	},
@@ -701,6 +720,10 @@ impl Debug for GraphErrorType {
 			GraphErrorType::FootprintDependentInput => write!(
 				f,
 				"Warning: an upstream node adapts to the visible canvas area, so this node's output changes when the view is panned or zoomed"
+			),
+			GraphErrorType::FootprintDependentIndex => write!(
+				f,
+				"Warning: the items this node loops over adapt to the visible canvas area, so the index read inside the loop changes when the view is panned or zoomed"
 			),
 			GraphErrorType::NonConstantInput { index } => write!(f, "Input {} must be a fixed value rather than computed by other nodes", index + 1),
 			GraphErrorType::MissingResource { index } => write!(
@@ -1390,10 +1413,11 @@ mod test {
 		forwards_input: false,
 		constant_inputs: 0b1,
 		loop_body_inputs: 0,
+		used_as_index_inputs: 0,
 		index_level_input: Some(0),
 	};
 
-	/// A loop evaluating its second input once per row of its first input.
+	/// A loop over its first input's rows, evaluating its second input per row.
 	const MAP: NodeCompileMetadata = NodeCompileMetadata {
 		extract: ContextFeatures::empty(),
 		inject: ContextFeatures::INDEX,
@@ -1401,8 +1425,43 @@ mod test {
 		forwards_input: false,
 		constant_inputs: 0,
 		loop_body_inputs: 0b10,
+		used_as_index_inputs: 0b01,
 		index_level_input: None,
 	};
+
+	#[test]
+	fn loops_warn_when_their_body_reads_an_index_over_footprint_dependent_rows() {
+		let footprint_reader = NodeCompileMetadata {
+			extract: ContextFeatures::FOOTPRINT,
+			..Default::default()
+		};
+		let warnings = |loop_level: i64, rows_read_footprint: bool| {
+			let rows_metadata = if rows_read_footprint { footprint_reader } else { NodeCompileMetadata::default() };
+			let nodes = vec![
+				(NodeId(0), integer_value(loop_level)),
+				(NodeId(1), loop_test_node("index_reader", vec![NodeId(0)], INDEX_READER)),
+				(NodeId(2), integer_value(2)),
+				(NodeId(3), loop_test_node("rows", vec![NodeId(2)], rows_metadata)),
+				(NodeId(4), loop_test_node("map", vec![NodeId(3), NodeId(1)], MAP)),
+			];
+
+			let mut network = ProtoNetwork {
+				inputs: vec![],
+				output: NodeId(4),
+				nodes,
+			};
+			network.insert_context_nullification_nodes().unwrap();
+			network.footprint_dependent_index_violations()
+		};
+
+		let violations = warnings(0, true);
+		assert_eq!(violations.len(), 1);
+		assert_eq!(violations[0].identifier, "map");
+		assert!(violations[0].error == GraphErrorType::FootprintDependentIndex);
+
+		assert!(warnings(1, true).is_empty(), "Reading an outer loop's index doesn't depend on the map's rows");
+		assert!(warnings(0, false).is_empty());
+	}
 
 	#[test]
 	fn nested_loops_keep_the_outer_index_for_the_inner_body() {

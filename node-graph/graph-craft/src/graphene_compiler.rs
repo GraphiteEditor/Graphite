@@ -53,7 +53,8 @@ impl Compiler {
 			if !errors.is_empty() {
 				return Err(CompileError::Graph(errors));
 			}
-			let warnings = proto_network.footprint_invariance_violations();
+			let mut warnings = proto_network.footprint_invariance_violations();
+			warnings.extend(proto_network.footprint_dependent_index_violations());
 
 			proto_network.generate_stable_node_ids();
 			Ok(CompiledNetwork { network: proto_network, warnings })

@@ -174,7 +174,7 @@ fn repeat_radial<T: Send + Clone + 'static>(
 #[node_macro::node(category("Graphic"), icon("NodeRepeatOnPoints"), name("Repeat on Points"), version(2))]
 fn repeat_on_points<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectVarArgs + InjectIndex,
-	points: List<Vector>,
+	#[used_as_index] points: List<Vector>,
 	#[implementations(
 		Context -> List<String>,
 		Context -> List<bool>,

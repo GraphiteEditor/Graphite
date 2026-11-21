@@ -70,6 +70,8 @@ pub struct FieldMetadata {
 pub enum FieldIndexRole {
 	#[default]
 	None,
+	/// The loop index enumerates this input's rows, from `#[used_as_index]`.
+	UsedAsIndex,
 	/// This input's constant value selects which loop level's index is read, from `#[index_level]`.
 	Level,
 }

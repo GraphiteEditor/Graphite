@@ -398,7 +398,7 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 	Ok(result)
 }
 
-#[node_macro::node(category("Data: List"), icon("NodeMap"), version(2), footprint_invariant)]
+#[node_macro::node(category("Data: List"), icon("NodeMap"), version(2))]
 fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectIndex,
 	#[implementations(
@@ -416,6 +416,7 @@ fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 		List<Gradient>,
 		List<Artboard>,
 	)]
+	#[used_as_index]
 	content: List<Item>,
 	#[implementations(
 		Context -> List<String>,
@@ -641,6 +642,7 @@ fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<GradientForm>,
 		List<GradientSpread>,
 	)]
+	#[used_as_index]
 	content: List<T>,
 	/// The attribute name (key) to write or replace.
 	#[constant]

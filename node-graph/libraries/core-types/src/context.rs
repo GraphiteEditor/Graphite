@@ -236,6 +236,9 @@ pub struct NodeCompileMetadata {
 	/// Inputs evaluated inside the loop scope this node pushes an index for.
 	#[cfg_attr(feature = "serde", serde(default))]
 	pub loop_body_inputs: u64,
+	/// Inputs whose rows the pushed loop index enumerates.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub used_as_index_inputs: u64,
 	/// The input whose constant value selects the loop level this node reads the index from.
 	#[cfg_attr(feature = "serde", serde(default))]
 	pub index_level_input: Option<u8>,
@@ -248,6 +251,10 @@ impl NodeCompileMetadata {
 
 	pub fn is_loop_body_input(&self, index: usize) -> bool {
 		Self::contains_input(self.loop_body_inputs, index)
+	}
+
+	pub fn is_used_as_index_input(&self, index: usize) -> bool {
+		Self::contains_input(self.used_as_index_inputs, index)
 	}
 
 	fn contains_input(mask: u64, index: usize) -> bool {
