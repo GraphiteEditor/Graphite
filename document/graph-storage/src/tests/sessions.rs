@@ -1131,8 +1131,38 @@ fn a_head_move_back_across_a_merge_drops_both_branches() {
 		assert!(moved.retired_registry().networks.contains_key(&NetworkId(kept)));
 		assert!(!moved.retired_registry().networks.contains_key(&NetworkId(dropped)));
 		let sibling = if target == host_step { guest_step } else { host_step };
-		assert!(matches!(moved.move_head_to(sibling), Err(CrdtError::NotAncestor(rev)) if rev == sibling));
+		moved.move_head_to(sibling).expect("the other side of the merge is a branch to move over to");
+		assert!(moved.retired_registry().networks.contains_key(&NetworkId(dropped)));
+		assert!(!moved.retired_registry().networks.contains_key(&NetworkId(kept)));
 	}
+}
+
+/// Moving the head back onto the line a dropped step left behind takes the document back to before the drop, and a
+/// follower takes the same move.
+#[test]
+fn a_head_move_returns_to_the_line_a_drop_left() {
+	let mut host = Session::with_peer(PeerId(1));
+	for id in 1..=3 {
+		host.commit_op_for_test(add_network(id)).expect("step");
+		host.mark_interaction_end(host.head_rev().expect("rev"));
+	}
+	let before = host.head_rev().expect("rev");
+	let mut follower = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	let second = host
+		.history()
+		.find(|delta| matches!(delta.kind, RegistryDelta::AddNetwork { id: NetworkId(2), .. }))
+		.expect("second")
+		.id;
+	let (dropped, _) = host.drop_interaction(second).expect("drop");
+	follower.apply_head_move(&dropped).expect("follow the drop");
+	assert!(!host.retired_registry().networks.contains_key(&NetworkId(2)));
+
+	let (back, touched) = host.move_head_to(before).expect("back to the line before the drop");
+	assert_eq!(host.head_rev(), Some(before));
+	assert!(host.retired_registry().networks.contains_key(&NetworkId(2)));
+	assert!(touched.networks.contains(&NetworkId(2)), "{touched:?}");
+	follower.apply_head_move(&back).expect("follow back");
+	assert_eq!(follower.retired_registry(), host.retired_registry());
 }
 
 /// A follower takes on the copies a move minted on top of its base and folds to the line they end.
@@ -1177,7 +1207,14 @@ fn a_malformed_head_move_changes_nothing() {
 	let copy = |counter, parent| Delta::new(parent, PeerId(1), crate::TimeStamp { counter, peer: PeerId(1) }, set_attribute("c", counter as u32), Vec::new());
 	let off_first = copy(50, Some(first));
 	let off_base_again = copy(51, Some(first));
+	let off_the_line = copy(52, Some(off_first.id));
 	for moved in [
+		// The copies start from a step not on the line being left.
+		crate::HeadMove {
+			from: Some(second),
+			head: Some(off_the_line.id),
+			copies: vec![off_the_line.clone()],
+		},
 		// The copies end somewhere other than the move's head.
 		crate::HeadMove {
 			from: Some(second),
@@ -1199,9 +1236,9 @@ fn a_malformed_head_move_changes_nothing() {
 	}
 }
 
-/// Peers hold the line up to where the head moved, so a silent undo must not reach behind it.
+/// The retirer publishes a head move only when it broadcasts it, while a follower holds the line it was sent.
 #[test]
-fn a_head_move_publishes_the_new_head() {
+fn a_followed_head_move_publishes_the_new_head() {
 	let mut host = Session::with_identity(PeerId(1), UserId(1));
 	let [_, second, third] = [("a", 1), ("b", 2), ("c", 3)].map(|(key, value)| {
 		host.commit_op_for_test(set_attribute(key, value)).expect("step");
@@ -1214,7 +1251,7 @@ fn a_head_move_publishes_the_new_head() {
 	guest.publish_up_to(third);
 
 	let (moved, _) = host.move_head_to(second).expect("move");
-	assert!(!host.can_undo(), "the step the room holds stays put");
+	assert!(host.can_undo(), "an unbroadcast move stays silently undoable");
 	guest.apply_head_move(&moved).expect("follow");
 	assert!(!guest.can_undo(), "the follower holds the same line");
 }
