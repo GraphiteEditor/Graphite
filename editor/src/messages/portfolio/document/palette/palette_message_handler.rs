@@ -247,11 +247,30 @@ impl PaletteMessageHandler {
 					widgets.push(LayoutGroup::table(table_rows, true));
 				}
 			}
+
+			let available_palettes: Vec<MenuListEntry> = self
+				.order
+				.iter()
+				.map(|palette_id| {
+					let palette = self.palettes.get(palette_id).unwrap().name.clone();
+					let id = palette_id.0;
+					MenuListEntry::new(format!("{palette:?}"))
+						.label(palette)
+						.on_commit(move |_| PaletteMessage::ActivePaletteChanged { id }.into())
+				})
+				.collect();
+
 			let left_bottom_bar = LayoutGroup::row(vec![
-				TextLabel::new("Hello").widget_instance(),
 				IconButton::new("Add", 24)
 					.tooltip_label("Add Palette")
 					.on_update(|_| IngestMessage::ImportPalette.into())
+					.widget_instance(),
+				DropdownInput::new(vec![available_palettes])
+					.selected_index(self.order.iter().position(|x| x == &self.active_palette).and_then(|n| Some(n as u32)))
+					.draw_icon(true)
+					.tooltip_label("Palette")
+					.tooltip_description("Select a default entry or import a palette file to attach to the artwork")
+					.menu_direction(Some(MenuDirection::Top))
 					.widget_instance(),
 			]);
 

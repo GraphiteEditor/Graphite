@@ -379,7 +379,52 @@
 		}
 
 		.bottom-bar {
+			height: 24px;
+			padding-top: 4px;
 			flex: 0 0 auto;
+			margin: 0 4px;
+			justify-content: space-between;
+			border-top: 1px solid var(--color-2-mildblack);
+
+			.widget-span > * {
+				margin: 0;
+			}
+
+			&:not(:has(*)) {
+				display: none;
+			}
+
+			// While dragging, buttons are grayed out unless they accept the kind of item being dragged
+			&.layer-drag-active,
+			&.chain-node-drag-active {
+				.icon-button,
+				.popover-button {
+					pointer-events: none;
+					background: none;
+
+					svg {
+						fill: var(--color-8-uppergray);
+					}
+				}
+			}
+
+			// Dropped items become the selection before the button acts, so a button disabled for the current selection still accepts them
+			&.layer-drag-active .icon-button[data-drag-droppable~="layers"],
+			&.chain-node-drag-active .icon-button[data-drag-droppable~="chain-nodes"] {
+				pointer-events: auto;
+
+				svg {
+					fill: var(--color-e-nearwhite);
+				}
+
+				&:hover {
+					background: var(--color-e-nearwhite);
+
+					svg {
+						fill: var(--color-2-mildblack);
+					}
+				}
+			}
 		}
 
 		.text-button {
