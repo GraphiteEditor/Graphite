@@ -20,6 +20,9 @@ on:
       linux:
         description: "Linux"
         type: boolean
+      flatpak:
+        description: "Flatpak (with the Linux build)"
+        type: boolean
       debug:
         description: "Debug build"
         type: boolean
@@ -32,6 +35,8 @@ on:
       mac:
         type: boolean
       linux:
+        type: boolean
+      flatpak:
         type: boolean
       debug:
         type: boolean
@@ -62,7 +67,7 @@ jobs:
       SCCACHE_GHA_RW_MODE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master') && 'READ_WRITE' || 'READ_ONLY' }}
       # NOTICE: keep these tool versions in sync with the other jobs in this file, `check.yml` (sccache), `.devcontainer/devcontainer.json`, `.nix/dev.nix` and `.nix/pkgs/graphite.nix` (wasm-bindgen-cli), `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
       SCCACHE_VERSION: "v0.19.0"
-      WASM_BINDGEN_CLI_VERSION: "0.2.127"
+      WASM_BINDGEN_CLI_VERSION: "0.2.129"
       BINARYEN_VERSION: "130"
       CARGO_ABOUT_VERSION: "0.9.2"
     steps:
@@ -172,7 +177,7 @@ jobs:
           DELAY=15
           for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
-            npx wrangler@3 pages deploy "frontend/dist" --project-name="${{ steps.production-env.outputs.cf_project || 'graphite-dev' }}" --branch="$DEPLOY_BRANCH" --commit-dirty=true 2>&1 | tee /tmp/wrangler_output
+            npx wrangler@3.114.17 pages deploy "frontend/dist" --project-name="${{ steps.production-env.outputs.cf_project || 'graphite-dev' }}" --branch="$DEPLOY_BRANCH" --commit-dirty=true 2>&1 | tee /tmp/wrangler_output
             if [ ${PIPESTATUS[0]} -eq 0 ]; then
               URL=$(grep -oP 'https://[^\s]+\.pages\.dev' /tmp/wrangler_output | head -1)
               echo "url=$URL" >> "$GITHUB_OUTPUT"
@@ -348,7 +353,7 @@ jobs:
 
     env:
       # NOTICE: keep these tool versions in sync with the other jobs in this file, `.devcontainer/devcontainer.json`, `.nix/dev.nix` and `.nix/pkgs/graphite.nix` (wasm-bindgen-cli), `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
-      WASM_BINDGEN_CLI_VERSION: "0.2.127"
+      WASM_BINDGEN_CLI_VERSION: "0.2.129"
       BINARYEN_VERSION: "130"
       CARGO_ABOUT_VERSION: "0.9.2"
       CARGO_BINSTALL_VERSION: "1.23.0"
@@ -617,7 +622,7 @@ jobs:
 
     env:
       # NOTICE: keep these tool versions in sync with the other jobs in this file, `.devcontainer/devcontainer.json`, `.nix/dev.nix` and `.nix/pkgs/graphite.nix` (wasm-bindgen-cli), `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
-      WASM_BINDGEN_CLI_VERSION: "0.2.127"
+      WASM_BINDGEN_CLI_VERSION: "0.2.129"
       BINARYEN_VERSION: "130"
       CARGO_ABOUT_VERSION: "0.9.2"
       CARGO_BINSTALL_VERSION: "1.23.0"
@@ -815,7 +820,7 @@ jobs:
           path: target/artifacts
 
   linux:
-    if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.linux
+    if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.linux || inputs.flatpak
     runs-on: ${{ (github.event.pull_request.head.repo.fork || (inputs.checkout_repo && inputs.checkout_repo != github.repository)) && 'ubuntu-latest' || vars.LINUX_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
@@ -892,12 +897,14 @@ jobs:
           fi
 
       - name: 🔧 Install Flatpak tooling
+        if: github.event_name == 'push' || inputs.flatpak
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
           flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
       - name: 🏗 Build Flatpak
+        if: github.event_name == 'push' || inputs.flatpak
         run: |
           nix build .#graphite-flatpak-manifest${{ inputs.debug && '-dev' || '' }}
 
@@ -914,6 +921,7 @@ jobs:
           flatpak build-bundle repo Graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: 📦 Upload Flatpak package
+        if: github.event_name == 'push' || inputs.flatpak
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: graphite-flatpak
@@ -921,7 +929,7 @@ jobs:
           compression-level: 0
 
       - name: 💬 Update PR comment with Flatpak artifact link
-        if: github.event_name != 'push' && steps.linux-comment.outputs.comment_id
+        if: inputs.flatpak && steps.linux-comment.outputs.comment_id
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

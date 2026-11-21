@@ -1,14 +1,15 @@
 //! Orders registered node migrations by the declarations they read and write, and runs every pending one over a history.
 
 use crate::node::{apply_migration, rewrite_history};
-use crate::{RewrittenHistory, RunnerError};
-use document_graph_storage::{Delta, Implementation, Node, Registry, RegistryDelta, Rev};
-use migration_core::{Declaration, DeclarationResolver, NodeMigration};
-use std::collections::{BTreeSet, HashMap};
+use crate::{MigrationBlobs, RewrittenHistory, RunnerError};
+use document_graph_storage::attributes::attr::node::ui::REFERENCE;
+use document_graph_storage::{Delta, Implementation, NetworkReference, Node, Registry, RegistryDelta, Rev};
+use migration_core::{Declaration, DeclarationResolver, MigrationHost, NodeMigration};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// Order `migrations` so each runs after the one producing its source and before the one consuming its target, and pinned
 /// declarations exist in exactly the version the body names. Unrelated migrations order by source declaration, so the result
-/// doesn't depend on registration order. Kahn's algorithm, O(n²) in the number of migrations to find edges.
+/// doesn't depend on registration order, except that those asking the compiler go last, so what they ask about is in its current shape. Kahn's algorithm, O(n²) in the number of migrations to find edges.
 pub fn order_migrations(migrations: &[&'static dyn NodeMigration]) -> Result<Vec<&'static dyn NodeMigration>, RunnerError> {
 	let mut migrations = migrations.to_vec();
 	migrations.sort_by_key(|migration| (migration.source(), migration.target()));
@@ -24,6 +25,8 @@ pub fn order_migrations(migrations: &[&'static dyn NodeMigration]) -> Result<Vec
 			to: migration.target(),
 		});
 	}
+
+	migrations.sort_by_key(|migration| (migration.asks_compiler(), migration.source(), migration.target()));
 
 	let consumer = |declaration: Declaration| migrations.iter().position(|migration| migration.source() == declaration);
 
@@ -73,8 +76,18 @@ pub fn order_migrations(migrations: &[&'static dyn NodeMigration]) -> Result<Vec
 }
 
 /// Rewrite `history` through every migration whose source declaration it references, in dependency order. A migration is pending
-/// even when no live node uses its source, since a removed node keeps its old shape in history and undo can bring it back.
-pub fn migrate_history(migrations: &[&'static dyn NodeMigration], history: Vec<Delta>, resolver: &dyn DeclarationResolver) -> Result<RewrittenHistory, RunnerError> {
+/// even when no live node uses its source, since a removed node keeps its old shape in history and undo can bring it back. `kept` names the
+/// states a cursor rests on, which even a migration only running at interaction boundaries has to keep. `blobs` resolves
+/// the blobs that migrations read and collects the blobs they add.
+pub fn migrate_history(
+	migrations: &[&'static dyn NodeMigration],
+	history: Vec<Delta>,
+	resolver: &dyn DeclarationResolver,
+	host: Option<&dyn MigrationHost>,
+	kept: impl IntoIterator<Item = Rev>,
+	blobs: &mut MigrationBlobs,
+) -> Result<RewrittenHistory, RunnerError> {
+	let mut kept: HashSet<Rev> = kept.into_iter().collect();
 	let mut revs: HashMap<Rev, Option<Rev>> = history.iter().map(|delta| (delta.id, Some(delta.id))).collect();
 	let mut deltas = history;
 
@@ -83,7 +96,8 @@ pub fn migrate_history(migrations: &[&'static dyn NodeMigration], history: Vec<D
 			continue;
 		}
 
-		let step = rewrite_history(migration, &deltas, resolver)?;
+		let step = rewrite_history(migration, &deltas, resolver, host, &kept, blobs)?;
+		kept = kept.iter().filter_map(|rev| step.revs.get(rev).copied().flatten()).collect();
 		for rev in revs.values_mut() {
 			*rev = rev.and_then(|rev| step.revs.get(&rev).copied().flatten());
 		}
@@ -93,17 +107,39 @@ pub fn migrate_history(migrations: &[&'static dyn NodeMigration], history: Vec<D
 	Ok(RewrittenHistory { deltas, revs })
 }
 
-/// `M` of every migration on one state, for a document whose history can't be rewritten. Undo can't cross the result.
-pub fn migrate_registry(migrations: &[&'static dyn NodeMigration], registry: &Registry, resolver: &dyn DeclarationResolver) -> Result<Registry, RunnerError> {
+/// `M` of every migration on one state, for a document whose history can't be rewritten. Undo can't cross the result. See [`migrate_history`] for `blobs`.
+pub fn migrate_registry(
+	migrations: &[&'static dyn NodeMigration],
+	registry: &Registry,
+	resolver: &dyn DeclarationResolver,
+	host: Option<&dyn MigrationHost>,
+	blobs: &mut MigrationBlobs,
+) -> Result<Registry, RunnerError> {
 	let mut migrated = registry.clone();
 	for migration in order_migrations(migrations)? {
-		migrated = apply_migration(migration, &migrated, resolver)?;
+		migrated = apply_migration(migration, &migrated, resolver, host, blobs)?;
 	}
 	Ok(migrated)
 }
 
-/// Whether `kind` stores a node implementing `declaration`.
+/// Whether `kind` stores a node implementing `declaration`, or for a network definition, a network naming it.
 pub fn references(kind: &RegistryDelta, declaration: Declaration, resolver: &dyn DeclarationResolver) -> bool {
+	if declaration.is_network() {
+		return match kind {
+			RegistryDelta::AddNetwork { network, .. } => declaration.describes_network(&network.attributes),
+			RegistryDelta::RemoveNetwork { snapshot, .. } => declaration.describes_network(&snapshot.attributes),
+			RegistryDelta::ChangeNetworkAttribute { delta, .. } => {
+				delta.key == REFERENCE
+					&& delta
+						.value
+						.as_ref()
+						.and_then(NetworkReference::from_value)
+						.is_some_and(|reference| declaration.is_reference(&reference))
+			}
+			_ => false,
+		};
+	}
+
 	let is_declaration = |implementation: &Implementation| matches!(implementation, Implementation::ProtoNode(resource) if resolver.declaration(*resource) == Some(declaration));
 	let implements = |node: &Node| is_declaration(node.implementation());
 

@@ -291,6 +291,7 @@ impl Dispatcher {
 							preferences: &self.message_handlers.preferences_message_handler,
 							current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,
 							tool_edit_target: &self.message_handlers.tool_message_handler.edit_target,
+							tools: &self.message_handlers.tool_message_handler,
 							reset_node_definitions_on_open: self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open,
 							timing_information: self.message_handlers.animation_message_handler.timing_information(),
 							animation: &self.message_handlers.animation_message_handler,
@@ -305,12 +306,13 @@ impl Dispatcher {
 					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.workspace.panel_layout.focus_document;
 					let layout = &self.message_handlers.portfolio_message_handler.workspace.panel_layout;
 					menu_bar_message_handler.data_panel_open = layout.is_panel_present(PanelType::Data);
+					menu_bar_message_handler.collaboration_panel_open = layout.is_panel_present(PanelType::Collaboration);
+					menu_bar_message_handler.history_panel_open = layout.is_panel_present(PanelType::History);
 					menu_bar_message_handler.layers_panel_open = layout.is_panel_present(PanelType::Layers);
 					menu_bar_message_handler.inspector_open = layout.is_panel_present(PanelType::Inspector);
 					menu_bar_message_handler.palette_open = layout.is_panel_present(PanelType::Palette);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
-					menu_bar_message_handler.show_storage_preferences = self.message_handlers.preferences_message_handler.show_storage_preferences;
 
 					if let Some(document) = self
 						.message_handlers
@@ -486,7 +488,7 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
-	use crate::messages::portfolio::ingest::utility_types::IngestAction;
+	use crate::messages::portfolio::ingest::utility_types::{DataTransferItem, IngestAction};
 	pub use crate::test_utils::test_prelude::*;
 
 	#[tokio::test]
@@ -545,31 +547,28 @@ mod test {
 		// UNCOMMENT THIS FOR RUNNING UNDER MIRI
 		//
 		// let files = [
-		// 	include_str!("../../demo-artwork/changing-seasons.graphite"),
-		// 	include_str!("../../demo-artwork/isometric-fountain.graphite"),
-		// 	include_str!("../../demo-artwork/painted-dreams.graphite"),
-		// 	include_str!("../../demo-artwork/procedural-string-lights.graphite"),
-		// 	include_str!("../../demo-artwork/parametric-dunescape.graphite"),
-		// 	include_str!("../../demo-artwork/red-dress.graphite"),
-		// 	include_str!("../../demo-artwork/valley-of-spires.graphite"),
+		// 	include_bytes!("../../demo-artwork/changing-seasons.graphite"),
+		// 	include_bytes!("../../demo-artwork/isometric-fountain.graphite"),
+		// 	include_bytes!("../../demo-artwork/painted-dreams.graphite"),
+		// 	include_bytes!("../../demo-artwork/procedural-string-lights.graphite"),
+		// 	include_bytes!("../../demo-artwork/parametric-dunescape.graphite"),
+		// 	include_bytes!("../../demo-artwork/red-dress.graphite"),
+		// 	include_bytes!("../../demo-artwork/valley-of-spires.graphite"),
 		// ];
-		// for (id, document_serialized_content) in files.iter().enumerate() {
+		// for (id, data) in files.iter().enumerate() {
 		// let document_name = format!("document {id}");
 
 		for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
-			let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
+			let data = std::fs::read(format!("../demo-artwork/{file_name}")).unwrap();
 
-			assert_eq!(
-				document_serialized_content.lines().count(),
-				1,
-				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
+			assert!(
+				document_container::archive::ArchiveFormat::detect(&data).is_some(),
+				"Demo artwork '{document_name}' is not a .gdd archive (remember to open and re-save it in Graphite)",
 			);
 
-			let responses = editor.editor.handle_message(IngestMessage::Ingest {
-				data: document_serialized_content.into_bytes(),
+			let responses = editor.dispatch(IngestMessage::Ingest {
+				content: DataTransferItem::from_file(file_name.into(), None, data).into(),
 				action: IngestAction::Open,
-				mime_type: String::new(),
-				path: Some(file_name.into()),
 			});
 
 			// Check if the graph renders
@@ -582,7 +581,8 @@ mod test {
 				if let FrontendMessage::UpdateLayout {
 					layout_target: LayoutTarget::DialogColumn1,
 					diff,
-				} = response && let DiffUpdate::Layout(sub_layout) = &diff[0].new_value
+				} = response
+					&& let DiffUpdate::Layout(sub_layout) = &diff[0].new_value
 					&& let LayoutGroup::Row(WidgetRow { widgets }) = &sub_layout.0[0]
 					&& let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget
 				{

@@ -5,7 +5,7 @@ use core_types::list::List;
 use glam::DVec2;
 use graphene_resource::{Resource, ResourceHash};
 use parley::fontique::{Blob, FamilyId, FontInfo};
-use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
+use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, OverflowWrap, PositionedLayoutItem, StyleProperty};
 use std::collections::HashMap;
 use vector_types::Vector;
 
@@ -44,7 +44,7 @@ pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: T
 
 		if is_last_para_line && let Some(correction) = last_line_correction {
 			let metrics = line.metrics();
-			let content_advance = metrics.advance - metrics.trailing_whitespace;
+			let content_advance = metrics.advance - metrics.hanging_advance;
 			let free_space = alignment_width - content_advance;
 
 			match correction {
@@ -134,6 +134,7 @@ impl TextContext {
 		builder.push_default(StyleProperty::FontStyle(font_info.style()));
 		builder.push_default(StyleProperty::FontWidth(font_info.width()));
 		builder.push_default(LineHeight::FontSizeRelative(typesetting.line_height_ratio as f32));
+		builder.push_default(StyleProperty::OverflowWrap(OverflowWrap::BreakWord));
 
 		let mut layout: Layout<()> = builder.build(text);
 

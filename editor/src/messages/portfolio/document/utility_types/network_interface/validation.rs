@@ -10,6 +10,7 @@ impl NodeNetworkInterface {
 	pub fn validate_invariants(&self) -> Vec<String> {
 		let mut violations = Vec::new();
 		self.validate_definition_tables(&mut violations);
+		self.validate_unique_node_ids(&mut violations);
 
 		let mut root = DocumentRoot {
 			network: self.document_network(),
@@ -47,6 +48,21 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// A node ID names one node in the whole document, since storage keys nodes by it.
+	fn validate_unique_node_ids(&self, violations: &mut Vec<String>) {
+		let document_network = self.document_network();
+		let networks = std::iter::once((None, document_network)).chain(document_network.definitions.iter().map(|(id, definition)| (Some(*id), definition)));
+
+		let mut seen: HashMap<NodeId, Option<NetworkId>> = HashMap::new();
+		for (location, network) in networks {
+			for node_id in network.nodes.keys() {
+				if let Some(first) = seen.insert(*node_id, location) {
+					violations.push(format!("Node ID {node_id} is used in both {first:?} and {location:?}"));
+				}
+			}
+		}
+	}
+
 	/// A redirect dot an edit took a wire from must be gone by the time the edit is done if that left it orphaned.
 	fn validate_dots_stay_on_wires(&self, violations: &mut Vec<String>) {
 		for (network_path, lost_wires) in &self.dots_that_lost_a_wire {
@@ -77,12 +93,9 @@ impl NodeNetworkInterface {
 		}
 
 		for (node_id, node) in &network.nodes {
-			let descend = match node.implementation {
-				DocumentNodeImplementation::Network(_) => true,
-				DocumentNodeImplementation::Definition(id) => validated_definitions.insert(id),
-				_ => false,
-			};
-			if descend {
+			if let DocumentNodeImplementation::Definition(id) = node.implementation
+				&& validated_definitions.insert(id)
+			{
 				path.push(*node_id);
 				self.validate_outward_wires(path, validated_definitions, violations);
 				path.pop();
@@ -167,53 +180,35 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 		let persistent = &metadata.persistent_metadata;
 
 		let implementation_metadata = match &node.implementation {
-			DocumentNodeImplementation::Network(_) => persistent.network_metadata.as_ref(),
 			DocumentNodeImplementation::Definition(id) => document_metadata.persistent_metadata.definitions.get(id),
 			_ => None,
 		};
-		let (input_metadata, output_names) = match implementation_metadata {
-			Some(network_metadata) => (&network_metadata.persistent_metadata.import_metadata, &network_metadata.persistent_metadata.export_names),
-			None => (&persistent.input_metadata, &persistent.output_names),
-		};
-
 		if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
 			violations.push(format!("Node {node_id} in network {path:?} implements an inline network, which belongs in the definitions table"));
 		}
 
-		let stores_interface = !persistent.input_metadata.is_empty() || !persistent.output_names.is_empty() || !persistent.output_descriptions.is_empty();
-		if implementation_metadata.is_some() && stores_interface {
-			violations.push(format!("Node {node_id} in network {path:?} stores interface metadata that belongs to the network implementing it"));
-		}
-
-		// Input metadata is a parallel array to the node's inputs and the lengths must stay in sync
-		if input_metadata.len() != node.inputs.len() {
-			violations.push(format!(
-				"Node {node_id} in network {path:?} has {} inputs but {} input metadata entries",
-				node.inputs.len(),
-				input_metadata.len()
-			));
+		// A table entry's import metadata is a parallel array to the inputs of each node naming it, so the lengths must stay in sync
+		if let Some(network_metadata) = implementation_metadata {
+			let import_metadata = &network_metadata.persistent_metadata.import_metadata;
+			if import_metadata.len() != node.inputs.len() {
+				violations.push(format!(
+					"Node {node_id} in network {path:?} has {} inputs but {} input metadata entries",
+					node.inputs.len(),
+					import_metadata.len()
+				));
+			}
 		}
 
 		let validate_output_names = |export_count: usize, violations: &mut Vec<String>| {
+			let output_names = implementation_metadata.map_or(&[][..], |network_metadata| &network_metadata.persistent_metadata.export_names);
 			if output_names.len() != export_count {
 				violations.push(format!("Node {node_id} in network {path:?} has {export_count} exports but {} output names", output_names.len()));
 			}
 		};
 
-		// Nested network metadata must exist exactly for nodes implemented as networks
 		match (&node.implementation, &persistent.network_metadata) {
-			(DocumentNodeImplementation::Network(nested_network), Some(nested_metadata)) => {
-				validate_output_names(nested_network.exports.len(), violations);
-
-				path.push(*node_id);
-				validate_network(root, nested_network, nested_metadata, path, Some(node.inputs.len()), violations);
-				path.pop();
-			}
-			(DocumentNodeImplementation::Network(_), None) => {
-				violations.push(format!("Network node {node_id} in network {path:?} is missing its nested network metadata"));
-			}
 			(_, Some(_)) => {
-				violations.push(format!("Non-network node {node_id} in network {path:?} has nested network metadata"));
+				violations.push(format!("Node {node_id} in network {path:?} has nested network metadata, which belongs in the definitions table"));
 			}
 			(DocumentNodeImplementation::Definition(id), None) => {
 				let Some(definition) = document_network.definitions.get(id) else {

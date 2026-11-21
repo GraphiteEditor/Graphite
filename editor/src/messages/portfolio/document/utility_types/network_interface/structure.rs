@@ -6,7 +6,7 @@ impl NodeNetworkInterface {
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorGeometry> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
-		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))
+		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER))
 			&& let Some(geometry) = self.document_metadata.vector_modify.get(&path_node)
 		{
 			let mut modified = geometry.clone();
@@ -28,7 +28,7 @@ impl NodeNetworkInterface {
 	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer) and otherwise do nothing.
 	pub fn upstream_path_node_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorGeometry> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
-		graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
+		graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER))?;
 		self.compute_modified_vector(layer)
 	}
 
@@ -199,5 +199,11 @@ impl NodeNetworkInterface {
 	/// Update the per-layer `ATTR_APPEARANCE` snapshot.
 	pub fn update_appearance_attributes(&mut self, new_layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>) {
 		self.document_metadata.layer_appearance_attributes = new_layer_appearance_attributes;
+	}
+
+	/// Update how far each layer's effects paint past its content.
+	pub fn update_effects_reach(&mut self, new_layer_effects_reach: HashMap<LayerNodeIdentifier, f64>) {
+		self.document_metadata.mark_changed();
+		self.document_metadata.layer_effects_reach = new_layer_effects_reach;
 	}
 }

@@ -13,9 +13,10 @@ use syn::{Error, FnArg, Ident, ItemFn, ReturnType, Type, parse_macro_input};
 
 /// Turns a function into a node migration, named by its source and target declarations:
 /// `#[migration("module::node"@1 => @2)]` for a version step, `#[migration("module::old"@1 => "module::new"@2)]` for a replacement.
+/// A `network` prefix names a built-in network definition, as in `#[migration(network "Merge"@1 => "module::merge"@2)]`.
 ///
-/// Parameters state what the migration reads and writes: `&Node` and `&Graph` read the source state, and each `&mut` parameter is a
-/// view (`Inputs`, `Upstream`, `Downstream`) recording edits to its region. The function may return `()` or `Result<(), MigrationError>`.
+/// Parameters state what the migration reads and writes: `&Node` and `&Graph` read the source state, `Option<&dyn Compiler>` asks what only the
+/// compiler can tell about it, and each `&mut` parameter is a view (`Inputs`, `Upstream`, `Downstream`, `Target`, `Attributes`) recording edits to its region. The function may return `()` or `Result<(), MigrationError>`.
 ///
 /// Generates a unit struct named after the function in Pascal case implementing `NodeMigration`, and registers it.
 #[proc_macro_attribute]
@@ -36,6 +37,7 @@ pub fn rename(input: TokenStream) -> TokenStream {
 
 /// Registers a format step converting the listed stored roots through their `Upgrade` impls:
 /// `format_migration!(1 => 2, registry: v1::Registry, delta: v1::Delta);`. Roots left out keep their payloads.
+/// `document: function` adds a pass over the whole converted document. Use it when a change needs state across records.
 #[proc_macro]
 pub fn format_migration(input: TokenStream) -> TokenStream {
 	let step = parse_macro_input!(input as format::FormatStep);
@@ -57,6 +59,7 @@ pub fn format_migration(input: TokenStream) -> TokenStream {
 enum Argument {
 	Node,
 	Graph,
+	Compiler,
 	View(Box<Type>),
 }
 
@@ -80,6 +83,7 @@ fn expand_migration(step: Step, function: ItemFn) -> syn::Result<TokenStream2> {
 		})
 		.collect();
 	let reads_graph = arguments.iter().any(|argument| matches!(argument, Argument::Graph));
+	let asks_compiler = arguments.iter().any(|argument| matches!(argument, Argument::Compiler));
 
 	// Call the function with the source state and one extracted view per `&mut` parameter
 	let view_bindings: Vec<Ident> = (0..views.len()).map(|index| format_ident!("__view_{index}")).collect();
@@ -87,6 +91,7 @@ fn expand_migration(step: Step, function: ItemFn) -> syn::Result<TokenStream2> {
 	let call_arguments = arguments.iter().map(|argument| match argument {
 		Argument::Node => quote!(context.source_node()),
 		Argument::Graph => quote!(&__graph),
+		Argument::Compiler => quote!(context.compiler()),
 		Argument::View(_) => {
 			let binding = &view_bindings[view_index];
 			view_index += 1;
@@ -118,7 +123,14 @@ fn expand_migration(step: Step, function: ItemFn) -> syn::Result<TokenStream2> {
 		}
 	};
 
-	let network_region = reads_graph.then(|| quote!(.union(#core::Region::NETWORK)));
+	let network_region = (reads_graph || asks_compiler).then(|| quote!(.union(#core::Region::NETWORK)));
+	let asks_compiler = asks_compiler.then(|| {
+		quote! {
+			fn asks_compiler(&self) -> bool {
+				true
+			}
+		}
+	});
 	let footprint = quote! {
 		fn footprint(&self) -> #core::Region {
 			#core::Region::ANCHOR #(.union(<#views as #core::View>::REGION))* #network_region
@@ -166,6 +178,7 @@ fn expand_migration(step: Step, function: ItemFn) -> syn::Result<TokenStream2> {
 				#target
 			}
 			#pins
+			#asks_compiler
 			#footprint
 			#run
 		}
@@ -182,8 +195,14 @@ fn classify(argument: &FnArg) -> syn::Result<Argument> {
 	let FnArg::Typed(typed) = argument else {
 		return Err(Error::new(argument.span(), "migrations are free functions"));
 	};
+	if let Type::Path(path) = &*typed.ty
+		&& path.path.segments.last().is_some_and(|segment| segment.ident == "Option")
+	{
+		return Ok(Argument::Compiler);
+	}
+
 	let Type::Reference(reference) = &*typed.ty else {
-		return Err(Error::new(typed.ty.span(), "migration parameters are `&Node`, `&Graph`, or `&mut` views"));
+		return Err(Error::new(typed.ty.span(), "migration parameters are `&Node`, `&Graph`, `Option<&dyn Compiler>`, or `&mut` views"));
 	};
 
 	if reference.mutability.is_some() {
@@ -215,7 +234,16 @@ fn expand_rename(step: Step) -> syn::Result<TokenStream2> {
 }
 
 fn step_name(step: &Step) -> String {
-	format!("{}@{}=>{}@{}", step.source.identifier, step.source.version, step.target.identifier, step.target.version)
+	let prefix = |declaration: &Declaration| if declaration.network { "network " } else { "" };
+	format!(
+		"{}{}@{}=>{}{}@{}",
+		prefix(&step.source),
+		step.source.identifier,
+		step.source.version,
+		prefix(&step.target),
+		step.target.identifier,
+		step.target.version
+	)
 }
 
 /// Passes `migration` to `register` at startup: through `ctor` on native targets, and through an exported function the host calls
@@ -227,7 +255,7 @@ fn registration(core: &TokenStream2, register: TokenStream2, migration: TokenStr
 	quote! {
 		use #core::ctor::ctor;
 
-		#[cfg_attr(not(target_family = "wasm"), ctor)]
+		#[cfg_attr(not(target_family = "wasm"), ctor(unsafe, crate_path = #core::ctor))]
 		fn register() {
 			#core::#register(#migration);
 		}
@@ -241,8 +269,11 @@ fn registration(core: &TokenStream2, register: TokenStream2, migration: TokenStr
 }
 
 fn declaration(core: &TokenStream2, declaration: &Declaration) -> TokenStream2 {
-	let Declaration { identifier, version } = declaration;
-	quote!(#core::Declaration::new(#identifier, #version))
+	let Declaration { identifier, version, network } = declaration;
+	match network {
+		true => quote!(#core::Declaration::network(#identifier, #version)),
+		false => quote!(#core::Declaration::new(#identifier, #version)),
+	}
 }
 
 /// How the expansion names `migration-core`: `crate` inside it, its (possibly renamed) dependency name elsewhere.

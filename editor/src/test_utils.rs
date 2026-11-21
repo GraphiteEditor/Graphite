@@ -4,24 +4,22 @@ use crate::messages::frontend::utility_types::RenderStatus;
 use crate::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::ingest::utility_types::IngestAction;
+use crate::messages::portfolio::ingest::utility_types::{DataTransfer, IngestAction, TransferData};
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::{EvaluationErrors, NodeRuntime};
-use crate::task::{Scheduling, Spawn, Task};
+use crate::task::{Spawn, Task};
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use document_container::store::MemoryStore;
 use glam::{DVec2, UVec2};
-use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::HashMapResourceStorage;
+use graph_craft::application_io::{ApplicationIo, PlatformApplicationIo};
 use graphene_std::raster::color::Color;
-use graphene_std::runtime::Clock;
 use graphene_std::uuid::NodeId;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
+use std::sync::{Arc, LazyLock};
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -32,10 +30,6 @@ pub struct EditorTestUtils {
 
 impl EditorTestUtils {
 	pub fn create() -> Self {
-		Self::create_with(Scheduling::UNLIMITED, Arc::new(FakeClock::default()))
-	}
-
-	pub fn create_with(scheduling: Scheduling, clock: Arc<dyn Clock>) -> Self {
 		init_test_logger();
 
 		let woken = Arc::new(AtomicBool::new(false));
@@ -48,22 +42,13 @@ impl EditorTestUtils {
 					.with_resource_storage(Arc::new(HashMapResourceStorage::new()))
 					.with_document_store(Arc::new(MemoryStore::default())),
 			)
-			.with_runtime(
-				RuntimeBuilder::new(clock)
-					.with_wake(|| {})
-					.with_application_io(PlatformApplicationIo::default())
-					.with_scheduling(scheduling),
-			)
+			.with_runtime(RuntimeBuilder::new().with_wake(|| {}).with_application_io(gpu_application_io()))
 			.with_spawner(BlockingSpawner)
 			.with_random_seed(0)
 			.build();
 		let mut editor = Self { editor, runtime, woken };
 
 		editor.dispatch(PortfolioMessage::Init);
-
-		// Tests run with `.gdd` storage on and the dual-write soak validation enabled, so storage round-trip drift fails loud.
-		editor.dispatch(PreferencesMessage::SaveAsGdd { enabled: true });
-		editor.dispatch(PreferencesMessage::ValidateStorageRoundTrip { enabled: true });
 
 		editor
 	}
@@ -93,6 +78,7 @@ impl EditorTestUtils {
 		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
 			return Err(TestGraphError::Other(format!("submit_current_node_graph_evaluation failed\n\n{e}")));
 		}
+		self.runtime.update();
 		self.runtime.run().await;
 
 		let frontend_messages = self.dispatch(Message::Wake);
@@ -100,7 +86,6 @@ impl EditorTestUtils {
 		if evaluation_errors.is_none() && frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
 			return Err(TestGraphError::Render);
 		}
-		#[cfg(feature = "gpu")]
 		let evaluation_errors = evaluation_errors.filter(|errors| !errors.iter().all(|(error, _)| error.is::<wgpu_executor::NoGpuError>()));
 		if let Some(errors) = evaluation_errors {
 			return Err(TestGraphError::Evaluation(errors));
@@ -124,7 +109,31 @@ impl EditorTestUtils {
 				return Ok(result);
 			}
 		}
-		return Err(TestGraphError::Other(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping")));
+		Err(TestGraphError::Other(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping")))
+	}
+
+	/// Handles a message that copies to the clipboard, returning what was last written once the runtime has rendered the copied layers.
+	pub async fn copy_to_clipboard(&mut self, message: impl Into<Message>) -> Option<DataTransfer> {
+		if let Err(e) = self.eval_graph_until_finished().await {
+			panic!("Failed to evaluate graph: {e}");
+		}
+
+		let mut frontend_messages = self.dispatch(message);
+		self.runtime.update();
+		self.runtime.run().await;
+		frontend_messages.extend(self.dispatch(Message::Wake));
+
+		frontend_messages
+			.into_iter()
+			.filter_map(|message| match message {
+				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+				_ => None,
+			})
+			.last()
+	}
+
+	pub async fn paste_from_clipboard(&mut self, content: DataTransfer) -> Vec<FrontendMessage> {
+		self.handle_message(IngestMessage::Ingest { content, action: IngestAction::Paste }).await
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
@@ -330,10 +339,12 @@ impl EditorTestUtils {
 
 	pub async fn create_raster_image(&mut self, image: graphene_std::raster::Image<Color>, mouse: Option<(f64, f64)>) {
 		self.handle_message(IngestMessage::Ingest {
-			data: image.to_png(),
+			content: TransferData::Raster {
+				format: image::ImageFormat::Png,
+				data: image.to_png(),
+			}
+			.into(),
 			action: mouse.map_or(IngestAction::Paste, |mouse| IngestAction::DropOnCanvas { mouse }),
-			mime_type: String::new(),
-			path: None,
 		})
 		.await;
 	}
@@ -401,6 +412,12 @@ impl EditorTestUtils {
 
 	pub async fn create_node_by_name(&mut self, node_type: DefinitionIdentifier) -> NodeId {
 		self.create_node(node_type, None).await
+	}
+
+	/// Opens the subnetwork of `node_id` in the graph with its contents made editable.
+	pub async fn enter_editable_network(&mut self, node_id: NodeId) {
+		self.handle_message(DocumentMessage::EnterNestedNetwork { node_id }).await;
+		self.handle_message(DocumentMessage::MakeNetworkEditable).await;
 	}
 
 	pub async fn create_node_by_name_at(&mut self, node_type: DefinitionIdentifier, x: i32, y: i32) -> NodeId {
@@ -493,6 +510,16 @@ fn init_test_logger() {
 	});
 }
 
+/// Creates application IO with the GPU executor shared by every test in the process, since creating a device and its pipelines for each test is slow.
+/// Panics if no adapter is found, since tests render on the GPU like the app does.
+fn gpu_application_io() -> PlatformApplicationIo {
+	static GPU_EXECUTOR: LazyLock<Option<<PlatformApplicationIo as ApplicationIo>::Executor>> = LazyLock::new(|| futures::executor::block_on(PlatformApplicationIo::new()).gpu_executor().cloned());
+	let executor = GPU_EXECUTOR.clone().expect(
+		"Editor tests need a GPU adapter. Without a hardware GPU, install Mesa's lavapipe software Vulkan driver and point `VK_ADD_DRIVER_FILES` at its `lvp_icd.<arch>.json` (the Nix dev shell does this).",
+	);
+	PlatformApplicationIo::new_with_executor(executor)
+}
+
 /// Runs `operation`, returning its result along with the errors it logged.
 pub fn capture_logged_errors<T>(operation: impl FnOnce() -> T) -> (T, Vec<String>) {
 	init_test_logger();
@@ -502,22 +529,6 @@ pub fn capture_logged_errors<T>(operation: impl FnOnce() -> T) -> (T, Vec<String
 	let errors = CAPTURED_ERRORS.take().unwrap_or_default();
 
 	(result, errors)
-}
-
-/// A clock that only moves when advanced.
-#[derive(Debug, Default)]
-pub struct FakeClock(Mutex<Duration>);
-
-impl FakeClock {
-	pub fn advance(&self, by: Duration) {
-		*self.0.lock().unwrap_or_else(PoisonError::into_inner) += by;
-	}
-}
-
-impl Clock for FakeClock {
-	fn now(&self) -> Duration {
-		*self.0.lock().unwrap_or_else(PoisonError::into_inner)
-	}
 }
 
 struct BlockingSpawner;
@@ -532,11 +543,11 @@ pub mod test_prelude {
 	pub use super::FrontendMessageTestUtils;
 	pub use crate::application::Editor;
 	pub use crate::float_eq;
-	pub use crate::messages::clipboard::utility_types::ClipboardContentRaw;
 	pub use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
 	pub use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
 	pub use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+	pub use crate::messages::portfolio::ingest::utility_types::{DataTransfer, DataTransferItem, TransferData};
 	pub use crate::messages::prelude::*;
 	pub use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, is_layer_fed_by_node_of_name};
 	pub use crate::messages::tool::utility_types::ToolType;

@@ -173,7 +173,7 @@ fn string_to_bytes(_: impl Ctx, string: Item<String>) -> Item<Resource> {
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Data: I/O"), icon("NodeImageToBytes"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
-	let bytes: Vec<u8> = image
+	let bytes: Vec<u8> = raster_kernels::evaluate_raster_effects(image)
 		.element()
 		.data
 		.iter()
@@ -218,11 +218,14 @@ fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Result<Item<Raster<CPU>>
 	Ok(Item::new_from_element(Raster::new_cpu(image)))
 }
 
-/// Renders a view of the input graphic within an area defined by the *Footprint*.
-#[node_macro::node(category(""), placeholder = pending_raster)]
+/// Renders a view of the input graphics within an area defined by the *Footprint*, producing a raster image.
+#[node_macro::node(category("Raster"), icon("NodeRasterize"), placeholder = pending_raster)]
 async fn rasterize(
 	_: impl Ctx,
+	/// The graphics to render as an image.
 	data: List<Graphic>,
+	/// The area of the document to render, and the resolution to render it at.
+	#[default(0., 0., 1000., 1000.)]
 	footprint: Item<Footprint>,
 	#[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>,
 ) -> Result<List<Raster<CPU>>, NodeError> {
@@ -278,21 +281,28 @@ fn application_io(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item
 #[error("Resource {0} was not found")]
 pub struct ResourceError(ResourceHash);
 
-#[node_macro::node(category(""), placeholder = pending_stored_resource)]
+#[node_macro::node(category(""), version(2), placeholder = pending_stored_resource)]
 async fn resource(
 	_: impl Ctx,
+	/// The content hash identifying which stored resource to load.
+	hash: Item<ResourceHash>,
 	/// The scope-provided application IO giving access to the platform's resource storage.
 	#[scope(application_io::IDENTIFIER)]
 	application_io: Item<Arc<PlatformApplicationIo>>,
-	/// The content hash identifying which stored resource to load.
-	hash: Item<ResourceHash>,
 ) -> Result<Item<Resource>, ResourceError> {
 	let hash = hash.into_element();
+
+	// The empty resource needs no storage, and stands in for one the document can't find so its consumers draw a fallback
+	let empty = Resource::empty();
+	if hash == empty.hash() {
+		return Ok(Item::new_from_element(empty));
+	}
+
 	let resource = application_io.element().load_resource(hash).await.ok_or(ResourceError(hash))?;
 	Ok(Item::new_from_element(resource))
 }
 
-fn pending_stored_resource(_application_io: &Item<Arc<PlatformApplicationIo>>, _hash: &Item<ResourceHash>) -> Item<Resource> {
+fn pending_stored_resource(_hash: &Item<ResourceHash>, _application_io: &Item<Arc<PlatformApplicationIo>>) -> Item<Resource> {
 	Item::new_from_element(Resource::empty())
 }
 

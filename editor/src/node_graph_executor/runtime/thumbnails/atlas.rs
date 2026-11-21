@@ -72,13 +72,15 @@ pub fn draw_atlas(scene: &mut VelloSceneBuilder, layout: &ThumbnailAtlasLayout, 
 		let Some(content) = contents.get(layer) else { continue };
 
 		let origin = layout.cell_origin(index).as_dvec2();
-		let [min, max] = content.bounds();
+		let [min, max] = content.bounds(true);
 		let transform = DAffine2::from_translation(origin) * DAffine2::from_scale(cell_size / (max - min)) * DAffine2::from_translation(-min);
 
 		// The clip also limits content filling the whole scene, like a background, to the cell
 		let cell = Rect::new(origin.x, origin.y, origin.x + cell_size.x, origin.y + cell_size.y);
 		scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &cell);
-		content.graphic().render_to_vello(scene, transform, &render_params);
+		scene.draw_placed(Affine::new(transform.to_cols_array()), |scene| {
+			content.graphic().render_to_vello(scene, DAffine2::IDENTITY, &render_params)
+		});
 		scene.pop_layer();
 	}
 }

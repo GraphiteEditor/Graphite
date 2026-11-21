@@ -11,10 +11,9 @@ publish.workspace = true
 readme = "./README.md"
 
 [features]
-default = ["gpu", "web"]
+default = ["web"]
 web = ["editor", "editor?/wasm"]
 editor = ["dep:editor", "dep:graphene-std", "dep:graph-craft", "dep:spin", "dep:wgpu"]
-gpu = ["editor?/gpu"]
 native = []
 
 [lib]
@@ -36,7 +35,7 @@ serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 wgpu = { workspace = true, optional = true }
-web-sys = { workspace = true, features = ["Performance"] }
+web-sys = { workspace = true, features = ["Blob", "BlobPropertyBag", "ClipboardItem", "DataTransfer", "DataTransferItem", "DataTransferItemList", "File", "IdleDeadline", "Location", "PermissionState", "PermissionStatus", "Permissions"] }
 serde_json = { workspace = true }
 spin = { workspace = true, optional = true }
 tsify = { workspace = true }

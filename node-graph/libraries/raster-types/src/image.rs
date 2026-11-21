@@ -160,7 +160,12 @@ impl<P: Pixel> Image<P> {
 impl Image<Color> {
 	/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 	pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
-		let data = image_data.chunks_exact(4).map(|v| SRGBA8::new(v[0], v[1], v[2], v[3]).into()).collect();
+		let data = image_data
+			.as_chunks::<4>()
+			.0
+			.iter()
+			.map(|&[red, green, blue, alpha]| SRGBA8::new(red, green, blue, alpha).into())
+			.collect();
 		Image { width, height, data }
 	}
 
@@ -195,7 +200,9 @@ impl Image<Color> {
 
 		let image = image.to_rgba32f();
 		let data = image
-			.chunks_exact(4)
+			.as_chunks::<4>()
+			.0
+			.iter()
 			.map(|pixel| {
 				if !linear {
 					return Color::from_gamma_srgb_channels(pixel[0], pixel[1], pixel[2], pixel[3]);
@@ -299,7 +306,7 @@ where
 		let mut last_b_srgb = 0u8;
 
 		let mut result = vec![0; data.len() * 4];
-		for (color, out) in data.iter().zip(result.chunks_exact_mut(4)) {
+		for (color, out) in data.iter().zip(result.as_chunks_mut::<4>().0) {
 			let a = color.a().to_f32();
 			// Smaller alpha values than this would map to fully transparent
 			// anyway, avoid expensive encoding.

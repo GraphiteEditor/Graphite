@@ -960,7 +960,8 @@ impl Fsm for ShapeToolFsmState {
 							bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 						}
 						if dragging_bounds
-							&& !is_skewing && !hovering_over_gizmo
+							&& !is_skewing
+							&& !hovering_over_gizmo
 							&& let Some(edges) = edges
 						{
 							tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
@@ -1097,9 +1098,11 @@ impl Fsm for ShapeToolFsmState {
 						SNAP_POINT_TOLERANCE,
 						document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
 						|_| false,
-					) && clicked_on_shape_endpoints(layer, document, input, tool_data)
+					)
+					&& clicked_on_shape_endpoints(layer, document, input, tool_data)
 				{
 					responses.add(DocumentMessage::StartTransaction);
+					responses.add(DocumentMessage::NameInteraction { action: "Moved a Line End".into() });
 
 					let moving = Moving {
 						layers: vec![layer],
@@ -1166,6 +1169,11 @@ impl Fsm for ShapeToolFsmState {
 				tool_data.data.start(snap_session, SnapView::new(document, *document_id, input), drawn);
 
 				responses.add(DocumentMessage::StartTransaction);
+				let shape = format!("{:?}", tool_data.current_shape);
+				let article = if shape.starts_with(['A', 'E', 'I', 'O', 'U']) { "an" } else { "a" };
+				responses.add(DocumentMessage::NameInteraction {
+					action: format!("Drew {article} {shape}"),
+				});
 
 				let node = match tool_data.current_shape {
 					ShapeType::Polygon => Polygon::create_node(tool_options.vertices),

@@ -38,10 +38,8 @@ var<immediate> immediates: Immediates;
 @group(0) @binding(0)
 var t_viewport: texture_2d<f32>;
 @group(0) @binding(1)
-var t_overlays: texture_2d<f32>;
-@group(0) @binding(2)
 var t_ui: texture_2d<f32>;
-@group(0) @binding(3)
+@group(0) @binding(2)
 var s_diffuse: sampler;
 
 @fragment
@@ -65,7 +63,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		return srgb_to_linear(immediates.background_color);
 	}
 
-	let overlay_srgb = textureSample(t_overlays, s_diffuse, viewport_coordinate);
 	var viewport_srgb = textureSample(t_viewport, s_diffuse, viewport_coordinate);
 
 	if (viewport_srgb.a < 0.001) {
@@ -74,34 +71,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		viewport_srgb = blend(viewport_srgb, immediates.background_color);
 	}
 
-	if (overlay_srgb.a < 0.001) {
-		if (ui_srgb.a < 0.001) {
-			return srgb_to_linear(viewport_srgb);
-		} else {
-			return srgb_to_linear(blend(ui_srgb, viewport_srgb));
-		}
-	}
-
-	let composite_linear = blend(srgb_to_linear(overlay_srgb), srgb_to_linear(viewport_srgb));
-
 	if (ui_srgb.a < 0.001) {
-		return composite_linear;
+		return srgb_to_linear(viewport_srgb);
 	}
 
-	return srgb_to_linear(blend(ui_srgb, linear_to_srgb(composite_linear)));
+	return srgb_to_linear(blend(ui_srgb, viewport_srgb));
 }
 
 fn blend(fg: vec4<f32>, bg: vec4<f32>) -> vec4<f32> {
 	let a = fg.a + bg.a * (1.0 - fg.a);
 	let rgb = fg.rgb * fg.a + bg.rgb * bg.a * (1.0 - fg.a);
 	return vec4<f32>(rgb, a);
-}
-
-fn linear_to_srgb(in: vec4<f32>) -> vec4<f32> {
-	let cutoff = vec3<f32>(0.0031308);
-	let lo = in.rgb * 12.92;
-	let hi = 1.055 * pow(max(in.rgb, vec3<f32>(0.0)), vec3<f32>(1.0/2.4)) - 0.055;
-	return vec4<f32>(select(lo, hi, in.rgb > cutoff), in.a);
 }
 
 fn srgb_to_linear(in: vec4<f32>) -> vec4<f32> {

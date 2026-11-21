@@ -1,17 +1,13 @@
 use super::evaluated_output;
 use crate::messages::frontend::FrontendMessage;
-#[cfg(feature = "gpu")]
 use atlas::ThumbnailAtlasLayout;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
-use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
-#[cfg(feature = "gpu")]
+use graph_craft::document::{NodeId, NodeNetwork};
 use graphene_std::application_io::{ApplicationIo, Texture};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::gradient::Gradient;
-use graphene_std::graphic::extend;
 use graphene_std::list::{Item, List};
-#[cfg(feature = "gpu")]
 use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasHandle};
@@ -19,22 +15,18 @@ use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_std::transform::{Footprint, RenderQuality};
 use graphene_std::vector::Vector;
-use graphene_std::{Artboard, Color, Context, ContextFeatures, Graphic, NodeParameter};
+use graphene_std::{Artboard, Color, Context, ContextFeatures, Graphic};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
+use interpreted_executor::layer_paths::layer_content;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
-#[cfg(feature = "gpu")]
 mod atlas;
 
 /// The time thumbnails are evaluated at, so they don't depend on the playhead.
 const THUMBNAIL_TIME: f64 = 0.;
 
 /// The size in pixels of a thumbnail rendered at this device pixel ratio.
-#[cfg_attr(
-	not(any(feature = "gpu", all(target_family = "wasm", feature = "wasm"))),
-	expect(dead_code, reason = "Only thumbnails rendered with Vello or drawn into canvases have a fixed size")
-)]
 fn cell_size(scale: f64) -> UVec2 {
 	/// The size thumbnails are shown at in the node graph, in CSS pixels.
 	const CELL_SIZE: DVec2 = DVec2::new(72., 48.);
@@ -74,6 +66,12 @@ impl Thumbnails {
 
 	pub fn set_in_view(&mut self, layers: HashSet<NodeId>) {
 		self.in_view = layers;
+	}
+
+	/// Whether the layer's thumbnail is waiting to be rendered.
+	#[cfg(test)]
+	pub fn is_stale(&self, layer: NodeId) -> bool {
+		self.stale.contains(&layer)
 	}
 
 	/// Thumbnails rendered at another device pixel ratio are rendered again.
@@ -149,7 +147,6 @@ impl Thumbnails {
 	}
 
 	/// Renders the thumbnails into atlases with Vello and shows them, giving false if Vello is unavailable.
-	#[cfg(feature = "gpu")]
 	async fn render_with_vello(&mut self, contents: &HashMap<NodeId, ThumbnailContent>, editor_api: &PlatformEditorApi, responses: &mut VecDeque<FrontendMessage>) -> bool {
 		let Some(executor) = editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
 			return false;
@@ -179,13 +176,8 @@ impl Thumbnails {
 		true
 	}
 
-	#[cfg(not(feature = "gpu"))]
-	async fn render_with_vello(&mut self, _contents: &HashMap<NodeId, ThumbnailContent>, _editor_api: &PlatformEditorApi, _responses: &mut VecDeque<FrontendMessage>) -> bool {
-		false
-	}
-
 	/// Reads the atlas back and draws each cell into the canvases the layer's rows show.
-	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
+	#[cfg(all(target_family = "wasm", feature = "wasm"))]
 	async fn show_atlas(&mut self, layout: &ThumbnailAtlasLayout, atlas: Texture, executor: &wgpu_executor::WgpuExecutor, responses: &mut VecDeque<FrontendMessage>) {
 		let raster = Raster::new_gpu(atlas).convert(Footprint::BOUNDLESS, executor.clone()).await;
 		let (pixels, _, _) = raster.to_flat_u8();
@@ -207,7 +199,7 @@ impl Thumbnails {
 	}
 
 	/// Reads the atlas back for a page that can't show the runtime's canvases, like the desktop app's, and sends each layer its cell's pixels.
-	#[cfg(all(feature = "gpu", not(all(target_family = "wasm", feature = "wasm"))))]
+	#[cfg(not(all(target_family = "wasm", feature = "wasm")))]
 	async fn show_atlas(&mut self, layout: &ThumbnailAtlasLayout, atlas: Texture, executor: &wgpu_executor::WgpuExecutor, responses: &mut VecDeque<FrontendMessage>) {
 		let raster = Raster::new_gpu(atlas).convert(Footprint::BOUNDLESS, executor.clone()).await;
 		let (pixels, _, _) = raster.to_flat_u8();
@@ -224,7 +216,7 @@ impl Thumbnails {
 	}
 
 	async fn render_svg(&mut self, layer: NodeId, content: &ThumbnailContent, responses: &mut VecDeque<FrontendMessage>) {
-		let bounds = content.bounds();
+		let bounds = content.bounds(false);
 		let footprint = Footprint {
 			transform: DAffine2::from_translation(bounds[0]),
 			resolution: (bounds[1] - bounds[0]).abs().as_uvec2(),
@@ -344,17 +336,20 @@ impl ThumbnailContent {
 		}
 	}
 
-	/// The area the thumbnail shows, centered on the content at the thumbnail's aspect ratio.
-	fn bounds(&self) -> [DVec2; 2] {
-		let bounds = match self {
-			// Text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::TextList` content
-			Self::Graphics(graphics) => graphene_std::renderer::graphic_list_bounding_box(graphics, DAffine2::IDENTITY),
+	/// The area the content covers once rendered, counting the effects drawn through maps and images only if they're `maps_resolved`, which an SVG without a GPU leaves out.
+	fn content_bounds(&self, maps_resolved: bool) -> RenderBoundingBox {
+		match self {
+			// Text-aware bounds, which the `BoundingBox` trait can't give `Graphic::TextList` content, with the effects' reach
+			Self::Graphics(graphics) => graphene_std::renderer::graphic_list_painted_bounds(graphics, maps_resolved),
 			// The clipping rectangles rather than the content, since the renderer clips content to them
 			Self::Artboards(artboards) => artboard_clip_bounds(artboards),
 			Self::Text(text) => graphene_std::renderer::text_list_bounding_box(text, DAffine2::IDENTITY),
-		};
+		}
+	}
 
-		let bounds = match bounds {
+	/// The area the thumbnail shows, centered on the content at the thumbnail's aspect ratio.
+	fn bounds(&self, maps_resolved: bool) -> [DVec2; 2] {
+		let bounds = match self.content_bounds(maps_resolved) {
 			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
 			_ => [DVec2::ZERO, DVec2::ONE],
 		};
@@ -362,22 +357,41 @@ impl ThumbnailContent {
 	}
 }
 
-/// The proto node giving the content a layer's thumbnail shows, which is only what the layer adds if it extends the stack below it.
-fn thumbnail_source(layer_path: &[NodeId], network: &NodeNetwork, executor: &DynamicExecutor) -> Option<NodeId> {
-	let output = network.output_source(layer_path, 0)?;
+/// Renders what each of these document layers adds, painted in the given order, as one SVG framed to their combined bounds, or `None` if they render nothing.
+pub fn layers_svg(layers: &[NodeId], network: &NodeNetwork, executor: &DynamicExecutor) -> Option<String> {
+	let contents: Vec<ThumbnailContent> = layers
+		.iter()
+		.filter_map(|&layer| ThumbnailContent::evaluate(executor, thumbnail_source(&[layer], network, executor)?))
+		.collect();
 
-	// A hidden layer, or one passing through what's below it, has nothing of its own to show
-	if !output.starts_with(layer_path) {
+	let bounds = contents
+		.iter()
+		.filter_map(|content| match content.content_bounds(false) {
+			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => Some(bounds),
+			_ => None,
+		})
+		.reduce(|[min, max], [other_min, other_max]| [min.min(other_min), max.max(other_max)])?;
+
+	let render_params = RenderParams {
+		footprint: Footprint::from_bounds(bounds, RenderQuality::Full),
+		thumbnail: true,
+		..Default::default()
+	};
+	let mut render = SvgRender::new();
+	for content in &contents {
+		content.graphic().render_svg(&mut render, &render_params);
+	}
+	if render.svg.is_empty() {
 		return None;
 	}
+	render.format_svg(bounds[0], bounds[1]);
 
-	let (node_id, network_path) = output.split_last()?;
-	let node = network.nested_network(network_path)?.nodes.get(node_id)?;
-	let source = if node.implementation == DocumentNodeImplementation::ProtoNode(extend::IDENTIFIER) {
-		network.input_source(network_path, node.inputs.get(extend::NewInput::INDEX)?)?
-	} else {
-		output
-	};
+	Some(render.svg.to_svg_string())
+}
+
+/// The proto node giving the content a layer's thumbnail shows, which is only what the layer adds if it extends the stack below it.
+fn thumbnail_source(layer_path: &[NodeId], network: &NodeNetwork, executor: &DynamicExecutor) -> Option<NodeId> {
+	let source = layer_content(layer_path, network)?.source(network)?;
 
 	executor.tree().source_map().get(source.as_slice()).map(|(id, _)| *id)
 }
@@ -444,11 +458,12 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 
 #[cfg(test)]
 mod tests {
-	use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
+	use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, shipped_node_id};
 	use crate::test_utils::test_prelude::*;
 	use glam::UVec2;
 	use graph_craft::document::NodeId;
 	use graphene_std::application_io::TimingInformation;
+	use interpreted_executor::layer_paths::layer_path_writer_id;
 
 	async fn compile_and_run(editor: &mut EditorTestUtils) {
 		let portfolio = editor.portfolio_message_handler_mut();
@@ -458,6 +473,7 @@ mod tests {
 		executor
 			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO)
 			.unwrap();
+		editor.runtime.update();
 		editor.runtime.run().await;
 		editor.dispatch(Message::Wake);
 	}
@@ -474,7 +490,7 @@ mod tests {
 		let layer = editor.get_selected_layer().await.expect("The drawn rectangle should be selected").to_node();
 
 		compile_and_run(&mut editor).await;
-		let merge_content = compiled_id(&editor, &[layer, NodeId(3)]);
+		let merge_content = compiled_id(&editor, &[layer, layer_path_writer_id(shipped_node_id("Merge", NodeId(2)))]);
 		assert!(merge_content.is_some(), "The Merge layer's content should be compiled");
 		assert_eq!(
 			editor.runtime.thumbnails.sources.get(&layer).copied(),

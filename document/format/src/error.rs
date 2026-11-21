@@ -58,4 +58,8 @@ pub enum Error {
 	#[cfg(feature = "network")]
 	#[error("network error: {0}")]
 	Network(#[from] peer_transport::PacketError),
+	/// The room knows this device by its peer, so the user can't change.
+	#[cfg(feature = "network")]
+	#[error("the user cannot change while the document is connected")]
+	UserChangeWhileConnected,
 }

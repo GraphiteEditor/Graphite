@@ -1,10 +1,12 @@
 //! The appearance model: an ordered list of paint passes ("coverages") stored in the `ATTR_APPEARANCE` attribute.
-//! Data uniform across all covers (the paint) rides the outer `List<Coverage>` so columnar presence holds,
-//! while cover-specific data rides the inner `Item<Cover>`, reusing `ATTR_TRANSFORM` for the stroke-authoring space.
+//! Data uniform across all covers rides the outer `List<Coverage>` so columnar presence holds: the paint, and the transform the content had
+//! when the coverage was stamped, like an effect's. Cover-specific data rides the inner `Item<Cover>`.
 
+use crate::effects::{rebased_stamped_transform, stamped_transform};
 use crate::graphic::Graphic;
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_ALIGN, ATTR_APPEARANCE, ATTR_CAP, ATTR_DASH_OFFSET, ATTR_DASH_PATTERN, ATTR_JOIN, ATTR_JOIN_MITER_LIMIT, ATTR_PAINT, ATTR_TRANSFORM, ATTR_WEIGHT, Item, List};
+use glam::DAffine2;
 use vector_types::vector::style::{DashPattern, Stroke};
 
 /// The geometry-to-region operator a coverage applies before painting:
@@ -80,9 +82,6 @@ impl Coverage {
 		if stroke.align != defaults.align {
 			item.set_attribute(ATTR_ALIGN, stroke.align);
 		}
-		if stroke.transform != defaults.transform {
-			item.set_attribute(ATTR_TRANSFORM, stroke.transform);
-		}
 
 		Self(item)
 	}
@@ -93,7 +92,7 @@ impl Coverage {
 	}
 
 	/// Extracts the stroke parameters into a [`Stroke`], falling back to the default for any absent attribute.
-	/// Dash lengths are clamped to non-negative, matching what rendering accepts.
+	/// Dash lengths are clamped to non-negative, matching what rendering accepts. The transform rides the coverage's row (see [`Appearance::stroke_params_at`]).
 	pub fn stroke_params(&self) -> Stroke {
 		// A single walk of the attribute pairs instead of one keyed scan per parameter, since this runs per item per render pass
 		let mut stroke = Stroke::default();
@@ -106,7 +105,6 @@ impl Coverage {
 				ATTR_JOIN => stroke.join = value.downcast_ref().copied().unwrap_or(stroke.join),
 				ATTR_JOIN_MITER_LIMIT => stroke.join_miter_limit = value.downcast_ref().copied().unwrap_or(stroke.join_miter_limit),
 				ATTR_ALIGN => stroke.align = value.downcast_ref().copied().unwrap_or(stroke.align),
-				ATTR_TRANSFORM => stroke.transform = value.downcast_ref().copied().unwrap_or(stroke.transform),
 				_ => {}
 			}
 		}
@@ -114,9 +112,9 @@ impl Coverage {
 	}
 }
 
-/// Builds an appearance row, eliding the paint attribute when it is the default none-paint.
-fn cover_row(coverage: Coverage, paint: Graphic) -> Item<Coverage> {
-	let mut row = Item::new_from_element(coverage);
+/// Builds an appearance row, eliding the paint attribute when it is the default none-paint, with the `transform` the coverage was stamped at.
+fn cover_row(coverage: Coverage, paint: Graphic, transform: DAffine2) -> Item<Coverage> {
+	let mut row = Item::new_from_element(coverage).with_attribute(ATTR_TRANSFORM, transform);
 	if paint != Graphic::default() {
 		row.set_attribute(ATTR_PAINT, paint);
 	}
@@ -124,9 +122,9 @@ fn cover_row(coverage: Coverage, paint: Graphic) -> Item<Coverage> {
 }
 
 impl Appearance {
-	/// Creates an appearance holding a single coverage with the given paint.
+	/// Creates an appearance holding a single coverage with the given paint, stamped on untransformed content.
 	pub fn new_single(coverage: Coverage, paint: Graphic) -> Self {
-		Self(List::new_from_item(cover_row(coverage, paint)))
+		Self(List::new_from_item(cover_row(coverage, paint, DAffine2::IDENTITY)))
 	}
 
 	/// The number of coverages in this appearance.
@@ -165,6 +163,30 @@ impl Appearance {
 		self.0.attribute::<Graphic>(ATTR_PAINT, index)
 	}
 
+	/// The transform the coverage at the given index was stamped at, which sets the space its lengths are measured in.
+	pub fn transform_at(&self, index: usize) -> DAffine2 {
+		self.0.attribute_cloned_or_default(ATTR_TRANSFORM, index)
+	}
+
+	/// The stroke parameters of the coverage at the given index, measured in the space it was stamped at.
+	pub fn stroke_params_at(&self, index: usize) -> Option<Stroke> {
+		let mut stroke = self.cover_at(index)?.stroke_params();
+		stroke.transform = self.transform_at(index);
+		Some(stroke)
+	}
+
+	/// The stroke parameters of the first stroke coverage, measured in the space it was stamped at.
+	pub fn first_stroke_params(&self) -> Option<Stroke> {
+		self.first_index_of(Cover::Stroke).and_then(|index| self.stroke_params_at(index))
+	}
+
+	/// Moves the transforms the coverages were stamped at onto content whose `baked` transform went into its geometry.
+	pub fn rebase_stamped_transforms(&mut self, baked: DAffine2) {
+		if let Some(transforms) = self.0.iter_attribute_values_mut::<DAffine2>(ATTR_TRANSFORM) {
+			transforms.for_each(|transform| *transform = rebased_stamped_transform(*transform, baked));
+		}
+	}
+
 	/// The index of the first coverage of the given cover in paint order.
 	pub fn first_index_of(&self, cover: Cover) -> Option<usize> {
 		self.covers().position(|coverage| coverage.cover() == cover)
@@ -199,7 +221,10 @@ impl Appearance {
 
 		let painted = |index| self.paint_at(index).filter(|paint| !paint.is_empty());
 		FillAndStroke {
-			stroke: first_stroke.map(|(_, coverage)| coverage.stroke_params()),
+			stroke: first_stroke.map(|(index, coverage)| Stroke {
+				transform: self.transform_at(index),
+				..coverage.stroke_params()
+			}),
 			fill_paint: first_fill.and_then(painted),
 			stroke_paint: first_stroke.and_then(|(index, _)| painted(index)),
 			stroke_below: first_stroke.zip(first_fill).is_some_and(|((stroke_index, _), fill_index)| stroke_index < fill_index),
@@ -220,17 +245,18 @@ impl Appearance {
 	}
 
 	/// Replaces the first coverage of the incoming cover in place (keeping its position in the paint order),
-	/// or inserts a new row at the requested end of the paint order if none exists.
-	pub fn replace_or_insert(&mut self, coverage: Coverage, paint: Graphic, placement: CoverPlacement) {
+	/// or inserts a new row at the requested end of the paint order if none exists, either way stamped at `transform`.
+	pub fn replace_or_insert(&mut self, coverage: Coverage, paint: Graphic, transform: DAffine2, placement: CoverPlacement) {
 		if let Some(index) = self.first_index_of(coverage.cover()) {
 			if let Some(element) = self.0.element_mut(index) {
 				*element = coverage;
 			}
 			self.0.set_attribute(ATTR_PAINT, index, paint);
+			self.0.set_attribute(ATTR_TRANSFORM, index, transform);
 			return;
 		}
 
-		let row = cover_row(coverage, paint);
+		let row = cover_row(coverage, paint, transform);
 		match placement {
 			CoverPlacement::Above => self.0.push(row),
 			CoverPlacement::Below => {
@@ -266,10 +292,12 @@ pub struct FillAndStroke<'a> {
 	pub stroke_below: bool,
 }
 
-/// Stamps a coverage into the item's `ATTR_APPEARANCE` cell, creating the attribute if absent.
+/// Stamps a coverage into the item's `ATTR_APPEARANCE` cell, creating the attribute if absent, recording the item's transform at that point.
 /// The coverage replaces the first same-cover one in place, or lands at the placement end of the paint order.
 pub fn stamp_coverage<T>(item: &mut Item<T>, coverage: Coverage, paint: Graphic, placement: CoverPlacement) {
-	item.attribute_mut_or_insert_default::<Appearance>(ATTR_APPEARANCE).replace_or_insert(coverage, paint, placement);
+	let transform = stamped_transform(item.attribute_cloned_or_default(ATTR_TRANSFORM));
+	item.attribute_mut_or_insert_default::<Appearance>(ATTR_APPEARANCE)
+		.replace_or_insert(coverage, paint, transform, placement);
 }
 
 #[cfg(test)]
@@ -299,7 +327,7 @@ mod tests {
 			join: StrokeJoin::Bevel,
 			join_miter_limit: 7.,
 			align: StrokeAlign::Inside,
-			transform: DAffine2::from_scale(DVec2::new(2., 3.)),
+			transform: DAffine2::IDENTITY,
 		};
 
 		let coverage = Coverage::new_stroke(&stroke);
@@ -313,7 +341,42 @@ mod tests {
 		assert_eq!(extracted.join, StrokeJoin::Bevel);
 		assert_eq!(extracted.join_miter_limit, 7.);
 		assert_eq!(extracted.align, StrokeAlign::Inside);
-		assert_eq!(extracted.transform, DAffine2::from_scale(DVec2::new(2., 3.)));
+	}
+
+	#[test]
+	fn coverages_record_the_content_transform_on_their_row() {
+		// Fill and stroke rows alike record the linear part of the transform the content had when they were stamped
+		let mut item = Item::new_from_element(()).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale_angle_translation(DVec2::new(2., 3.), 0., DVec2::splat(5.)));
+		stamp_coverage(&mut item, Coverage::new_fill(), solid_paint(Color::RED), CoverPlacement::Above);
+		stamp_coverage(&mut item, Coverage::new_stroke(&Stroke::new(2.)), solid_paint(Color::BLACK), CoverPlacement::Above);
+
+		let Some(appearance) = item.attribute::<Appearance>(ATTR_APPEARANCE) else {
+			panic!("stamping should add the appearance attribute");
+		};
+		let scale = DAffine2::from_scale(DVec2::new(2., 3.));
+		assert_eq!(appearance.transform_at(0), scale);
+		assert_eq!(appearance.first_stroke_params().map(|stroke| stroke.transform), Some(scale));
+		assert_eq!(appearance.fill_and_stroke().stroke.map(|stroke| stroke.transform), Some(scale));
+	}
+
+	#[test]
+	fn coverages_keep_measuring_in_the_same_space_once_their_content_is_baked() {
+		let stamped_at = |transform: DAffine2| {
+			let mut item = Item::new_from_element(()).with_attribute(ATTR_TRANSFORM, transform);
+			stamp_coverage(&mut item, Coverage::new_stroke(&Stroke::new(2.)), solid_paint(Color::BLACK), CoverPlacement::Above);
+			item.attribute::<Appearance>(ATTR_APPEARANCE).cloned().unwrap_or_default()
+		};
+		let tripled = DAffine2::from_scale(DVec2::splat(3.));
+
+		// Stamped on content scaled by 3, the stroke measured as viewed, which is the identity space the baked geometry now lies in
+		let mut appearance = stamped_at(tripled);
+		appearance.rebase_stamped_transforms(tripled);
+		assert!(appearance.transform_at(0).abs_diff_eq(DAffine2::IDENTITY, 1e-12));
+
+		// Stamped before the scale, the stroke was scaled by it, and keeps being once the scale goes into the geometry
+		let mut appearance = stamped_at(DAffine2::IDENTITY);
+		appearance.rebase_stamped_transforms(tripled);
+		assert!(appearance.transform_at(0).abs_diff_eq(DAffine2::from_scale(DVec2::splat(1. / 3.)), 1e-12));
 	}
 
 	#[test]
@@ -346,10 +409,10 @@ mod tests {
 	#[test]
 	fn replace_keeps_position_and_the_other_rows_paint() {
 		let mut appearance = Appearance::default();
-		appearance.replace_or_insert(Coverage::new_fill(), solid_paint(Color::RED), CoverPlacement::Above);
-		appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(2.)), solid_paint(Color::BLACK), CoverPlacement::Above);
+		appearance.replace_or_insert(Coverage::new_fill(), solid_paint(Color::RED), DAffine2::IDENTITY, CoverPlacement::Above);
+		appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(2.)), solid_paint(Color::BLACK), DAffine2::IDENTITY, CoverPlacement::Above);
 
-		appearance.replace_or_insert(Coverage::new_fill(), solid_paint(Color::BLUE), CoverPlacement::Above);
+		appearance.replace_or_insert(Coverage::new_fill(), solid_paint(Color::BLUE), DAffine2::IDENTITY, CoverPlacement::Above);
 
 		assert_eq!(appearance.len(), 2, "replacement should not add a row");
 		assert_eq!(appearance.cover_at(0).map(Coverage::cover), Some(Cover::Fill), "the fill should keep its position");
@@ -360,8 +423,8 @@ mod tests {
 	#[test]
 	fn below_insertion_prepends_and_preserves_paint_columns() {
 		let mut appearance = Appearance::default();
-		appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(2.)), solid_paint(Color::BLACK), CoverPlacement::Above);
-		appearance.replace_or_insert(Coverage::new_fill(), solid_paint(Color::RED), CoverPlacement::Below);
+		appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(2.)), solid_paint(Color::BLACK), DAffine2::IDENTITY, CoverPlacement::Above);
+		appearance.replace_or_insert(Coverage::new_fill(), solid_paint(Color::RED), DAffine2::IDENTITY, CoverPlacement::Below);
 
 		let covers: Vec<_> = appearance.covers().map(Coverage::cover).collect();
 		assert_eq!(covers, vec![Cover::Fill, Cover::Stroke], "a below-placed fill should paint before the stroke");
@@ -372,14 +435,14 @@ mod tests {
 	#[test]
 	fn painted_cover_distinguishes_none_paint_from_absence() {
 		let mut appearance = Appearance::default();
-		appearance.replace_or_insert(Coverage::new_fill(), Graphic::default(), CoverPlacement::Above);
+		appearance.replace_or_insert(Coverage::new_fill(), Graphic::default(), DAffine2::IDENTITY, CoverPlacement::Above);
 
 		assert!(appearance.has_cover(Cover::Fill), "a none-painted coverage still exists");
 		assert!(!appearance.has_painted_cover(Cover::Fill), "a none-painted coverage draws nothing");
 		assert!(!appearance.has_cover(Cover::Stroke));
 		assert!(!appearance.has_painted_cover(Cover::Stroke));
 
-		appearance.replace_or_insert(Coverage::new_fill(), solid_paint(Color::RED), CoverPlacement::Above);
+		appearance.replace_or_insert(Coverage::new_fill(), solid_paint(Color::RED), DAffine2::IDENTITY, CoverPlacement::Above);
 		assert!(appearance.has_painted_cover(Cover::Fill));
 	}
 }

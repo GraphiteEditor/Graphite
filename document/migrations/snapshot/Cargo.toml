@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 syn = { workspace = true }
 proc-macro2 = { workspace = true }

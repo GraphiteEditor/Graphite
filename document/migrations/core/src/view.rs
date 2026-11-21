@@ -1,6 +1,13 @@
-use crate::{Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector};
-use document_graph_storage::{InputSlot, NetworkId, NodeId, NodeInput, Registry, TimeStamp};
+use crate::{Compiler, Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector, encode};
+use document_graph_storage::attributes::attr::node::REFLECTION_METADATA;
+use document_graph_storage::{Implementation, InputSlot, NetworkId, NodeId, NodeInput, Registry, TimeStamp, Value};
+use serde::Serialize;
 use std::ops::Deref;
+
+/// How many grid cells the editor's layout steps left for each node of a layer's chain.
+pub const CHAIN_WIDTH: i32 = 7;
+/// How many grid cells apart the rows of nodes feeding a node from below are.
+pub const FEEDER_ROW_HEIGHT: i32 = 3;
 
 /// Which part of the registry around an anchor a view reads or edits. A migration's footprint is the union of its views' regions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,9 +21,16 @@ impl Region {
 	pub const DOWNSTREAM: Self = Self(1 << 3);
 	/// The anchor's whole network, as read through [`Graph`].
 	pub const NETWORK: Self = Self(1 << 4);
+	/// Attributes of the anchor and of the nodes the run adds, such as their positions and display names.
+	pub const ATTRIBUTES: Self = Self(1 << 5);
 
 	pub const fn union(self, other: Self) -> Self {
 		Self(self.0 | other.0)
+	}
+
+	/// Whether a footprint reads the graph around its anchor, which needs a whole state rather than one in the middle of an interaction.
+	pub const fn reads_network(self) -> bool {
+		self.overlaps(Self::NETWORK)
 	}
 
 	const fn overlaps(self, other: Self) -> bool {
@@ -69,6 +83,7 @@ pub struct AnchorContext<'a> {
 	source: Declaration,
 	target: Declaration,
 	resolver: &'a dyn DeclarationResolver,
+	compiler: Option<&'a dyn Compiler>,
 }
 
 impl<'a> AnchorContext<'a> {
@@ -82,7 +97,19 @@ impl<'a> AnchorContext<'a> {
 			source,
 			target,
 			resolver,
+			compiler: None,
 		})
+	}
+
+	/// Offer the run a `compiler` describing the state this context reads.
+	pub fn with_compiler(mut self, compiler: Option<&'a dyn Compiler>) -> Self {
+		self.compiler = compiler;
+		self
+	}
+
+	/// What a migration's `Option<&dyn Compiler>` parameter receives.
+	pub fn compiler(&self) -> Option<&'a dyn Compiler> {
+		self.compiler
 	}
 
 	pub fn source_node(&self) -> &Node<'a> {
@@ -130,9 +157,9 @@ impl<'a> Graph<'a> {
 		self.registry.node_instances.get(&id).filter(|node| node.network() == self.network)
 	}
 
-	/// The declaration a node of this network implements, if it is one a migration knows.
+	/// The proto-node declaration a node of this network implements, if it is one a migration knows.
 	pub fn declaration(&self, id: NodeId) -> Option<Declaration> {
-		let document_graph_storage::Implementation::ProtoNode(resource) = self.node(id)?.implementation() else {
+		let Implementation::ProtoNode(resource) = self.node(id)?.implementation() else {
 			return None;
 		};
 		self.resolver.declaration(*resource)
@@ -178,6 +205,14 @@ impl<'a> Graph<'a> {
 	}
 }
 
+/// Whether `node` implements `declaration`: a proto node through its declaration resource, a network instance through the definition its network names.
+pub fn implements(registry: &Registry, node: &document_graph_storage::Node, declaration: Declaration, resolver: &dyn DeclarationResolver) -> bool {
+	match node.implementation() {
+		Implementation::ProtoNode(resource) => !declaration.is_network() && resolver.declaration(*resource) == Some(declaration),
+		Implementation::Network(network) => registry.networks.get(network).is_some_and(|network| declaration.describes_network(&network.attributes)),
+	}
+}
+
 /// A parameter type of a migration: a window onto one region around the anchor that records edits rather than applying them.
 pub trait View<'a>: Sized {
 	/// The region this view reads or edits.
@@ -195,6 +230,10 @@ pub struct Edits {
 	pub added_nodes: Vec<AddedNode>,
 	pub removed_nodes: Vec<NodeId>,
 	pub connections: Vec<(OutputConnector, InputConnector)>,
+	/// The declaration this anchor switches to, when not the migration's target.
+	pub target: Option<Declaration>,
+	/// Attribute writes to the anchor and the nodes this run adds.
+	pub attributes: Vec<AttributeWrite>,
 }
 
 impl Edits {
@@ -205,6 +244,86 @@ impl Edits {
 		self.added_nodes.extend(other.added_nodes);
 		self.removed_nodes.extend(other.removed_nodes);
 		self.connections.extend(other.connections);
+		self.target = other.target.or(self.target);
+		self.attributes.extend(other.attributes);
+	}
+}
+
+/// One attribute of the anchor or of a node the run adds. A run's writes apply in the order it recorded them.
+#[derive(Debug)]
+pub struct AttributeWrite {
+	pub node: NodeId,
+	pub key: String,
+	/// `None` deletes the key.
+	pub value: Option<Value>,
+}
+
+/// Attributes of the anchor and of the nodes this run adds, such as where they sit and what they're named.
+#[derive(Default)]
+pub struct Attributes {
+	writes: Vec<AttributeWrite>,
+}
+
+impl Attributes {
+	/// Write `value` under `key` on the anchor or on a node this run adds.
+	pub fn set<T: Serialize>(&mut self, node: NodeId, key: &str, value: &T) {
+		self.writes.push(AttributeWrite {
+			node,
+			key: key.to_string(),
+			value: Some(encode(value)),
+		});
+	}
+
+	/// Delete `key` from the anchor or from a node this run adds.
+	pub fn remove(&mut self, node: NodeId, key: &str) {
+		self.writes.push(AttributeWrite {
+			node,
+			key: key.to_string(),
+			value: None,
+		});
+	}
+}
+
+impl<'a> View<'a> for Attributes {
+	const REGION: Region = Region::ATTRIBUTES;
+
+	fn extract(_context: &AnchorContext<'a>) -> Self {
+		Self::default()
+	}
+
+	fn into_edits(self) -> Result<Edits, MigrationError> {
+		Ok(Edits {
+			attributes: self.writes,
+			..Default::default()
+		})
+	}
+}
+
+/// Which declaration the anchor becomes, when that isn't the same for every anchor.
+#[derive(Default)]
+pub struct Target {
+	chosen: Option<Declaration>,
+}
+
+impl Target {
+	/// Switch this anchor to `declaration`, named with `decl!` in the migration's body, instead of the migration's target.
+	pub fn set(&mut self, declaration: Declaration) {
+		self.chosen = Some(declaration);
+	}
+}
+
+impl<'a> View<'a> for Target {
+	const REGION: Region = Region::ANCHOR;
+
+	fn extract(_context: &AnchorContext<'a>) -> Self {
+		Self::default()
+	}
+
+	fn into_edits(self) -> Result<Edits, MigrationError> {
+		Ok(Edits {
+			target: self.chosen,
+			..Default::default()
+		})
 	}
 }
 
@@ -269,6 +388,16 @@ impl Inputs {
 	pub fn push(&mut self, input: NodeInput) {
 		self.edited = true;
 		self.slots.push(new_slot(input));
+		self.origins.push(None);
+	}
+
+	/// Add a slot the compiler fills in with what `metadata` names, a frozen mirror value such as the node's path.
+	pub fn push_reflection<T: Serialize>(&mut self, metadata: T) {
+		let mut slot = new_slot(NodeInput::Reflection);
+		slot.attributes.set(REFLECTION_METADATA, encode(&metadata), TimeStamp::ORIGIN);
+
+		self.edited = true;
+		self.slots.push(slot);
 		self.origins.push(None);
 	}
 

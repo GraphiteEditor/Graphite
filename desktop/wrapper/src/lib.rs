@@ -8,15 +8,12 @@ use graphite_editor::node_graph_executor::NodeRuntime;
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 use std::sync::Arc;
-use std::time::Instant;
 
 pub use graph_craft::application_io::resource::MmapResourceStorage;
 pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
 pub use graphite_editor::document_store::{DocumentStore, FolderStore};
 pub use graphite_editor::task::{Spawn, Task};
 pub use wgpu_executor::Texture;
-pub use wgpu_executor::VelloCanvas;
-pub use wgpu_executor::VelloSceneBuilder;
 pub use wgpu_executor::WgpuBackends;
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;
@@ -53,7 +50,12 @@ impl DesktopWrapper {
 		let host = Host::Mac;
 		#[cfg(target_os = "linux")]
 		let host = Host::Linux;
-		let env = Environment { platform: Platform::Desktop, host };
+		let url = std::env::var("GRAPHITE_URL").map_or("https://editor.graphite.art/", |url| url.leak());
+		let env = Environment {
+			platform: Platform::Desktop,
+			host,
+			url,
+		};
 		let application_io = PlatformApplicationIo::new_with_executor(wgpu_executor);
 
 		let (editor, runtime) = Builder::new()
@@ -64,7 +66,7 @@ impl DesktopWrapper {
 					.with_resource_storage(resource_storage)
 					.with_document_store(document_store),
 			)
-			.with_runtime(RuntimeBuilder::new(Arc::new(Instant::now())).with_wake(runtime_wake).with_application_io(application_io))
+			.with_runtime(RuntimeBuilder::new().with_wake(runtime_wake).with_application_io(application_io))
 			.with_spawner(spawner)
 			.with_random_seed(random_seed)
 			.build();

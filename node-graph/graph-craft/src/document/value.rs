@@ -1,4 +1,3 @@
-use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, AnyInput};
@@ -19,6 +18,7 @@ use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::{Gradient, GradientRamp};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
+use rendering::deferred_image::EffectMapPlacement;
 use rendering::{CanvasImage, RenderMetadata};
 use std::fmt::Display;
 use std::hash::Hash;
@@ -56,13 +56,6 @@ macro_rules! for_each_list_type_default {
 		$action!(String);
 		$action!(Color);
 		$action!(Gradient);
-	};
-}
-
-/// Unranked types routed through [`TaggedValue::TypeDefault`], stored as their concrete type.
-macro_rules! for_each_bare_type_default {
-	($action:ident) => {
-		$action!(DocumentNode);
 	};
 }
 
@@ -109,9 +102,6 @@ macro_rules! tagged_value {
 			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`. Materializes an `Item<NodeIdPath>` at runtime via `to_dynany`/`to_any` during graph flattening, matching the ranked connectors it feeds.
 			#[serde(skip)]
 			NodeIdPath(NodeIdPath),
-			/// The `DocumentNode` value carried by an `Extract` proto node, populated at flatten time by `resolve_extract_nodes`. The on-disk placeholder uses `TypeDefault(concrete!(DocumentNode))`.
-			#[serde(skip)]
-			DocumentNode(DocumentNode),
 			/// Carried by context nullification proto nodes constructed at proto node compilation time in `insert_context_nullification_nodes`.
 			#[serde(skip)]
 			ContextModification(ContextModification),
@@ -150,7 +140,6 @@ macro_rules! tagged_value {
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::NodeIdPath(path) => path.cache_hash(state),
-					Self::DocumentNode(node) => node.cache_hash(state),
 					Self::ContextModification(modification) => modification.cache_hash(state),
 					Self::SourceId(source) => source.cache_hash(state),
 					Self::Runtime(runtime) => runtime.cache_hash(state),
@@ -190,15 +179,6 @@ macro_rules! tagged_value {
 								}
 								for_each_item_type_default!(check);
 							}
-							Type::Concrete(descriptor) => {
-								let name = descriptor.name.as_ref();
-								macro_rules! check_bare {
-									($type_default:ty) => {
-										if name == std::any::type_name::<$type_default>() { return Box::new(<$type_default>::default()); }
-									};
-								}
-								for_each_bare_type_default!(check_bare);
-							}
 							_ => {}
 						}
 						Self::from_type_or_none(&td).to_dynany()
@@ -225,7 +205,6 @@ macro_rules! tagged_value {
 					// =======================
 					Self::RenderOutput(x) => Box::new(Item::new_from_element(x)),
 					Self::NodeIdPath(path) => Box::new(Item::new_from_element(path)),
-					Self::DocumentNode(node) => Box::new(node),
 					Self::ContextModification(modification) => Box::new(Item::new_from_element(modification)),
 					Self::SourceId(source) => Box::new(Item::new_from_element(source)),
 					Self::Runtime(runtime) => Box::new(Item::new_from_element(runtime)),
@@ -260,15 +239,6 @@ macro_rules! tagged_value {
 								}
 								for_each_item_type_default!(check);
 							}
-							Type::Concrete(descriptor) => {
-								let name = descriptor.name.as_ref();
-								macro_rules! check_bare {
-									($type_default:ty) => {
-										if name == std::any::type_name::<$type_default>() { return Arc::new(<$type_default>::default()); }
-									};
-								}
-								for_each_bare_type_default!(check_bare);
-							}
 							_ => {}
 						}
 						Self::from_type_or_none(&td).to_any()
@@ -295,7 +265,6 @@ macro_rules! tagged_value {
 					// =======================
 					Self::RenderOutput(x) => Arc::new(Item::new_from_element(x)),
 					Self::NodeIdPath(path) => Arc::new(Item::new_from_element(path)),
-					Self::DocumentNode(node) => Arc::new(node),
 					Self::ContextModification(modification) => Arc::new(Item::new_from_element(modification)),
 					Self::SourceId(source) => Arc::new(Item::new_from_element(source)),
 					Self::Runtime(runtime) => Arc::new(Item::new_from_element(runtime)),
@@ -328,7 +297,6 @@ macro_rules! tagged_value {
 					// =======================
 					Self::RenderOutput(_) => item!(RenderOutput),
 					Self::NodeIdPath(_) => item!(NodeIdPath),
-					Self::DocumentNode(_) => concrete!(DocumentNode),
 					Self::ContextModification(_) => item!(ContextModification),
 					Self::SourceId(_) => item!(SourceId),
 					Self::Runtime(_) => item!(RuntimeHandle),
@@ -428,13 +396,6 @@ macro_rules! tagged_value {
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<Stroke>>() { return Some(TaggedValue::Strokes(Vec::new())) }
 						if name == std::any::type_name::<BrushCache>() { return Some(TaggedValue::BrushCache(Default::default())) }
-						// Unranked types without a variant route through `TypeDefault`, with `to_dynany`/`to_any` constructing the actual default at execution time
-						macro_rules! check_bare {
-							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Some(TaggedValue::TypeDefault(input.clone())); }
-							};
-						}
-						for_each_bare_type_default!(check_bare);
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
@@ -494,7 +455,6 @@ macro_rules! tagged_value {
 					// =======================
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
 					Self::NodeIdPath(path) => format!("NodeIdPath({path:?})"),
-					Self::DocumentNode(node) => format!("DocumentNode({node:?})"),
 					Self::ContextModification(modification) => format!("ContextModification({modification:?})"),
 					Self::SourceId(source) => format!("SourceId({source:?})"),
 					Self::Runtime(_) => "Runtime".to_string(),
@@ -577,6 +537,7 @@ tagged_value! {
 	TonalRange(raster_nodes::adjustments::TonalRange),
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
+	GlowTechnique(graphic_types::GlowTechnique),
 	GridType(vector::misc::GridType),
 	GridTopology(vector::misc::GridTopology),
 	ArcType(vector::misc::ArcType),
@@ -628,10 +589,15 @@ impl TaggedValue {
 	}
 
 	pub fn from_primitive_string(string: &str, ty: &Type) -> Option<Self> {
+		fn to_number<T: FromStr>(input: &str) -> Option<T> {
+			// Ignores stringified tokens' spacing (e.g. "- 180.") and digit separators (e.g. "1_000_000")
+			input.chars().filter(|character| !character.is_whitespace() && *character != '_').collect::<String>().parse().ok()
+		}
+
 		fn to_dvec2(input: &str) -> Option<DVec2> {
 			let mut split = input.split(',');
-			let x = split.next()?.trim().parse().ok()?;
-			let y = split.next()?.trim().parse().ok()?;
+			let x = to_number(split.next()?)?;
+			let y = to_number(split.next()?)?;
 			Some(DVec2::new(x, y))
 		}
 
@@ -706,6 +672,22 @@ impl TaggedValue {
 			None
 		}
 
+		// The Inspector's X, Y, W, H (e.g. "0., 0., 1000., 1000."), rendered at 100% resolution
+		fn to_footprint(input: &str) -> Option<Footprint> {
+			let values: Option<Vec<f64>> = input.split(',').map(to_number).collect();
+			let Some(&[x, y, width, height]) = values.as_deref() else {
+				log::error!("Invalid Footprint default, which needs X, Y, W, H: {input}");
+				return None;
+			};
+			let size = DVec2::new(width, height);
+
+			Some(Footprint {
+				transform: DAffine2::from_scale_angle_translation(size, 0., DVec2::new(x, y)),
+				resolution: size.as_uvec2(),
+				..Default::default()
+			})
+		}
+
 		match ty {
 			Type::Generic(_) => None,
 			Type::Concrete(concrete_type) => {
@@ -715,8 +697,8 @@ impl TaggedValue {
 				let ty = match () {
 					() if ty == TypeId::of::<()>() => TaggedValue::None,
 					() if ty == TypeId::of::<String>() => TaggedValue::String(string.into()),
-					() if ty == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::Number).ok()?,
-					() if ty == TypeId::of::<i64>() => FromStr::from_str(string).map(TaggedValue::Integer).ok()?,
+					() if ty == TypeId::of::<f64>() => to_number(string).map(TaggedValue::Number)?,
+					() if ty == TypeId::of::<i64>() => to_number(string).map(TaggedValue::Integer)?,
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
 					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
@@ -724,6 +706,7 @@ impl TaggedValue {
 					() if ty == TypeId::of::<Graphic>() => to_color(string).map(TaggedValue::Color)?,
 					() if ty == TypeId::of::<Gradient>() => to_gradient(string).map(|gradient| TaggedValue::GradientRamp(gradient.into()))?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
+					() if ty == TypeId::of::<Footprint>() => to_footprint(string).map(TaggedValue::Footprint)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(core_types::misc::parse_f64_list(string)),
 					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(core_types::misc::parse_f64_list(string)),
 					_ => return None,
@@ -938,6 +921,9 @@ pub enum RenderOutputType {
 		svg: String,
 		/// The images the SVG draws to canvases, by the canvas ID their placeholders name.
 		image_data: Vec<(u64, CanvasImage)>,
+		/// Maps of effects' coverages the GPU rendered for the SVG's filters, which go in place of their placeholders once read back.
+		#[serde(skip)]
+		effect_maps: Vec<(EffectMapPlacement, graphene_application_io::Texture)>,
 	},
 	#[cfg(target_family = "wasm")]
 	CanvasFrame { canvas_id: u64, resolution: DVec2 },
@@ -953,9 +939,13 @@ impl CacheHash for RenderOutputType {
 				width.cache_hash(state);
 				height.cache_hash(state);
 			}
-			Self::Svg { svg, image_data } => {
+			Self::Svg { svg, image_data, effect_maps } => {
 				svg.cache_hash(state);
 				image_data.cache_hash(state);
+				for (placement, texture) in effect_maps {
+					placement.id.cache_hash(state);
+					texture.hash(state);
+				}
 			}
 			#[cfg(target_family = "wasm")]
 			Self::CanvasFrame { canvas_id, resolution } => {
@@ -977,7 +967,7 @@ impl CacheHash for RenderOutput {
 #[cfg(test)]
 mod typedefault_dispatch {
 	use super::*;
-	use core_types::{concrete, item, list};
+	use core_types::{item, list};
 
 	/// Round-trips every type in the type-default lists through `TaggedValue::TypeDefault → to_dynany / to_any` and asserts the resulting concrete type matches the stored type.
 	///
@@ -1015,14 +1005,8 @@ mod typedefault_dispatch {
 				check!(List<$element>, list!($element));
 			};
 		}
-		macro_rules! check_bare {
-			($type_default:ty) => {
-				check!($type_default, concrete!($type_default));
-			};
-		}
 		for_each_item_type_default!(check_item);
 		for_each_list_type_default!(check_list);
-		for_each_bare_type_default!(check_bare);
 	}
 }
 
@@ -1070,6 +1054,34 @@ mod paint_default_parsing {
 			let value = deserialize_tagged_value_with_legacy_migration(&mut deserializer).expect("The legacy payload should deserialize");
 			assert!(value.is_no_paint(), "The legacy payload `{payload}` should migrate to the no-paint choice");
 		}
+	}
+}
+
+#[cfg(test)]
+mod number_default_parsing {
+	use super::*;
+	use core_types::item;
+
+	/// A negative default reaches the parser as stringified tokens, with a space between the minus sign and the digits.
+	#[test]
+	fn negative_number_defaults_parse() {
+		assert_eq!(TaggedValue::from_primitive_string("- 180.", &item!(f64)), Some(TaggedValue::Number(-180.)));
+		assert_eq!(TaggedValue::from_primitive_string("- 3", &item!(i64)), Some(TaggedValue::Integer(-3)));
+		assert_eq!(TaggedValue::from_primitive_string("- 1., 2.", &item!(DVec2)), Some(TaggedValue::DVec2(DVec2::new(-1., 2.))));
+	}
+
+	#[test]
+	fn footprint_defaults_parse_as_x_y_width_height() {
+		let expected = Footprint {
+			transform: DAffine2::from_scale_angle_translation(DVec2::new(10_000., 500.), 0., DVec2::new(-50., 20.)),
+			resolution: glam::UVec2::new(10_000, 500),
+			..Default::default()
+		};
+		assert_eq!(
+			TaggedValue::from_primitive_string("- 50., 20., 10_000., 500.", &item!(Footprint)),
+			Some(TaggedValue::Footprint(expected))
+		);
+		assert_eq!(TaggedValue::from_primitive_string("1., 2., 3.", &item!(Footprint)), None);
 	}
 }
 

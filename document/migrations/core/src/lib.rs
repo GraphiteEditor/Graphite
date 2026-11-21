@@ -6,6 +6,8 @@
 //! lives in `node-graph/rfcs/document-format-migrations.md`.
 
 #[cfg(feature = "typed")]
+mod compiler;
+#[cfg(feature = "typed")]
 mod connector;
 #[cfg(feature = "typed")]
 mod declaration;
@@ -21,13 +23,15 @@ mod value;
 mod view;
 
 #[cfg(feature = "typed")]
+pub use compiler::{Compiler, MigrationHost, ValueType};
+#[cfg(feature = "typed")]
 pub use connector::{InputConnector, NewNode, OutputConnector};
 #[cfg(feature = "typed")]
-pub use declaration::{Declaration, DeclarationResolver};
+pub use declaration::{Declaration, DeclarationKind, DeclarationResolver};
 #[cfg(feature = "typed")]
-pub use document_graph_storage::NodeInput;
+pub use document_graph_storage::{NodeInput, Position, attr};
 pub use error::MigrationError;
-pub use format::{FormatMigration, HistoryPolicy, Upgrade};
+pub use format::{DocumentPayloads, FormatMigration, HistoryPolicy, Upgrade};
 #[cfg(feature = "typed")]
 pub use migration::{NodeMigration, Rename};
 pub use migration_macros::format_migration;
@@ -40,7 +44,7 @@ pub use registry::{register_migration, registered_migrations};
 #[cfg(feature = "typed")]
 pub use value::{encode, literal, literal_of};
 #[cfg(feature = "typed")]
-pub use view::{AddedNode, AnchorContext, Downstream, Edits, Graph, Inputs, InputsEdit, Node, Region, Upstream, View};
+pub use view::{AddedNode, AnchorContext, AttributeWrite, Attributes, CHAIN_WIDTH, Downstream, Edits, FEEDER_ROW_HEIGHT, Graph, Inputs, InputsEdit, Node, Region, Target, Upstream, View, implements};
 
 // For the registration `#[migration]`, `rename!`, and `format_migration!` generate
 #[doc(hidden)]

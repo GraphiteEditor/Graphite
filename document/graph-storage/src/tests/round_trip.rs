@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use core_types::uuid::NodeId;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkLocation, NodeInput, NodeNetwork, OwnedNetworkLocation};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkLocation, NodeInput, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 
@@ -20,12 +20,12 @@ fn verify_network_compiles(network: &NodeNetwork) -> Result<(), String> {
 	Ok(())
 }
 
-/// Convert a runtime network to a storage `Registry`, returning the declarations alongside it.
+/// Convert a runtime network to a storage `Registry`, returning the declarations and blobs alongside it.
 /// Proto-node declaration content is no longer stored in the registry (it lives in a byte store);
-/// these tests have no byte store, so they keep the extracted `Declarations` in hand for the back-conversion.
-fn to_registry(network: &NodeNetwork) -> (Registry, crate::Declarations) {
+/// these tests have no byte store, so they keep the extracted `Declarations` and blob bytes in hand for the back-conversion.
+fn to_registry(network: &NodeNetwork) -> (Registry, crate::Declarations, crate::blob::BlobBytes) {
 	let conversion = Registry::convert_from_runtime(network, &crate::NoMetadata, &Default::default(), PeerId(0)).expect("Failed to convert NodeNetwork to Registry");
-	(conversion.registry, conversion.declarations)
+	(conversion.registry, conversion.declarations, conversion.blob_bytes)
 }
 
 /// A one-node network whose single node references `id` via a `TaggedValue::Resource` input, so
@@ -84,6 +84,8 @@ fn create_simple_network() -> NodeNetwork {
 	}
 }
 
+const NESTED: graph_craft::document::NetworkId = graph_craft::document::NetworkId(5);
+
 /// Creates a network with a nested sub-network
 fn create_nested_network() -> NodeNetwork {
 	// Create a simple inner network
@@ -105,12 +107,13 @@ fn create_nested_network() -> NodeNetwork {
 	// Create outer network that uses the inner network
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],
+		definitions: [(NESTED, inner_network)].into_iter().collect(),
 		nodes: [
 			(
 				NodeId(0),
 				DocumentNode {
 					inputs: vec![NodeInput::import(concrete!(u32), 0)],
-					implementation: DocumentNodeImplementation::Network(inner_network),
+					implementation: DocumentNodeImplementation::Definition(NESTED),
 					..Default::default()
 				},
 			),
@@ -134,10 +137,10 @@ fn test_simple_round_trip() {
 	let original_network = create_simple_network();
 
 	// Convert to Registry
-	let (registry, declarations) = to_registry(&original_network);
+	let (registry, declarations, blobs) = to_registry(&original_network);
 
 	// Convert back to NodeNetwork
-	let (converted_network, _) = registry.to_runtime_with_metadata(&declarations).expect("Failed to convert Registry back to NodeNetwork");
+	let (converted_network, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("Failed to convert Registry back to NodeNetwork");
 
 	// Verify structure is preserved
 	assert_eq!(converted_network.nodes.len(), original_network.nodes.len(), "Node count should be preserved");
@@ -182,10 +185,10 @@ fn test_nested_network_round_trip() {
 	let original_network = create_nested_network();
 
 	// Convert to Registry
-	let (registry, declarations) = to_registry(&original_network);
+	let (registry, declarations, blobs) = to_registry(&original_network);
 
 	// Convert back to NodeNetwork
-	let (converted_network, _) = registry.to_runtime_with_metadata(&declarations).expect("Failed to convert Registry back to NodeNetwork");
+	let (converted_network, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("Failed to convert Registry back to NodeNetwork");
 
 	// Verify structure is preserved
 	assert_eq!(converted_network.nodes.len(), original_network.nodes.len(), "Node count should be preserved");
@@ -196,7 +199,8 @@ fn test_nested_network_round_trip() {
 
 	// The nested network is preserved as an entry of the root's definitions table
 	match (&orig_nested_node.implementation, &conv_nested_node.implementation) {
-		(DocumentNodeImplementation::Network(orig_inner), DocumentNodeImplementation::Definition(id)) => {
+		(DocumentNodeImplementation::Definition(orig_id), DocumentNodeImplementation::Definition(id)) => {
+			let orig_inner = &original_network.definitions[orig_id];
 			let conv_inner = converted_network.definitions.get(id).expect("the nested network is a table entry");
 			assert_eq!(orig_inner.nodes.len(), conv_inner.nodes.len(), "Inner network node count should be preserved");
 			assert_eq!(orig_inner.exports.len(), conv_inner.exports.len(), "Inner network export count should be preserved");
@@ -209,7 +213,7 @@ fn test_nested_network_round_trip() {
 fn test_registry_structure() {
 	let network = create_simple_network();
 
-	let (registry, _declarations) = to_registry(&network);
+	let (registry, _declarations, _blobs) = to_registry(&network);
 
 	assert!(registry.resources.len() >= 2, "Should have proto-node declaration resources");
 	assert!(!registry.networks.is_empty(), "Should have at least one network");
@@ -256,8 +260,7 @@ fn test_metadata_preservation() {
 					inputs: vec![NodeInput::import(concrete!(f64), 0), NodeInput::import(Type::Generic(Cow::Borrowed("T")), 1)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("test::NodeWithMetadata")),
 					call_argument: concrete!(String),
-					visible: false,           // Non-default value
-					skip_deduplication: true, // Non-default value
+					visible: false, // Non-default value
 					..Default::default()
 				},
 			),
@@ -277,8 +280,8 @@ fn test_metadata_preservation() {
 	};
 
 	// Convert to Registry and back
-	let (registry, declarations) = to_registry(&network);
-	let (converted, _) = registry.to_runtime_with_metadata(&declarations).expect("Failed to convert back to NodeNetwork");
+	let (registry, declarations, blobs) = to_registry(&network);
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("Failed to convert back to NodeNetwork");
 
 	// Verify call_argument is preserved
 	let orig_node_0 = network.nodes.get(&NodeId(0)).unwrap();
@@ -291,9 +294,6 @@ fn test_metadata_preservation() {
 
 	// Verify visible is preserved
 	assert_eq!(orig_node_0.visible, conv_node_0.visible, "visible should be preserved");
-
-	// Verify skip_deduplication is preserved
-	assert_eq!(orig_node_0.skip_deduplication, conv_node_0.skip_deduplication, "skip_deduplication should be preserved");
 
 	// Verify import_type is preserved for Import inputs
 	match (&orig_node_0.inputs[0], &conv_node_0.inputs[0]) {
@@ -313,20 +313,22 @@ fn test_metadata_preservation() {
 
 #[test]
 fn test_demo_artwork_round_trip() {
-	use graph_craft::util::{DEMO_ART, load_from_name};
+	use graph_craft::util::DEMO_ART;
 
 	// Test each demo artwork
 	for artwork_name in DEMO_ART {
 		println!("Testing artwork: {}", artwork_name);
 
-		let original_network = load_from_name(artwork_name);
+		let path = format!("../../demo-artwork/{artwork_name}.graphite");
+		let mut original_network = futures::executor::block_on(document_loader::open_document(std::path::Path::new(&path))).unwrap().network;
+		original_network.lift_nested_networks();
 
 		// Convert to Registry
-		let (registry, declarations) = to_registry(&original_network);
+		let (registry, declarations, blobs) = to_registry(&original_network);
 
 		// Convert back to NodeNetwork
 		let (converted_network, _) = registry
-			.to_runtime_with_metadata(&declarations)
+			.to_runtime_with_metadata(&declarations, &blobs)
 			.unwrap_or_else(|e| panic!("Failed to convert {} back to NodeNetwork: {:?}", artwork_name, e));
 
 		// Basic structural checks
@@ -348,11 +350,6 @@ fn test_demo_artwork_round_trip() {
 				artwork_name, node_id
 			);
 			assert_eq!(orig_node.visible, conv_node.visible, "{}: visible should be preserved for node {:?}", artwork_name, node_id);
-			assert_eq!(
-				orig_node.skip_deduplication, conv_node.skip_deduplication,
-				"{}: skip_deduplication should be preserved for node {:?}",
-				artwork_name, node_id
-			);
 
 			// Check input count
 			assert_eq!(
@@ -384,7 +381,7 @@ struct UiState {
 /// In-test `NodeMetadataSource` backed by a `HashMap` keyed on the `(network, local_id)` addressing
 /// the editor would use.
 struct TestMetadata {
-	entries: HashMap<(OwnedNetworkLocation, NodeId), UiState>,
+	entries: HashMap<(NetworkLocation, NodeId), UiState>,
 }
 
 impl TestMetadata {
@@ -393,11 +390,11 @@ impl TestMetadata {
 	}
 
 	fn insert(&mut self, network: NetworkLocation, local_id: NodeId, state: UiState) {
-		self.entries.insert((network.to_owned_location(), local_id), state);
+		self.entries.insert((network, local_id), state);
 	}
 
 	fn get(&self, network: NetworkLocation, local_id: NodeId) -> Option<&UiState> {
-		self.entries.get(&(network.to_owned_location(), local_id))
+		self.entries.get(&(network, local_id))
 	}
 }
 
@@ -431,7 +428,7 @@ fn test_ui_metadata_round_trip() {
 	// Root-network node 0 (the one with a nested network): a layer at an absolute position with
 	// a display name.
 	metadata.insert(
-		NetworkLocation::ROOT,
+		None,
 		NodeId(0),
 		UiState {
 			position: Some(Position::Absolute([3, 5])),
@@ -444,7 +441,7 @@ fn test_ui_metadata_round_trip() {
 
 	// Root-network node 1: a plain node in a chain.
 	metadata.insert(
-		NetworkLocation::ROOT,
+		None,
 		NodeId(1),
 		UiState {
 			position: Some(Position::Chain),
@@ -454,10 +451,7 @@ fn test_ui_metadata_round_trip() {
 
 	// Nested-network node 10 (lives under node 0): a layer in a stack.
 	metadata.insert(
-		NetworkLocation {
-			definition: None,
-			inline_path: &[NodeId(0)],
-		},
+		Some(NESTED),
 		NodeId(10),
 		UiState {
 			position: Some(Position::Stack(7)),
@@ -468,9 +462,10 @@ fn test_ui_metadata_round_trip() {
 
 	let conversion = Registry::convert_from_runtime(&network, &metadata, &Default::default(), PeerId(0)).expect("Failed to convert to Registry with metadata");
 	let declarations = conversion.declarations;
+	let blobs = conversion.blob_bytes;
 	let registry = conversion.registry;
 
-	let (converted, entries) = registry.to_runtime_with_metadata(&declarations).expect("Failed to convert Registry back with metadata");
+	let (converted, entries) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("Failed to convert Registry back with metadata");
 
 	// Graph structure still round-trips.
 	assert_eq!(converted.nodes.len(), network.nodes.len());
@@ -479,23 +474,23 @@ fn test_ui_metadata_round_trip() {
 	assert_eq!(entries.len(), 3, "expected 3 metadata entries, got {}: {entries:#?}", entries.len());
 
 	// Look entries back up by their address so we don't rely on emission order.
-	let lookup: HashMap<(OwnedNetworkLocation, NodeId), &crate::NodeMetadataEntry> = entries.iter().map(|e| ((e.network.clone(), e.local_id), e)).collect();
+	let lookup: HashMap<(NetworkLocation, NodeId), &crate::NodeMetadataEntry> = entries.iter().map(|e| ((e.network, e.local_id), e)).collect();
 
-	let root_layer = lookup.get(&(OwnedNetworkLocation::default(), NodeId(0))).expect("entry for root-network layer node missing");
+	let root_layer = lookup.get(&(NetworkLocation::default(), NodeId(0))).expect("entry for root-network layer node missing");
 	assert_eq!(root_layer.position, Some(Position::Absolute([3, 5])));
 	assert!(root_layer.is_layer);
 	assert_eq!(root_layer.display_name.as_deref(), Some("Outer layer"));
 	assert!(root_layer.locked);
 	assert!(!root_layer.pinned);
 
-	let root_node = lookup.get(&(OwnedNetworkLocation::default(), NodeId(1))).expect("entry for root-network chain node missing");
+	let root_node = lookup.get(&(NetworkLocation::default(), NodeId(1))).expect("entry for root-network chain node missing");
 	assert_eq!(root_node.position, Some(Position::Chain));
 	assert!(!root_node.is_layer);
 
 	let DocumentNodeImplementation::Definition(nested) = converted.nodes[&NodeId(0)].implementation else {
 		panic!("the nested network converts back as a table entry")
 	};
-	let nested_layer = lookup.get(&(OwnedNetworkLocation::definition(nested), NodeId(10))).expect("entry for nested layer-in-stack missing");
+	let nested_layer = lookup.get(&(Some(nested), NodeId(10))).expect("entry for nested layer-in-stack missing");
 	assert_eq!(nested_layer.position, Some(Position::Stack(7)));
 	assert!(nested_layer.is_layer);
 }
@@ -627,8 +622,8 @@ fn node_input_f64_round_trips_bit_exact() {
 		..Default::default()
 	};
 
-	let (registry, declarations) = to_registry(&network);
-	let (converted, _) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime");
+	let (registry, declarations, blobs) = to_registry(&network);
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("to_runtime");
 
 	let input = &converted.nodes.get(&NodeId(0)).expect("node 0").inputs[0];
 	let NodeInput::Value { tagged_value, .. } = input else {
@@ -641,25 +636,25 @@ fn node_input_f64_round_trips_bit_exact() {
 	assert_eq!(actual.to_bits(), precise.to_bits(), "f64 node input drifted: {actual} != {precise}");
 }
 
-/// Two storage nodes in one network carrying the same `ORIGINAL_NODE_ID` both map to one runtime ID.
-/// Conversion must reject this rather than silently collapse them and drop a node.
+/// Storage keys nodes by their runtime IDs, so a document reusing one in another network is rejected rather than losing a node.
 #[test]
-fn duplicate_runtime_node_id_is_rejected() {
-	use crate::TimeStamp;
-	use crate::to_runtime::ConversionError;
+fn a_node_id_used_in_two_networks_is_rejected() {
+	use graph_craft::document::NetworkId as RuntimeNetworkId;
 
-	let (mut registry, declarations) = to_registry(&create_simple_network());
-
-	// Force both root-network nodes onto the same runtime ID.
-	for node in registry.node_instances.values_mut() {
-		node.attributes.set(crate::attr::node::ORIGINAL_NODE_ID, crate::Value::Int(7), TimeStamp::ORIGIN);
-	}
-
-	let error = registry.to_runtime_with_metadata(&declarations).expect_err("duplicate runtime ID must error");
-	assert!(
-		matches!(error, ConversionError::DuplicateRuntimeNodeId { runtime_id: 7, .. }),
-		"expected DuplicateRuntimeNodeId, got {error:?}"
+	let mut network = create_simple_network();
+	let nested = RuntimeNetworkId(5);
+	network.definitions.insert(nested, create_simple_network());
+	let instance = NodeId(100);
+	network.nodes.insert(
+		instance,
+		DocumentNode {
+			implementation: DocumentNodeImplementation::Definition(nested),
+			..Default::default()
+		},
 	);
+
+	let result = Registry::convert_from_runtime(&network, &crate::NoMetadata, &Default::default(), PeerId(0));
+	assert!(matches!(result, Err(crate::from_runtime::ConversionError::DuplicateNodeId(_))), "a reused node ID must not be stored");
 }
 
 /// A node input referencing a node in a different network can't be remapped to a valid local runtime
@@ -669,7 +664,7 @@ fn cross_network_reference_is_rejected() {
 	use crate::to_runtime::ConversionError;
 	use crate::{Network, NodeInput};
 
-	let (mut registry, declarations) = to_registry(&create_simple_network());
+	let (mut registry, declarations, blobs) = to_registry(&create_simple_network());
 
 	// `create_simple_network` wires one node's input to another, both in the root network. Find the
 	// referenced storage ID, then move that node into a fresh second network so the reference crosses
@@ -688,7 +683,7 @@ fn cross_network_reference_is_rejected() {
 	registry.networks.insert(other_network, Network::default());
 	registry.node_instances.get_mut(&referenced_storage_id).expect("referenced node exists").network = other_network;
 
-	let error = registry.to_runtime_with_metadata(&declarations).expect_err("cross-network reference must error");
+	let error = registry.to_runtime_with_metadata(&declarations, &blobs).expect_err("cross-network reference must error");
 	assert!(matches!(error, ConversionError::CrossNetworkReference { .. }), "expected CrossNetworkReference, got {error:?}");
 }
 
@@ -699,8 +694,8 @@ fn scope_injections_round_trip() {
 	let mut network = create_simple_network();
 	network.scope_injections.insert("editor-api".to_string(), (NodeId(0), concrete!(u32)));
 
-	let (registry, declarations) = to_registry(&network);
-	let (converted, _) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime");
+	let (registry, declarations, blobs) = to_registry(&network);
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("to_runtime");
 
 	let (node_id, ty) = converted.scope_injections.get("editor-api").expect("scope injection must survive the round trip");
 	assert_eq!(*node_id, NodeId(0), "the injection's node reference must resolve back to its original runtime ID");
@@ -714,7 +709,7 @@ fn dangling_scope_injection_is_rejected() {
 	use crate::TimeStamp;
 	use crate::to_runtime::ConversionError;
 
-	let (mut registry, declarations) = to_registry(&create_simple_network());
+	let (mut registry, declarations, blobs) = to_registry(&create_simple_network());
 
 	// Store an injection pointing at a storage ID that no node carries, leaving the reference dangling
 	// while the rest of the graph stays valid. The root network is whichever one holds the nodes.
@@ -728,7 +723,7 @@ fn dangling_scope_injection_is_rejected() {
 		.set_serialized(crate::attr::network::SCOPE_INJECTIONS, &injections, TimeStamp::ORIGIN)
 		.expect("serialize injections");
 
-	let error = registry.to_runtime_with_metadata(&declarations).expect_err("dangling scope injection must error");
+	let error = registry.to_runtime_with_metadata(&declarations, &blobs).expect_err("dangling scope injection must error");
 	assert!(matches!(error, ConversionError::DanglingScopeInjection { .. }), "expected DanglingScopeInjection, got {error:?}");
 }
 
@@ -774,7 +769,9 @@ fn cyclic_network_reference_is_rejected() {
 		},
 	);
 
-	let error = registry.to_runtime_with_metadata(&crate::Declarations::new()).expect_err("cyclic network reference must error");
+	let error = registry
+		.to_runtime_with_metadata(&crate::Declarations::new(), &crate::blob::BlobBytes::new())
+		.expect_err("cyclic network reference must error");
 	assert!(matches!(error, ConversionError::CyclicNetwork(_)), "expected CyclicNetwork, got {error:?}");
 }
 
@@ -797,15 +794,13 @@ fn a_shared_table_entry_round_trips_as_one_network() {
 
 	let shared = RuntimeNetworkId(77);
 	let mut network = create_nested_network();
-	let DocumentNodeImplementation::Network(body) = std::mem::take(&mut network.nodes.get_mut(&NodeId(0)).expect("node 0").implementation) else {
-		panic!("node 0 implements the nested network")
-	};
+	let body = network.definitions.remove(&NESTED).expect("the nested network");
 	network.definitions.insert(shared, body);
 	network.nodes.get_mut(&NodeId(0)).expect("node 0").implementation = DocumentNodeImplementation::Definition(shared);
 	network.nodes.get_mut(&NodeId(1)).expect("node 1").implementation = DocumentNodeImplementation::Definition(shared);
 	network.nodes.get_mut(&NodeId(1)).expect("node 1").inputs = vec![NodeInput::node(NodeId(0), 0)];
 
-	let (registry, declarations) = to_registry(&network);
+	let (registry, declarations, blobs) = to_registry(&network);
 
 	assert_eq!(registry.networks.len(), 2, "the root and the one shared entry");
 	assert!(registry.networks.contains_key(&NetworkId(shared.0)), "the entry is stored under its own ID");
@@ -815,7 +810,7 @@ fn a_shared_table_entry_round_trips_as_one_network() {
 		"the shared body is stored once"
 	);
 
-	let (converted, _) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime");
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("to_runtime");
 	assert_eq!(converted, network);
 }
 
@@ -825,10 +820,10 @@ fn a_definition_cycle_is_rejected() {
 	use graph_craft::document::NetworkId as RuntimeNetworkId;
 
 	let (first, second) = (RuntimeNetworkId(10), RuntimeNetworkId(11));
-	let naming = |id| NodeNetwork {
-		exports: vec![NodeInput::node(NodeId(0), 0)],
+	let naming = |id, node_id| NodeNetwork {
+		exports: vec![NodeInput::node(node_id, 0)],
 		nodes: [(
-			NodeId(0),
+			node_id,
 			DocumentNode {
 				implementation: DocumentNodeImplementation::Definition(id),
 				..Default::default()
@@ -839,9 +834,9 @@ fn a_definition_cycle_is_rejected() {
 		..Default::default()
 	};
 
-	let mut network = naming(first);
-	network.definitions.insert(first, naming(second));
-	network.definitions.insert(second, naming(first));
+	let mut network = naming(first, NodeId(0));
+	network.definitions.insert(first, naming(second, NodeId(1)));
+	network.definitions.insert(second, naming(first, NodeId(2)));
 
 	let result = Registry::convert_from_runtime(&network, &crate::NoMetadata, &Default::default(), PeerId(0));
 	assert!(matches!(result, Err(crate::from_runtime::ConversionError::InvalidNetwork(_))), "a cycle must not be stored");
@@ -855,6 +850,71 @@ fn an_unreached_table_entry_is_not_stored() {
 	let mut network = create_simple_network();
 	network.definitions.insert(RuntimeNetworkId(5), create_simple_network());
 
-	let (registry, _) = to_registry(&network);
+	let (registry, ..) = to_registry(&network);
 	assert_eq!(registry.networks.keys().copied().collect::<Vec<_>>(), vec![crate::ROOT_NETWORK]);
+}
+
+/// A large input value is stored as a blob and read back from the blob bytes.
+#[test]
+fn large_input_value_round_trips_through_a_blob() {
+	use graph_craft::document::value::TaggedValue;
+
+	let large = TaggedValue::String("x".repeat(crate::blob::BLOB_THRESHOLD));
+	let network = NodeNetwork {
+		nodes: [(
+			NodeId(0),
+			DocumentNode {
+				inputs: vec![NodeInput::value(large, false), NodeInput::value(TaggedValue::Number(1.), false)],
+				implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::identity::IdentityNode")),
+				..Default::default()
+			},
+		)]
+		.into_iter()
+		.collect(),
+		..Default::default()
+	};
+
+	let (registry, declarations, blobs) = to_registry(&network);
+	let inputs = registry.node_instances.values().next().expect("the node converts").inputs();
+	let blob = inputs[0].input.blob().expect("the large value becomes a blob");
+	assert!(inputs[1].input.blob().is_none(), "a small value stays inline");
+	assert_eq!(blobs.keys().collect::<Vec<_>>(), [&blob]);
+
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("to_runtime");
+	assert_eq!(converted, network);
+
+	let error = registry.to_runtime_with_metadata(&declarations, &crate::blob::BlobBytes::new()).expect_err("a missing blob must error");
+	assert!(matches!(error, crate::to_runtime::ConversionError::BlobNotFound(hash) if hash == blob), "{error}");
+}
+
+/// Names the nested network a built-in definition at `version`.
+struct ReferenceMetadata {
+	version: u32,
+}
+
+impl NodeMetadataSource for ReferenceMetadata {
+	fn reference(&self, network: NetworkLocation) -> Option<crate::NetworkReference> {
+		(network == Some(NESTED)).then(|| crate::NetworkReference {
+			identifier: "Merge".into(),
+			version: self.version,
+		})
+	}
+}
+
+#[test]
+fn network_reference_round_trips_with_its_version() {
+	for version in [1, 2] {
+		let network = create_nested_network();
+		let conversion = Registry::convert_from_runtime(&network, &ReferenceMetadata { version }, &Default::default(), PeerId(0)).expect("the nested network converts");
+
+		let stored: Vec<_> = conversion.registry.networks.values().filter_map(|network| crate::NetworkReference::read(&network.attributes)).collect();
+		assert_eq!(stored, vec![crate::NetworkReference { identifier: "Merge".into(), version }]);
+
+		let (_, _, network_entries) = conversion
+			.registry
+			.to_runtime_with_full_metadata(&conversion.declarations, &conversion.blob_bytes)
+			.expect("the registry converts back");
+		let references: Vec<_> = network_entries.iter().filter_map(|entry| entry.reference.as_deref()).collect();
+		assert_eq!(references, vec!["Merge"]);
+	}
 }

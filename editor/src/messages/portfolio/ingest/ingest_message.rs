@@ -1,16 +1,17 @@
-use super::utility_types::{IngestAction, TypeFilter};
+use super::utility_types::{DataTransfer, DataTransferItem, IngestAction, TypeFilter};
 use crate::messages::prelude::*;
 use graph_craft::document::NodeId;
-use std::path::PathBuf;
 
 #[impl_message(Message, PortfolioMessage, Ingest)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum IngestMessage {
 	Ingest {
-		data: Vec<u8>,
+		content: DataTransfer,
 		action: IngestAction,
-		mime_type: String,
-		path: Option<PathBuf>,
+	},
+	Item {
+		item: DataTransferItem,
+		action: IngestAction,
 	},
 	Browse {
 		filters: Vec<TypeFilter>,

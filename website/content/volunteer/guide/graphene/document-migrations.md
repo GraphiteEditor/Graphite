@@ -83,11 +83,16 @@ You ask for what you need through the function's parameters, in any order. The f
 |---|---|---|
 | `&Node` | The anchor before migration | `id()`, `inputs()`, and the stored node's other accessors |
 | `&Graph` | The anchor's network before migration | `node(id)`, `declaration(id)`, `consumers(output)` |
-| `&mut Inputs` | The anchor's input slots | `set`, `insert`, `push`, `remove`, `truncate`, `len` |
+| `Option<&dyn Compiler>` | What only the compiler can tell about the state before migration, see [Asking the compiler](#asking-the-compiler) | `input_type(node, slot)` |
+| `&mut Inputs` | The anchor's input slots | `set`, `insert`, `push`, `push_reflection`, `remove`, `truncate`, `len` |
 | `&mut Upstream` | Nodes feeding the anchor | `add_node`, `add_node_keyed`, `remove_node` |
 | `&mut Downstream` | Whatever reads the anchor's outputs | `consumers`, `add_node`, `add_node_keyed`, `connect` |
+| `&mut Target` | Which declaration the anchor becomes, see [Choosing a target](#choosing-a-target) | `set` |
+| `&mut Attributes` | Attributes of the anchor and of the nodes you add, see [Placing and naming nodes](#placing-and-naming-nodes) | `set`, `remove` |
 
 Reads always see the old document. `node.inputs()` returns the old layout however many edits you've made, and nodes you add never show up in `consumers`. `Inputs` edits apply in order to the layout being built. After `inputs.insert(1, ...)`, later `Inputs` calls see the old slot 1 as slot 2. `node.inputs()[1]` is still the old slot 1.
+
+An input the compiler fills in, like a node's own path, is added with `inputs.push_reflection(...)`, which takes a frozen mirror of the `DocumentNodeMetadata` variant it reflects.
 
 ### Values
 
@@ -184,9 +189,72 @@ rename!("graphene_core::ops::AddNode"@1 => "math_nodes::AddNode"@2);
 
 When the replacement also changes the inputs, scaffold a function with `cargo run migration new <old identifier>@<version> <identifier>`. The new node has to be at `version + 1`.
 
+### Choosing a target
+
+When a node splits into several, one target can't fit every anchor. `Target::set` switches this anchor to another declaration instead, named with `decl!` in the function body so the runner can order the migration against it. It can have any version, so a node that is only a target doesn't need a version bump, and documents that hold it but not the old node aren't rewritten. Only the target in the attribute has to be at `version + 1`.
+
+```rust
+/// Fill and stroke became separate nodes.
+#[migration("vector_nodes::style"@1 => "vector_nodes::vary_fill"@2)]
+pub fn vary_from_style(node: &Node, target: &mut Target) {
+	if literal_of::<Tagged>(&node.inputs()[STROKE].input).is_some_and(|stroke| stroke == Tagged::Bool(true)) {
+		target.set(decl!("vector_nodes::vary_stroke"@1));
+	}
+}
+```
+
+A wire written to a removed node brings that node back, so avoid switching a wire on and off depending on state. Keep the slot reading the same thing, and add nodes downstream of the anchor instead.
+
+### Placing and naming nodes
+
+Nodes you add are placed beside the anchor for you, from the anchor's own stored position. Those leading up to the anchor's primary input form a row to its left, or join its layer's chain. Others feeding the anchor or that row sit below the first one reading them, and the rest start on the anchor. A chained anchor has no coordinates of its own, so only its chain is placed, and an anchor with no stored position gets nothing placed. `Attributes::set` writes an attribute of the anchor or of a node this run adds, named by the ID `add_node` returned, and `remove` deletes one. A display name stored as the old node's default would misname the new one, so clear it:
+
+```rust
+if node.attributes().get_typed::<String>(DISPLAY_NAME).as_deref() == Some("Copy to Points") {
+	attributes.remove(node.id(), DISPLAY_NAME);
+}
+```
+
+Writing to any other node fails, since another anchor's run may be editing it.
+
+### Network definitions
+
+Some built-in nodes, like Merge and Artboard, are subgraphs. Each instance holds its own copy of a network defined in `document_node_definitions.rs`, and stores the definition's identifier and `version` next to it. Bump `version` on the `DocumentNodeDefinition` when instances saved before your change would load wrongly, and register a migration from the old version with the `network` prefix:
+
+```rust
+rename!(network "Artboard"@1 => @2);
+```
+
+To replace a subgraph with a proto node, make the node the target. As with any replacement, the node has to be at `version + 1`:
+
+```rust
+rename!(network "Merge"@1 => "graphic_nodes::merge"@2);
+```
+
+The runner removes the instance's network with every node in it, including nodes the user added, and keeps the instance's inputs. If the proto node's inputs are laid out differently, write a function with `#[migration(network "Merge"@1 => "graphic_nodes::merge"@2)]` and change them through `&mut Inputs`. A proto node can't become a network definition.
+
+An instance only exists once both its node and its network are in the document, so these migrations run on whole states, like the ones reading `&Graph`.
+
+### Asking the compiler
+
+Which node a migration inserts can depend on the type flowing through a wire, such as a flatten node restoring what a group erased. Such a migration goes in the `migration-compiled` crate, which links the node crates, and takes `Option<&dyn Compiler>`. It compares with `element_is`, which only compares `type_name`s within the running build, so no type name is ever stored, and removing a type breaks the build rather than changing the result:
+
+```rust
+#[migration("vector_nodes::copy"@1 => "vector_nodes::flatten_graphic"@2)]
+pub fn flatten_by_type(node: &Node, compiler: Option<&dyn Compiler>, target: &mut Target) {
+	if compiler.and_then(|compiler| compiler.input_type(node, CONTENT)).is_some_and(|value_type| value_type.element_is::<Vector>()) {
+		target.set(decl!("vector_nodes::flatten_vector"@1));
+	}
+}
+```
+
+There may be no compiler, and it may not have an answer, for a state that doesn't compile or for what only exists at runtime, so always have a fallback. A migration reading `&Graph` or asking the compiler runs on whole states only: the end of each interaction, which is what undo can land on, with everything since the previous one rewritten as one step. A document imported without history is therefore one evaluation. Migrations asking the compiler run as late as their dependencies allow, with upstream anchors first, so what they ask about is usually in its current shape. A document holding none of their nodes never builds the compiler or loads a declaration for it.
+
+Their result depends on the build, so peers on different builds can disagree, which is why other migrations should avoid the compiler wherever they can.
+
 ### What the function may depend on
 
-A migration runs many times on one document, once per relevant step of its history, and every collaborator has to get the same result. So it can only depend on its parameters. Randomness, clocks, global state, and calls into live node code are all off limits.
+A migration runs many times on one document, once per relevant step of its history, and every collaborator has to get the same result. So it can only depend on its parameters. Randomness, clocks, global state, and calls into live node code outside of the compiler are all off limits.
 
 It also has to handle every state the old version allowed, including wired inputs and exposed literals. Return `MigrationError::invariant` if the old state breaks its own node's rules. Return `MigrationError::unrepresentable` if the new version can't express something the old one could, which usually means the new version should change. Both are bugs. If one fires on an old step of a document's history, the document opens with its history cut off at that point. If it fires on the current state, the document doesn't open.
 
@@ -253,7 +321,7 @@ Finish with `cargo run migration check` and `cargo test -p migration-formats`. T
 
 ## Regression corpus
 
-The [corpus](https://github.com/tagtraumen/graphite-corpus) is a separate repository of real documents and the images they should render. CI checks every pull request against it. A correct migration keeps a document looking the same, so `check` should still pass with your change:
+The [corpus](https://github.com/GraphiteEditor/document-corpus) is a separate repository of real documents and the images they should render. CI checks every pull request against it. A correct migration keeps a document looking the same, so `check` should still pass with your change:
 
 ```sh
 cargo run regression --corpus <directory> check
@@ -265,4 +333,4 @@ Leave corpus documents as they were added. They're there to prove that old files
 
 ## Current limits
 
-A document whose history contains merges can't have that history rewritten, so migrating it restarts history from the migrated state and undo can't reach further back. Nodes generated by `#[derive(Destructure)]` can't be scaffolded, because they have no function of their own to carry a version.
+A document whose history contains merges can't have that history rewritten, so migrating it restarts history from the migrated state and undo can't reach further back. Nodes generated by `#[derive(Destructure)]` can't be scaffolded, because they have no function of their own to carry a version. `cargo run migration check` doesn't see network definitions yet, so an editor test catches a bumped `version` without a migration instead, and `cargo run migration new` can't scaffold one.

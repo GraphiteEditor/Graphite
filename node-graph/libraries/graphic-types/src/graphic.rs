@@ -1,8 +1,9 @@
 use crate::appearance::{Appearance, Cover, Coverage};
+use crate::effects::Effects;
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_APPEARANCE, ATTR_PAINT, Item, ItemAttributeValues, List, NodeIdPath};
+use core_types::list::{ATTR_APPEARANCE, ATTR_EFFECTS, ATTR_PAINT, Item, ItemAttributeValues, List, NodeIdPath};
 use core_types::math::quad::Quad;
 use core_types::none;
 use core_types::ops::FromAnchorPosition;
@@ -292,8 +293,19 @@ pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 	graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
 }
 
-/// Bake the provided transform into the per-item transforms of the appearance's paint graphics.
-pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DAffine2) {
+/// Moves the transforms an item's coverages and effects were stamped at onto its geometry, which its `baked` transform went into, so they keep measuring in the same space.
+pub fn rebase_stamped_transforms(attributes: &mut ItemAttributeValues, baked: DAffine2) {
+	if let Some(appearance) = attributes.get_mut::<Appearance>(ATTR_APPEARANCE) {
+		appearance.rebase_stamped_transforms(baked);
+	}
+	if let Some(effects) = attributes.get_mut::<Effects>(ATTR_EFFECTS) {
+		effects.rebase_stamped_transforms(baked);
+	}
+}
+
+/// Moves the provided transform, which went into an item's geometry, into what its attributes place: the per-item transforms of the appearance's
+/// paint graphics, and the transforms its coverages and effects were stamped at (see [`rebase_stamped_transforms`]).
+pub fn bake_transform_into_attributes(attributes: &mut ItemAttributeValues, transform: DAffine2) {
 	fn bake_item_transform<T>(item: &mut Item<T>, transform: DAffine2) {
 		let baked = transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 		item.set_attribute(ATTR_TRANSFORM, baked);
@@ -325,6 +337,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 		}
 	}
 
+	rebase_stamped_transforms(attributes, transform);
 	if let Some(appearance) = attributes.get_mut::<Appearance>(ATTR_APPEARANCE)
 		&& let Some(paints) = appearance.0.iter_attribute_values_mut::<Graphic>(ATTR_PAINT)
 	{
@@ -418,7 +431,7 @@ impl IntoGraphicList for List<Graphic> {
 impl IntoGraphicList for List<Vector> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		// A synthetic container, not a real group layer, so it carries no `editor:layer_path` that would
-		// overwrite the inner items' own stamps when flattened back out
+		// overwrite the inner items' own layer paths when flattened back out
 		List::new_from_element(Graphic::VectorList(self))
 	}
 }
@@ -946,7 +959,7 @@ mod tests {
 		Graphic::VectorList(List::new_from_element(Vector::default()))
 	}
 
-	fn vector_list_stamped_with_layers(layers: [u64; 2]) -> List<Vector> {
+	fn vector_list_with_layer_paths(layers: [u64; 2]) -> List<Vector> {
 		let mut list = List::new();
 
 		for layer in layers {
@@ -961,13 +974,13 @@ mod tests {
 	// The wrapper minted for a typed list is a container rather than a layer, so it must never claim a layer path
 	#[test]
 	fn wrapping_a_typed_list_leaves_the_wrapper_anonymous() {
-		let graphic_list = vector_list_stamped_with_layers([7, 9]).into_graphic_list();
+		let graphic_list = vector_list_with_layer_paths([7, 9]).into_graphic_list();
 
 		assert_eq!(graphic_list.len(), 1);
 		assert!(!graphic_list.attribute_keys().any(|key| key == ATTR_EDITOR_LAYER_PATH));
 	}
 
-	fn layer_stamps(flattened: &List<Vector>) -> Vec<Option<NodeId>> {
+	fn item_layers(flattened: &List<Vector>) -> Vec<Option<NodeId>> {
 		(0..flattened.len())
 			.map(|index| {
 				flattened
@@ -980,22 +993,22 @@ mod tests {
 			.collect()
 	}
 
-	// Round-tripping through that wrapper must not collapse the items' distinct stamps onto item 0's
+	// Round-tripping through that wrapper must not collapse the items' distinct layer paths onto item 0's
 	#[test]
 	fn round_trip_through_the_wrapper_preserves_per_item_layer_paths() {
-		let flattened: List<Vector> = vector_list_stamped_with_layers([7, 9]).into_flattened_list();
+		let flattened: List<Vector> = vector_list_with_layer_paths([7, 9]).into_flattened_list();
 
-		assert_eq!(layer_stamps(&flattened), [Some(NodeId(7)), Some(NodeId(9))]);
+		assert_eq!(item_layers(&flattened), [Some(NodeId(7)), Some(NodeId(9))]);
 	}
 
-	// The embedding adapter reaches the same flattened stamps as the wrapper, each item carrying its own inside its variant
+	// The embedding adapter reaches the same flattened layer paths as the wrapper, each item carrying its own inside its variant
 	#[test]
 	fn embedding_each_item_preserves_per_item_layer_paths() {
-		let embedded: List<Graphic> = vector_list_stamped_with_layers([7, 9]).into_iter().map(|item| Item::new_from_element(Graphic::from(item))).collect();
+		let embedded: List<Graphic> = vector_list_with_layer_paths([7, 9]).into_iter().map(|item| Item::new_from_element(Graphic::from(item))).collect();
 
 		let flattened: List<Vector> = embedded.into_flattened_list();
 
-		assert_eq!(layer_stamps(&flattened), [Some(NodeId(7)), Some(NodeId(9))]);
+		assert_eq!(item_layers(&flattened), [Some(NodeId(7)), Some(NodeId(9))]);
 	}
 
 	// Flattening must not invent attributes that neither the parent graphic nor the child carried

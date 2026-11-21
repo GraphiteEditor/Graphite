@@ -119,7 +119,7 @@ fn check(workspace: &Path) -> Result<(), String> {
 		.into_iter()
 		.map(|node| (node.identifier, node.version))
 		.collect();
-	let migrations = lineage::find_migrations(&workspace.join(scaffold::MIGRATIONS))?;
+	let migrations = lineage::find_all_migrations(workspace, &scaffold::MIGRATION_CRATES)?;
 	let problems = lineage::lineage_problems(&nodes, &migrations);
 	if !problems.is_empty() {
 		return Err(problems.join("\n"));

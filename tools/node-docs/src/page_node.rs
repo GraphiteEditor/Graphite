@@ -57,6 +57,7 @@ fn write_frontmatter(page: &mut std::fs::File, metadata: &NodeMetadata, order: u
 		[extra]
 		order = {order}
 		css = [\"/page/user-manual/node.css\"]
+		development_notice = true
 		+++
 		"
 	);

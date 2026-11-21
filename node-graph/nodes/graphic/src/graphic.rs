@@ -445,6 +445,41 @@ fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 	Ok(rows)
 }
 
+/// Feeds the content through the same steps over and over, each time starting from the previous result. Inside the steps, a **Read** node like **Read String** or **Read Vector** reads the result so far, and **Read Index** reads how many times around it has been.
+#[node_macro::node(category("Routing"), icon("NodeIterate"))]
+fn iterate<T: AnyHash + Send + Sync + CacheHash + Clone>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	/// The starting value, which the steps rework each time around.
+	#[implementations(String, f64, Vector, Graphic, Raster<CPU>, Color, Gradient)]
+	content: Item<T>,
+	/// The steps applied each time around, reading the result so far with a **Read** node.
+	#[expose]
+	#[implementations(
+		Context -> Item<String>,
+		Context -> Item<f64>,
+		Context -> Item<Vector>,
+		Context -> Item<Graphic>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Gradient>,
+	)]
+	steps: impl Node<Context<'static>, Output = Item<T>>,
+	/// How many times to apply the steps. Zero passes the content through unchanged.
+	#[default(1)]
+	#[hard(0..)]
+	count: Item<i64>,
+) -> Result<Item<T>, Interrupt> {
+	let count = count.into_element().max(0) as usize;
+
+	let mut result = content;
+	for index in 0..count {
+		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(result)).with_index(index);
+		result = steps.eval(owned_ctx.into_context())?;
+	}
+
+	Ok(result)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum MirrorError {
 	#[error("Text and fills have no bounds to mirror relative to, so set Relative to Bounds to None")]
@@ -547,17 +582,33 @@ fn mirror<T: BoundingBox + HasText + Send + Clone>(
 	Ok(result_list)
 }
 
-/// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
-/// with its own trailing entry dropped. The terminating element of the returned path is the document node whose
-/// encapsulated network we live in, so the path doubles as a unique reference to that node at any nesting depth.
-/// Used as the value source for stamping the `editor:layer_path` attribute on each item of a layer's output, which lets
-/// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
-/// the layer is at the root document network or nested inside a custom subgraph.
+/// Returns this node's `node_path` without its own trailing entry, identifying the document node that holds its network at any nesting depth.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
 fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath> {
 	let node_path = node_path.into_element().0;
 	let len = node_path.len();
 	Item::new_from_element(NodeIdPath(node_path.into_iter().take(len.saturating_sub(1)).collect()))
+}
+
+/// Writes the path of the layer the content belongs to onto it, which is how the editor traces what it renders back to that layer.
+#[node_macro::node(category(""))]
+fn write_layer_path<T: 'static + Send>(
+	_: impl Ctx,
+	#[implementations(String, bool, f64, i64, DVec2, DAffine2, Vector, Graphic, Raster<CPU>, Raster<GPU>, Color, Gradient, Artboard, Stroke)] content: Item<T>,
+	/// How many entries to drop from the end of this node's path, itself included, to reach the layer or else the network holding it.
+	levels_up: Item<i64>,
+	/// The layer's ID if the network holding it was reached, which is empty if the layer itself was.
+	layer_beside: Item<NodeIdPath>,
+	#[node_path] node_path: Item<NodeIdPath>,
+) -> Item<T> {
+	let node_path = node_path.into_element().0;
+	let kept = node_path.len().saturating_sub(levels_up.into_element().max(0) as usize);
+	let layer_path = node_path.into_iter().take(kept).chain(layer_beside.into_element().0).collect();
+
+	let mut content = content;
+	content.set_attribute(ATTR_EDITOR_LAYER_PATH, NodeIdPath(layer_path));
+
+	content
 }
 
 /// Sets a named attribute on the input list, computing one value per item via the value-producing input. That input
@@ -607,6 +658,20 @@ fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	Ok(content)
 }
 
+/// Reads a named attribute of a collection type from every item, where **Write Attribute** stores a whole list per item.
+/// A stored list contributes all of its items with their own attributes, and a lone value contributes itself.
+fn read_collection_attribute<T: Clone + Send + Sync + 'static>(content: &ListDyn, name: &str) -> List<T> {
+	let mut result = List::with_capacity(content.len());
+	for index in 0..content.len() {
+		if let Some(list) = content.attribute::<List<T>>(name, index) {
+			result.extend(list.clone());
+		} else if let Some(value) = content.attribute::<T>(name, index) {
+			result.push(Item::new_from_element(value.clone()));
+		}
+	}
+	result
+}
+
 /// Reads a named `Vector` attribute from the input list, outputting each value as an element of a new `Vector[]`.
 #[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_vector(
@@ -616,13 +681,7 @@ fn read_attribute_vector(
 	#[constant]
 	name: Item<String>,
 ) -> List<Vector> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+	read_collection_attribute(&content, &name.into_element())
 }
 
 /// Reads a named `Number` or `Integer` attribute from the input list, outputting each value as an element of a new `Number[]`.
@@ -833,13 +892,7 @@ fn read_attribute_gradient_stops(
 	#[constant]
 	name: Item<String>,
 ) -> List<Gradient> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Gradient>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+	read_collection_attribute(&content, &name.into_element())
 }
 
 /// Reads a named `Artboard` attribute from the input list, outputting each value as an element of a new `Artboard[]`.
@@ -851,13 +904,7 @@ fn read_attribute_artboard(
 	#[constant]
 	name: Item<String>,
 ) -> List<Artboard> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Artboard>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+	read_collection_attribute(&content, &name.into_element())
 }
 
 /// Reads a named `Raster` attribute from the input list, outputting each value as an element of a new `Raster[]`.
@@ -869,13 +916,7 @@ fn read_attribute_raster(
 	#[constant]
 	name: Item<String>,
 ) -> List<Raster<CPU>> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+	read_collection_attribute(&content, &name.into_element())
 }
 
 /// Joins two lists of the same type, extending the base list with the items from the new list.
@@ -938,7 +979,7 @@ fn legacy_layer_extend<T: Send + Clone>(
 	new: List<T>,
 	nested_node_path: Item<NodeIdPath>,
 ) -> List<T> {
-	// Drop this internal node's own trailing entry so the stamped path ends at the user-facing parent layer-style node (which encapsulates it)
+	// Drop this internal node's own trailing entry so the written path ends at the user-facing parent layer-style node (which encapsulates it)
 	let nested_node_path = nested_node_path.into_element().0;
 	let layer_path = {
 		let len = nested_node_path.len();
@@ -956,7 +997,7 @@ fn legacy_layer_extend<T: Send + Clone>(
 
 /// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
 /// The inverse of this node is 'Flatten Graphic'.
-#[node_macro::node(category("Graphic"), icon("NodeIntoGroup"))]
+#[node_macro::node(category("Graphic"), icon("NodeGroup"))]
 fn into_group<T: Into<Graphic>>(
 	_: impl Ctx,
 	#[implementations(
@@ -984,7 +1025,7 @@ fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
 }
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
-#[node_macro::node(category("Graphic"), icon("NodeFlattenGraphic"))]
+#[node_macro::node(category("Graphic"), icon("NodeUngroup"))]
 fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
 	let fully_flatten = fully_flatten.into_element();
 
@@ -1033,12 +1074,12 @@ fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool
 pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 	let mut output: List<Vector> = content.clone().into_flattened_list();
 
-	// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
+	// TODO: Replace this snapshot hack with per-layer metadata driven by observing each layer's content.
 	// TODO: Flattening here erases the upstream `List<Graphic>` hierarchy that editor metadata collection walks
 	// TODO: to populate `upstream_footprints` / `local_transforms` / `click_targets` per child layer. As a workaround
 	// TODO: we stash the pre-flattened list on the output so `List<Vector>::collect_metadata` can recurse into it,
 	// TODO: which conflates render output with editor metadata and forces the pre-compensation dance below.
-	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
+	// TODO: The cleaner fix is to drive each layer's metadata from an observation of its `List<Graphic>` content and context,
 	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Combine Paths,
 	// TODO: Morph, Rasterize) become unnecessary.
 	if !output.is_empty() && !is_lone_anonymous_leaf(&content) {
@@ -1121,6 +1162,36 @@ mod test {
 		elements.into_iter().map(Item::new_from_element).collect()
 	}
 
+	/// Appends the loop index to the string read from the context, the way a Read String node reads it.
+	#[derive(Clone)]
+	struct AppendIndexNode;
+
+	impl<I: Ctx + core_types::ExtractVarArgs + core_types::ExtractIndex> core_types::Node<I> for AppendIndexNode {
+		type Output = Item<String>;
+
+		fn eval(&self, input: &I) -> core_types::Poll<Item<String>> {
+			let so_far = input
+				.vararg(0)
+				.ok()
+				.and_then(|value| (value as &dyn std::any::Any).downcast_ref::<Item<String>>().map(|item| item.element().clone()));
+			let index = input.try_index().and_then(|mut indices| indices.next());
+			core_types::Poll::Final(Item::new_from_element(format!("{}{}", so_far.unwrap_or_default(), index.unwrap_or_default())))
+		}
+	}
+
+	#[test]
+	fn iterate_feeds_each_result_into_the_next_time_around() {
+		let status = core_types::Status::new();
+		let iterated = |count: i64| {
+			let steps = core_types::LazyInput::new(&AppendIndexNode, &status, 1);
+			let start = Item::new_from_element("x".to_string());
+			iterate(OwnedContextImpl::default().into_context(), start, steps, Item::new_from_element(count)).unwrap().into_element()
+		};
+
+		assert_eq!(iterated(0), "x");
+		assert_eq!(iterated(3), "x012");
+	}
+
 	/// Stands in for the embedding adapter a compiled graph inserts ahead of a `List<Graphic>` connector.
 	fn embed_colors(colors: List<Color>) -> List<Graphic> {
 		colors.into_iter().map(|item| Item::new_from_element(Graphic::from(item))).collect()
@@ -1128,6 +1199,30 @@ mod test {
 
 	fn elements<T: Clone>(list: &List<T>) -> Vec<T> {
 		list.iter_element_values().cloned().collect()
+	}
+
+	#[test]
+	fn reads_every_item_of_a_stored_vector_list_with_its_attributes() {
+		let placement = DAffine2::from_translation(DVec2::new(3., 4.));
+		let shapes: List<Vector> = [placement, DAffine2::IDENTITY]
+			.into_iter()
+			.map(|transform| Item::new_from_element(Vector::default()).with_attribute(ATTR_TRANSFORM, transform))
+			.collect();
+		let content: List<f64> = Item::new_from_element(0.).with_attribute("shapes", shapes).into();
+
+		let read = read_attribute_vector((), content.into(), Item::new_from_element("shapes".to_string()));
+
+		assert_eq!(read.len(), 2);
+		assert_eq!(read.attribute::<DAffine2>(ATTR_TRANSFORM, 0), Some(&placement));
+	}
+
+	#[test]
+	fn reads_a_lone_gradient_attribute() {
+		let content: List<f64> = Item::new_from_element(0.).with_attribute("ramp", Gradient::default()).into();
+
+		let read = read_attribute_gradient_stops((), content.into(), Item::new_from_element("ramp".to_string()));
+
+		assert_eq!(read.len(), 1);
 	}
 
 	#[test]

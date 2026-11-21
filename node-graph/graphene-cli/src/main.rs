@@ -1,6 +1,13 @@
+mod live;
+mod repl;
+mod watch;
+
 use clap::{Args, Parser, Subcommand};
+use document_container::archive::ArchiveFormat;
+use document_live::{DEFAULT_SIGNALING_SERVER, SessionToken};
+use document_loader::open_gdd;
 use fern::colors::{Color, ColoredLevelConfig};
-use graphene_cli::{compile_document, dump, export, open_document, open_gdd};
+use graphene_cli::{compile_document, dump, export, open_document};
 use std::error::Error;
 use std::path::PathBuf;
 
@@ -80,6 +87,24 @@ enum Command {
 	ExtractLegacyDoc {
 		document: PathBuf,
 	},
+	/// Host a collaborative session on a .gdd document, or an empty one, driven from stdin.
+	Host {
+		document: Option<PathBuf>,
+		#[clap(long, default_value = DEFAULT_SIGNALING_SERVER)]
+		signaling: String,
+	},
+	/// Join a collaborative session and drive it from stdin.
+	Join {
+		token: SessionToken,
+		#[clap(long, default_value = DEFAULT_SIGNALING_SERVER)]
+		signaling: String,
+	},
+	/// Join a collaborative session and show the document in a window.
+	Watch {
+		token: SessionToken,
+		#[clap(long, default_value = DEFAULT_SIGNALING_SERVER)]
+		signaling: String,
+	},
 }
 
 #[derive(Debug, Args)]
@@ -96,6 +121,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	init_logging(app.global_opts.verbose);
 
 	let document_path = match &app.command {
+		Command::Host { document, signaling } => return live::host(signaling, document.as_deref()).await,
+		Command::Join { token, signaling } => return live::join(signaling, *token).await,
+		Command::Watch { token, signaling } => return live::watch(signaling, *token).await,
 		Command::Compile { document, .. } | Command::Export { document, .. } | Command::ExtractLegacyDoc { document } => document,
 		Command::ListNodeIdentifiers => {
 			let mut nodes: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
@@ -109,15 +137,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	// Before the document converts to a network, so a registry that can't convert doesn't block recovering the legacy file
 	if let Command::ExtractLegacyDoc { document: path } = &app.command {
-		if !path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("gdd")) {
+		let archive = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
+		if ArchiveFormat::detect(&archive).is_none() {
 			return Err("ExtractLegacyDoc requires a .gdd document".into());
 		}
-		let archive = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
+
 		let gdd = open_gdd(&archive).await?;
 		let Some(legacy_doc) = gdd.read_legacy_document().await else {
 			return Err("gdd file did not contain a legacy .graphite document".into());
 		};
-		let new_path = path.with_extension("graphite");
+
+		// Saved documents carry the `.graphite` extension too, so the extracted file is named apart from its source
+		let new_path = path.with_extension("legacy.graphite");
 		std::fs::write(&new_path, legacy_doc).map_err(|error| format!("Failed to write .graphite file: {error}"))?;
 		eprintln!("Saved file to {}", new_path.to_string_lossy());
 		return Ok(());
@@ -177,7 +208,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				export::export_document(executor, wgpu_executor, output, settings, runtime, spawner).await?;
 			}
 		}
-		Command::ListNodeIdentifiers | Command::ExtractLegacyDoc { .. } => unreachable!("Handled before compiling"),
+		Command::ListNodeIdentifiers | Command::ExtractLegacyDoc { .. } | Command::Host { .. } | Command::Join { .. } | Command::Watch { .. } => unreachable!("Handled before compiling"),
 	}
 
 	Ok(())

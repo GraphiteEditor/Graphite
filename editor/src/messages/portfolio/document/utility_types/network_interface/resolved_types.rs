@@ -10,6 +10,7 @@ use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeType
 use interpreted_executor::node_registry::NODE_REGISTRY;
 use once_cell::sync::Lazy;
 
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 
@@ -60,7 +61,7 @@ static INPUT_CONVERSIONS: Lazy<HashMap<ProtoNodeIdentifier, Vec<Option<&'static 
 		.collect()
 });
 
-/// Proto nodes whose every implementation returns its one input's type unchanged (like Monitor and Memoize), so a wire through one is constrained by what it feeds.
+/// Proto nodes whose every implementation returns its one input's type unchanged (like Memoize), so a wire through one is constrained by what it feeds.
 static TYPE_PRESERVING_NODES: Lazy<HashSet<ProtoNodeIdentifier>> = Lazy::new(|| {
 	NODE_REGISTRY
 		.iter()
@@ -227,8 +228,6 @@ impl NodeNetworkInterface {
 								_ => true,
 							}
 					}),
-
-					DocumentNodeImplementation::Extract => false,
 				}
 			}
 			InputConnector::Export(_) => false,
@@ -328,8 +327,10 @@ impl NodeNetworkInterface {
 		};
 
 		// A List-typed default drops to its Item counterpart (when that has a default value and the connector accepts rank 0),
-		// since a stored Item default can promote back onto a List connector but a stored List default can never return to rank 0
+		// since a stored Item default can promote back onto a List connector but a stored List default can never return to rank 0.
+		// An input whose definition defaults to a list keeps the empty list, since promoting an Item default would leave it a placeholder element.
 		if let Some(element) = guaranteed_type.nested_type().list_element()
+			&& !self.definition_defaults_to_list(input_connector, network_path)
 			&& let Some(item_type) = self
 				.potential_valid_input_types(input_connector, network_path)
 				.into_iter()
@@ -340,6 +341,19 @@ impl NodeNetworkInterface {
 		}
 
 		TaggedValue::from_type_or_none(&guaranteed_type)
+	}
+
+	/// Whether the definition of the node owning this input gives it a list as its default value.
+	fn definition_defaults_to_list(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
+		let InputConnector::Node { node_id, input_index } = input_connector else { return false };
+		let Some(definition) = self.reference(node_id, network_path).as_ref().and_then(resolve_document_node_type) else {
+			return false;
+		};
+
+		matches!(
+			definition.node_template.inputs.get(*input_index),
+			Some(NodeInput::Value { tagged_value, .. }) if matches!(tagged_value.ty().nested_type(), Type::List(_))
+		)
 	}
 
 	/// A list of all valid input types for this specific node.
@@ -369,10 +383,6 @@ impl NodeNetworkInterface {
 				.implementations_matching_inputs(proto_node_identifier, node_id, Some(*input_index), network_path)
 				.filter_map(|node_io| node_io.inputs.get(*input_index).cloned())
 				.collect::<Vec<_>>(),
-			DocumentNodeImplementation::Extract => {
-				log::error!("Input types for extract node not supported");
-				Vec::new()
-			}
 		}
 	}
 
@@ -390,7 +400,7 @@ impl NodeNetworkInterface {
 					.any(|connector| type_feeds_input(source_type, connector, conversions))
 			}
 			// The wire reaches every interior input fed by the import, so each of them has to accept it
-			Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) => {
+			Some(DocumentNodeImplementation::Definition(_)) => {
 				let nested_path = [network_path, &[*node_id]].concat();
 				let interior_inputs = self
 					.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
@@ -404,7 +414,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// A check of which wire types an input accepts, built once so testing many types searches the node's matching implementations only once.
-	/// Unlike [`Self::input_accepts_type`], a node passing its input's type through unchanged (like Monitor) also needs the inputs it feeds to accept the type.
+	/// Unlike [`Self::input_accepts_type`], a node passing its input's type through unchanged (like Memoize) also needs the inputs it feeds to accept the type.
 	fn type_acceptor(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Box<dyn Fn(&Type) -> bool> {
 		let accepts_here: Box<dyn Fn(&Type) -> bool> = match input_connector {
 			InputConnector::Export(export_index) => match network_path.split_last() {
@@ -434,7 +444,7 @@ impl NodeNetworkInterface {
 					Box::new(move |source_type| connectors.iter().any(|connector| type_feeds_input(source_type, connector, conversions)))
 				}
 				// The wire reaches every interior input fed by the import, so each of them has to accept it
-				Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) => {
+				Some(DocumentNodeImplementation::Definition(_)) => {
 					let nested_path = [network_path, &[*node_id]].concat();
 					let interior_inputs = self
 						.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
@@ -522,7 +532,7 @@ impl NodeNetworkInterface {
 					.map(|node_io| node_io.return_value.nested_type().clone())
 					.collect(),
 				// A subgraph's output carries whatever feeds its export
-				Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) => {
+				Some(DocumentNodeImplementation::Definition(_)) => {
 					let nested_path = [network_path, &[*node_id]].concat();
 					let export = InputConnector::Export(*output_index);
 					match self.upstream_output_connector(&export, &nested_path) {
@@ -540,6 +550,11 @@ impl NodeNetworkInterface {
 				_ => Vec::new(),
 			},
 		}
+	}
+
+	/// Whether the input is a scope the compiler supplies, which has no type of its own until then, so type matching skips it.
+	fn is_scope_input(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> bool {
+		matches!(self.input_from_connector(&InputConnector::node_at_index(*node_id, index), network_path), Some(NodeInput::Scope(_)))
 	}
 
 	/// The registry implementations of a proto node whose inputs accept the node's current input types, ignoring `disregarded_input_index`.
@@ -560,7 +575,8 @@ impl NodeNetworkInterface {
 		let number_of_inputs = self.number_of_inputs(node_id, network_path);
 		let conversions = input_conversions(proto_node_identifier);
 		implementations.into_iter().flat_map(|implementations| implementations.keys()).filter(move |node_io| {
-			(0..number_of_inputs).filter(|index| Some(*index) != disregarded_input_index).all(|index| {
+			let checked = |index: &usize| Some(*index) != disregarded_input_index && !self.is_scope_input(node_id, *index, network_path);
+			(0..number_of_inputs).filter(checked).all(|index| {
 				let input_type = self.input_type_not_invalid(&InputConnector::node_at_index(*node_id, index), network_path);
 				// TODO: Fix type checking for different call arguments
 				// For example a node input of (Footprint) -> Vector would not be compatible with a node that is called with () and returns Vector
@@ -599,7 +615,8 @@ impl NodeNetworkInterface {
 									return None;
 								}
 
-								let valid_inputs = (0..node_io.inputs.len()).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
+								let checked = |iterator_index: &usize| iterator_index != input_index && !self.is_scope_input(node_id, *iterator_index, network_path);
+								let valid_inputs = (0..node_io.inputs.len()).filter(checked).all(|iterator_index| {
 									let input_type = self.input_type_not_invalid(&InputConnector::node_at_index(*node_id, iterator_index), network_path);
 									match input_type.compiled_nested_type() {
 										Some(input_type) => node_io.inputs.get(iterator_index).is_some_and(|node_io_input_type| node_io_input_type.nested_type() == input_type),
@@ -610,7 +627,6 @@ impl NodeNetworkInterface {
 							})
 							.collect::<Vec<_>>()
 					}
-					DocumentNodeImplementation::Extract => Vec::new(),
 				}
 			}
 			InputConnector::Export(export_index) => {
@@ -684,7 +700,6 @@ impl NodeNetworkInterface {
 							None => TypeSource::Unknown,
 						}
 					}
-					DocumentNodeImplementation::Extract => TypeSource::Compiled(concrete!(())),
 				}
 			}
 			OutputConnector::Import(import_index) => {
@@ -752,25 +767,48 @@ mod tests {
 	#[tokio::test]
 	async fn subgraph_inputs_look_through_type_preserving_nodes() {
 		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-		use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 		use crate::test_utils::test_prelude::*;
 
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		let path_node_id = editor.create_node_by_name(DefinitionIdentifier::Network("Path".into())).await;
+		let merge = editor.create_node_by_name_at(DefinitionIdentifier::Network("Merge".into()), 0, 0).await;
 
-		// The Path subgraph's content goes through a Monitor node, which accepts most types, before the node that needs a vector
-		let content_types = editor
-			.active_document()
-			.network_interface
-			.potential_valid_input_types(&InputConnector::node_at_index(path_node_id, 0), &[])
-			.iter()
-			.map(ToString::to_string)
-			.collect::<Vec<_>>();
-		assert!(content_types.iter().any(|ty| ty == "Vector"), "Path's content should accept a vector, found {content_types:?}");
+		// A new import feeding a Memoize, which accepts most types, before a Path that needs a vector
+		editor.enter_editable_network(merge).await;
+		let memoize = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::memo::memoize::IDENTIFIER), -20, 10).await;
+		let path = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER), -10, 10).await;
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::node(memoize, 0),
+				input_connector: InputConnector::node_at_index(path, 0),
+			})
+			.await;
+		let import_index = editor.active_document().network_interface.number_of_imports(&[merge]);
+		editor
+			.handle_message(NodeGraphMessage::AddImportAndConnect {
+				import_index,
+				input_connector: InputConnector::node_at_index(memoize, 0),
+			})
+			.await;
+
+		let network_interface = &editor.active_document().network_interface;
+		let type_names = |input_connector: &InputConnector, network_path: &[super::NodeId]| {
+			network_interface
+				.potential_valid_input_types(input_connector, network_path)
+				.iter()
+				.map(ToString::to_string)
+				.collect::<Vec<_>>()
+		};
+
+		let memoize_types = type_names(&InputConnector::node_at_index(memoize, 0), &[merge]);
+		assert!(memoize_types.iter().any(|ty| ty == "Color"), "Memoize itself should accept a color, found {memoize_types:?}");
+
+		let content_types = type_names(&InputConnector::node_at_index(merge, import_index), &[]);
+		assert!(content_types.iter().any(|ty| ty == "Vector"), "the input should accept a vector, found {content_types:?}");
 		assert!(
 			!content_types.iter().any(|ty| ty == "Color"),
-			"Path's content should not accept a color just because its Monitor does, found {content_types:?}"
+			"the input should not accept a color just because its Memoize does, found {content_types:?}"
 		);
 	}
 
@@ -795,7 +833,7 @@ mod tests {
 			.await;
 
 		// A new import passed straight through to Merge's export, which the editor bridges with a Passthrough node
-		editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+		editor.enter_editable_network(merge).await;
 		let import_index = editor.active_document().network_interface.number_of_imports(&[merge]);
 		editor
 			.handle_message(NodeGraphMessage::AddImportAndConnect {

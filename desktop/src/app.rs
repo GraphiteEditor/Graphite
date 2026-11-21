@@ -1,21 +1,21 @@
-use rand::Rng;
+use rand::RngExt;
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, SyncSender};
+use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
-use winit::data_transfer::{DataTransferSendBuilder, TypeHint};
+use winit::data_transfer::TypeHint;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
-use winit::event_loop::{ActiveEventLoop, AsyncRequestSerial, ControlFlow, DndAction, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, DndAction, EventLoop};
 use winit::window::WindowId;
 
+use crate::data_transfer::{self, TransferReads};
 use crate::dirs;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::input::InputState;
@@ -25,7 +25,7 @@ use crate::render::{RenderError, RenderState};
 use crate::spawner::TokioSpawner;
 use crate::ui::{Acceleration, InputEvent, UiCommand, UiConfig, UiInstance};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction};
+use crate::wrapper::messages::{DataTransfer, DesktopFrontendMessage, DesktopWrapperMessage, IngestAction};
 use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, WgpuContext, WgpuExecutor, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -37,20 +37,19 @@ pub(crate) struct App {
 	window_maximized: bool,
 	window_fullscreen: bool,
 	window_pending_drag: bool,
-	pending_dnd_fetch: Option<AsyncRequestSerial>,
-	pending_clipboard_fetch: Option<AsyncRequestSerial>,
+	transfer_reads: TransferReads,
 	input_state: InputState,
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
 	desktop_wrapper: DesktopWrapper,
+	runtime_command_sender: Sender<RuntimeCommand>,
 	ui: UiInstance,
-	ui_frame_received: bool,
-	start_render_sender: SyncSender<()>,
 	ui_initialized: Option<Instant>,
-	web_communication_startup_buffer: Vec<Vec<u8>>,
+	ui_frame_received: bool,
+	ui_startup_buffer: Vec<Vec<u8>>,
 	preferences: preferences::DesktopPreferences,
 	launch_documents: Option<Vec<PathBuf>>,
-	exiting: Arc<AtomicBool>,
+	exiting: bool,
 	exit_reason: ExitReason,
 }
 
@@ -74,9 +73,7 @@ impl App {
 		})
 		.expect("Error setting Ctrl-C handler");
 
-		let exiting = Arc::new(AtomicBool::new(false));
-
-		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
+		let (runtime_command_sender, start_render_receiver) = std::sync::mpsc::channel();
 
 		let async_runtime = tokio::runtime::Builder::new_multi_thread()
 			.thread_name("graphite-async")
@@ -90,9 +87,9 @@ impl App {
 		let editor_wake = move || {
 			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
 		};
-		let runtime_wake_sender = start_render_sender.clone();
+		let runtime_wake_sender = runtime_command_sender.clone();
 		let runtime_wake = move || {
-			let _ = runtime_wake_sender.try_send(());
+			let _ = runtime_wake_sender.send(RuntimeCommand::Run);
 		};
 		let wgpu_executor = WgpuExecutor::with_context(wgpu_context).expect("Failed to create WgpuExecutor");
 		let (desktop_wrapper, mut node_runtime) = DesktopWrapper::new(
@@ -106,17 +103,37 @@ impl App {
 		);
 
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
-		let exiting_clone = exiting.clone();
 		std::thread::spawn(move || {
+			let mut update = false;
+			let mut frame_in_flight = false;
 			loop {
-				let texture = async_runtime.block_on(node_runtime.run());
-				rendering_app_event_scheduler.schedule(AppEvent::ViewportTexture(texture));
-				let timeout = node_runtime.until_next_frame().unwrap_or(Duration::from_millis(10));
-				if start_render_receiver.recv_timeout(timeout).is_err() {
-					node_runtime.begin_frame();
+				if update {
+					node_runtime.update();
 				}
-				if exiting_clone.load(Ordering::Relaxed) {
-					break;
+				let texture = async_runtime.block_on(node_runtime.run());
+				frame_in_flight |= texture.is_some();
+				rendering_app_event_scheduler.schedule(AppEvent::ViewportTexture(texture));
+
+				update = false;
+				let mut run = false;
+				while !run {
+					let first = start_render_receiver.recv_timeout(Duration::from_millis(100)).unwrap_or(RuntimeCommand::Update);
+					for command in std::iter::once(first).chain(start_render_receiver.try_iter()) {
+						match command {
+							RuntimeCommand::Update => {
+								frame_in_flight = false;
+								update = true;
+								run = true;
+							}
+							RuntimeCommand::RequestQueued if !frame_in_flight => {
+								update = true;
+								run = true;
+							}
+							RuntimeCommand::RequestQueued => {}
+							RuntimeCommand::Run => run = true,
+							RuntimeCommand::Exit => return,
+						}
+					}
 				}
 			}
 		});
@@ -130,20 +147,19 @@ impl App {
 			window_maximized: false,
 			window_fullscreen: false,
 			window_pending_drag: false,
-			pending_dnd_fetch: None,
-			pending_clipboard_fetch: None,
+			transfer_reads: TransferReads::default(),
 			input_state: InputState::new(),
 			app_event_receiver,
 			app_event_scheduler,
 			desktop_wrapper,
 			ui,
 			ui_frame_received: false,
-			start_render_sender,
+			runtime_command_sender,
 			ui_initialized: None,
-			web_communication_startup_buffer: Vec::new(),
+			ui_startup_buffer: Vec::new(),
 			preferences,
 			launch_documents: Some(launch_documents),
-			exiting,
+			exiting: false,
 			exit_reason: ExitReason::Shutdown,
 		}
 	}
@@ -154,10 +170,10 @@ impl App {
 	}
 
 	fn exit(&mut self, reason: Option<ExitReason>) {
-		if self.exiting.swap(true, Ordering::Relaxed) {
+		if std::mem::replace(&mut self.exiting, true) {
 			return;
 		}
-		let _ = self.start_render_sender.send(());
+		let _ = self.runtime_command_sender.send(RuntimeCommand::Exit);
 		if let Some(reason) = reason {
 			self.exit_reason = reason;
 		}
@@ -253,16 +269,10 @@ impl App {
 						futures::executor::block_on(dialog.pick_file()).into_iter().collect()
 					};
 
-					for handle in handles {
-						let path = handle.path().to_path_buf();
-						match fs::read(&path) {
-							Ok(content) => {
-								let action = action.clone();
-								let message = DesktopWrapperMessage::IngestFile { path, content, action };
-								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-							}
-							Err(e) => tracing::error!("Failed to read file {}: {}", path.display(), e),
-						}
+					let files = data_transfer::read_files(handles.iter().map(|handle| handle.path().to_path_buf()));
+					if !files.is_empty() {
+						let message = DesktopWrapperMessage::Ingest { content: DataTransfer(files), action };
+						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 					}
 				});
 			}
@@ -323,13 +333,8 @@ impl App {
 			DesktopFrontendMessage::WindowUpdateDirectInput { enabled } => {
 				self.input_state.set_direct_input(enabled);
 			}
-			DesktopFrontendMessage::UpdateOverlays(scene) => {
-				if let Some(render_state) = &mut self.render_state {
-					render_state.set_overlays_scene(*scene);
-				}
-				if let Some(window) = &self.window {
-					window.request_redraw();
-				}
+			DesktopFrontendMessage::WakeNodeRuntime => {
+				let _ = self.runtime_command_sender.send(RuntimeCommand::RequestQueued);
 			}
 			DesktopFrontendMessage::PersistenceWriteState { state } => {
 				persist::write_state(state);
@@ -377,8 +382,8 @@ impl App {
 			DesktopFrontendMessage::ClipboardRead => {
 				self.app_event_scheduler.schedule(AppEvent::ClipboardRead);
 			}
-			DesktopFrontendMessage::ClipboardWrite { content } => {
-				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite { content });
+			DesktopFrontendMessage::ClipboardWrite(content) => {
+				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite(content));
 			}
 			DesktopFrontendMessage::PointerLock => {
 				self.input_state.lock_pointer();
@@ -464,7 +469,7 @@ impl App {
 		if self.ui_initialized.is_some() {
 			self.ui.send(UiCommand::Message(message));
 		} else {
-			self.web_communication_startup_buffer.push(message);
+			self.ui_startup_buffer.push(message);
 		}
 	}
 
@@ -473,7 +478,7 @@ impl App {
 			AppEvent::WebCommunicationInitialized => {
 				self.ui_initialized = Some(Instant::now());
 				self.ui_frame_received = false;
-				for message in self.web_communication_startup_buffer.drain(..) {
+				for message in self.ui_startup_buffer.drain(..) {
 					self.ui.send(UiCommand::Message(message));
 				}
 			}
@@ -499,28 +504,15 @@ impl App {
 				}
 			}
 			AppEvent::ClipboardRead => {
-				let result = event_loop.clipboard().and_then(|id| {
-					let Some(id) = id else { return Ok(None) };
-					let data_transfer = event_loop.data_transfer(id)?;
-					if !data_transfer.has_type(&TypeHint::Plaintext) {
-						return Ok(None);
-					}
-					event_loop.fetch_data_transfer(id, &TypeHint::Plaintext).map(Some)
-				});
-				match result {
-					Ok(Some(serial)) => self.pending_clipboard_fetch = Some(serial),
-					Ok(None) => self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::ClipboardReadResult { content: None }),
-					Err(e) => {
-						tracing::error!("Failed to read from clipboard: {e}");
-						self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::ClipboardReadResult { content: None });
-					}
+				let read = event_loop
+					.clipboard()
+					.and_then(|id| id.map_or(Ok(()), |id| self.transfer_reads.start(event_loop, id, IngestAction::Paste)));
+				if let Err(e) = read {
+					tracing::error!("Failed to read from clipboard: {e}");
 				}
 			}
-			AppEvent::ClipboardWrite { content } => {
-				let send_data = DataTransferSendBuilder::new(content)
-					.with_type(TypeHint::Plaintext, |content: &String, _| Some(content.clone()))
-					.build();
-				if let Err(e) = event_loop.set_clipboard(send_data) {
+			AppEvent::ClipboardWrite(content) => {
+				if let Err(e) = event_loop.set_clipboard(data_transfer::send(content)) {
 					tracing::error!("Failed to write to clipboard: {e}");
 				}
 			}
@@ -553,18 +545,16 @@ impl App {
 				}
 				let app_event_scheduler = self.app_event_scheduler.clone();
 				let _ = thread::spawn(move || {
-					for path in paths {
+					for path in &paths {
 						tracing::info!("Opening file: {}", path.display());
-						if let Ok(content) = fs::read(&path) {
-							let message = DesktopWrapperMessage::IngestFile {
-								path,
-								content,
-								action: IngestAction::Open,
-							};
-							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-						} else {
-							tracing::error!("Failed to read file: {}", path.display());
-						}
+					}
+					let files = data_transfer::read_files(paths);
+					if !files.is_empty() {
+						let message = DesktopWrapperMessage::Ingest {
+							content: DataTransfer(files),
+							action: IngestAction::Open,
+						};
+						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 					}
 				});
 			}
@@ -605,7 +595,8 @@ impl ApplicationHandler for App {
 			state: ElementState::Released,
 			button,
 			..
-		} = &event && button.clone().mouse_button() == Some(MouseButton::Left)
+		} = &event
+			&& button.clone().mouse_button() == Some(MouseButton::Left)
 			&& let Some(pointer_lock_position) = self.input_state.unlock_pointer()
 		{
 			if let Some(window) = &self.window {
@@ -649,7 +640,7 @@ impl ApplicationHandler for App {
 						}
 						Err(other) => tracing::error!("Render error: {:?}", other),
 					}
-					let _ = self.start_render_sender.try_send(());
+					let _ = self.runtime_command_sender.send(RuntimeCommand::Update);
 				}
 
 				if !self.ui_frame_received
@@ -664,57 +655,25 @@ impl ApplicationHandler for App {
 				}
 			}
 			WindowEvent::DragEntered { id, .. } => {
-				let accepts = event_loop.data_transfer(id).is_ok_and(|data_transfer| data_transfer.has_type(&TypeHint::UriList));
+				let accepts = event_loop.data_transfer(id).is_ok_and(|data_transfer| {
+					data_transfer.has_type(&TypeHint::UriList) || data_transfer.has_type(&TypeHint::Image { extension_hint: None }) || data_transfer.has_type(&TypeHint::Plaintext)
+				});
 				let actions: &[DndAction] = if accepts { &[DndAction::Copy] } else { &[] };
 				if let Err(e) = event_loop.set_valid_dnd_actions(id, actions) {
 					tracing::error!("Failed to set valid drag and drop actions: {e}");
 				}
 			}
-			WindowEvent::DragDropped { id, .. } => match event_loop.fetch_data_transfer(id, &TypeHint::UriList) {
-				Ok(serial) => self.pending_dnd_fetch = Some(serial),
-				Err(e) => tracing::error!("Failed to fetch dropped data: {e}"),
-			},
-			WindowEvent::DataTransferReceived { serial, ref value, .. } if self.pending_clipboard_fetch == Some(serial) => match value.try_as_string() {
-				Ok(content) => {
-					self.pending_clipboard_fetch = None;
-					let message = DesktopWrapperMessage::ClipboardReadResult { content: Some(content) };
+			WindowEvent::DragDropped { id, .. } => {
+				if let Err(e) = self.transfer_reads.start(event_loop, id, IngestAction::Import) {
+					tracing::error!("Failed to fetch dropped data: {e}");
+				}
+			}
+			WindowEvent::DataTransferReceived { serial, ref value, .. } => {
+				if let Some((content, action)) = self.transfer_reads.receive(serial, value.as_ref()) {
+					let message = DesktopWrapperMessage::Ingest { content, action };
 					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 				}
-				Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-				Err(e) => {
-					self.pending_clipboard_fetch = None;
-					tracing::error!("Failed to read from clipboard: {e}");
-					let message = DesktopWrapperMessage::ClipboardReadResult { content: None };
-					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-				}
-			},
-			WindowEvent::DataTransferReceived { serial, ref value, .. } if self.pending_dnd_fetch == Some(serial) => match value.try_as_uris() {
-				Ok(uris) => {
-					self.pending_dnd_fetch = None;
-					let paths = uris.iter().filter_map(|uri| url::Url::parse(uri).ok()?.to_file_path().ok());
-					for path in paths {
-						match fs::read(&path) {
-							Ok(content) => {
-								let message = DesktopWrapperMessage::IngestFile {
-									path,
-									content,
-									action: IngestAction::Import,
-								};
-								self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-							}
-							Err(e) => {
-								tracing::error!("Failed to read dropped file {}: {}", path.display(), e);
-								return;
-							}
-						};
-					}
-				}
-				Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-				Err(e) => {
-					self.pending_dnd_fetch = None;
-					tracing::error!("Failed to read dropped data: {e}");
-				}
-			},
+			}
 
 			WindowEvent::PointerMoved { .. } | WindowEvent::PointerLeft { position: Some(_), .. } | WindowEvent::PointerEntered { .. }
 				if !self.input_state.pointer_locked() && self.window_pending_drag =>
@@ -757,6 +716,13 @@ impl ApplicationHandler for App {
 	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
 		event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(10)));
 	}
+}
+
+enum RuntimeCommand {
+	Update,
+	RequestQueued,
+	Run,
+	Exit,
 }
 
 pub(crate) enum ExitReason {

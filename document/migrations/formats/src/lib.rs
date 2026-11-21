@@ -7,6 +7,7 @@
 pub mod v1;
 pub mod v2;
 pub mod v3;
-pub use v3 as latest;
+pub mod v4;
+pub use v4 as latest;
 
 mod steps;

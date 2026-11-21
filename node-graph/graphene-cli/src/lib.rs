@@ -1,20 +1,19 @@
-//! Opens, compiles, and renders Graphite documents without the editor. A `.gdd` opens through the format steps and node migrations
-//! this crate links, so every binary built on it reads documents the way the current build writes them.
+//! Opens, compiles, and renders Graphite documents without the editor. Documents open through `document-loader`, so every binary
+//! built on it reads documents the way the current build writes them.
 
 pub mod dump;
 pub mod export;
 
-use document_container::AnyContainer;
-use document_container::backends::memory::MemoryBackend;
-use document_format::{GddV1, GddV1Layout};
+use document_format::GddV1;
+use document_loader::{DocumentOrigin, LoadedDocument};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
-use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork, OwnedNetworkLocation};
+use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
-use graph_craft::util::load_network;
 use graphene_std::application_io::ApplicationIo;
-use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
+use graphene_std::runtime::{AsyncRuntime, RuntimeHandle, Spawn, Task};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
+use interpreted_executor::layer_paths::write_layer_paths;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::collections::HashMap;
 use std::error::Error;
@@ -22,61 +21,43 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-// Referenced so the linker keeps their self-registering migrations
-use migration_formats as _;
-use migration_nodes as _;
-
 /// A document as the CLI loads it: the runtime network, plus the `.gdd` it came from, if any.
 pub struct OpenedDocument {
 	pub gdd: Option<GddV1>,
 	pub network: NodeNetwork,
+	/// The path of every layer in `network`.
+	pub layers: Vec<Vec<NodeId>>,
 	/// What `dump` shows for each node and network, when asked for.
 	pub names: Option<HashMap<Vec<NodeId>, String>>,
 }
 
-/// Open a `.gdd` from its archive bytes into memory, running the migrations this crate links.
-pub async fn open_gdd(archive: &[u8]) -> Result<GddV1, Box<dyn Error>> {
-	let container = AnyContainer::Memory(MemoryBackend::new());
-	let gdd = GddV1::open_from_archive(archive, container, GddV1Layout)
-		.await
-		.map_err(|error| format!("Failed to open document: {error}"))?;
-	Ok(gdd)
-}
-
-/// Open `path` by extension: `.gdd` as an archive, anything else as a legacy `.graphite` document. `with_names` also collects its display names.
+/// Open `path` with [`document_loader::open_document`]. `with_names` also collects its display names.
 pub async fn open_document(path: &Path, with_names: bool) -> Result<OpenedDocument, Box<dyn Error>> {
-	let is_gdd = path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("gdd"));
+	let LoadedDocument { network, layers, origin } = document_loader::open_document(path).await?;
 
-	if !is_gdd {
-		let document_string = std::fs::read_to_string(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
-		return Ok(OpenedDocument {
-			gdd: None,
-			network: load_network(&document_string),
-			names: with_names.then(|| dump::legacy_names(&document_string)),
-		});
-	}
-
-	let archive = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
-	let gdd = open_gdd(&archive).await?;
-	let declarations = gdd.declarations(&gdd).await;
-	let (network, nodes, networks) = gdd.registry().to_runtime_with_full_metadata(&declarations)?;
-	let names = with_names.then(|| {
-		let references: HashMap<_, _> = networks.into_iter().filter_map(|network| Some((network.network, network.reference?))).collect();
-		let display_names: HashMap<_, _> = nodes.into_iter().filter_map(|node| Some(((node.network, node.local_id), node.display_name?))).collect();
-		instance_names(&network, &references, &display_names)
-	});
-	Ok(OpenedDocument { gdd: Some(gdd), network, names })
+	let (gdd, names) = match origin {
+		DocumentOrigin::Legacy(document_string) => (None, with_names.then(|| dump::legacy_names(&document_string))),
+		DocumentOrigin::Gdd { gdd, nodes, networks } => {
+			let names = with_names.then(|| {
+				let references: HashMap<_, _> = networks.into_iter().filter_map(|network| Some((network.network, network.reference?))).collect();
+				let display_names: HashMap<_, _> = nodes.into_iter().filter_map(|node| Some(((node.network, node.local_id), node.display_name?))).collect();
+				instance_names(&network, &references, &display_names)
+			});
+			(Some(*gdd), names)
+		}
+	};
+	Ok(OpenedDocument { gdd, network, layers, names })
 }
 
 /// The name of each node, keyed by the path the dump visits it at.
 /// This is its display name, or else the reference of the network it implements.
-fn instance_names(network: &NodeNetwork, references: &HashMap<OwnedNetworkLocation, String>, display_names: &HashMap<(OwnedNetworkLocation, NodeId), String>) -> HashMap<Vec<NodeId>, String> {
+fn instance_names(network: &NodeNetwork, references: &HashMap<NetworkLocation, String>, display_names: &HashMap<(NetworkLocation, NodeId), String>) -> HashMap<Vec<NodeId>, String> {
 	network
 		.recursive_nodes()
 		.filter_map(|(id, _, path)| {
-			let containing = network.locate(&path)?.to_owned_location();
+			let containing = network.locate(&path)?;
 			let node_path = [path.as_slice(), &[*id]].concat();
-			let implemented = network.locate(&node_path).map(NetworkLocation::to_owned_location);
+			let implemented = network.locate(&node_path);
 
 			let display_name = display_names.get(&(containing, *id)).filter(|name| !name.is_empty());
 			let reference = implemented.and_then(|location| references.get(&location)).filter(|name| !name.is_empty());
@@ -93,11 +74,10 @@ pub struct CompiledDocument {
 	spawner: Arc<TokioSpawner>,
 }
 
-/// Compile `document` against a fresh GPU context, resolving its resources from its `.gdd`.
-pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocument, Box<dyn Error>> {
+pub async fn editor_api(gdd: Option<&GddV1>) -> (Arc<PlatformApplicationIo>, Arc<PlatformEditorApi>) {
 	log::info!("Creating GPU context");
 	let mut application_io = PlatformApplicationIo::new().await;
-	if let Some(gdd) = &document.gdd {
+	if let Some(gdd) = gdd {
 		application_io.inject_resource_proxy(Box::new(gdd.resource_proxy()));
 	}
 	let application_io = Arc::new(application_io);
@@ -109,14 +89,16 @@ pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocume
 	let editor_api = Arc::new(PlatformEditorApi {
 		application_io: Some(application_io.clone()),
 	});
-	let spawner = Arc::new(TokioSpawner::default());
-	let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(std::time::Instant::now()));
+	(application_io, editor_api)
+}
 
-	let mut network = wrap_network_in_scope(document.network, editor_api, runtime.handle());
+/// Compile `network`, writing the path of each of its `layers` onto what that layer renders.
+pub fn compile_graph(mut network: NodeNetwork, layers: &[Vec<NodeId>], editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>, runtime: RuntimeHandle) -> Result<ProtoNetwork, Box<dyn Error>> {
+	write_layer_paths(&mut network, layers);
+	let mut network = wrap_network_in_scope(network, editor_api, runtime);
 
-	// A `.gdd` resolves resource hashes from its registry, while a legacy `.graphite` has no resource store
 	let preprocessor = preprocessor::Preprocessor::new();
-	let preprocessed = match &document.gdd {
+	let preprocessed = match gdd {
 		Some(gdd) => preprocessor.preprocess(&mut network, &|resource_id| gdd.registry().resources.get(&resource_id).and_then(|resource| resource.hash)),
 		None => preprocessor.preprocess(&mut network, &|_| None),
 	};
@@ -126,9 +108,24 @@ pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocume
 	for warning in &compiled_network.warnings {
 		eprintln!("{warning:?}");
 	}
+	Ok(compiled_network.network)
+}
+
+pub fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
+	DynamicExecutor::new(proto_network).map_err(|errors| {
+		let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
+		messages.join("\n").into()
+	})
+}
+
+pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocument, Box<dyn Error>> {
+	let (application_io, editor_api) = editor_api(document.gdd.as_ref()).await;
+	let spawner = Arc::new(TokioSpawner::default());
+	let runtime = AsyncRuntime::new(spawner.clone());
+	let proto_network = compile_graph(document.network, &document.layers, editor_api, document.gdd.as_ref(), runtime.handle())?;
 
 	Ok(CompiledDocument {
-		proto_network: compiled_network.network,
+		proto_network,
 		application_io,
 		runtime,
 		spawner,
@@ -137,11 +134,8 @@ pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocume
 
 impl CompiledDocument {
 	pub fn into_renderer(self) -> Result<Renderer, Box<dyn Error>> {
-		let executor = DynamicExecutor::new(self.proto_network).map_err(|errors| {
-			let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
-			messages.join("\n")
-		})?;
-		self.runtime.retain_sources(executor.sources());
+		let executor = create_executor(self.proto_network)?;
+		self.runtime.update_sources(executor.sources());
 
 		let device = self.application_io.gpu_executor().ok_or("No GPU executor is available")?.context().device.clone();
 		let polling = Arc::new(AtomicBool::new(true));

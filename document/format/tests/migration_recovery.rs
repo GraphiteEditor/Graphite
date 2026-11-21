@@ -31,7 +31,7 @@ fn network_of(nodes: &[(u64, &'static str)]) -> NodeNetwork {
 }
 
 fn create() -> GddV1 {
-	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(7), 1, "editor".into(), "std".into()).unwrap()
+	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(7), UserId(7), 1, "editor".into(), "std".into()).unwrap()
 }
 
 fn commit(gdd: &mut GddV1, nodes: &[(u64, &'static str)], store: &HashMapResourceStorage) {
@@ -79,7 +79,7 @@ fn a_migration_on_disk_leaves_no_staging_behind() {
 	block_on(async {
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("document");
-		let mut gdd = GddV1::create(&path, PeerId(7), 1, "editor".into(), "std".into()).unwrap();
+		let mut gdd = GddV1::create(&path, PeerId(7), UserId(7), 1, "editor".into(), "std".into()).unwrap();
 		commit(&mut gdd, &[(1, FADE)], &HashMapResourceStorage::new());
 		drop(gdd);
 
@@ -259,7 +259,7 @@ fn reopening_with_an_undone_implementation_swap_can_redo() {
 		let mut reopened = GddV1::open_in(working, layout).await.unwrap();
 		let declarations = reopened.declarations(&store).await;
 		reopened.redo().unwrap();
-		let converted = reopened.registry().to_runtime_with_full_metadata(&declarations);
+		let converted = reopened.registry().to_runtime_with_full_metadata(&declarations, reopened.blobs());
 		assert!(converted.is_ok(), "{}", converted.err().unwrap());
 	});
 }

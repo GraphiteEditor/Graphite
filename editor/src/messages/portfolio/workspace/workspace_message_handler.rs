@@ -268,6 +268,19 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				let panel_type = PanelType::Layers;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
+			WorkspaceMessage::FocusPanel { panel_type } => {
+				if self.panel_layout.focus_document {
+					return;
+				}
+				let Some(group) = self.panel_layout.find_panel(panel_type) else {
+					self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
+					return;
+				};
+				let Some(tab_index) = self.panel_layout.panel_group(group).and_then(|state| state.tabs.iter().position(|&tab| tab == panel_type)) else {
+					return;
+				};
+				responses.add(WorkspaceMessage::SetPanelGroupActiveTab { group, tab_index });
+			}
 			WorkspaceMessage::ToggleDataPanelOpen => {
 				if self.panel_layout.focus_document {
 					return;
@@ -276,12 +289,29 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				let panel_type = PanelType::Data;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
+
 			WorkspaceMessage::TogglePalettePanelOpen => {
 				if self.panel_layout.focus_document {
 					return;
 				}
 
 				let panel_type = PanelType::Palette;
+				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
+			}
+			WorkspaceMessage::ToggleCollaborationPanelOpen => {
+				if self.panel_layout.focus_document {
+					return;
+				}
+
+				let panel_type = PanelType::Collaboration;
+				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
+			}
+			WorkspaceMessage::ToggleHistoryPanelOpen => {
+				if self.panel_layout.focus_document {
+					return;
+				}
+
+				let panel_type = PanelType::History;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
 			WorkspaceMessage::UpdatePanelsLayout => {
@@ -399,9 +429,9 @@ impl WorkspaceMessageHandler {
 			PanelType::Inspector => &[LayoutTarget::Inspector],
 			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelBottomLeftBar, LayoutTarget::LayersPanelBottomRightBar],
 			PanelType::Data => &[LayoutTarget::DataPanel, LayoutTarget::DataPanelContext, LayoutTarget::DataPanelPath],
-			PanelType::Document | PanelType::Welcome => return,
-			// TODO: Fix the destroy process properly
-			PanelType::Palette => return,
+			PanelType::Collaboration => &[LayoutTarget::CollaborationPanel],
+			// TODO: Fix the destroy process properly for palette
+			PanelType::Document | PanelType::Welcome | PanelType::History | PanelType::Palette => return,
 		};
 
 		for &layout_target in targets {
@@ -430,6 +460,12 @@ impl WorkspaceMessageHandler {
 			PanelType::Palette => {
 				responses.add(PaletteMessage::Refresh);
 			}
+			PanelType::Collaboration => {
+				responses.add(SyncMessage::RefreshPanel);
+			}
+			PanelType::History => {
+				responses.add(HistoryMessage::Refresh);
+			}
 			PanelType::Document | PanelType::Welcome => {
 				// Re-send the welcome screen buttons layout to repopulate after a remount
 				if has_no_documents {
@@ -454,11 +490,11 @@ mod tests {
 		};
 		let group_of = |handler: &WorkspaceMessageHandler, panel_type| handler.panel_layout.find_panel(panel_type).expect("the default layout has this panel");
 
-		// The Layers panel joins the Inspector's group as its active tab
+		// Layers joins the Inspector's group ahead of it, which leaves the Inspector active
 		let join = WorkspaceMessage::MovePanelTab {
 			source_group: group_of(&handler, PanelType::Layers),
 			target_group: group_of(&handler, PanelType::Inspector),
-			insert_index: 1,
+			insert_index: 0,
 		};
 		handler.process_message(join, &mut VecDeque::new(), context());
 

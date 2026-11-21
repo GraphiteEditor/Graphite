@@ -6,11 +6,11 @@ use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::math_expression::MathExpressionCompletions;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, FrontendRemoteCursor, NodeGraphErrorDiagnostic,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
-use crate::messages::portfolio::ingest::utility_types::IngestAction;
+use crate::messages::portfolio::ingest::utility_types::{DataTransfer, IngestAction};
 use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
@@ -18,9 +18,6 @@ use graph_craft::document::NodeId;
 use graphene_std::color::SRGBA8;
 use graphene_std::vector::style::FillChoice;
 use std::path::PathBuf;
-
-#[cfg(not(target_family = "wasm"))]
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 
 #[impl_message(Message, Frontend)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -141,7 +138,8 @@ pub enum FrontendMessage {
 	},
 	TriggerClipboardRead,
 	TriggerClipboardWrite {
-		content: String,
+		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
+		content: DataTransfer,
 	},
 	TriggerSelectionRead {
 		cut: bool,
@@ -186,9 +184,23 @@ pub enum FrontendMessage {
 		#[serde(rename = "inSelectedNetwork")]
 		in_selected_network: bool,
 	},
+	/// Whether the network shown in the graph lies inside a built-in node, whose contents are read-only until made editable.
+	UpdateNetworkReadOnly {
+		#[serde(rename = "readOnly")]
+		read_only: bool,
+	},
 	UpdateBox {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
+	},
+	UpdateDocumentCursors {
+		cursors: Vec<FrontendRemoteCursor>,
+	},
+	UpdateHistoryPanel {
+		state: crate::messages::portfolio::history::utility_types::HistoryPanelState,
+	},
+	UpdateNodeGraphCursors {
+		cursors: Vec<FrontendRemoteCursor>,
 	},
 	UpdateContextMenuInformation {
 		#[serde(rename = "contextMenuInformation")]
@@ -385,12 +397,9 @@ pub enum FrontendMessage {
 		scale: f64,
 	},
 
+	/// Wakes the desktop's graph runtime so it draws the new overlays.
 	#[cfg(not(target_family = "wasm"))]
-	RenderOverlays {
-		#[serde(skip, default = "OverlayContext::default")]
-		#[derivative(Debug = "ignore", PartialEq = "ignore")]
-		context: OverlayContext,
-	},
+	WakeNodeRuntime,
 
 	// Window prefix: cause the application window to do something
 	#[cfg(not(target_family = "wasm"))]

@@ -1,3 +1,5 @@
+use crate::BlobHash;
+use graphene_resource::ResourceHash;
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -12,6 +14,8 @@ pub enum Value {
 	Str(String),
 	Array(Vec<Value>),
 	Object(Vec<(String, Value)>),
+	/// A large node input value that is stored as a blob. See [`crate::blob`].
+	Blob(BlobHash),
 }
 
 // Using `Serializer::is_human_readable` to determine whether to serialize tagged.
@@ -29,6 +33,7 @@ impl Serialize for Value {
 			Value::Str(string) => serializer.serialize_str(string),
 			Value::Array(array) => serializer.collect_seq(array),
 			Value::Object(object) => serializer.collect_map(object.iter().map(|(key, value)| (key, value))),
+			Value::Blob(hash) => serializer.collect_map(std::iter::once((Value::BLOB_KEY, hash))),
 		}
 	}
 }
@@ -97,12 +102,29 @@ impl<'de> Deserialize<'de> for Value {
 					}
 					dedup
 				});
-				Ok(Value::Object(object))
+				Ok(Value::from_object(object))
 			}
 			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("a valid Value")
 			}
 		}
 		deserializer.deserialize_any(Untagged)
+	}
+}
+
+impl Value {
+	/// In human-readable formats a [`Value::Blob`] is written as an object with only this key. The key is reserved.
+	/// Such an object with a hash string is read back as a blob.
+	pub(crate) const BLOB_KEY: &str = "$blob";
+
+	/// An object, or a [`Value::Blob`] if the object has the form of one.
+	pub(crate) fn from_object(object: Vec<(String, Value)>) -> Self {
+		if let [(key, Value::Str(hex))] = object.as_slice()
+			&& key == Self::BLOB_KEY
+			&& let Ok(hash) = ResourceHash::try_from(hex.as_str())
+		{
+			return Value::Blob(BlobHash(hash));
+		}
+		Value::Object(object)
 	}
 }

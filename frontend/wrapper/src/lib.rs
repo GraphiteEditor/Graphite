@@ -4,9 +4,13 @@
 #[macro_use]
 extern crate log;
 
+#[cfg(not(feature = "native"))]
+mod data_transfer;
 pub mod editor_commands;
 pub mod editor_wrapper;
 pub mod helpers;
+#[cfg(not(feature = "native"))]
+mod intercept_frontend_message;
 pub mod native_communication;
 mod wasm_value;
 

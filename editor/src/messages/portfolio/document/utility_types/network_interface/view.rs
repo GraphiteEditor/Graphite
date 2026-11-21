@@ -92,11 +92,10 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn implementation_metadata(&self, node_id: &NodeId) -> Result<Option<&'a NodeNetworkMetadata>, NetworkError> {
-		let network_metadata = match self.implementation(node_id)? {
-			DocumentNodeImplementation::Network(_) => self.node_metadata(node_id)?.persistent_metadata.network_metadata.as_ref(),
-			DocumentNodeImplementation::Definition(id) => self.interface.network_metadata.persistent_metadata.definitions.get(id),
-			DocumentNodeImplementation::ProtoNode(_) | DocumentNodeImplementation::Extract => return Ok(None),
+		let DocumentNodeImplementation::Definition(id) = self.implementation(node_id)? else {
+			return Ok(None);
 		};
+		let network_metadata = self.interface.network_metadata.persistent_metadata.definitions.get(id);
 		network_metadata.map(Some).ok_or(NetworkError::NestedMetadataNotFound { node_id: *node_id })
 	}
 
@@ -108,25 +107,40 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		Ok(network_metadata.persistent_metadata.reference.clone().map(DefinitionIdentifier::Network))
 	}
 
+	/// The definition of a proto node `node_id`, which owns its signature rather than the node itself.
+	fn definition_template(&self, node_id: &NodeId) -> Result<Option<&'static NodeTemplate>, NetworkError> {
+		let DocumentNodeImplementation::ProtoNode(identifier) = self.implementation(node_id)? else {
+			return Ok(None);
+		};
+		Ok(resolve_proto_node_definition(identifier).map(|definition| &definition.node_template))
+	}
+
+	/// The node's input metadata, from its definition or else the network a subgraph names.
 	pub fn input_metadata(&self, node_id: &NodeId) -> Result<&'a [InputMetadata], NetworkError> {
-		Ok(match self.implementation_metadata(node_id)? {
-			Some(network_metadata) => &network_metadata.persistent_metadata.import_metadata,
-			None => &self.node_metadata(node_id)?.persistent_metadata.input_metadata,
-		})
+		if let Some(template) = self.definition_template(node_id)? {
+			return Ok(&template.input_metadata);
+		}
+		Ok(self
+			.implementation_metadata(node_id)?
+			.map_or(&[], |network_metadata| &network_metadata.persistent_metadata.import_metadata))
 	}
 
 	pub fn output_names(&self, node_id: &NodeId) -> Result<&'a [String], NetworkError> {
-		Ok(match self.implementation_metadata(node_id)? {
-			Some(network_metadata) => &network_metadata.persistent_metadata.export_names,
-			None => &self.node_metadata(node_id)?.persistent_metadata.output_names,
-		})
+		if let Some(template) = self.definition_template(node_id)? {
+			return Ok(&template.output_names);
+		}
+		Ok(self
+			.implementation_metadata(node_id)?
+			.map_or(&[], |network_metadata| &network_metadata.persistent_metadata.export_names))
 	}
 
 	pub fn output_descriptions(&self, node_id: &NodeId) -> Result<&'a [String], NetworkError> {
-		Ok(match self.implementation_metadata(node_id)? {
-			Some(network_metadata) => &network_metadata.persistent_metadata.export_descriptions,
-			None => &self.node_metadata(node_id)?.persistent_metadata.output_descriptions,
-		})
+		if let Some(template) = self.definition_template(node_id)? {
+			return Ok(&template.output_descriptions);
+		}
+		Ok(self
+			.implementation_metadata(node_id)?
+			.map_or(&[], |network_metadata| &network_metadata.persistent_metadata.export_descriptions))
 	}
 
 	pub fn is_layer(&self, node_id: &NodeId) -> Result<bool, NetworkError> {

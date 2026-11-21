@@ -1,29 +1,44 @@
 //! Deterministic simulation over the mock transport with random edits, delivery order and host retirement.
 //! After quiescence every peer must hold the same retired state.
 //!
-//! Inspect one run with `SEED=<n> GUESTS=<n> cargo test -p peer-transport --test simulation inspect_seed -- --ignored --nocapture`.
+//! Inspect one run with `SEED=<n> GUESTS=<n> [STROKES=1] cargo test -p peer-transport --test simulation inspect_seed -- --ignored --nocapture`.
 
+use document_graph_storage::blob::{BLOB_THRESHOLD, BlobBytes};
 use document_graph_storage::{
-	AttributeDelta, Delta, HeadMove, HotOp, HotOpId, HotSequence, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Priority, Registry, RegistryDelta, ResourceHash, ResourceId,
-	RetiredMarks, Rev, Session, SourceKey, UserId, Value,
+	AttributeDelta, BlobHash, Delta, HeadMove, HotOp, HotOpId, HotSequence, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Priority, Registry, RegistryDelta, ResourceHash,
+	ResourceId, RetiredMarks, Rev, Session, SourceKey, UserId, Value,
 };
 use peer_transport::mock::{MockEndpoint, MockNetwork};
-use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, TransportPeerId};
+use peer_transport::{BlobRecord, Event, Replica, Role, SyncTarget, TargetError, TransportPeerId};
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread::LocalKey;
 
-static TOTAL_NODES: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_WIRED: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_EXPORTS: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_INPUT_ATTRIBUTES: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_SOURCES: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_COLLECTED: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_REDONE_RETRACTIONS: AtomicUsize = AtomicUsize::new(0);
+// Per thread, since each test runs its corpus on its own thread
+thread_local! {
+	static TOTAL_NODES: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_WIRED: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_EXPORTS: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_INPUT_ATTRIBUTES: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_SOURCES: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_COLLECTED: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_REDONE_RETRACTIONS: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_BLOBS: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_BLOB_DELTAS: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_BLOB_FETCHES: Cell<usize> = const { Cell::new(0) };
+}
+
+fn count(counter: &'static LocalKey<Cell<usize>>, amount: usize) {
+	counter.set(counter.get() + amount);
+}
 
 /// A peer's document plus a byte store, since bare `Session` has no-op resource defaults.
 struct SimTarget {
 	session: Session,
 	resources: HashMap<ResourceHash, Vec<u8>>,
+	/// Blob bytes and the record of each blob. See [`SimTarget::blob_record`].
+	blobs: BlobBytes,
+	blob_records: HashMap<BlobHash, Vec<u8>>,
 	/// History as of the last `flush`.
 	durable_history: Vec<Rev>,
 	flushes: usize,
@@ -40,6 +55,8 @@ impl SimTarget {
 		Self {
 			session: Session::with_peer(peer),
 			resources: HashMap::new(),
+			blobs: BlobBytes::new(),
+			blob_records: HashMap::new(),
 			durable_history: Vec::new(),
 			flushes: 0,
 			seen_revs: HashSet::new(),
@@ -50,6 +67,37 @@ impl SimTarget {
 
 	fn history_revs(&self) -> Vec<Rev> {
 		self.session.history().map(|delta| delta.id).collect()
+	}
+
+	/// A stand-in for a blob record. It holds the base hash if the base is held, then the bytes. Like a real delta,
+	/// a receiver can only take it when it holds the base. `document-format` tests real deltas.
+	fn blob_record(&self, bytes: &[u8], base: Option<BlobHash>) -> Vec<u8> {
+		let mut record = Vec::new();
+		match base.filter(|base| self.blobs.contains_key(base)) {
+			Some(base) => {
+				record.push(1);
+				record.extend_from_slice(&<[u8; 32]>::from(&base.0));
+			}
+			None => record.push(0),
+		}
+		record.extend_from_slice(bytes);
+		record
+	}
+
+	/// Hold staged blobs and return the records that peers receive with the ops.
+	fn hold_blobs(&mut self, blobs: BlobBytes, bases: &HashMap<BlobHash, BlobHash>) -> Vec<BlobRecord> {
+		let mut blobs: Vec<_> = blobs.into_iter().filter(|(hash, _)| !self.blobs.contains_key(hash)).collect();
+		blobs.sort_unstable_by_key(|(hash, _)| *hash);
+
+		let mut records = Vec::new();
+		for (hash, bytes) in blobs {
+			let record = self.blob_record(&bytes, bases.get(&hash).copied());
+			self.blobs.insert(hash, bytes);
+			self.blob_records.insert(hash, record.clone());
+			records.push(BlobRecord { hash, record });
+		}
+		count(&TOTAL_BLOBS, records.len());
+		records
 	}
 }
 
@@ -168,16 +216,66 @@ impl SyncTarget for SimTarget {
 	}
 
 	fn missing_resources(&self) -> HashSet<ResourceHash> {
-		self.session.all_referenced_resource_hashes().into_iter().filter(|hash| !self.resources.contains_key(hash)).collect()
+		let resources = self.session.all_referenced_resource_hashes().into_iter().filter(|hash| !self.resources.contains_key(hash));
+		let blobs = self.session.all_blob_hashes().into_iter().filter(|hash| !self.blobs.contains_key(hash));
+		resources.chain(blobs.map(ResourceHash::from)).collect()
 	}
 
 	fn resource_bytes(&self, hash: ResourceHash) -> Option<Vec<u8>> {
-		self.resources.get(&hash).cloned()
+		self.resources.get(&hash).or_else(|| self.blobs.get(&BlobHash(hash))).cloned()
 	}
 
 	fn store_resource(&mut self, hash: ResourceHash, bytes: &[u8]) -> Result<(), TargetError> {
+		let blob = BlobHash(hash);
+		if self.session.names_blob(blob) {
+			count(&TOTAL_BLOB_FETCHES, 1);
+			let record = self.blob_record(bytes, None);
+			self.blobs.insert(blob, bytes.to_vec());
+			self.blob_records.insert(blob, record);
+			return Ok(());
+		}
 		self.resources.insert(hash, bytes.to_vec());
 		Ok(())
+	}
+
+	fn blob_records(&self) -> Vec<BlobRecord> {
+		let mut records: Vec<_> = self.blob_records.iter().map(|(&hash, record)| BlobRecord { hash, record: record.clone() }).collect();
+		records.sort_unstable_by_key(|record| record.hash);
+		records
+	}
+
+	fn absorb_blob_records(&mut self, records: Vec<BlobRecord>) -> Result<(), TargetError> {
+		let mut pending = records;
+		loop {
+			let waiting = pending.len();
+			pending.retain(|BlobRecord { hash, record }| {
+				if self.blobs.contains_key(hash) {
+					return false;
+				}
+				let bytes = match record.split_first() {
+					Some((1, rest)) => {
+						let base = <[u8; 32]>::try_from(&rest[..32])
+							.map(|bytes| BlobHash(ResourceHash::from(bytes)))
+							.expect("a delta record names its base");
+						if !self.blobs.contains_key(&base) {
+							return true;
+						}
+						count(&TOTAL_BLOB_DELTAS, 1);
+						&rest[32..]
+					}
+					Some((_, rest)) => rest,
+					None => panic!("seed {}: an empty blob record arrived", self.seed),
+				};
+				assert_eq!(BlobHash::of(bytes), *hash, "seed {}: a blob record decodes to bytes of another hash", self.seed);
+				self.blobs.insert(*hash, bytes.to_vec());
+				self.blob_records.insert(*hash, record.clone());
+				false
+			});
+			// The remaining records need a base this peer lacks. They are fetched in full as missing resources
+			if pending.is_empty() || pending.len() == waiting {
+				return Ok(());
+			}
+		}
 	}
 }
 
@@ -241,9 +339,19 @@ impl Peer {
 
 	fn stage(&mut self, op: RegistryDelta) {
 		self.retracted.clear();
-		let hot_ops = self.target.session.stage_computed_ops(vec![op]).expect("stage");
+		self.stage_ops(vec![op]).expect("stage");
+	}
 
-		self.replica.broadcast_hot_ops(&hot_ops).expect("broadcast");
+	/// Stage `ops`, move their large values into blobs and broadcast the blob records with them.
+	fn stage_ops(&mut self, mut ops: Vec<RegistryDelta>) -> Result<(), document_graph_storage::CrdtError> {
+		let mut blobs = BlobBytes::new();
+		ops.iter_mut().for_each(|op| op.move_values_into_blobs(&mut blobs));
+		let bases = self.target.session.registry().blob_bases(&ops);
+
+		let hot_ops = self.target.session.stage_computed_ops(ops)?;
+		let records = self.target.hold_blobs(blobs, &bases);
+		self.replica.broadcast_hot_ops(&hot_ops, records).expect("broadcast");
+		Ok(())
 	}
 
 	/// Introduce a resource only this peer holds the bytes for, so every other peer has to fetch them.
@@ -255,7 +363,7 @@ impl Peer {
 		// Per-peer, since a content-derived id would collide across peers.
 		let id = ResourceId::from(u64::from(ResourceId::from_hash(&hash)) ^ self.peer.0);
 		let hot_ops = self.target.session.stage_embedded_resource(id, hash).expect("stage resource");
-		self.replica.broadcast_hot_ops(&hot_ops).expect("broadcast");
+		self.replica.broadcast_hot_ops(&hot_ops, Vec::new()).expect("broadcast");
 	}
 
 	fn retire(&mut self) {
@@ -275,8 +383,24 @@ impl Peer {
 		let staged = self.target.session.end_interaction().expect("end interaction");
 		if let Some(marker) = staged.last() {
 			self.last_closed = marker.sequence;
-			self.replica.broadcast_hot_ops(&staged).expect("broadcast");
+			self.replica.broadcast_hot_ops(&staged, Vec::new()).expect("broadcast");
 		}
+	}
+
+	/// Edit one input of a live node a few times in a row, like drawing does. Each new blob is based on the one before.
+	fn stroke(&mut self, network: &mut MockNetwork) {
+		let live_nodes: Vec<NodeId> = sorted(self.session().registry().node_instances.keys().copied());
+		let Some(&id) = pick(network, &live_nodes) else { return };
+		let index = network.random_below(2) as u32;
+
+		for _ in 0..2 + network.random_below(4) {
+			let new_input = NodeInput::Value {
+				value: large_value(network),
+				exposed: false,
+			};
+			self.stage(RegistryDelta::ChangeNodeInput { id, index, new_input });
+		}
+		self.end_interaction();
 	}
 
 	/// Undo this peer's latest interaction while hot. The ops leave every hot log and never become history.
@@ -293,10 +417,11 @@ impl Peer {
 	/// Redo the hot step this peer took back last, staging its ops afresh. A redo that no longer fits is given up.
 	fn redo_retracted(&mut self) {
 		let Some(ops) = self.retracted.pop() else { return };
-		let Ok(hot_ops) = self.target.session.stage_computed_ops(ops) else { return };
-		self.replica.broadcast_hot_ops(&hot_ops).expect("broadcast");
+		if self.stage_ops(ops).is_err() {
+			return;
+		}
 		self.end_interaction();
-		TOTAL_REDONE_RETRACTIONS.fetch_add(1, Ordering::Relaxed);
+		count(&TOTAL_REDONE_RETRACTIONS, 1);
 	}
 
 	/// Drop every held byte outside the GC root set. `needed` is what present peers name and lack.
@@ -307,7 +432,7 @@ impl Peer {
 		self.target.collected_while_needed.extend(dropped);
 		let before = self.target.resources.len();
 		self.target.resources.retain(|hash, _| roots.contains(hash));
-		TOTAL_COLLECTED.fetch_add(before - self.target.resources.len(), Ordering::Relaxed);
+		count(&TOTAL_COLLECTED, before - self.target.resources.len());
 	}
 
 	/// Every hash this peer's registry, history, hot log or retracted steps name, gathered independently of the GC
@@ -394,6 +519,19 @@ fn random_value(network: &mut MockNetwork) -> Value {
 	Value::from(serde_json::json!(network.random_below(100)))
 }
 
+/// A value large enough to become a blob. The pool is small, so peers sometimes stage the same value at once.
+fn large_value(network: &mut MockNetwork) -> Value {
+	Value::Str(format!("{}{}", "x".repeat(BLOB_THRESHOLD), network.random_below(64)))
+}
+
+/// A literal input value. One in three is a [`large_value`].
+fn random_input_value(network: &mut MockNetwork) -> Value {
+	match network.random_below(3) {
+		0 => large_value(network),
+		_ => random_value(network),
+	}
+}
+
 fn add_network(id: u64) -> RegistryDelta {
 	RegistryDelta::AddNetwork {
 		id: NetworkId(id),
@@ -431,6 +569,16 @@ fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<Regist
 			})
 		}
 		2 => registry.node_instances.get(&node_id).map(|node| RegistryDelta::RemoveNode { id: node_id, snapshot: node.clone() }),
+		// Repeated edits to one slot chain its blobs, so most of them arrive as deltas
+		5 => {
+			let id = *pick(network, &live_nodes)?;
+			let index = network.random_below(2) as u32;
+			let new_input = NodeInput::Value {
+				value: large_value(network),
+				exposed: false,
+			};
+			Some(RegistryDelta::ChangeNodeInput { id, index, new_input })
+		}
 		3 | 4 => {
 			let node = registry.node_instances.get(&node_id)?;
 			let index = network.random_below(node.inputs().len().max(1)) as u32;
@@ -440,7 +588,7 @@ fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<Regist
 			let new_input = match wire_to {
 				Some(target) if network.random_below(3) > 0 => NodeInput::Node { id: target, index: 0 },
 				_ => NodeInput::Value {
-					value: random_value(network),
+					value: random_input_value(network),
 					exposed: false,
 				},
 			};
@@ -614,7 +762,15 @@ fn quiesce(network: &mut MockNetwork, peers: &mut [Peer]) -> usize {
 	panic!("the room never went idle");
 }
 
-fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Peer>) {
+/// The main kind of step in a run.
+#[derive(Clone, Copy)]
+enum Workload {
+	Mixed,
+	/// Half the steps are strokes, like live drawing.
+	Strokes,
+}
+
+fn simulate(seed: u64, guest_count: usize, steps: usize, workload: Workload) -> (MockNetwork, Vec<Peer>) {
 	let mut network = MockNetwork::new(seed);
 	let mut peers = open_room(&mut network, guest_count, seed);
 
@@ -624,7 +780,11 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 			continue;
 		}
 
-		match network.random_below(18) {
+		let action = match workload {
+			Workload::Strokes if network.random_below(2) == 0 => 14,
+			_ => network.random_below(18),
+		};
+		match action {
 			// Anything staged before syncing would be invisible to the room.
 			0..=2 if peers[index].replica.is_synced() => {
 				let op = random_op(&mut network, &peers[index].target);
@@ -642,6 +802,7 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 				peers[index].collect_garbage(&needed);
 			}
 			17 if peers[index].replica.is_synced() => peers[index].redo_retracted(),
+			14 if peers[index].replica.is_synced() => peers[index].stroke(&mut network),
 			// Bytes nothing names, as an abandoned import leaves behind.
 			8 if network.random_below(4) == 0 => {
 				let bytes = format!("stray-{}-{}", peers[index].peer.0, network.random_below(1 << 20)).into_bytes();
@@ -863,7 +1024,14 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 	// Bytes that left with a departed peer are gone, so only those a present peer holds, or collected while needed,
 	// must be served.
 	let servable: HashSet<ResourceHash> = present()
-		.flat_map(|(_, peer)| peer.target.resources.keys().chain(&peer.target.collected_while_needed).copied())
+		.flat_map(|(_, peer)| {
+			peer.target
+				.resources
+				.keys()
+				.chain(&peer.target.collected_while_needed)
+				.copied()
+				.chain(peer.target.blobs.keys().map(|hash| hash.0))
+		})
 		.collect();
 
 	for (index, peer) in present() {
@@ -886,14 +1054,36 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 
 #[test]
 fn peers_converge_under_random_interleavings() {
-	let seeds = std::env::var("SIM_SEEDS").ok().and_then(|value| value.parse::<u64>().ok()).unwrap_or(5000);
+	run_corpus(Workload::Mixed, 5000);
+	// The generator's ops are guarded on registry state, so a change can quietly stop producing them.
+	assert!(TOTAL_NODES.get() > 0, "the corpus produced no nodes");
+	assert!(TOTAL_WIRED.get() > 0, "the corpus produced no node-to-node inputs");
+	assert!(TOTAL_EXPORTS.get() > 0, "the corpus set no network exports");
+	assert!(TOTAL_INPUT_ATTRIBUTES.get() > 0, "the corpus wrote no input-slot attributes");
+	assert!(TOTAL_SOURCES.get() > 0, "the corpus never stacked a second source on a resource");
+	assert!(TOTAL_COLLECTED.get() > 0, "garbage collection never dropped a resource");
+	assert!(TOTAL_REDONE_RETRACTIONS.get() > 0, "the corpus never redid a step taken back");
+	assert!(TOTAL_BLOBS.get() > 0, "the corpus staged no blobs");
+}
 
-	// Runs every seed and lists the failures, to tell one bug from several.
+/// Mostly strokes. Blobs chain, reach peers as deltas and are fetched in full by peers that lack a base.
+#[test]
+fn blobs_reach_every_peer_under_strokes() {
+	run_corpus(Workload::Strokes, 10_000);
+	assert!(TOTAL_BLOB_DELTAS.get() > 0, "no blob arrived as a delta against one already held");
+	assert!(TOTAL_BLOB_FETCHES.get() > 0, "no blob was fetched in full for a missing base");
+}
+
+/// Run `SIM_SEEDS` seeds (or `default_seeds`) and check that each one converges.
+/// `SIM_KEEP_GOING` runs every seed and lists all failures. This tells one bug from several.
+fn run_corpus(workload: Workload, default_seeds: u64) {
+	let seeds = std::env::var("SIM_SEEDS").ok().and_then(|value| value.parse::<u64>().ok()).unwrap_or(default_seeds);
 	let keep_going = std::env::var_os("SIM_KEEP_GOING").is_some();
+
 	let mut failed = Vec::new();
 	for seed in 0..seeds {
 		let run = || {
-			let (_, peers) = simulate(seed, 1 + (seed % 3) as usize, 200);
+			let (_, peers) = simulate(seed, 1 + (seed % 3) as usize, 200, workload);
 			count_coverage(peers[expect_host(seed, &peers)].session().retired_registry());
 			assert_converged(seed, &peers);
 		};
@@ -904,25 +1094,17 @@ fn peers_converge_under_random_interleavings() {
 		}
 	}
 	assert!(failed.is_empty(), "{} seeds failed: {failed:?}", failed.len());
-	// The generator's ops are guarded on registry state, so a change can quietly stop producing them.
-	assert!(TOTAL_NODES.load(Ordering::Relaxed) > 0, "the corpus produced no nodes");
-	assert!(TOTAL_WIRED.load(Ordering::Relaxed) > 0, "the corpus produced no node-to-node inputs");
-	assert!(TOTAL_EXPORTS.load(Ordering::Relaxed) > 0, "the corpus set no network exports");
-	assert!(TOTAL_INPUT_ATTRIBUTES.load(Ordering::Relaxed) > 0, "the corpus wrote no input-slot attributes");
-	assert!(TOTAL_SOURCES.load(Ordering::Relaxed) > 0, "the corpus never stacked a second source on a resource");
-	assert!(TOTAL_COLLECTED.load(Ordering::Relaxed) > 0, "garbage collection never dropped a resource");
-	assert!(TOTAL_REDONE_RETRACTIONS.load(Ordering::Relaxed) > 0, "the corpus never redid a step taken back");
 }
 
 fn count_coverage(registry: &Registry) {
 	let inputs = || registry.node_instances.values().flat_map(|node| node.inputs());
-	TOTAL_NODES.fetch_add(registry.node_instances.len(), Ordering::Relaxed);
-	TOTAL_WIRED.fetch_add(inputs().filter(|slot| matches!(slot.input, NodeInput::Node { .. })).count(), Ordering::Relaxed);
-	TOTAL_INPUT_ATTRIBUTES.fetch_add(inputs().filter(|slot| !slot.attributes.is_empty()).count(), Ordering::Relaxed);
+	count(&TOTAL_NODES, registry.node_instances.len());
+	count(&TOTAL_WIRED, inputs().filter(|slot| matches!(slot.input, NodeInput::Node { .. })).count());
+	count(&TOTAL_INPUT_ATTRIBUTES, inputs().filter(|slot| !slot.attributes.is_empty()).count());
 	let exports = registry.networks.values().flat_map(|network| &network.exports).filter(|slot| slot.target.is_some()).count();
-	TOTAL_EXPORTS.fetch_add(exports, Ordering::Relaxed);
+	count(&TOTAL_EXPORTS, exports);
 	// A second source can only come from `AddSource`.
-	TOTAL_SOURCES.fetch_add(registry.resources.values().filter(|entry| entry.sources.len() > 1).count(), Ordering::Relaxed);
+	count(&TOTAL_SOURCES, registry.resources.values().filter(|entry| entry.sources.len() > 1).count());
 }
 
 /// A rejoining guest keeps its `PeerId` but restarts its broadcast sequence, which the room must follow
@@ -954,7 +1136,8 @@ fn inspect_seed() {
 	let seed = std::env::var("SEED").ok().and_then(|value| value.parse().ok()).unwrap_or(0);
 	let guests = std::env::var("GUESTS").ok().and_then(|value| value.parse().ok()).unwrap_or(1);
 
-	let (_, peers) = simulate(seed, guests, 200);
+	let workload = if std::env::var_os("STROKES").is_some() { Workload::Strokes } else { Workload::Mixed };
+	let (_, peers) = simulate(seed, guests, 200, workload);
 	for (index, peer) in peers.iter().enumerate() {
 		eprintln!("=== peer {index} head {:?}", peer.session().head_rev());
 		eprintln!("registry {}", serde_json::to_string(peer.session().retired_registry()).unwrap());
@@ -1031,7 +1214,7 @@ fn a_witness_closes_an_authors_run_before_a_gap_forms() {
 /// an edit or the wire.
 #[test]
 fn a_seed_fixes_the_run() {
-	let run = |seeds: u64| (0..seeds).map(|seed| simulate(seed, 1 + (seed % 3) as usize, 200).1).collect::<Vec<_>>();
+	let run = |seeds: u64| (0..seeds).map(|seed| simulate(seed, 1 + (seed % 3) as usize, 200, Workload::Mixed).1).collect::<Vec<_>>();
 
 	let (first, second) = (run(100), run(100));
 

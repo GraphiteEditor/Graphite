@@ -1,9 +1,13 @@
 //! The node tier: `M` as a function on registry states, and the history rewrite derived from it.
 
-use crate::RunnerError;
+use crate::{MigrationBlobs, RunnerError};
+use document_graph_storage::TimeStamp;
+use document_graph_storage::attributes::attr::node::ui::{IS_LAYER, POSITION, REFERENCE};
 use document_graph_storage::delta::compute_deltas;
-use document_graph_storage::{Delta, Implementation, Node, NodeId, Registry, RegistryDelta, ResourceHash, ResourceId, Rev, apply_retired_op};
-use migration_core::{AnchorContext, Declaration, DeclarationResolver, Edits, InputConnector, InputsEdit, NodeMigration, OutputConnector};
+use document_graph_storage::{Delta, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, Registry, RegistryDelta, ResourceHash, ResourceId, Rev, apply_retired_op};
+use migration_core::{
+	AnchorContext, CHAIN_WIDTH, Compiler, Declaration, DeclarationResolver, Edits, FEEDER_ROW_HEIGHT, InputConnector, InputsEdit, MigrationHost, NodeMigration, OutputConnector, encode, implements,
+};
 use std::collections::{HashMap, HashSet};
 
 /// A [`DeclarationResolver`] over a fixed set of declarations for tests, whose resource IDs derive from `identifier@version` rather than the encoded declarations documents store.
@@ -49,17 +53,116 @@ impl DeclarationResolver for DeclarationTable {
 	fn resource(&self, declaration: Declaration) -> ResourceId {
 		Self::resource_id(declaration)
 	}
+
+	fn proto(&self, resource: ResourceId) -> Option<ProtoNode> {
+		let declaration = self.declaration(resource)?;
+		Some(ProtoNode {
+			identifier: declaration.identifier.to_string(),
+			version: declaration.version,
+			attributes: Default::default(),
+		})
+	}
 }
 
 /// `M`: run `migration` on every anchor in `source` and apply the edits. Every run reads `source`, so no run observes another's edits.
-pub(crate) fn apply_migration(migration: &dyn NodeMigration, source: &Registry, resolver: &dyn DeclarationResolver) -> Result<Registry, RunnerError> {
+pub(crate) fn apply_migration(
+	migration: &dyn NodeMigration,
+	source: &Registry,
+	resolver: &dyn DeclarationResolver,
+	host: Option<&dyn MigrationHost>,
+	blobs: &mut MigrationBlobs,
+) -> Result<Registry, RunnerError> {
+	let anchors = anchors(migration.source(), source, resolver);
+	if anchors.is_empty() {
+		return Ok(source.clone());
+	}
+
+	// A migration that reads beyond its anchors needs every value decoded
+	let reads_beyond_anchors = migration.footprint().reads_network() || migration.asks_compiler();
+	let resolved = blobs.resolve(source, (!reads_beyond_anchors).then_some(anchors.as_slice()))?;
+
+	let mut migrated = apply_to_values(migration, &resolved, anchors, resolver, host)?;
+	blobs.store(&mut migrated, source);
+	Ok(migrated)
+}
+
+/// A migration asking the compiler runs upstream anchors first, in rounds, since the compiler can't describe what's still in the old shape.
+fn apply_to_values(migration: &dyn NodeMigration, source: &Registry, anchors: Vec<NodeId>, resolver: &dyn DeclarationResolver, host: Option<&dyn MigrationHost>) -> Result<Registry, RunnerError> {
+	let Some(host) = host.filter(|_| migration.asks_compiler()) else {
+		return apply_runs(migration, source, &anchors, resolver, None);
+	};
+
+	let mut state = source.clone();
+	let mut remaining = anchors;
+	while !remaining.is_empty() {
+		let ready = upstream_most(&state, &remaining);
+		let compiler = host.compiler(&state, resolver);
+		state = apply_runs(migration, &state, &ready, resolver, compiler.as_deref())?;
+		remaining.retain(|anchor| !ready.contains(anchor));
+	}
+	Ok(state)
+}
+
+/// The `anchors` with no other of them upstream, or all of them if they form a cycle. O(registry) per anchor.
+fn upstream_most(registry: &Registry, anchors: &[NodeId]) -> Vec<NodeId> {
+	let mut callers: HashMap<NetworkId, Vec<&Node>> = HashMap::new();
+	for node in registry.node_instances.values() {
+		if let Implementation::Network(network) = node.implementation() {
+			callers.entry(*network).or_default().push(node);
+		}
+	}
+
+	let others: HashSet<NodeId> = anchors.iter().copied().collect();
+	let reads_another = |anchor: NodeId| {
+		let mut visited = HashSet::from([anchor]);
+		let mut pending = vec![anchor];
+
+		while let Some(id) = pending.pop() {
+			let Some(node) = registry.node_instances.get(&id) else { continue };
+			let mut read = |input: &NodeInput| {
+				if let NodeInput::Node { id, .. } = input
+					&& visited.insert(*id)
+				{
+					pending.push(*id);
+				}
+			};
+
+			for slot in node.inputs() {
+				read(&slot.input);
+				if let NodeInput::Import { index } = slot.input {
+					for caller in callers.get(&node.network()).into_iter().flatten() {
+						if let Some(slot) = caller.inputs().get(index as usize) {
+							read(&slot.input);
+						}
+					}
+				}
+			}
+			if let Implementation::Network(network) = node.implementation()
+				&& let Some(network) = registry.networks.get(network)
+			{
+				for target in network.exports.iter().filter_map(|export| export.target.as_ref()) {
+					read(target);
+				}
+			}
+		}
+
+		visited.iter().any(|id| *id != anchor && others.contains(id))
+	};
+
+	let ready: Vec<NodeId> = anchors.iter().copied().filter(|anchor| !reads_another(*anchor)).collect();
+	if ready.is_empty() { anchors.to_vec() } else { ready }
+}
+
+/// Run `migration` on `anchors` and apply the edits, with every run reading `source`.
+fn apply_runs(migration: &dyn NodeMigration, source: &Registry, anchors: &[NodeId], resolver: &dyn DeclarationResolver, compiler: Option<&dyn Compiler>) -> Result<Registry, RunnerError> {
 	let mut target = source.clone();
 
 	let mut runs = Vec::new();
-	for anchor in anchors(migration.source(), source, resolver) {
+	for anchor in anchors.iter().copied() {
 		let Some(context) = AnchorContext::new(source, anchor, migration.source(), migration.target(), resolver) else {
 			continue;
 		};
+		let context = context.with_compiler(compiler);
 		let edits = migration.run(&context).map_err(|error| RunnerError::Migration {
 			migration: migration.source(),
 			anchor,
@@ -72,6 +175,10 @@ pub(crate) fn apply_migration(migration: &dyn NodeMigration, source: &Registry, 
 	}
 
 	add_nodes(&mut target, &runs, resolver)?;
+	for (anchor, edits) in &runs {
+		place_added_nodes(&mut target, *anchor, edits);
+		write_attributes(&mut target, *anchor, edits)?;
+	}
 
 	let input_edits: HashMap<NodeId, &InputsEdit> = runs.iter().filter_map(|(anchor, edits)| Some((*anchor, edits.inputs.as_ref()?))).collect();
 	for (anchor, inputs) in &input_edits {
@@ -91,21 +198,87 @@ pub(crate) fn apply_migration(migration: &dyn NodeMigration, source: &Registry, 
 		}
 	}
 
-	let target_implementation = Implementation::ProtoNode(resolver.resource(migration.target()));
-	for (anchor, _) in &runs {
-		if let Some(node) = target.node_instances.get_mut(anchor) {
-			*node.implementation_mut() = target_implementation.clone();
+	let mut used_declarations = vec![migration.target()];
+	for (anchor, edits) in &runs {
+		let chosen = edits.target.unwrap_or(migration.target());
+		if chosen != migration.target() && !migration.pins().contains(&chosen) {
+			return Err(RunnerError::UnnamedTarget {
+				migration: migration.source(),
+				anchor: *anchor,
+				target: chosen,
+			});
 		}
-	}
 
-	let added_declarations = runs.iter().flat_map(|(_, edits)| edits.added_nodes.iter().map(|added| added.node.declaration));
-	for declaration in std::iter::once(migration.target()).chain(added_declarations) {
+		switch_implementation(&mut target, *anchor, chosen, resolver).map_err(|error| error.for_anchor(migration.source(), *anchor))?;
+		used_declarations.push(chosen);
+		used_declarations.extend(edits.added_nodes.iter().map(|added| added.node.declaration));
+	}
+	for declaration in used_declarations.into_iter().filter(|declaration| !declaration.is_network()) {
 		if let Some(entry) = resolver.resource_entry(declaration) {
 			target.resources.entry(resolver.resource(declaration)).or_insert(entry);
 		}
 	}
 
 	Ok(target)
+}
+
+/// Why an anchor can't switch to the declaration its run chose.
+enum SwitchError {
+	/// Only a network anchor can become a network definition, since a proto node has no network to name it.
+	ProtoToNetwork(Declaration),
+}
+
+impl SwitchError {
+	fn for_anchor(self, migration: Declaration, anchor: NodeId) -> RunnerError {
+		match self {
+			Self::ProtoToNetwork(target) => RunnerError::ProtoToNetwork { migration, anchor, target },
+		}
+	}
+}
+
+/// Switch `anchor` to `declaration`. A network anchor becoming a proto node drops the network it implemented, with every network nested in it.
+fn switch_implementation(registry: &mut Registry, anchor: NodeId, declaration: Declaration, resolver: &dyn DeclarationResolver) -> Result<(), SwitchError> {
+	let Some(implementation) = registry.node_instances.get(&anchor).map(|node| node.implementation().clone()) else {
+		return Ok(());
+	};
+
+	match (implementation, declaration.is_network()) {
+		(Implementation::ProtoNode(_), true) => Err(SwitchError::ProtoToNetwork(declaration)),
+		(Implementation::Network(network), true) => {
+			if let Some(network) = registry.networks.get_mut(&network) {
+				network.attributes.set(REFERENCE, declaration.network_reference().to_value(), TimeStamp::ORIGIN);
+			}
+			Ok(())
+		}
+		(implementation, false) => {
+			if let Implementation::Network(network) = implementation {
+				remove_network_tree(registry, network);
+			}
+			if let Some(node) = registry.node_instances.get_mut(&anchor) {
+				*node.implementation_mut() = Implementation::ProtoNode(resolver.resource(declaration));
+			}
+			Ok(())
+		}
+	}
+}
+
+/// Remove `network`, its nodes, and every network one of them implements.
+fn remove_network_tree(registry: &mut Registry, network: NetworkId) {
+	let mut pending = vec![network];
+
+	while let Some(network) = pending.pop() {
+		registry.networks.remove(&network);
+
+		registry.node_instances.retain(|_, node| {
+			if node.network() != network {
+				return true;
+			}
+			if let Implementation::Network(nested) = node.implementation() {
+				pending.push(*nested);
+			}
+			false
+		});
+	}
 }
 
 /// Whether a live node of `registry` implements `declaration`.
@@ -118,7 +291,7 @@ fn anchors(declaration: Declaration, registry: &Registry, resolver: &dyn Declara
 	let mut anchors: Vec<NodeId> = registry
 		.node_instances
 		.iter()
-		.filter(|(_, node)| matches!(node.implementation(), Implementation::ProtoNode(resource) if resolver.declaration(*resource) == Some(declaration)))
+		.filter(|(_, node)| implements(registry, node, declaration, resolver))
 		.map(|(id, _)| *id)
 		.collect();
 	anchors.sort_unstable();
@@ -132,6 +305,12 @@ fn add_nodes(target: &mut Registry, runs: &[(NodeId, Edits)], resolver: &dyn Dec
 		let Some(network) = target.node_instances.get(anchor).map(Node::network) else { continue };
 
 		for added in &edits.added_nodes {
+			if added.node.declaration.is_network() {
+				return Err(RunnerError::AddedNetworkDefinition {
+					anchor: *anchor,
+					declaration: added.node.declaration,
+				});
+			}
 			if !added_ids.insert(added.id) {
 				return Err(RunnerError::DuplicateAddedNode {
 					anchor: *anchor,
@@ -149,6 +328,90 @@ fn add_nodes(target: &mut Registry, runs: &[(NodeId, Edits)], resolver: &dyn Dec
 				slot.input = input.clone();
 			}
 			target.node_instances.insert(added.id, node);
+		}
+	}
+
+	Ok(())
+}
+
+/// Default positions for the nodes one run adds, read from the anchor's own position only. The nodes leading up to the anchor's
+/// chain input form a row, or join the chain of a chained or layer anchor. Each other node sits below the first one reading it,
+/// or on the anchor when none does. Without absolute coordinates for the anchor, only the chain is placed.
+fn place_added_nodes(target: &mut Registry, anchor: NodeId, edits: &Edits) {
+	let Some(anchor_node) = target.node_instances.get(&anchor) else { return };
+	let stored = anchor_node.attributes().get_typed::<Position>(POSITION);
+	let is_layer = anchor_node.attributes().get_or(IS_LAYER, false);
+	let anchor_inputs: Vec<NodeInput> = match &edits.inputs {
+		Some(inputs) => inputs.slots.iter().map(|slot| slot.input.clone()).collect(),
+		None => anchor_node.inputs().iter().map(|slot| slot.input.clone()).collect(),
+	};
+
+	let added_inputs: HashMap<NodeId, &[NodeInput]> = edits.added_nodes.iter().map(|added| (added.id, added.node.inputs.as_slice())).collect();
+	let reads = |inputs: &[NodeInput], node: NodeId| inputs.iter().any(|input| matches!(input, NodeInput::Node { id, .. } if *id == node));
+
+	let chain_input = if is_layer { 1 } else { 0 };
+	let mut chain = Vec::new();
+	let mut next = anchor_inputs.get(chain_input);
+	while let Some(NodeInput::Node { id, .. }) = next
+		&& let Some(inputs) = added_inputs.get(id)
+		&& !chain.contains(id)
+	{
+		chain.push(*id);
+		next = inputs.first();
+	}
+
+	let joins_chain = is_layer || stored == Some(Position::Chain);
+	let coordinates = match stored {
+		Some(Position::Absolute(coordinates)) => Some(coordinates),
+		_ => None,
+	};
+
+	let mut positions = Vec::new();
+	for (step, id) in chain.iter().enumerate() {
+		match coordinates {
+			_ if joins_chain => positions.push((*id, Position::Chain)),
+			Some([x, y]) => positions.push((*id, Position::Absolute([x - CHAIN_WIDTH * (step as i32 + 1), y]))),
+			None => {}
+		}
+	}
+
+	if let Some([x, y]) = coordinates {
+		let readers: Vec<(&[NodeInput], i32)> = std::iter::once((anchor_inputs.as_slice(), x))
+			.chain(chain.iter().enumerate().map(|(step, id)| (added_inputs[id], x - CHAIN_WIDTH * (step as i32 + 1))))
+			.collect();
+		let mut feeders_below = vec![0; readers.len()];
+
+		for added in edits.added_nodes.iter().filter(|added| !chain.contains(&added.id)) {
+			let position = match readers.iter().position(|(inputs, _)| reads(inputs, added.id)) {
+				Some(reader) => {
+					feeders_below[reader] += 1;
+					[readers[reader].1 - CHAIN_WIDTH, y + FEEDER_ROW_HEIGHT * feeders_below[reader]]
+				}
+				None => [x, y],
+			};
+			positions.push((added.id, Position::Absolute(position)));
+		}
+	}
+
+	for (id, position) in positions {
+		if let Some(node) = target.node_instances.get_mut(&id) {
+			node.attributes_mut().set(POSITION, encode(&position), TimeStamp::ORIGIN);
+		}
+	}
+}
+
+/// Apply one run's attribute writes, which may only name its anchor and the nodes it adds.
+fn write_attributes(target: &mut Registry, anchor: NodeId, edits: &Edits) -> Result<(), RunnerError> {
+	for write in &edits.attributes {
+		let in_region = write.node == anchor || edits.added_nodes.iter().any(|added| added.id == write.node);
+		let node = target.node_instances.get_mut(&write.node).filter(|_| in_region);
+		let node = node.ok_or(RunnerError::AttributesOutsideRegion { anchor, node: write.node })?;
+
+		match &write.value {
+			Some(value) => node.attributes_mut().set(&write.key, value.clone(), TimeStamp::ORIGIN),
+			None => {
+				node.attributes_mut().remove(&write.key);
+			}
 		}
 	}
 
@@ -197,13 +460,34 @@ struct Branch {
 /// Undoing and then editing leaves an abandoned branch, which rewrites like any other since each delta only depends on its ancestors.
 /// Fails on a delta that merges branches, or whose parent isn't in `history`.
 ///
+/// A migration reading the graph, asking the compiler, or starting from a network definition needs whole states, so it only runs at the boundaries undo can land on, the end of an interaction,
+/// and rewrites everything since the last one as a single chain. Each delta inside maps to the boundary before it, and `kept` names further states to keep.
+///
 /// Each delta costs one full evaluation of `M` and one full diff, so this is O(history × registry), until the RFC's footprint-scoped
 /// evaluation lands. A state is only copied where history branches.
-pub(crate) fn rewrite_history(migration: &dyn NodeMigration, history: &[Delta], resolver: &dyn DeclarationResolver) -> Result<RewrittenHistory, RunnerError> {
+pub(crate) fn rewrite_history(
+	migration: &dyn NodeMigration,
+	history: &[Delta],
+	resolver: &dyn DeclarationResolver,
+	host: Option<&dyn MigrationHost>,
+	kept: &HashSet<Rev>,
+	blobs: &mut MigrationBlobs,
+) -> Result<RewrittenHistory, RunnerError> {
 	let mut children: HashMap<Option<Rev>, usize> = HashMap::new();
+	let mut child_authors: HashMap<Rev, HashSet<_>> = HashMap::new();
 	for delta in history {
 		*children.entry(delta.parent).or_default() += 1;
+		if let Some(parent) = delta.parent {
+			child_authors.entry(parent).or_default().insert(delta.author);
+		}
 	}
+
+	let child_counts = children.clone();
+	let whole_states_only = needs_whole_states(migration);
+	let is_boundary = |delta: &Delta| {
+		let continues_alone = child_counts.get(&Some(delta.id)) == Some(&1) && child_authors.get(&delta.id).is_some_and(|authors| authors.contains(&delta.author));
+		delta.is_interaction_end() || !continues_alone || kept.contains(&delta.id)
+	};
 
 	let mut branches = HashMap::from([(
 		None,
@@ -234,12 +518,12 @@ pub(crate) fn rewrite_history(migration: &dyn NodeMigration, history: &[Delta], 
 
 		apply_retired_op(&mut branch.original, delta.kind.clone(), delta.timestamp)?;
 
-		let chain = if passes_through(&delta.kind) {
-			vec![delta.kind.clone()]
-		} else {
-			let migrated = apply_migration(migration, &branch.original, resolver)?;
-			compute_deltas(&branch.rewritten, &migrated)
-		};
+		let passes = passes_through(&delta.kind);
+		let mut chain = if passes { vec![delta.kind.clone()] } else { Vec::new() };
+		if if whole_states_only { is_boundary(delta) } else { !passes } {
+			let migrated = apply_migration(migration, &branch.original, resolver, host, blobs)?;
+			chain.extend(compute_deltas(&branch.rewritten, &migrated));
+		}
 		check_single_writes(&chain)?;
 
 		// Every op of the chain shares the original's timestamp, which orders it after everything the original saw
@@ -294,6 +578,12 @@ pub fn registry_at(deltas: &[Delta], head: Option<Rev>) -> Result<Registry, Runn
 		apply_retired_op(&mut registry, delta.kind.clone(), delta.timestamp)?;
 	}
 	Ok(registry)
+}
+
+/// A network definition's instance is a node and the network it implements, which a history adds in separate deltas. In between, the network
+/// names the definition without an anchor to migrate it, so only states where both or neither exist are migrated.
+pub(crate) fn needs_whole_states(migration: &dyn NodeMigration) -> bool {
+	migration.footprint().reads_network() || migration.source().is_network()
 }
 
 /// Ops `M` can't affect and `compute_deltas` doesn't diff, which therefore keep their original form.

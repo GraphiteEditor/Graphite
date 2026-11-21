@@ -11,11 +11,11 @@ use rendering::{RenderParams, SvgRender, SvgRenderOutput};
 use std::fmt::Write;
 use wgpu_executor::{Buffer, WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), version(2))]
 fn render_background(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: impl Node<Context<'static>, Output = Item<WgpuPipelineCache>>,
 	data: Item<RenderOutput>,
+	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: impl Node<Context<'static>, Output = Item<WgpuPipelineCache>>,
 ) -> Result<Item<RenderOutput>, Interrupt> {
 	let footprint = ctx.footprint();
 	let render_params = ctx
@@ -51,6 +51,7 @@ fn render_background(
 		RenderOutputType::Svg {
 			svg: foreground_svg,
 			image_data: foreground_images,
+			effect_maps,
 		} => {
 			let mut render = SvgRender::new();
 
@@ -114,7 +115,7 @@ fn render_background(
 			let svg = format!("{}{}", background.svg, foreground_svg);
 			let image_data = foreground_images;
 
-			RenderOutputType::Svg { svg, image_data }
+			RenderOutputType::Svg { svg, image_data, effect_maps }
 		}
 		_ => unreachable!("Render background node received unsupported render output type"),
 	};

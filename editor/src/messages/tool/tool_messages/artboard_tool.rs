@@ -358,7 +358,8 @@ impl Fsm for ArtboardToolFsmState {
 				let not_resizing = !matches!(state, ArtboardToolFsmState::ResizingBounds);
 
 				if quick_measurement_enabled
-					&& not_resizing && alt_pressed
+					&& not_resizing
+					&& alt_pressed
 					&& let Some(selected_artboard) = tool_data.selected_artboard
 					&& let Some(selected_bounds) = document.metadata().bounding_box_document(selected_artboard).map(Rect::from_box)
 				{
@@ -697,8 +698,7 @@ mod test_artboard {
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 		instrumented
-			.grab_all_input::<graphene_std::graphic::extend::NewInput, List<Artboard>>(&editor.runtime)
-			.flatten()
+			.grab_all_input::<graphene_std::graphic::extend::NewInput, graphene_std::list::Item<Artboard>>(&editor.runtime)
 			.collect()
 	}
 

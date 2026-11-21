@@ -1,34 +1,39 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
-use crate::task::{Scheduling, Spawn, Spawner, Task};
-use glam::{DVec2, UVec2};
-use graph_craft::application_io::resource::ResourceRegistry;
+use crate::task::{Spawn, Spawner, Task};
+use glam::UVec2;
+use graph_craft::application_io::resource::{Resource, ResourceRegistry};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
-use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::{CompileError, CompiledNetwork, Compiler};
-use graph_craft::proto::GraphErrors;
+use graph_craft::proto::{GraphError, GraphErrorType, GraphErrors};
 use graphene_hash::CacheHash;
-use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig, Texture};
-use graphene_std::list::{Item, List};
-use graphene_std::memo::IORecord;
+use graphene_std::application_io::{ApplicationIo, ExportFormat, Texture};
 use graphene_std::ops::ConvertAsync;
-#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
+#[cfg(all(target_family = "wasm", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
-use graphene_std::runtime::{AsyncRuntime, Clock};
+use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::vector::{Vector, VectorGeometry, paths_from_list_row_attributes};
-use graphene_std::{Context, ContextFeatures, ContextOverrides, NodeError, OwnedContextImpl, Poll};
+use graphene_std::{Context, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
+use interpreted_executor::layer_paths::write_layer_paths;
 use interpreted_executor::util::wrap_network_in_scope;
+use observer::Observer;
+pub use observer::{InspectResult, InspectedContext, Observation, ObservedConnector, ObservedValue};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::Duration;
 use thumbnails::Thumbnails;
+use vello_gpu::peniko::ImageSampler;
+use wgpu_executor::{VelloCanvas, VelloSceneBuilder};
 
+#[cfg(test)]
+mod layer_path_tests;
+mod observer;
 mod thumbnails;
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
@@ -42,37 +47,38 @@ pub struct NodeRuntime {
 	receiver: Receiver<GraphRuntimeRequest>,
 	sender: Sender<NodeGraphUpdate>,
 	editor_wake: Wake,
-	/// A re-evaluation waiting for the next frame, or for the end of an export.
-	rerun: bool,
+	dirty: Arc<AtomicBool>,
 	pending: Option<ExecutionRequest>,
 	pending_export: Option<ExecutionRequest>,
+	pending_eyedropper: Option<ExecutionRequest>,
+	pending_thumbnails: Option<DocumentId>,
 	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
+	/// Whether the latest network failed to compile, leaving the executor with an older one that mustn't be shown in its place.
+	compile_failed: bool,
 	async_runtime: Option<AsyncRuntime>,
-	scheduling: Scheduling,
-	frame_start: Duration,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
 	node_graph_errors: GraphErrors,
 	node_graph_warnings: GraphErrors,
-	monitor_nodes: Vec<(Vec<NodeId>, NodeId)>,
 	thumbnails: Thumbnails,
-
-	/// The node the Data panel inspects.
-	inspect_state: Option<InspectState>,
+	observer: Observer<ObservationKey>,
+	/// Whether an observation changed since its results were last sent.
+	observations_changed: bool,
 
 	preprocessor: preprocessor::Preprocessor,
 
-	vector_modify: HashMap<NodeId, VectorGeometry>,
-	vector_evaluations: HashMap<NodeId, (NodeId, u64)>,
-
 	/// Cached surface for Wasm viewport rendering (reused across frames)
-	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
+	#[cfg(all(target_family = "wasm", feature = "wasm"))]
 	wasm_canvas_cache: CanvasSurfaceHandle,
-	/// Currently displayed texture, the runtime keeps a reference to it to avoid the texture getting destroyed while it is still in use.
-	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
-	current_viewport_texture: Option<Texture>,
+	/// The viewport's latest artwork.
+	viewport_artwork: Option<Texture>,
+	/// The overlays to render once the viewport has artwork.
+	pending_overlays: Option<OverlayContext>,
+	overlays_canvas: VelloCanvas,
+	/// The latest rendered overlays.
+	overlays_texture: Option<Texture>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -84,21 +90,28 @@ pub enum GraphRuntimeRequest {
 		layers: HashSet<NodeId>,
 		document_id: DocumentId,
 	},
-	/// The full path from the root network to the node the Data panel inspects, or empty for none.
-	Inspect(Vec<NodeId>),
-	InspectContextOverrides(ContextOverrides),
+	/// Starts, changes, or with `None` stops one observation without a graph update.
+	Observe {
+		key: ObservationKey,
+		observation: Option<Observation>,
+	},
+	ClipboardSvg {
+		id: u64,
+		layers: Vec<NodeId>,
+	},
+	RenderOverlays(OverlayContext),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
 	pub(super) resources: ResourceRegistry,
-	/// Full path from the root network to the node the Data panel inspects.
-	pub(super) node_to_inspect: Vec<NodeId>,
 	/// The node each network renders in place of its export, paired with that network's path.
 	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
 	/// Full path from the root network to every layer, which are the nodes with thumbnails.
 	pub(super) layers: Vec<Vec<NodeId>>,
+	/// The connectors whose values are sent back after each evaluation, replacing those observed before.
+	pub(super) observations: HashMap<ObservationKey, Observation>,
 }
 
 /// Replaces each network's primary export with its previewed node.
@@ -108,6 +121,28 @@ pub(crate) fn apply_previews(network: &mut NodeNetwork, previewed: &[(Vec<NodeId
 		let Some(export) = nested.exports.first_mut() else { continue };
 		*export = NodeInput::node(previewed.node_id, previewed.output_index);
 	}
+}
+
+/// A warning for each input holding a resource the registry can't resolve, placed in the first instance of a network that several nodes share.
+fn missing_resource_warnings(network: &NodeNetwork, resources: &ResourceRegistry) -> GraphErrors {
+	network
+		.recursive_nodes()
+		.flat_map(|(node_id, node, network_path)| {
+			node.inputs.iter().enumerate().filter_map(move |(index, input)| {
+				let NodeInput::Value { tagged_value, .. } = input else { return None };
+				let TaggedValue::Resource(resource_id) = &**tagged_value else { return None };
+
+				resources.hash(resource_id).is_none().then(|| GraphError {
+					node_path: [network_path.as_slice(), &[*node_id]].concat(),
+					identifier: match &node.implementation {
+						DocumentNodeImplementation::ProtoNode(identifier) => identifier.as_str().to_string().into(),
+						_ => Default::default(),
+					},
+					error: GraphErrorType::MissingResource { index },
+				})
+			})
+		})
+		.collect()
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -128,14 +163,15 @@ impl NodeRuntime {
 			receiver,
 			sender,
 			editor_wake,
-			rerun: false,
+			dirty: Default::default(),
 			pending: None,
 			pending_export: None,
+			pending_eyedropper: None,
+			pending_thumbnails: None,
 			old_graph: None,
+			compile_failed: false,
 			resources: ResourceRegistry::default(),
 			async_runtime: None,
-			scheduling: Scheduling::default(),
-			frame_start: Duration::ZERO,
 
 			editor_api: PlatformEditorApi {
 				#[cfg(not(test))]
@@ -148,278 +184,345 @@ impl NodeRuntime {
 
 			node_graph_errors: Vec::new(),
 			node_graph_warnings: Vec::new(),
-			monitor_nodes: Vec::new(),
 			thumbnails: Thumbnails::new(),
+			observer: Observer::default(),
+			observations_changed: false,
 
 			preprocessor: preprocessor::Preprocessor::new(),
 
-			vector_modify: Default::default(),
-			vector_evaluations: Default::default(),
-			inspect_state: None,
-			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			#[cfg(all(target_family = "wasm", feature = "wasm"))]
 			wasm_canvas_cache: CanvasSurfaceHandle::new(),
-			#[cfg(all(target_family = "wasm", feature = "gpu"))]
-			current_viewport_texture: None,
+			viewport_artwork: None,
+			pending_overlays: None,
+			overlays_canvas: VelloCanvas::default(),
+			overlays_texture: None,
 		}
 	}
 
-	pub async fn run(&mut self) -> Option<Texture> {
-		let texture = self.handle_requests().await;
-		(self.editor_wake)();
-		texture
-	}
+	pub fn update(&mut self) {
+		if self.pending_export.is_some() {
+			return;
+		}
 
-	async fn handle_requests(&mut self) -> Option<Texture> {
 		let mut graph = None;
-		let mut eyedropper = None;
-		let mut execution = None;
-		let mut thumbnails_in_view = None;
-		let mut inspect_again = false;
-
-		for request in self.pending_export.is_none().then_some(&self.receiver).into_iter().flat_map(Receiver::try_iter) {
+		for request in self.receiver.try_iter() {
 			match request {
-				GraphRuntimeRequest::GraphUpdate(_) => graph = Some(request),
-				GraphRuntimeRequest::ExecutionRequest(ref execution_request) => {
-					if execution_request.render_config.for_eyedropper {
-						eyedropper = Some(request);
-						continue;
-					}
-
-					let for_export = execution_request.render_config.for_export;
-
-					execution = Some(request);
-
-					// If we get an export request we always execute it immedeatly otherwise it could get deduplicated
-					if for_export {
-						break;
-					}
+				GraphRuntimeRequest::GraphUpdate(update) => graph = Some(update),
+				GraphRuntimeRequest::ExecutionRequest(request) if request.render_config.for_eyedropper => self.pending_eyedropper = Some(request),
+				GraphRuntimeRequest::ExecutionRequest(request) if request.render_config.for_export => {
+					self.pending_export = Some(request);
+					self.dirty.store(true, Ordering::Release);
+					break;
 				}
-				GraphRuntimeRequest::ThumbnailsInView { layers, document_id } => thumbnails_in_view = Some((layers, document_id)),
-				// A graph update applied after this loop would otherwise inspect what was selected before
-				GraphRuntimeRequest::Inspect(node_to_inspect) => match &mut graph {
-					Some(GraphRuntimeRequest::GraphUpdate(update)) => update.node_to_inspect = node_to_inspect,
-					_ => self.inspect_state = InspectState::new(node_to_inspect),
+				GraphRuntimeRequest::ExecutionRequest(request) => {
+					self.pending = Some(request);
+					self.dirty.store(true, Ordering::Release);
+				}
+				GraphRuntimeRequest::ThumbnailsInView { layers, document_id } => {
+					self.thumbnails.set_in_view(layers);
+					self.pending_thumbnails = Some(document_id);
+				}
+				// A graph update applied after this loop would otherwise replace this with what it observed before
+				GraphRuntimeRequest::Observe { key, observation } => match (&mut graph, observation) {
+					(Some(update), Some(observation)) => _ = update.observations.insert(key, observation),
+					(Some(update), None) => _ = update.observations.remove(&key),
+					(None, observation) => {
+						self.observer.set(key, observation);
+						self.observations_changed = true;
+					}
 				},
-				GraphRuntimeRequest::InspectContextOverrides(overrides) => {
-					if let Some(inspect_state) = &mut self.inspect_state {
-						inspect_state.overrides = overrides;
-						inspect_again = true;
-					}
+				GraphRuntimeRequest::ClipboardSvg { id, layers } => {
+					let svg = self.old_graph.as_ref().and_then(|network| thumbnails::layers_svg(&layers, network, &self.executor));
+					self.sender.send(NodeGraphUpdate::ClipboardSvg { id, svg }).expect("Failed to send response");
 				}
+				GraphRuntimeRequest::RenderOverlays(context) => self.pending_overlays = Some(context),
 			}
 		}
 
-		// Without an execution to render them along with, the thumbnails that came into view are rendered on their own
-		if let Some((layers, document_id)) = thumbnails_in_view {
-			self.thumbnails.set_in_view(layers);
-			if execution.is_none() && graph.is_none() {
+		let Some(GraphUpdate {
+			mut network,
+			resources,
+			previewed,
+			layers,
+			observations,
+		}) = graph
+		else {
+			return;
+		};
+
+		apply_previews(&mut network, &previewed);
+		write_layer_paths(&mut network, &layers);
+		self.observer.replace_all(observations);
+		self.resources = resources;
+
+		self.node_graph_errors.clear();
+		self.node_graph_warnings.clear();
+		let result = self.update_network(&network);
+		self.compile_failed = result.is_err();
+		if result.is_ok() {
+			self.thumbnails.update_sources(&layers, &network, &self.executor);
+			self.old_graph = Some(network);
+		}
+		let node_graph_errors = self.node_graph_errors.clone();
+		let node_graph_warnings = self.node_graph_warnings.clone();
+
+		self.sender
+			.send(NodeGraphUpdate::CompilationResponse(CompilationResponse {
+				result,
+				node_graph_errors,
+				node_graph_warnings,
+			}))
+			.expect("Failed to send response");
+	}
+
+	pub async fn run(&mut self) -> Option<Texture> {
+		let dirty = self.dirty.swap(false, Ordering::Acquire);
+		let mut texture = None;
+
+		if let Some(export) = self.pending_export {
+			if dirty {
+				self.run_export(export).await;
+			}
+		} else {
+			let viewport = if dirty { self.pending } else { None };
+
+			if let Some(document_id) = self.pending_thumbnails.take()
+				&& viewport.is_none()
+				&& !self.compile_failed
+			{
 				let mut responses = VecDeque::new();
 				self.thumbnails.render_stale(&self.executor, &self.editor_api, &mut responses).await;
 				if !responses.is_empty() {
 					self.sender.send(NodeGraphUpdate::Thumbnails { responses, document_id }).expect("Failed to send response");
 				}
 			}
-		}
 
-		let rerun = std::mem::take(&mut self.rerun) | self.async_runtime().take_bumped();
-		if rerun && execution.is_none() {
-			if self.frame_has_budget() {
-				execution = self.pending_export.or(self.pending).map(GraphRuntimeRequest::ExecutionRequest);
-			} else {
-				self.rerun = true;
+			if std::mem::take(&mut self.observations_changed) && viewport.is_none() {
+				let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
+				self.sender.send(NodeGraphUpdate::Observations(observations)).expect("Failed to send response");
+			}
+
+			if let Some(eyedropper) = self.pending_eyedropper.take() {
+				self.run_eyedropper(eyedropper).await;
+			}
+
+			if let Some(viewport) = viewport {
+				texture = self.run_viewport(viewport).await;
+			}
+
+			// Overlays that changed without new artwork are drawn over the artwork already shown
+			if self.pending_overlays.is_some() {
+				texture = self.composite_viewport_frame();
 			}
 		}
 
-		// Eydropper should use the same time and pointer to not invalidate the cache
-		if let Some(GraphRuntimeRequest::ExecutionRequest(eyedropper)) = &mut eyedropper
-			&& let Some(GraphRuntimeRequest::ExecutionRequest(execution)) = &execution
-		{
-			eyedropper.render_config.time = execution.render_config.time;
-			eyedropper.render_config.pointer = execution.render_config.pointer;
-		}
-
-		let requests = [graph, eyedropper, execution].into_iter().flatten();
-
-		for request in requests {
-			match request {
-				GraphRuntimeRequest::ThumbnailsInView { .. } | GraphRuntimeRequest::Inspect(_) | GraphRuntimeRequest::InspectContextOverrides(_) => {}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
-					mut network,
-					resources,
-					node_to_inspect,
-					previewed,
-					layers,
-				}) => {
-					apply_previews(&mut network, &previewed);
-
-					match &mut self.inspect_state {
-						Some(inspect_state) if inspect_state.inspect_node_path == node_to_inspect => inspect_state.last_evaluation = None,
-						_ => self.inspect_state = InspectState::new(node_to_inspect),
-					}
-
-					self.resources = resources;
-
-					self.node_graph_errors.clear();
-					self.node_graph_warnings.clear();
-					let result = self.update_network(network.clone());
-					if result.is_ok() {
-						self.thumbnails.update_sources(&layers, &network, &self.executor);
-						self.old_graph = Some(network);
-					}
-					let node_graph_errors = self.node_graph_errors.clone();
-					let node_graph_warnings = self.node_graph_warnings.clone();
-
-					self.sender
-						.send(NodeGraphUpdate::CompilationResponse(CompilationResponse {
-							result,
-							node_graph_errors,
-							node_graph_warnings,
-						}))
-						.expect("Failed to send response");
-				}
-				GraphRuntimeRequest::ExecutionRequest(request @ ExecutionRequest { execution_id, mut render_config, .. }) => {
-					if !render_config.for_export && !render_config.for_eyedropper {
-						self.thumbnails.set_scale(render_config.scale);
-						self.pending = Some(request);
-					}
-					if render_config.for_export {
-						self.pending_export = None;
-					}
-
-					// Render via the SVG pipeline even though raster was requested if SVG Preview render mode is active or there's no GPU, as in headless tests
-					if render_config.export_format == ExportFormat::Raster
-						&& (render_config.render_mode == RenderMode::SvgPreview || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none())
-					{
-						render_config.export_format = ExportFormat::Svg;
-					}
-
-					let mut result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.execute_network(render_config))) {
-						Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
-						Ok(Ok(Poll::Partial(_))) if render_config.for_export => ExecutionResult::Pending,
-						Ok(Ok(Poll::Final(value) | Poll::Partial(value))) => ExecutionResult::Value(value),
-						Ok(Ok(Poll::Fallback(boxed))) => {
-							let (value, error) = *boxed;
-							ExecutionResult::Fallback(value, self.resolve_errors(&error))
-						}
-						Ok(Ok(Poll::Error(error))) => ExecutionResult::Error(self.resolve_errors(&error)),
-						Ok(Err(error)) => ExecutionResult::Error(EvaluationErrors(Box::new([(Arc::clone(NodeError::new(error).error()), NodeErrorTrace::default())]))),
-						Err(payload) => {
-							let response = ExecutionResponse {
-								execution_id,
-								result: ExecutionResult::Panic(payload),
-								responses: VecDeque::new(),
-								dropped_thumbnails: Vec::new(),
-								vector_modify: HashMap::new(),
-								inspect_result: None,
-							};
-							self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
-							return None;
-						}
-					};
-
-					match (render_config.for_export, &result) {
-						(true, ExecutionResult::Pending) => {
-							self.pending_export = Some(request);
-							return None;
-						}
-						(true, _) => self.rerun = true,
-						_ => {}
-					}
-
-					let mut responses = VecDeque::new();
-					let dropped_thumbnails = if !render_config.for_eyedropper {
-						self.process_monitor_nodes(&mut responses).await
-					} else {
-						Vec::new()
-					};
-
-					let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor, self.old_graph.as_ref()));
-
-					let output = match &mut result {
-						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Some(value),
-						ExecutionResult::Pending | ExecutionResult::Error(_) | ExecutionResult::Panic(_) => None,
-					};
-					let texture = if let Some(TaggedValue::RenderOutput(RenderOutput { data, .. })) = output
-						&& let RenderOutputType::Texture(texture) = data
-					{
-						let texture = texture.clone();
-						if render_config.for_export || render_config.for_eyedropper {
-							let executor = self
-								.editor_api
-								.application_io
-								.as_ref()
-								.unwrap()
-								.gpu_executor()
-								.expect("GPU executor should be available when we receive a texture");
-
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await;
-
-							if render_config.for_eyedropper {
-								self.sender.send(NodeGraphUpdate::EyedropperPreview(raster_cpu)).expect("Failed to send response");
-								continue;
-							}
-
-							let (buffer, width, height) = raster_cpu.to_flat_u8();
-							*data = RenderOutputType::Buffer { data: buffer, width, height };
-							None
-						} else {
-							#[cfg(all(target_family = "wasm", feature = "gpu"))]
-							{
-								self.current_viewport_texture = Some(texture.clone());
-
-								let app_io = self.editor_api.application_io.as_ref().unwrap();
-								let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
-
-								self.wasm_canvas_cache.present(&texture, executor);
-
-								let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
-								*data = RenderOutputType::CanvasFrame {
-									canvas_id: self.wasm_canvas_cache.id(),
-									resolution: logical_resolution,
-								};
-								None
-							}
-							#[cfg(not(all(target_family = "wasm", feature = "gpu")))]
-							{
-								Some(texture)
-							}
-						}
-					} else {
-						None
-					};
-					// Eyedropper render that didn't produce a texture (e.g., SVG fallback when GPU is unavailable); discard it
-					if render_config.for_eyedropper {
-						continue;
-					}
-
-					let response = ExecutionResponse {
-						execution_id,
-						result,
-						responses,
-						dropped_thumbnails,
-						vector_modify: self.vector_modify.clone(),
-						inspect_result,
-					};
-					self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
-					return texture;
-				}
-			}
-		}
-
-		// Without an execution to send it along with, the inspected node is evaluated again with its new overrides once the graph is up to date
-		if inspect_again && let Some(inspect_state) = &mut self.inspect_state {
-			let inspect_result = inspect_state.access(&self.executor, self.old_graph.as_ref());
-			self.sender.send(NodeGraphUpdate::InspectResult(Box::new(inspect_result))).expect("Failed to send response");
-		}
-
-		None
+		(self.editor_wake)();
+		texture
 	}
 
-	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
-		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone(), self.async_runtime().handle());
+	async fn run_viewport(&mut self, request: ExecutionRequest) -> Option<Texture> {
+		self.thumbnails.set_scale(request.render_config.scale);
 
-		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
+		let mut result = self.evaluate(request)?;
+
+		let texture = if let Some(data) = result.render_output()
+			&& let RenderOutputType::Texture(texture) = data
+		{
+			self.viewport_artwork = Some(texture.clone());
+			let frame = self.composite_viewport_frame();
+
+			#[cfg(all(target_family = "wasm", feature = "wasm"))]
+			{
+				*data = RenderOutputType::CanvasFrame {
+					canvas_id: self.wasm_canvas_cache.id(),
+					resolution: request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale,
+				};
+			}
+
+			frame
+		} else {
+			None
+		};
+
+		self.resolve_effect_maps(&mut result).await;
+		self.respond(request.execution_id, result).await;
+		texture
+	}
+
+	/// Draws the latest overlays over the viewport's artwork, presenting the frame on web.
+	fn composite_viewport_frame(&mut self) -> Option<Texture> {
+		let artwork = self.viewport_artwork.clone()?;
+		let Some(executor) = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
+			log::error!("The GPU executor should be available once the viewport has artwork");
+			return None;
+		};
+
+		if let Some(overlays) = self.pending_overlays.take() {
+			self.overlays_texture = executor
+				.render_vello_scene_on_canvas(&mut self.overlays_canvas, overlays.take_scene())
+				.inspect_err(|error| log::error!("Failed to render the overlays: {error:?}"))
+				.ok();
+		}
+
+		let frame = match &self.overlays_texture {
+			Some(overlays) => {
+				let (width, height) = (artwork.width(), artwork.height());
+				let max_texture_size = executor.context().device.limits().max_texture_dimension_2d;
+				let overlays_to_artwork = kurbo::Affine::scale_non_uniform(width as f64 / overlays.width() as f64, height as f64 / overlays.height() as f64);
+
+				let mut scene = VelloSceneBuilder::new(width as u16, height as u16, kurbo::Affine::IDENTITY, max_texture_size);
+				scene.draw_texture(artwork.clone(), ImageSampler::new(), kurbo::Affine::IDENTITY);
+				scene.draw_texture(overlays.clone(), ImageSampler::new(), overlays_to_artwork);
+
+				executor
+					.render_vello_scene_on_canvas(&mut self.overlays_canvas, scene)
+					.inspect_err(|error| log::error!("Failed to draw the overlays over the artwork: {error:?}"))
+					.unwrap_or(artwork)
+			}
+			None => artwork,
+		};
+
+		#[cfg(all(target_family = "wasm", feature = "wasm"))]
+		self.wasm_canvas_cache.present(&frame, executor);
+
+		Some(frame)
+	}
+
+	async fn run_export(&mut self, request: ExecutionRequest) {
+		let result = self.evaluate(request);
+		if matches!(result, Some(ExecutionResult::Pending)) {
+			return;
+		}
+
+		self.pending_export = None;
+		let Some(mut result) = result else { return };
+		self.dirty.store(true, Ordering::Release);
+
+		if let Some(data) = result.render_output()
+			&& let RenderOutputType::Texture(texture) = data
+		{
+			let (buffer, width, height) = self.read_back(texture.clone()).await.to_flat_u8();
+			*data = RenderOutputType::Buffer { data: buffer, width, height };
+		}
+		self.resolve_effect_maps(&mut result).await;
+		self.respond(request.execution_id, result).await;
+	}
+
+	async fn run_eyedropper(&mut self, mut request: ExecutionRequest) {
+		// Eyedropper should use the same time and pointer to not invalidate the cache
+		if let Some(viewport) = self.pending {
+			request.render_config.time = viewport.render_config.time;
+			request.render_config.pointer = viewport.render_config.pointer;
+		}
+
+		if let Some(mut result) = self.evaluate(request)
+			&& let Some(RenderOutputType::Texture(texture)) = result.render_output()
+		{
+			let raster = self.read_back(texture.clone()).await;
+			self.sender.send(NodeGraphUpdate::EyedropperPreview(raster)).expect("Failed to send response");
+		}
+	}
+
+	fn evaluate(&mut self, request: ExecutionRequest) -> Option<ExecutionResult> {
+		if self.compile_failed {
+			return Some(ExecutionResult::Uncompiled);
+		}
+
+		let ExecutionRequest { execution_id, mut render_config } = request;
+
+		// Render via the SVG pipeline even though raster was requested if SVG Preview render mode is active or there's no GPU
+		if render_config.export_format == ExportFormat::Raster && (render_config.render_mode == RenderMode::SvgPreview || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none()) {
+			render_config.export_format = ExportFormat::Svg;
+		}
+
+		let context = render_config.into_context_with_generations(self.async_runtime().snapshot());
+		let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.tree().eval_tagged_value(self.executor.output(), &context))) {
+			Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
+			Ok(Ok(Poll::Partial(_))) if render_config.for_export => ExecutionResult::Pending,
+			Ok(Ok(Poll::Final(value) | Poll::Partial(value))) => ExecutionResult::Value(value),
+			Ok(Ok(Poll::Fallback(boxed))) => {
+				let (value, error) = *boxed;
+				ExecutionResult::Fallback(value, self.resolve_errors(&error))
+			}
+			Ok(Ok(Poll::Error(error))) => ExecutionResult::Error(self.resolve_errors(&error)),
+			Ok(Err(error)) => ExecutionResult::Error(EvaluationErrors(Box::new([(Arc::clone(NodeError::new(error).error()), NodeErrorTrace::default())]))),
+			Err(payload) => {
+				let response = ExecutionResponse {
+					execution_id,
+					result: ExecutionResult::Panic(payload),
+					responses: VecDeque::new(),
+					dropped_thumbnails: Vec::new(),
+					observations: HashMap::new(),
+				};
+				self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
+				return None;
+			}
+		};
+		Some(result)
+	}
+
+	async fn respond(&mut self, execution_id: u64, result: ExecutionResult) {
+		let mut responses = VecDeque::new();
+
+		// While the graph fails to compile, thumbnails stay stale to render once it compiles, not from the last network that did
+		let dropped_thumbnails = if self.compile_failed { Vec::new() } else { self.update_thumbnails(&mut responses).await };
+		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
+
+		let response = ExecutionResponse {
+			execution_id,
+			result,
+			responses,
+			dropped_thumbnails,
+			observations,
+		};
+		self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
+	}
+
+	/// Reads one observation from the last evaluation, apart from the observations the runtime keeps.
+	#[cfg(test)]
+	pub(crate) fn observe(&self, observation: Observation) -> Option<ObservedValue> {
+		let mut observer = Observer::default();
+		observer.set((), Some(observation));
+		observer.evaluate(&self.executor, self.old_graph.as_ref()).remove(&())?.data
+	}
+
+	/// Puts the maps of effects' coverages the GPU rendered into an SVG result, in place of the placeholders its filters hold for them.
+	async fn resolve_effect_maps(&self, result: &mut ExecutionResult) {
+		let Some(RenderOutputType::Svg { svg, effect_maps, .. }) = result.render_output() else {
+			return;
+		};
+		if effect_maps.is_empty() {
+			return;
+		}
+		let Some(executor) = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
+			return;
+		};
+
+		executor.resolve_effect_maps(svg, std::mem::take(effect_maps)).await;
+	}
+
+	async fn read_back(&self, texture: Texture) -> Raster<CPU> {
+		let application_io = self.editor_api.application_io.as_ref().unwrap();
+		let executor = application_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
+		Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await
+	}
+
+	fn update_network(&mut self, graph: &NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+		let mut scoped_network = wrap_network_in_scope(graph.clone(), self.editor_api.clone(), self.async_runtime().handle());
+
+		// A missing resource compiles as the empty one, which its consumers draw with a fallback, and warns on the nodes using it
+		let resource_missing = std::cell::Cell::new(false);
+		let resolve_resource = |resource_id| {
+			self.resources.hash(&resource_id).or_else(|| {
+				resource_missing.set(true);
+				Some(Resource::empty().hash())
+			})
+		};
+		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &resolve_resource) {
 			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));
+		}
+		if resource_missing.get() {
+			self.node_graph_warnings = missing_resource_warnings(graph, &self.resources);
 		}
 
 		// We assume only one output
@@ -435,34 +538,15 @@ impl NodeRuntime {
 			}
 			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
 		};
-		self.node_graph_warnings = warnings;
-		self.monitor_nodes = proto_network
-			.nodes
-			.iter()
-			.filter(|(_, node)| node.identifier == graphene_std::memo::monitor::IDENTIFIER)
-			.map(|(id, node)| (node.original_location.path.clone().unwrap_or_default(), *id))
-			.collect();
+		self.node_graph_warnings.extend(warnings);
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
 		});
-		self.async_runtime().retain_sources(self.executor.sources());
+		self.async_runtime().update_sources(self.executor.sources());
 		result
-	}
-
-	fn execute_network(&mut self, render_config: RenderConfig) -> Result<Poll<TaggedValue>, String> {
-		use graph_craft::graphene_compiler::Executor;
-
-		match self.executor.input_type() {
-			Some(t) if t == concrete!(Context) => (&self.executor)
-				.execute(render_config.into_context_with_generations(self.async_runtime().snapshot()))
-				.map_err(|e| e.to_string()),
-			Some(t) if t == concrete!(()) => (&self.executor).execute(()).map_err(|e| e.to_string()),
-			Some(t) => Err(format!("Invalid input type {t:?}")),
-			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
-		}
 	}
 
 	fn resolve_errors(&self, error: &NodeError) -> EvaluationErrors {
@@ -485,73 +569,20 @@ impl NodeRuntime {
 		EvaluationErrors(errors.into())
 	}
 
-	/// Updates state data, giving back the layers whose thumbnails were dropped because they no longer have content to show.
-	async fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
+	/// Renders the stale thumbnails, giving back the layers whose thumbnails were dropped because they no longer have content to show.
+	async fn update_thumbnails(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
 		let dropped_thumbnails = self.thumbnails.drop_sourceless();
-
-		for (monitor_node_path, _) in &self.monitor_nodes {
-			let Some(parent_network_node_id) = monitor_parent_node(monitor_node_path) else {
-				warn!("Monitor node has invalid node id");
-				continue;
-			};
-
-			if !records_vector(&self.executor, monitor_node_path) {
-				continue;
-			}
-			let tree = self.executor.tree();
-			let Ok(content_node) = tree.input_node(monitor_node_path, 0) else { continue };
-			let Ok(Some(context)) = tree.last_context(content_node) else { continue };
-			let context_hash = context_hash(&context);
-			if self.vector_evaluations.get(&parent_network_node_id) == Some(&(content_node, context_hash)) {
-				continue;
-			}
-
-			let Some(output) = tree.evaluate(content_node, &context).ok().and_then(evaluated_output) else {
-				continue;
-			};
-			let geometry = if let Some(list) = output.downcast_ref::<List<Vector>>() {
-				VectorGeometry::new(list.element(0).cloned().unwrap_or_default(), paths_from_list_row_attributes(list, 0).cloned().unwrap_or_default())
-			} else if let Some(item) = output.downcast_ref::<Item<Vector>>() {
-				VectorGeometry::from_item(item)
-			} else {
-				continue;
-			};
-			self.vector_modify.insert(parent_network_node_id, geometry);
-			self.vector_evaluations.insert(parent_network_node_id, (content_node, context_hash));
-		}
-
 		self.thumbnails.render_stale(&self.executor, &self.editor_api, responses).await;
 
 		dropped_thumbnails
 	}
 }
 
-/// The layer a monitor node belongs to, since monitor nodes sit within the network of the document node they monitor.
-fn monitor_parent_node(monitor_node_path: &[NodeId]) -> Option<NodeId> {
-	monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied()
-}
-
-fn records_vector(executor: &DynamicExecutor, monitor_node_path: &[NodeId]) -> bool {
-	// TODO: Tell this from the monitor node's type once the types the borrow tree records can be compared with concrete ones
-	executor
-		.introspect(monitor_node_path)
-		.is_ok_and(|data| data.is::<IORecord<Context, List<Vector>>>() || data.is::<IORecord<Context, Item<Vector>>>())
-}
-
-fn context_features(context: &OwnedContextImpl) -> InspectedContext {
-	use graphene_std::{ExtractAnimationTime, ExtractFootprint, ExtractIndex, ExtractPointerPosition, ExtractPosition, ExtractRealTime, ExtractVarArgs};
-
-	InspectedContext {
-		features: ContextOverrides {
-			footprint: context.try_footprint().copied(),
-			real_time: context.try_real_time(),
-			animation_time: context.try_animation_time(),
-			pointer_position: context.try_pointer_position(),
-			index: context.try_index().map(|index| index.collect()),
-		},
-		positions: context.try_position().map(|positions| positions.collect()).unwrap_or_default(),
-		variables: context.varargs_len().unwrap_or_default(),
-		..Default::default()
+impl ExecutionResult {
+	fn render_output(&mut self) -> Option<&mut RenderOutputType> {
+		let (Self::Value(value) | Self::Fallback(value, _)) = self else { return None };
+		let TaggedValue::RenderOutput(RenderOutput { data, .. }) = value else { return None };
+		Some(data)
 	}
 }
 
@@ -577,166 +608,482 @@ impl NodeRuntime {
 		.into();
 	}
 
-	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake, clock: Arc<dyn Clock>) {
-		self.async_runtime = Some(AsyncRuntime::new(Arc::new(NodeTaskExecutor { spawner, wake }), clock));
-		self.begin_frame();
+	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake) {
+		let spawn = NodeTaskExecutor {
+			spawner,
+			dirty: self.dirty.clone(),
+			wake,
+		};
+		self.async_runtime = Some(AsyncRuntime::new(Arc::new(spawn)));
 	}
 
-	pub fn set_scheduling(&mut self, scheduling: Scheduling) {
-		self.scheduling = scheduling;
-	}
-
-	/// Called by the host once the previous output was presented.
-	pub fn begin_frame(&mut self) {
-		self.frame_start = self.async_runtime().clock().now();
-	}
-
-	/// How long a deferred re-evaluation waits for the next frame.
-	pub fn until_next_frame(&self) -> Option<Duration> {
-		let budget = self.frame_budget()?;
-		let elapsed = self.frame_elapsed().as_nanos() % budget.as_nanos();
-		self.rerun.then(|| budget - Duration::from_nanos(elapsed as u64))
-	}
-
-	fn frame_elapsed(&self) -> Duration {
-		self.async_runtime().clock().now().saturating_sub(self.frame_start)
-	}
-
-	fn frame_budget(&self) -> Option<Duration> {
-		self.scheduling.frame_budget.filter(|budget| !budget.is_zero())
-	}
-
-	fn frame_has_budget(&self) -> bool {
-		self.frame_budget().is_none_or(|budget| self.frame_elapsed() < budget)
-	}
-
-	pub(crate) fn async_runtime(&self) -> &AsyncRuntime {
+	fn async_runtime(&self) -> &AsyncRuntime {
 		self.async_runtime.as_ref().expect("the task executor is installed before the first graph update")
 	}
 }
 
 struct NodeTaskExecutor {
 	spawner: Spawner,
+	dirty: Arc<AtomicBool>,
 	wake: Wake,
 }
 
 impl Spawn for NodeTaskExecutor {
 	fn spawn(&self, task: Task) {
+		let dirty = self.dirty.clone();
 		let wake = self.wake.clone();
 		self.spawner.spawn(Box::pin(async move {
 			task.await;
+			dirty.store(true, Ordering::Release);
 			wake();
 		}));
-	}
-}
-
-/// The node the Data panel inspects, which is evaluated again from the context it was last evaluated with.
-struct InspectState {
-	inspect_node_path: Vec<NodeId>,
-	overrides: ContextOverrides,
-	last_evaluation: Option<(NodeId, u64, Option<InspectedData>)>,
-}
-
-type InspectedData = Arc<dyn std::any::Any + Send + Sync + 'static>;
-
-/// The resulting value from the temporary inspected during execution
-#[derive(Clone, Debug, Default)]
-pub struct InspectResult {
-	introspected_data: Option<Arc<dyn std::any::Any + Send + Sync + 'static>>,
-	/// Full path from the root network to the inspected node, with the node itself as the last element.
-	/// The parent slice (`split_last().1`) is the network the node lives in, which downstream consumers
-	/// (e.g. the Data panel) need when looking the node up via `network_interface.is_layer(...)` etc.
-	pub inspect_node_path: Vec<NodeId>,
-	pub context: InspectedContext,
-}
-
-/// The features of the context an inspected node was evaluated with, after the overrides replaced some of them.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct InspectedContext {
-	pub features: ContextOverrides,
-	/// The positions the context carries, from the outermost level in.
-	pub positions: Vec<DVec2>,
-	pub variables: usize,
-	pub overrides: ContextOverrides,
-	pub dependencies: ContextFeatures,
-}
-
-impl InspectResult {
-	pub fn take_data(&mut self) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
-		self.introspected_data.clone()
-	}
-}
-
-// This is very ugly but is required to be inside a message
-impl PartialEq for InspectResult {
-	fn eq(&self, other: &Self) -> bool {
-		self.inspect_node_path == other.inspect_node_path
-	}
-}
-
-impl InspectState {
-	fn new(inspect_node_path: Vec<NodeId>) -> Option<Self> {
-		(!inspect_node_path.is_empty()).then_some(Self {
-			inspect_node_path,
-			overrides: ContextOverrides::default(),
-			last_evaluation: None,
-		})
-	}
-
-	fn access(&mut self, executor: &DynamicExecutor, network: Option<&NodeNetwork>) -> InspectResult {
-		let node = network.and_then(|network| executor.tree().output_node(network, &self.inspect_node_path));
-		let context = node.and_then(|node| executor.tree().last_context(node).ok().flatten()).map(|context| self.with_overrides(context));
-
-		let introspected_data = node.zip(context.clone()).and_then(|(node, context)| self.evaluate(executor, node, context));
-		let features = context.as_ref().and_then(|context| context.as_deref()).map(context_features).unwrap_or_default();
-		let context = InspectedContext {
-			overrides: self.overrides.clone(),
-			dependencies: node.map(|node| executor.tree().context_features(node)).unwrap_or_default(),
-			..features
-		};
-
-		InspectResult {
-			introspected_data,
-			inspect_node_path: self.inspect_node_path.clone(),
-			context,
-		}
-	}
-
-	fn with_overrides(&self, context: Context<'static>) -> Context<'static> {
-		if self.overrides.is_empty() {
-			return context;
-		}
-		let context = context
-			.as_deref()
-			.map(|context| context.with_overrides(&self.overrides))
-			.unwrap_or_else(|| OwnedContextImpl::empty().with_overrides(&self.overrides));
-		Some(Arc::new(context))
-	}
-
-	/// Evaluates the node with the context, reusing the last result if neither changed.
-	fn evaluate(&mut self, executor: &DynamicExecutor, node: NodeId, context: Context<'static>) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
-		let context_hash = context_hash(&context);
-		if let Some((last_node, last_context_hash, data)) = &self.last_evaluation
-			&& (*last_node, *last_context_hash) == (node, context_hash)
-		{
-			return data.clone();
-		}
-
-		let output = evaluated_output(executor.tree().evaluate(node, &context).ok()?)?;
-		// Output the Data panel can't show is remembered too, so it isn't evaluated again for nothing
-		let data = crate::messages::portfolio::document::data_panel::shareable_inspect_output(output);
-		self.last_evaluation = Some((node, context_hash, data.clone()));
-		data
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::test_utils::{EditorTestUtils, FakeClock};
+	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+	use crate::test_utils::EditorTestUtils;
+	use glam::DVec2;
 	use graph_craft::document::DocumentNode;
 	use graphene_std::SourceId;
 	use graphene_std::runtime::Runtime;
+
+	const SOURCE: SourceId = SourceId(1);
+
+	async fn editor() -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// We use the svg pipeline for these tests since we don't read back the result for editor tests anyway
+		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.runtime.async_runtime().update_sources(&[SOURCE]);
+		editor
+	}
+
+	/// Sends a network update and a request to evaluate it, as the editor does for a change to the graph.
+	fn send_update(editor: &mut EditorTestUtils) {
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+		executor
+			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), Vec::new(), true, DVec2::ZERO)
+			.unwrap();
+	}
+
+	/// Sends a network update and a request to export it, as the editor does for an export.
+	fn send_export(editor: &mut EditorTestUtils) {
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+		let export_config = ExportConfig {
+			name: "export".to_string(),
+			file_type: FileType::Svg,
+			scale_factor: 1.,
+			bounds: ExportBounds::AllArtwork,
+			..Default::default()
+		};
+		executor.submit_document_export(document, document_id, export_config).unwrap();
+	}
+
+	/// Whether the runtime evaluated the graph since this was last called.
+	fn evaluated(editor: &mut EditorTestUtils) -> bool {
+		editor.dispatch(Message::Wake).iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. }))
+	}
+
+	/// Whether the runtime finished an export since this was last called.
+	fn exported(editor: &mut EditorTestUtils) -> bool {
+		editor.dispatch(Message::Wake).iter().any(|message| matches!(message, FrontendMessage::TriggerSaveFile { .. }))
+	}
+
+	/// Fills the document's layer with a trace of noise, which an export has to wait on over several evaluations.
+	fn vectorize_layer(editor: &mut EditorTestUtils) {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let mut create = |node_type| {
+			let node_id = NodeId::new();
+			editor.dispatch(NodeGraphMessage::CreateNodeFromContextMenu {
+				node_id: Some(node_id),
+				node_type,
+				xy: None,
+				add_transaction: true,
+			});
+			node_id
+		};
+		let noise = create(DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER));
+		let vectorize = create(DefinitionIdentifier::ProtoNode(graphene_std::vectorize_nodes::vectorize::IDENTIFIER));
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(noise),
+			input_connector: InputConnector::node_at_index(vectorize, 0),
+		});
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(vectorize),
+			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+		});
+	}
+
+	/// The ID of the viewport request the runtime evaluates, which only changes once it has read a newer one.
+	fn last_request(editor: &EditorTestUtils) -> Option<u64> {
+		editor.runtime.pending.map(|request| request.execution_id)
+	}
+
+	#[tokio::test]
+	async fn only_update_reads_the_channel() {
+		let mut editor = editor().await;
+		send_update(&mut editor);
+
+		editor.runtime.run().await;
+		assert!(!evaluated(&mut editor), "run read the request");
+
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+	}
+
+	/// Asks for a render of the unchanged graph at this device pixel ratio, as a pan or zoom does.
+	fn send_render(editor: &mut EditorTestUtils, scale: f64) {
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+		let message = executor
+			.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, scale, Default::default(), DVec2::ZERO)
+			.unwrap();
+		editor.dispatch(message);
+	}
+
+	/// Wires the rectangle into a 'Read Attribute' node's name, which must be a fixed value, so the graph fails to compile.
+	/// Gives back the layer's content input and the value that restores it.
+	fn break_compile(editor: &mut EditorTestUtils) -> (InputConnector, NodeInput) {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_proto_node_type};
+		use graphene_std::graphic::read_attribute_number;
+		use graphene_std::vector::generator_nodes::rectangle;
+
+		let rectangle_reference = DefinitionIdentifier::ProtoNode(rectangle::IDENTIFIER);
+		let interface = &editor.active_document().network_interface;
+		let rectangle_node = interface
+			.document_network()
+			.nodes
+			.keys()
+			.copied()
+			.find(|node_id| interface.reference(node_id, &[]) == Some(rectangle_reference.clone()))
+			.unwrap();
+		let layer_content = InputConnector::node_at_index(editor.active_document().metadata().all_layers().next().unwrap().to_node(), 1);
+		let original_content = editor.active_document().network_interface.input_from_connector(&layer_content, &[]).unwrap().clone();
+
+		let read_node = NodeId::new();
+		let template = resolve_proto_node_type(read_attribute_number::IDENTIFIER).unwrap().default_node_template();
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.insert_node(read_node, template, &[]);
+		network_interface.set_input(&InputConnector::node(read_node, read_attribute_number::NameInput), NodeInput::node(rectangle_node, 0), &[]);
+		network_interface.set_input(&layer_content, NodeInput::node(read_node, 0), &[]);
+
+		(layer_content, original_content)
+	}
+
+	#[tokio::test]
+	async fn a_graph_that_fails_to_compile_keeps_its_error_up_until_it_compiles() {
+		use crate::messages::frontend::utility_types::RenderStatus;
+
+		/// Lets the runtime handle what was sent and gives back whether the editor drew artwork and whether it shows the error.
+		async fn drawn_and_errored(editor: &mut EditorTestUtils) -> (bool, bool) {
+			editor.runtime.update();
+			editor.runtime.run().await;
+			let messages = editor.dispatch(Message::Wake);
+			let drawn = messages.iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. }));
+			let errored = messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+			(drawn, errored)
+		}
+
+		let mut editor = editor().await;
+		send_update(&mut editor);
+		assert_eq!(drawn_and_errored(&mut editor).await, (true, false));
+
+		let (layer_content, original_content) = break_compile(&mut editor);
+		send_update(&mut editor);
+		assert_eq!(drawn_and_errored(&mut editor).await, (false, true));
+
+		send_render(&mut editor, 1.);
+		assert_eq!(
+			drawn_and_errored(&mut editor).await,
+			(false, true),
+			"the last graph that compiled shouldn't be drawn in place of the error"
+		);
+
+		editor.active_document_mut().network_interface.set_input(&layer_content, original_content, &[]);
+		send_update(&mut editor);
+		assert_eq!(drawn_and_errored(&mut editor).await, (true, false));
+	}
+
+	#[tokio::test]
+	async fn thumbnails_wait_for_a_graph_that_fails_to_compile() {
+		/// Lets the runtime handle what was sent and gives back whether the layer's thumbnail is left to render.
+		async fn thumbnail_stale(editor: &mut EditorTestUtils, layer: NodeId) -> bool {
+			editor.runtime.update();
+			editor.runtime.run().await;
+			editor.dispatch(Message::Wake);
+			editor.runtime.thumbnails.is_stale(layer)
+		}
+
+		let mut editor = editor().await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap().to_node();
+		editor.runtime.thumbnails.set_in_view(HashSet::from([layer]));
+		send_update(&mut editor);
+		assert!(!thumbnail_stale(&mut editor, layer).await);
+
+		// A new device pixel ratio makes the thumbnail stale, but the network to render it from has yet to compile
+		let (layer_content, original_content) = break_compile(&mut editor);
+		send_update(&mut editor);
+		thumbnail_stale(&mut editor, layer).await;
+		send_render(&mut editor, 2.);
+		assert!(thumbnail_stale(&mut editor, layer).await, "the thumbnail shouldn't render from the last network that compiled");
+
+		editor.active_document_mut().network_interface.set_input(&layer_content, original_content, &[]);
+		send_update(&mut editor);
+		assert!(!thumbnail_stale(&mut editor, layer).await, "the thumbnail should render once the graph compiles");
+	}
+
+	#[tokio::test]
+	async fn a_missing_resource_renders_with_a_warning_on_its_node() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use graph_craft::application_io::resource::ResourceId;
+		use graphene_std::raster_nodes::std_nodes::image;
+
+		let mut editor = editor().await;
+
+		// The layer shows an 'Image' node holding an image the document has no record of
+		let image_node = NodeId::new();
+		let missing_image = NodeInput::value(TaggedValue::Resource(ResourceId::new()), false);
+		let template = resolve_proto_node_type(image::IDENTIFIER).unwrap().node_template_input_override([None, Some(missing_image)]);
+		editor.active_document_mut().network_interface.insert_node(image_node, template, &[]);
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(image_node),
+			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+		});
+
+		send_update(&mut editor);
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor), "the graph should render with the missing image left empty");
+		assert!(editor.portfolio_message_handler_mut().executor.take_evaluation_errors().is_none());
+
+		let resolved_types = &editor.active_document().network_interface.resolved_types;
+		assert!(resolved_types.node_graph_errors.is_empty(), "{:?}", resolved_types.node_graph_errors);
+		let warnings = resolved_types.node_graph_warnings.as_slice();
+		let expected = GraphErrorType::MissingResource { index: 1 };
+		assert!(matches!(warnings, [warning] if warning.node_path == [image_node] && warning.error == expected), "{warnings:?}");
+	}
+
+	#[tokio::test]
+	async fn a_resource_that_fails_to_load_renders_with_a_fallback_until_it_loads() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use crate::test_utils::test_prelude::{Color, Image};
+		use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
+		use graphene_std::raster_nodes::std_nodes::image;
+
+		/// Handles the message, lets the runtime compile and evaluate whatever it queued, and gives back the graph's warnings and whether it drew an image.
+		async fn render_after(editor: &mut EditorTestUtils, message: impl Into<Message>) -> (GraphErrors, bool) {
+			editor.dispatch(message);
+			editor.runtime.update();
+			editor.runtime.run().await;
+			let messages = editor.dispatch(Message::Wake);
+			let image_drawn = messages
+				.iter()
+				.any(|message| matches!(message, FrontendMessage::UpdateImageData { canvas_ids_in_use, .. } if !canvas_ids_in_use.is_empty()));
+
+			let resolved_types = &editor.active_document().network_interface.resolved_types;
+			assert!(resolved_types.node_graph_errors.is_empty(), "{:?}", resolved_types.node_graph_errors);
+			(resolved_types.node_graph_warnings.clone(), image_drawn)
+		}
+
+		let mut editor = editor().await;
+		let document_id = editor.portfolio_message_handler().active_document_id.unwrap();
+		editor.dispatch(ViewportMessage::Update {
+			x: 0.,
+			y: 0.,
+			width: 100.,
+			height: 100.,
+			scale: 1.,
+		});
+
+		// The layer shows an 'Image' node whose image is known only by where to load it from
+		let resource_id = ResourceId::new();
+		let source = DataSource::Url("https://example.com/image.png".parse().unwrap());
+		editor.active_document_mut().resources.registry.push_source_back(&resource_id, source.clone());
+		let image_node = NodeId::new();
+		let input = NodeInput::value(TaggedValue::Resource(resource_id), false);
+		let template = resolve_proto_node_type(image::IDENTIFIER).unwrap().node_template_input_override([None, Some(input)]);
+		editor.active_document_mut().network_interface.insert_node(image_node, template, &[]);
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(image_node),
+			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+		});
+
+		let (warnings, _) = render_after(&mut editor, NodeGraphMessage::RunDocumentGraph).await;
+		assert!(warnings.is_empty(), "the graph shouldn't run while the image may still load: {warnings:?}");
+
+		let failed = ResourceMessage::ResolveFailed { resource_id }.into();
+		let (warnings, image_drawn) = render_after(&mut editor, PortfolioMessage::DocumentPassMessage { document_id, message: failed }).await;
+		let expected = GraphErrorType::MissingResource { index: 1 };
+		assert!(
+			matches!(warnings.as_slice(), [warning] if warning.node_path == [image_node] && warning.error == expected),
+			"{warnings:?}"
+		);
+		assert!(!image_drawn, "the image that failed to load should be left empty");
+
+		// Loading it later, as a retry would, has to recompile the unchanged network
+		let data: Arc<[u8]> = Image::new(2, 2, Color::BLACK).to_png().into();
+		let hash = ResourceHash::from(data.as_ref());
+		editor.dispatch(ResourceStorageMessage::Store { data });
+		let resolved = ResourceMessage::Resolved { resource_id, source, hash }.into();
+		let (warnings, image_drawn) = render_after(&mut editor, PortfolioMessage::DocumentPassMessage { document_id, message: resolved }).await;
+		assert!(warnings.is_empty(), "the warning should clear once the image loads: {warnings:?}");
+		assert!(image_drawn, "the image should be drawn once it loads");
+	}
+
+	#[tokio::test]
+	async fn an_export_is_refused_while_its_resources_load() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use graph_craft::application_io::resource::{DataSource, ResourceId};
+		use graphene_std::raster_nodes::std_nodes::image;
+
+		/// Requests an export and lets the runtime evaluate whatever was sent, giving back whether it explained a refusal and whether it exported.
+		async fn refused_and_exported(editor: &mut EditorTestUtils) -> (bool, bool) {
+			let messages = editor.dispatch(PortfolioMessage::SubmitDocumentExport {
+				name: "export".to_string(),
+				file_type: FileType::Svg,
+				scale_factor: 1.,
+				bounds: ExportBounds::AllArtwork,
+				artboard_name: None,
+				artboard_count: 0,
+			});
+			let refused = messages.iter().any(|message| matches!(message, FrontendMessage::DisplayDialog { .. }));
+
+			editor.runtime.update();
+			editor.runtime.run().await;
+			(refused, exported(editor))
+		}
+
+		let mut editor = editor().await;
+		let document_id = editor.portfolio_message_handler().active_document_id.unwrap();
+
+		// An 'Image' node whose image is known only by where to load it from
+		let resource_id = ResourceId::new();
+		let source = DataSource::Url("https://example.com/image.png".parse().unwrap());
+		editor.active_document_mut().resources.registry.push_source_back(&resource_id, source);
+		let template = resolve_proto_node_type(image::IDENTIFIER)
+			.unwrap()
+			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Resource(resource_id), false))]);
+		editor.active_document_mut().network_interface.insert_node(NodeId::new(), template, &[]);
+
+		let outcome = refused_and_exported(&mut editor).await;
+		assert_eq!(outcome, (true, false), "the export shouldn't capture the image's fallback while it may still load");
+
+		// Once the image fails to load, its fallback is all there is to export
+		let failed = ResourceMessage::ResolveFailed { resource_id }.into();
+		editor.dispatch(PortfolioMessage::DocumentPassMessage { document_id, message: failed });
+		let outcome = refused_and_exported(&mut editor).await;
+		assert_eq!(outcome, (false, true), "the export should go ahead once nothing is left loading");
+	}
+
+	#[tokio::test]
+	async fn an_export_goes_ahead_of_what_was_sent_after_it() {
+		let mut editor = editor().await;
+		let last = last_request(&editor);
+		send_export(&mut editor);
+		send_update(&mut editor);
+
+		editor.runtime.update();
+		assert!(editor.runtime.pending_export.is_some());
+		assert_eq!(last_request(&editor), last, "the request sent after the export was read ahead of it");
+
+		editor.runtime.run().await;
+		assert!(exported(&mut editor));
+
+		editor.runtime.update();
+		assert_ne!(last_request(&editor), last);
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor), "the request sent after the export was lost");
+	}
+
+	#[tokio::test]
+	async fn a_parked_export_holds_back_everything_sent_after_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
+		editor.draw_rect(0., 0., 512., 512.).await;
+		vectorize_layer(&mut editor);
+
+		send_export(&mut editor);
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(editor.runtime.pending_export.is_some(), "the export took a single evaluation");
+
+		let last = last_request(&editor);
+		send_update(&mut editor);
+		let mut runs = 0;
+		while editor.runtime.pending_export.is_some() {
+			editor.runtime.update();
+			assert_eq!(last_request(&editor), last, "a request got ahead of the parked export");
+			editor.runtime.run().await;
+			runs += 1;
+			assert!(runs < 100_000, "the export never finished");
+		}
+		assert!(exported(&mut editor));
+
+		editor.runtime.update();
+		assert_ne!(last_request(&editor), last);
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor), "the request sent after the export was lost");
+	}
+
+	#[tokio::test]
+	async fn a_graph_settles_while_network_updates_keep_arriving() {
+		let mut editor = editor().await;
+		send_update(&mut editor);
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+
+		let last = last_request(&editor);
+		for _ in 0..3 {
+			send_update(&mut editor);
+			editor.runtime.async_runtime().spawn(SOURCE, Box::pin(async {}));
+			editor.runtime.run().await;
+			assert!(evaluated(&mut editor), "the finished task didn't evaluate the graph again");
+			assert_eq!(last_request(&editor), last, "run read the request");
+		}
+
+		editor.runtime.update();
+		assert_ne!(last_request(&editor), last);
+		assert!(editor.runtime.receiver.try_recv().is_err(), "update left a request in the channel");
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+	}
+
+	#[tokio::test]
+	async fn several_network_updates_evaluate_once() {
+		let mut editor = editor().await;
+		for _ in 0..3 {
+			send_update(&mut editor);
+		}
+
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+
+		editor.runtime.run().await;
+		assert!(!evaluated(&mut editor), "the requests of the older network updates evaluated again");
+	}
 
 	#[test]
 	fn a_preview_replaces_the_export_of_the_graph_being_compiled() {
@@ -760,65 +1107,5 @@ mod tests {
 		);
 
 		assert_eq!(network.exports.first().and_then(|export| export.as_node()), Some(previewed_node));
-	}
-
-	const SOURCE: SourceId = SourceId(1);
-
-	async fn editor(clock: &Arc<FakeClock>) -> EditorTestUtils {
-		let mut editor = EditorTestUtils::create_with(Scheduling::default(), clock.clone());
-		editor.new_document().await;
-		editor.draw_rect(0., 0., 100., 100.).await;
-		editor.runtime.async_runtime().retain_sources(&[SOURCE]);
-		editor.runtime.begin_frame();
-		editor
-	}
-
-	fn finish_task(editor: &EditorTestUtils) {
-		editor.runtime.async_runtime().spawn(SOURCE, Box::pin(async {}));
-	}
-
-	async fn evaluates(editor: &mut EditorTestUtils) -> bool {
-		editor.runtime.run().await;
-		let messages = editor.editor.handle_message(Message::Wake);
-		messages.iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. }))
-	}
-
-	#[tokio::test]
-	async fn reevaluations_past_the_frame_budget_wait_for_the_next_frame() {
-		let clock = Arc::new(FakeClock::default());
-		let mut editor = editor(&clock).await;
-
-		finish_task(&editor);
-		finish_task(&editor);
-		assert!(evaluates(&mut editor).await);
-		assert!(!evaluates(&mut editor).await, "two finished tasks re-evaluated twice");
-
-		clock.advance(Duration::from_millis(20));
-		finish_task(&editor);
-		assert!(!evaluates(&mut editor).await);
-		assert_eq!(editor.runtime.until_next_frame(), Some(Duration::from_millis(12)));
-
-		editor.runtime.begin_frame();
-		assert!(evaluates(&mut editor).await);
-		assert_eq!(editor.runtime.until_next_frame(), None);
-	}
-
-	#[tokio::test]
-	async fn explicit_requests_ignore_the_frame_budget() {
-		let clock = Arc::new(FakeClock::default());
-		let mut editor = editor(&clock).await;
-
-		clock.advance(Duration::from_millis(100));
-		finish_task(&editor);
-		let portfolio = &mut editor.editor.dispatcher.message_handlers.portfolio_message_handler;
-		let document_id = portfolio.active_document_id.unwrap();
-		let document = portfolio.documents.get_mut(&document_id).unwrap();
-		portfolio
-			.executor
-			.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO)
-			.unwrap();
-
-		assert!(evaluates(&mut editor).await);
-		assert!(!evaluates(&mut editor).await, "the finished task re-evaluated after the explicit request");
 	}
 }

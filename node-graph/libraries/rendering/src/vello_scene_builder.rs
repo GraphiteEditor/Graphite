@@ -1,4 +1,7 @@
+use glam::{DAffine2, DMat2, DVec2, UVec2};
+use graphic_types::effects::EffectCapture;
 use graphic_types::raster_types::{CPU, Raster, Texture};
+use graphic_types::{EffectOperation, Effects};
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape, Stroke};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -8,9 +11,14 @@ use vello_gpu::{Image, ImageSource, PaintType, TextureId, TextureRegion};
 /// Tolerance for turning shapes other than paths into paths, matching Vello's own.
 const SHAPE_TOLERANCE: f64 = 0.1;
 
+/// The texture size an effects group's area rounds up to a multiple of, so a group moving across renders keeps reusing the same pooled textures.
+const EFFECTS_SIZE_CLASS: u32 = 64;
+
+/// The most pixels an effects group's area renders with, as a multiple of the viewport's, beyond which it renders at a lower resolution to bound its memory.
+const MAX_EFFECTS_AREA_PER_VIEWPORT_AREA: f64 = 4.;
+
 /// Builds a Vello GPU scene of a fixed size, recording the images it draws so the renderer can supply their textures at render time.
-#[derive(Debug)]
-pub struct VelloSceneBuilder {
+pub struct VelloSceneBuilder<'a> {
 	scene: vello_gpu::Scene,
 	/// Places the drawn content in the scene, applied on top of every transform it's drawn with.
 	view: Affine,
@@ -20,6 +28,31 @@ pub struct VelloSceneBuilder {
 	/// The largest width or height an image's texture can have, beyond which images are drawn from a downscaled texture.
 	max_texture_size: u32,
 	pushed: Vec<Pushed>,
+	/// Renders effects groups as they're drawn. A scene drawn ahead of its render has none, so it draws effects groups without their effects.
+	effects_renderer: Option<&'a mut dyn EffectsRenderer>,
+	/// The coverage the next effects group drawn outputs in place of its result, for an SVG map of it.
+	effect_capture: Option<EffectCapture>,
+}
+
+/// Renders the content of a scene's effects groups offscreen and carries out their effects, while the scene is drawn.
+pub trait EffectsRenderer: Send {
+	/// Whether the GPU can carry out effects, without which effects groups draw their content faded by their fill.
+	fn renders_effects(&self) -> bool;
+
+	/// Renders the content `draw` draws, placed by `view`, into a premultiplied texture of `size`, returning a texture of the same size with `effects` carried out on it.
+	/// `effect_to_pixels` places the effects' space on the texture's pixels, and `fill` fades the content but not the shadows and glows cast from it.
+	/// With a `capture`, the texture instead holds that effect's coverage, as black with it in alpha.
+	#[allow(clippy::too_many_arguments)]
+	fn render_effects(
+		&mut self,
+		size: UVec2,
+		view: Affine,
+		effects: &Effects,
+		fill: f32,
+		effect_to_pixels: DAffine2,
+		capture: Option<EffectCapture>,
+		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
+	) -> wgpu::Texture;
 }
 
 /// The pixels behind an image the scene draws.
@@ -31,6 +64,8 @@ pub enum SceneImage {
 	Raster(Raster<CPU>),
 	/// Straight-alpha pixels in a GPU texture.
 	Texture(Texture),
+	/// Premultiplied pixels of an effects group's result, rendered for this scene.
+	Rendered(wgpu::Texture),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -38,6 +73,7 @@ enum ImageKey {
 	Blob(u64),
 	Raster(u64),
 	Texture(Texture),
+	Rendered(wgpu::Texture),
 }
 
 #[derive(Debug)]
@@ -46,7 +82,17 @@ enum Pushed {
 	Clip,
 }
 
-impl VelloSceneBuilder {
+impl std::fmt::Debug for VelloSceneBuilder<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("VelloSceneBuilder")
+			.field("scene", &self.scene)
+			.field("view", &self.view)
+			.field("images", &self.images)
+			.finish_non_exhaustive()
+	}
+}
+
+impl<'a> VelloSceneBuilder<'a> {
 	pub fn new(width: u16, height: u16, view: Affine, max_texture_size: u32) -> Self {
 		Self::from_vello(vello_gpu::Scene::new(width, height), view, max_texture_size)
 	}
@@ -61,7 +107,25 @@ impl VelloSceneBuilder {
 			image_ids: HashMap::new(),
 			max_texture_size,
 			pushed: Vec::new(),
+			effects_renderer: None,
+			effect_capture: None,
 		}
+	}
+
+	/// Renders the effects groups drawn into the scene through `renderer`.
+	pub fn with_effects_renderer(mut self, renderer: &'a mut dyn EffectsRenderer) -> Self {
+		self.effects_renderer = Some(renderer);
+		self
+	}
+
+	/// Has the next effects group drawn output the coverage `capture` names in place of its result, leaving the groups drawn within it as they are.
+	pub fn capture_next_effects(&mut self, capture: EffectCapture) {
+		self.effect_capture = Some(capture);
+	}
+
+	/// The coverage the next effects group drawn was to output, which it then won't.
+	pub fn take_effect_capture(&mut self) -> Option<EffectCapture> {
+		self.effect_capture.take()
 	}
 
 	pub fn width(&self) -> u16 {
@@ -91,6 +155,14 @@ impl VelloSceneBuilder {
 	/// The content's placement in the scene, applied on top of every transform it's drawn with.
 	pub fn view(&self) -> Affine {
 		self.view
+	}
+
+	/// Draws what `draw` draws placed by `placement` within the view, as content with its own document space for its effects' lengths, like each thumbnail of an atlas.
+	pub fn draw_placed(&mut self, placement: Affine, draw: impl FnOnce(&mut Self)) {
+		let outer_view = self.view;
+		self.view = outer_view * placement;
+		draw(self);
+		self.view = outer_view;
 	}
 
 	/// The tolerance Vello GPU expands a stroke drawn with `transform` at, so a stroke outline expanded at it fills identically.
@@ -191,6 +263,71 @@ impl VelloSceneBuilder {
 		self.draw_image_source(source, sampler, transform * texture_to_image, texture_size);
 	}
 
+	/// Draws the content `draw` draws with `effects` carried out on it in their `effect_space` (placed in the drawn content's space), given the area it covers in that space, or `None` if unbounded.
+	/// `fill` fades the content but not the shadows and glows cast from it. Rendering a split scene calls `draw` again for each part.
+	pub fn draw_effects(&mut self, effects: &Effects, fill: f32, bounds: Option<Rect>, effect_space: DAffine2, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) {
+		let capture = self.effect_capture.take();
+		let effect_to_device = DAffine2::from_cols_array(&self.view.as_coeffs()) * effect_space;
+		if !self.effects_renderer.as_ref().is_some_and(|renderer| renderer.renders_effects()) || !effect_to_device.matrix2.determinant().is_normal() {
+			self.push_viewport_layer(peniko::Mix::Normal, fill);
+			draw(self);
+			self.pop_layer();
+			return;
+		}
+
+		// The texture follows the viewport's axes if the effect space only turns and evenly scales, or else its own axes, scaled evenly to keep every direction's detail.
+		// A box blur, which isn't round, turns with its space only along that space's axes.
+		let has_box_blur = effects
+			.operations()
+			.any(|operation| matches!(operation, EffectOperation::Blur { box_blur: true, .. }) && !operation.changes_nothing());
+		let follows_viewport = is_similarity(effect_to_device.matrix2) && (!has_box_blur || is_axis_aligned(effect_to_device.matrix2));
+		let (frame_to_device, lengths_to_frame) = match follows_viewport {
+			true => (DAffine2::IDENTITY, effect_to_device.matrix2),
+			false => {
+				let density = largest_stretch(effect_to_device.matrix2);
+				(effect_to_device * DAffine2::from_scale(DVec2::splat(1. / density)), DMat2::from_diagonal(DVec2::splat(density)))
+			}
+		};
+		let device_to_frame = frame_to_device.inverse();
+		let document_to_frame = Affine::new(device_to_frame.to_cols_array()) * self.view;
+		let reach = effects.reach() * lengths_to_frame.determinant().abs().sqrt();
+
+		// The content reaching into the viewport, rounded out to whole pixels of the frame
+		let viewport = Rect::new(0., 0., self.width() as f64, self.height() as f64);
+		let viewport_in_frame = Affine::new(device_to_frame.to_cols_array()).transform_rect_bbox(viewport);
+		let content_bounds = bounds.map_or(viewport_in_frame, |bounds| document_to_frame.transform_rect_bbox(bounds));
+		let region = content_bounds.inflate(reach, reach).intersect(viewport_in_frame.inflate(reach, reach)).expand();
+		if !(region.width() > 0. && region.height() > 0.) {
+			return;
+		}
+
+		// A region too large for one texture, or for its memory, renders at a lower resolution, which the blurs and shadows that make it so large hide.
+		// Its size rounds up to a size class so a group that moves between renders keeps reusing the same textures.
+		let max_size = self.max_texture_size.min(u16::MAX as u32);
+		let max_area = MAX_EFFECTS_AREA_PER_VIEWPORT_AREA * viewport.area();
+		let resolution = (max_size as f64 / region.width().max(region.height())).min((max_area / region.area()).sqrt()).min(1.);
+		let size_along = |length: f64| ((length * resolution).ceil() as u32).next_multiple_of(EFFECTS_SIZE_CLASS).min(max_size);
+		let size = UVec2::new(size_along(region.width()), size_along(region.height()));
+		let origin = region.origin().to_vec2();
+
+		let content_view = Affine::scale(resolution) * Affine::translate(-origin) * document_to_frame;
+		let effect_to_pixels = DAffine2::from_cols_array(&content_view.as_coeffs()) * effect_space;
+		let Some(renderer) = self.effects_renderer.as_deref_mut() else { return };
+		let result = renderer.render_effects(size, content_view, effects, fill, effect_to_pixels, capture, draw);
+
+		// Draw the result where the content was
+		self.images.push(SceneImage::Rendered(result));
+		let id = TextureId(self.images.len() as u64 - 1);
+		self.scene
+			.set_transform(Affine::new(frame_to_device.to_cols_array()) * Affine::translate(origin) * Affine::scale(1. / resolution));
+		self.scene.set_paint(PaintType::Image(Image {
+			image: ImageSource::external_texture(id, TextureRegion::Full, true),
+			sampler: peniko::ImageSampler::new(),
+		}));
+		self.scene.set_paint_transform(Affine::IDENTITY);
+		self.scene.fill_rect(&Rect::new(0., 0., size.x as f64, size.y as f64));
+	}
+
 	fn draw_image_source(&mut self, source: ImageSource, sampler: peniko::ImageSampler, transform: Affine, (width, height): (u32, u32)) {
 		self.scene.set_transform(self.view * transform);
 		self.scene.set_paint(PaintType::Image(Image { image: source, sampler }));
@@ -222,6 +359,7 @@ impl VelloSceneBuilder {
 			SceneImage::Pixels(data) => (data.width, data.height),
 			SceneImage::Raster(raster) => (raster.width, raster.height),
 			SceneImage::Texture(texture) => (texture.width(), texture.height()),
+			SceneImage::Rendered(texture) => (texture.width(), texture.height()),
 		};
 		if width == 0 || height == 0 {
 			return None;
@@ -231,6 +369,7 @@ impl VelloSceneBuilder {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
 			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
 			SceneImage::Texture(texture) => ImageKey::Texture(texture.clone()),
+			SceneImage::Rendered(texture) => ImageKey::Rendered(texture.clone()),
 		};
 		let id = *self.image_ids.entry(key).or_insert_with(|| {
 			self.images.push(image);
@@ -305,6 +444,26 @@ fn finite_path(path: &BezPath) -> Cow<'_, BezPath> {
 	}
 
 	Cow::Owned(result)
+}
+
+/// Whether the linear map only turns, flips, and evenly scales, so it keeps circles round.
+fn is_similarity(linear: DMat2) -> bool {
+	let (x_axis, y_axis) = (linear.x_axis, linear.y_axis);
+	let tolerance = 1e-9 * x_axis.length_squared().max(y_axis.length_squared());
+	(x_axis.length_squared() - y_axis.length_squared()).abs() <= tolerance && x_axis.dot(y_axis).abs() <= tolerance
+}
+
+/// Whether the linear map keeps the axes along the axes, at most swapping or flipping them.
+fn is_axis_aligned(linear: DMat2) -> bool {
+	let tolerance = 1e-9 * linear.x_axis.abs().max_element().max(linear.y_axis.abs().max_element());
+	(linear.x_axis.y.abs() <= tolerance && linear.y_axis.x.abs() <= tolerance) || (linear.x_axis.x.abs() <= tolerance && linear.y_axis.y.abs() <= tolerance)
+}
+
+/// The most the linear map stretches any length, its largest singular value.
+fn largest_stretch(linear: DMat2) -> f64 {
+	let sum_of_squares = linear.x_axis.length_squared() + linear.y_axis.length_squared();
+	let determinant = linear.determinant();
+	((sum_of_squares + (sum_of_squares * sum_of_squares - 4. * determinant * determinant).max(0.).sqrt()) / 2.).sqrt()
 }
 
 /// The size of the texture an image is drawn from, downscaled by a whole factor until both sides fit within `max_texture_size`.

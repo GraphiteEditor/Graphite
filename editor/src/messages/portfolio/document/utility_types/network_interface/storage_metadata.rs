@@ -8,30 +8,19 @@
 use std::collections::{BTreeMap, HashMap};
 
 use document_graph_storage::attr::session;
-use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position, Value, from_value, to_value};
+use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NetworkReference, NodeMetadataEntry, NodeMetadataSource, Position, Value, from_value, to_value};
 use glam::IVec2;
-use graph_craft::document::{DocumentNodeImplementation, NetworkLocation, NodeId, NodeNetwork, OwnedNetworkLocation};
+use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
 
 use super::{
 	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface, NodeNetworkMetadata,
 	NodeNetworkPersistentMetadata, NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
 };
+use crate::messages::portfolio::document::node_graph::document_node_definitions::network_definition_version;
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysVisibilitySettings;
 use crate::messages::portfolio::document::utility_types::misc::SnappingState;
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
-
-/// Fired when the storage entry list disagrees with the converted `NodeNetwork`.
-#[derive(Debug, thiserror::Error)]
-pub enum InterfaceRebuildError {
-	#[error("input_metadata length {got} does not match inputs length {expected} for node {node:?} in network {network:?}")]
-	InputMetadataLengthMismatch {
-		node: NodeId,
-		network: OwnedNetworkLocation,
-		expected: usize,
-		got: usize,
-	},
-}
 
 /// Per-peer view settings persisted in `session.json` under `ui::doc::*` (viewport view, render mode,
 /// overlay/ruler visibility, snapping, collapsed layers). Not part of the registry/CRDT/history; see
@@ -66,15 +55,16 @@ impl StorageMetadataView<'_> {
 		Some(&self.network_persistent(network)?.node_metadata.get(&local_id)?.persistent_metadata)
 	}
 
-	fn input_persistent(&self, network: NetworkLocation, local_id: NodeId, input_index: usize) -> Option<&InputPersistentMetadata> {
-		Some(&self.persistent(network, local_id)?.input_metadata.get(input_index)?.persistent_metadata)
+	fn subnetwork_persistent(&self, network: NetworkLocation) -> Option<&NodeNetworkPersistentMetadata> {
+		self.network_persistent(Some(network?))
 	}
 
-	fn subnetwork_persistent(&self, network: NetworkLocation) -> Option<&NodeNetworkPersistentMetadata> {
-		if network == NetworkLocation::ROOT {
+	/// The metadata holding the subnetwork's interface, unless it is a catalog entry, whose interface the catalog owns.
+	fn owned_interface(&self, network: NetworkLocation) -> Option<&NodeNetworkPersistentMetadata> {
+		if network.is_some_and(super::catalog::is_protected) {
 			return None;
 		}
-		self.network_persistent(network)
+		self.subnetwork_persistent(network)
 	}
 }
 
@@ -99,51 +89,23 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 		self.persistent(network, local_id).is_some_and(|p| p.pinned)
 	}
 
-	fn input_name(&self, network: NetworkLocation, local_id: NodeId, input_index: usize) -> Option<&str> {
-		Some(self.input_persistent(network, local_id, input_index)?.input_name.as_str())
-	}
-
-	fn input_description(&self, network: NetworkLocation, local_id: NodeId, input_index: usize) -> Option<&str> {
-		Some(self.input_persistent(network, local_id, input_index)?.input_description.as_str())
-	}
-
-	fn widget_override(&self, network: NetworkLocation, local_id: NodeId, input_index: usize) -> Option<&str> {
-		self.input_persistent(network, local_id, input_index)?.widget_override.as_deref()
-	}
-
-	fn input_data(&self, network: NetworkLocation, local_id: NodeId, input_index: usize) -> HashMap<String, Value> {
-		self.input_persistent(network, local_id, input_index)
-			.map(|p| p.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
-			.unwrap_or_default()
-	}
-
-	fn output_names(&self, network: NetworkLocation, local_id: NodeId) -> Vec<String> {
-		self.persistent(network, local_id).map(|p| p.output_names.clone()).unwrap_or_default()
-	}
-
-	fn output_descriptions(&self, network: NetworkLocation, local_id: NodeId) -> Vec<String> {
-		self.persistent(network, local_id).map(|p| p.output_descriptions.clone()).unwrap_or_default()
-	}
-
 	fn import_metadata(&self, network: NetworkLocation) -> Vec<InputMetadataEntry> {
-		self.subnetwork_persistent(network)
+		self.owned_interface(network)
 			.map(|persistent| persistent.import_metadata.iter().map(input_metadata_entry_from_runtime).collect())
 			.unwrap_or_default()
 	}
 
 	fn export_names(&self, network: NetworkLocation) -> Vec<String> {
-		self.subnetwork_persistent(network).map(|persistent| persistent.export_names.clone()).unwrap_or_default()
+		self.owned_interface(network).map(|persistent| persistent.export_names.clone()).unwrap_or_default()
 	}
 
 	fn export_descriptions(&self, network: NetworkLocation) -> Vec<String> {
-		self.subnetwork_persistent(network).map(|persistent| persistent.export_descriptions.clone()).unwrap_or_default()
+		self.owned_interface(network).map(|persistent| persistent.export_descriptions.clone()).unwrap_or_default()
 	}
 
-	fn storage_node_id(&self, network: NetworkLocation, local_id: NodeId) -> Option<document_graph_storage::NodeId> {
-		self.persistent(network, local_id)?.storage_id.map(document_graph_storage::NodeId)
-	}
-	fn reference(&self, network: NetworkLocation) -> Option<&str> {
-		self.network_persistent(network)?.reference.as_deref()
+	fn reference(&self, network: NetworkLocation) -> Option<NetworkReference> {
+		let identifier = self.network_persistent(network)?.reference.clone()?;
+		Some(versioned_reference(identifier))
 	}
 
 	fn pinned_order(&self, network: NetworkLocation) -> Vec<NodeId> {
@@ -175,6 +137,12 @@ impl DocumentSettings<'_> {
 			})
 			.collect()
 	}
+}
+
+/// The stored form of a network's reference. Opening a document migrates every instance to its definition's current version, so that is the version it holds.
+pub(super) fn versioned_reference(identifier: String) -> NetworkReference {
+	let version = network_definition_version(&identifier);
+	NetworkReference { identifier, version }
 }
 
 /// The stored position of a node, which pairs with `is_layer` to reconstruct the runtime node type.
@@ -209,18 +177,37 @@ pub fn position_to_runtime(position: Position, is_layer: bool) -> NodeTypePersis
 }
 
 /// Builds a `NodeNetworkInterface` from a `NodeNetwork` plus the metadata vecs `Registry::to_runtime_with_full_metadata` emits.
-pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<NodeMetadataEntry>, network_entries: Vec<NetworkMetadataEntry>) -> Result<NodeNetworkInterface, InterfaceRebuildError> {
+pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<NodeMetadataEntry>, network_entries: Vec<NetworkMetadataEntry>) -> NodeNetworkInterface {
 	let mut network_metadata = NodeNetworkMetadata::default();
 	seed_metadata_tree(&network, &mut network_metadata);
-	apply_entries_into_tree(&network, &mut network_metadata, node_entries)?;
+	apply_entries_into_tree(&mut network_metadata, node_entries);
 	apply_network_entries_into_tree(&mut network_metadata, network_entries);
 
-	Ok(NodeNetworkInterface::from_trees(network, network_metadata))
+	let mut interface = NodeNetworkInterface::from_trees(network, network_metadata);
+	interface.adopt_catalog_interfaces();
+	interface
+}
+
+/// The node and its metadata from a single-node projection, patched like a whole rebuild's entry.
+pub(super) fn node_metadata_from_projection(projected: document_graph_storage::ProjectedNode) -> (graph_craft::document::DocumentNode, DocumentNodePersistentMetadata) {
+	let document_graph_storage::ProjectedNode { local_id, node, metadata: entry, .. } = projected;
+
+	let entry = NodeMetadataEntry { network: None, ..entry };
+
+	let mut scratch = NodeNetwork::default();
+	scratch.nodes.insert(local_id, node);
+	let mut metadata = NodeNetworkMetadata::default();
+	seed_metadata_tree(&scratch, &mut metadata);
+	apply_entries_into_tree(&mut metadata, vec![entry]);
+
+	let persistent = metadata.persistent_metadata.node_metadata.remove(&local_id).map(|node| node.persistent_metadata).unwrap_or_default();
+	let node = scratch.nodes.remove(&local_id).expect("inserted above");
+	(node, persistent)
 }
 
 /// Maps each runtime network location to its stable `NetworkId`, from the entries `to_runtime_with_full_metadata` returns.
-pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> HashMap<OwnedNetworkLocation, document_graph_storage::NetworkId> {
-	network_entries.iter().map(|entry| (entry.network.clone(), entry.network_id)).collect()
+pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> HashMap<NetworkLocation, document_graph_storage::NetworkId> {
+	network_entries.iter().map(|entry| (entry.network, entry.network_id)).collect()
 }
 
 /// Collects each network's view state (node graph navigation and previewing) into a `session.json` map.
@@ -228,12 +215,12 @@ pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> Has
 /// Networks with default navigation and no preview get no entry.
 pub fn collect_network_view_settings(
 	interface: &NodeNetworkInterface,
-	network_ids: &HashMap<OwnedNetworkLocation, document_graph_storage::NetworkId>,
+	network_ids: &HashMap<NetworkLocation, document_graph_storage::NetworkId>,
 ) -> BTreeMap<document_graph_storage::NetworkId, BTreeMap<String, Value>> {
 	let mut out = BTreeMap::new();
 
 	for (network, &network_id) in network_ids {
-		let Some(network_metadata) = interface.network_metadata.nested_metadata(network.as_location()) else {
+		let Some(network_metadata) = interface.network_metadata.nested_metadata(*network) else {
 			continue;
 		};
 		let navigation = &network_metadata.persistent_metadata.navigation_metadata;
@@ -276,12 +263,12 @@ pub fn collect_network_view_settings(
 /// Applies the view state stored in `session.json` onto `interface`. The inverse of [`collect_network_view_settings`].
 pub fn apply_network_view_settings(
 	interface: &mut NodeNetworkInterface,
-	network_ids: &HashMap<OwnedNetworkLocation, document_graph_storage::NetworkId>,
+	network_ids: &HashMap<NetworkLocation, document_graph_storage::NetworkId>,
 	network_view_settings: &BTreeMap<document_graph_storage::NetworkId, BTreeMap<String, Value>>,
 ) {
 	for (network, network_id) in network_ids {
 		let Some(settings) = network_view_settings.get(network_id) else { continue };
-		let Some(view_state) = interface.located_view_state_mut(network.as_location()) else {
+		let Some(view_state) = interface.located_view_state_mut(*network) else {
 			continue;
 		};
 		let navigation = view_state.navigation;
@@ -316,7 +303,7 @@ pub fn apply_network_view_settings(
 /// Entries with an unresolved location are skipped with a warning, since that is usually a stale location and not corruption.
 fn apply_network_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: Vec<NetworkMetadataEntry>) {
 	for entry in entries {
-		let Some(network_metadata) = metadata.nested_metadata_mut(entry.network.as_location()) else {
+		let Some(network_metadata) = metadata.nested_metadata_mut(entry.network) else {
 			log::warn!("apply_network_entries_into_tree: network at {:?} not found, skipping", entry.network);
 			continue;
 		};
@@ -343,30 +330,22 @@ fn seed_metadata_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata)
 }
 
 fn seed_network_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata) {
-	for (&local_id, node) in &network.nodes {
-		let node_metadata = metadata.persistent_metadata.node_metadata.entry(local_id).or_default();
-
-		if let DocumentNodeImplementation::Network(nested) = &node.implementation {
-			let child = node_metadata.persistent_metadata.network_metadata.get_or_insert_with(NodeNetworkMetadata::default);
-			seed_network_metadata(nested, child);
-		}
+	for &local_id in network.nodes.keys() {
+		metadata.persistent_metadata.node_metadata.entry(local_id).or_default();
 	}
 }
 
 /// Patches entries onto the metadata tree previously seeded by [`seed_metadata_tree`].
 /// Entries with a stale `(network, local_id)` are skipped with a warning.
-/// An `input_metadata` length mismatch returns an `InterfaceRebuildError`.
-fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata, entries: Vec<NodeMetadataEntry>) -> Result<(), InterfaceRebuildError> {
+fn apply_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: Vec<NodeMetadataEntry>) {
 	// Group entries by network so we do one nested_metadata_mut lookup per network.
-	let mut by_network: HashMap<OwnedNetworkLocation, Vec<NodeMetadataEntry>> = HashMap::new();
+	let mut by_network: HashMap<NetworkLocation, Vec<NodeMetadataEntry>> = HashMap::new();
 	for entry in entries {
-		by_network.entry(entry.network.clone()).or_default().push(entry);
+		by_network.entry(entry.network).or_default().push(entry);
 	}
 
 	for (location, entries) in by_network {
-		let nested_network = network.located_network(location.as_location());
-
-		let Some(network_metadata) = metadata.nested_metadata_mut(location.as_location()) else {
+		let Some(network_metadata) = metadata.nested_metadata_mut(location) else {
 			log::warn!("apply_entries_into_tree: network at {location:?} not found, skipping {} entries", entries.len());
 			continue;
 		};
@@ -378,10 +357,6 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 			};
 
 			let persistent = &mut document_node_metadata.persistent_metadata;
-
-			// Pins the node to the identity storage holds for it, so the next conversion reuses it rather
-			// than re-deriving one from the node's location.
-			persistent.storage_id = Some(entry.storage_id.0);
 
 			if let Some(position) = entry.position {
 				persistent.node_type_metadata = position_to_runtime(position, entry.is_layer);
@@ -395,33 +370,9 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 			persistent.locked = entry.locked;
 			persistent.pinned = entry.pinned;
 
-			// The converted runtime is the source of truth for input count; drift indicates a bug worth surfacing.
-			let expected_inputs = nested_network.and_then(|net| net.nodes.get(&entry.local_id)).map(|doc_node| doc_node.inputs.len());
-			if let Some(expected) = expected_inputs
-				&& expected != entry.input_metadata.len()
-			{
-				return Err(InterfaceRebuildError::InputMetadataLengthMismatch {
-					node: entry.local_id,
-					network: location.clone(),
-					expected,
-					got: entry.input_metadata.len(),
-				});
-			}
-
-			persistent.input_metadata = entry.input_metadata.into_iter().map(input_metadata_entry_to_runtime).collect();
-
-			if !entry.output_names.is_empty() {
-				persistent.output_names = entry.output_names;
-			}
-			if !entry.output_descriptions.is_empty() {
-				persistent.output_descriptions = entry.output_descriptions;
-			}
-
 			document_node_metadata.transient_metadata = DocumentNodeTransientMetadata::default();
 		}
 	}
-
-	Ok(())
 }
 
 pub(super) fn input_metadata_entry_from_runtime(input_metadata: &InputMetadata) -> InputMetadataEntry {
@@ -436,7 +387,7 @@ pub(super) fn input_metadata_entry_from_runtime(input_metadata: &InputMetadata) 
 }
 
 /// Storage-side `None` restores as `""` (the runtime's "unset" sentinel for `input_name` / `input_description`).
-fn input_metadata_entry_to_runtime(entry: InputMetadataEntry) -> InputMetadata {
+pub(super) fn input_metadata_entry_to_runtime(entry: InputMetadataEntry) -> InputMetadata {
 	InputMetadata {
 		persistent_metadata: InputPersistentMetadata {
 			input_name: entry.input_name.unwrap_or_default(),

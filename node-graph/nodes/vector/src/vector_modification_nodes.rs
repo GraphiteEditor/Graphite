@@ -1,16 +1,22 @@
-use core_types::list::{ATTR_GEOMETRY_CACHE, Item, List, NodeIdPath};
+use core_types::list::{ATTR_GEOMETRY_CACHE, Item, NodeIdPath};
 use core_types::transform::BakeTransform;
-use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Ctx};
 use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use vector_types::kurbo::BezPath;
 use vector_types::vector::{GeometryCache, VectorModification, edit_item_geometry, ensure_paths_attribute, shared_paths_from_item_attributes};
 
-/// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
-#[node_macro::node(category(""), memoize)]
-fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Box<VectorModification>>, node_path: Item<NodeIdPath>) -> Item<Vector> {
-	let mut vector = vector;
+/// Holds the edits made with the Pen and Path tools, applying them to the incoming shape.
+#[node_macro::node(category("Vector: Geometry"), icon("NodePath"), memoize, version(2))]
+fn path(
+	_ctx: impl Ctx,
+	/// The original shape that edits made with the Pen and Path tools are applied to.
+	content: Item<Vector>,
+	/// The edits made with the Pen and Path tools, stored as changes to points and segments.
+	modification: Item<Box<VectorModification>>,
+	#[node_path] node_path: Item<NodeIdPath>,
+) -> Item<Vector> {
+	let mut vector = content;
 	let modification = modification.into_element();
 
 	// Moving points leaves the paths as they are, so they stay shared with the incoming geometry instead of being copied
@@ -39,16 +45,10 @@ fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Box<Vect
 	// Drop the stale click-target override so hit testing uses the geometry the user is now editing
 	vector.remove_attribute::<BezPath>(ATTR_EDITOR_CLICK_TARGET);
 
-	// Set the path to the encapsulating subgraph (drop our own trailing entry from `node_path`),
-	// matching the `path_of_subgraph` proto so editor tools can route data back to the parent layer.
-	let node_path = node_path.into_element().0;
-	let subgraph_path: List<NodeId> = {
-		let len = node_path.len();
-		node_path.into_iter().take(len.saturating_sub(1)).collect()
-	};
-	let existing = vector.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).0;
-	let layer_path = if existing.is_empty() { subgraph_path } else { existing };
-	vector.set_attribute(ATTR_EDITOR_LAYER_PATH, NodeIdPath(layer_path));
+	// Trace a vector no layer has claimed back to this node for the editor's tools
+	if vector.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).0.is_empty() {
+		vector.set_attribute(ATTR_EDITOR_LAYER_PATH, node_path.into_element());
+	}
 
 	vector
 }
@@ -59,6 +59,7 @@ fn bake_transform<T: BakeTransform + Send + 'static>(_ctx: impl Ctx, #[implement
 	let mut content = content;
 	if let Some(transform) = content.remove_attribute::<DAffine2>(ATTR_TRANSFORM) {
 		content.element_mut().bake_transform(&transform);
+		graphic_types::graphic::rebase_stamped_transforms(content.attributes_mut(), transform);
 	}
 
 	content
@@ -67,7 +68,7 @@ fn bake_transform<T: BakeTransform + Send + 'static>(_ctx: impl Ctx, #[implement
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::list::{ATTR_ID, ATTR_PATHS};
+	use core_types::list::{ATTR_ID, ATTR_PATHS, List};
 	use vector_types::vector::{CurveType, PointId, SegmentId, VectorModificationType, paths_from_item_attributes, push_path};
 
 	// A lone loop fills by its contour alone, so it keeps the direction it was drawn in even when that winds backwards
@@ -81,7 +82,7 @@ mod tests {
 		bezpath.close_path();
 		let drawn = Vector::item_from_bezpath(&bezpath);
 
-		let modified = path_modify((), drawn.clone(), Item::default(), Item::default());
+		let modified = path((), drawn.clone(), Item::default(), Item::default());
 
 		assert_eq!(paths_from_item_attributes(&modified), paths_from_item_attributes(&drawn));
 	}
@@ -106,7 +107,7 @@ mod tests {
 
 		let mut modification = VectorModification::default();
 		modification.modify(&VectorModificationType::ApplyPointDelta { point: hub, delta: DVec2::X });
-		let modified = path_modify((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default());
+		let modified = path((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default());
 
 		let first_path = |item: &Item<Vector>| paths_from_item_attributes(item).unwrap().element(0).unwrap().0.iter_element_values().copied().collect::<Vec<_>>();
 		assert_eq!(first_path(&drawn), [0, 1, 2, 3, 0]);
@@ -125,7 +126,7 @@ mod tests {
 
 		let mut modification = VectorModification::default();
 		modification.modify(&VectorModificationType::ApplyPointDelta { point: corner, delta: DVec2::X });
-		let modified = path_modify((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default());
+		let modified = path((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default());
 
 		assert_eq!(modified.element().0.element(1), Some(&DVec2::new(11., 0.)));
 		assert!(std::ptr::eq(paths_from_item_attributes(&drawn).unwrap(), paths_from_item_attributes(&modified).unwrap()));
@@ -149,7 +150,7 @@ mod tests {
 		});
 
 		for modification in [VectorModification::default(), adds_a_point] {
-			let modified = path_modify((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default());
+			let modified = path((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default());
 
 			assert_eq!(paths_from_item_attributes(&modified).map(List::len), Some(0));
 			assert_eq!(

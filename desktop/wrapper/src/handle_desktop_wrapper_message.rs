@@ -1,4 +1,3 @@
-use graphite_editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use graphite_editor::messages::prelude::*;
 
 use super::DesktopWrapperMessageDispatcher;
@@ -15,13 +14,8 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 		DesktopWrapperMessage::Input(message) => {
 			dispatcher.queue_editor_message(EditorMessage::InputPreprocessor(message));
 		}
-		DesktopWrapperMessage::IngestFile { path, content, action } => {
-			dispatcher.queue_editor_message(IngestMessage::Ingest {
-				data: content,
-				action,
-				mime_type: String::new(),
-				path: Some(path),
-			});
+		DesktopWrapperMessage::Ingest { content, action } => {
+			dispatcher.queue_editor_message(IngestMessage::Ingest { content, action });
 		}
 		DesktopWrapperMessage::SaveFileDialogResult { path, context } => match context {
 			SaveFileDialogContext::Document { document_id, content } => {
@@ -61,14 +55,6 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 		}
 		#[cfg(not(target_os = "macos"))]
 		DesktopWrapperMessage::MenuEvent { id: _ } => {}
-		DesktopWrapperMessage::ClipboardReadResult { content } => {
-			if let Some(content) = content {
-				let message = ClipboardMessage::ReadClipboard {
-					content: ClipboardContentRaw::Text(content),
-				};
-				dispatcher.queue_editor_message(message);
-			}
-		}
 		DesktopWrapperMessage::PointerLockMove { x, y } => {
 			let message = AppWindowMessage::PointerLockMove { x, y };
 			dispatcher.queue_editor_message(message);

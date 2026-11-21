@@ -22,7 +22,9 @@ use crate::messages::tool::common_functionality::shape_editor::SelectionShapeTyp
 use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::*;
-use crate::messages::tool::common_functionality::utility_functions::{push_nearest_anchors, resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
+use crate::messages::tool::common_functionality::utility_functions::{
+	name_layer_action, push_nearest_anchors, resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage,
+};
 use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
@@ -1088,7 +1090,8 @@ impl Fsm for SelectToolFsmState {
 						bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 					}
 					if !is_skewing
-						&& dragging_bounds && let Some(edges) = edges
+						&& dragging_bounds
+						&& let Some(edges) = edges
 					{
 						tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
 					}
@@ -1746,6 +1749,10 @@ impl Fsm for SelectToolFsmState {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.axis_align = false;
+				if has_dragged {
+					let verb = if tool_data.non_duplicated_layers.is_some() { "Duplicated" } else { "Moved" };
+					responses.add(name_layer_action(verb, tool_data.layers_dragging.len()));
+				}
 
 				if !has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
@@ -1832,6 +1839,14 @@ impl Fsm for SelectToolFsmState {
 			) => {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
+				if !drag_too_small {
+					responses.add(match self {
+						SelectToolFsmState::DraggingPivot => DocumentMessage::NameInteraction { action: "Moved the Pivot".into() },
+						SelectToolFsmState::RotatingBounds => name_layer_action("Rotated", tool_data.layers_dragging.len()),
+						SelectToolFsmState::SkewingBounds { .. } => name_layer_action("Skewed", tool_data.layers_dragging.len()),
+						_ => name_layer_action("Resized", tool_data.layers_dragging.len()),
+					});
+				}
 
 				tool_data.pivot_before_drag = None;
 				let pivot_gizmo = tool_data.pivot_gizmo();
@@ -3075,6 +3090,20 @@ mod test_select_tool {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
 		assert_bounds(&editor, layer, turned_bounds([from + pan, to + pan], middle + pan, FRAC_PI_2));
+	}
+
+	#[tokio::test]
+	async fn a_layer_scaled_to_zero_width_keeps_its_bounds_where_it_was_drawn() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(420., 380.)).await;
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(360., 300.), DVec2::new(360., 380.)]);
 	}
 
 	fn snap_session(editor: &EditorTestUtils) -> &SnapSession {

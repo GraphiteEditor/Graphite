@@ -1,7 +1,7 @@
 use wgpu::PresentMode;
 
 use crate::window::Window;
-use crate::wrapper::{Texture, VelloCanvas, VelloSceneBuilder, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
+use crate::wrapper::{Texture, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
@@ -17,13 +17,8 @@ pub(crate) struct RenderState {
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
 	viewport_texture: Option<Texture>,
-	overlays_texture: Option<Texture>,
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
-	#[derivative(Debug = "ignore")]
-	overlays_scene: Option<VelloSceneBuilder>,
-	#[derivative(Debug = "ignore")]
-	overlays_canvas: VelloCanvas,
 	surface_outdated: bool,
 }
 
@@ -104,16 +99,6 @@ impl RenderState {
 				wgpu::BindGroupLayoutEntry {
 					binding: 2,
 					visibility: wgpu::ShaderStages::FRAGMENT,
-					ty: wgpu::BindingType::Texture {
-						multisampled: false,
-						view_dimension: wgpu::TextureViewDimension::D2,
-						sample_type: wgpu::TextureSampleType::Float { filterable: true },
-					},
-					count: None,
-				},
-				wgpu::BindGroupLayoutEntry {
-					binding: 3,
-					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 					count: None,
 				},
@@ -177,11 +162,8 @@ impl RenderState {
 			viewport_scale: [1., 1.],
 			viewport_offset: [0., 0.],
 			viewport_texture: None,
-			overlays_texture: None,
 			ui_texture: None,
 			bind_group: None,
-			overlays_scene: None,
-			overlays_canvas: VelloCanvas::default(),
 			surface_outdated: true,
 		}
 	}
@@ -220,35 +202,11 @@ impl RenderState {
 		self.viewport_offset = offset;
 	}
 
-	pub(crate) fn set_overlays_scene(&mut self, scene: VelloSceneBuilder) {
-		self.surface_outdated = true;
-		self.overlays_scene = Some(scene);
-	}
-
 	pub(crate) fn set_present_mode(&mut self, present_mode: Option<PresentMode>) {
 		let context = self.executor.context();
 		self.config.present_mode = present_mode.unwrap_or(self.surface.get_capabilities(&context.adapter).present_modes[0]);
 		self.surface.configure(&context.device, &self.config);
 		self.surface_outdated = true;
-	}
-
-	fn render_overlays(&mut self, scene: VelloSceneBuilder) {
-		if self.viewport_texture.is_none() {
-			tracing::warn!("No viewport texture bound, cannot render overlays");
-			return;
-		}
-		let result = self.executor.render_vello_scene_on_canvas(&mut self.overlays_canvas, scene);
-		match result {
-			Ok(texture) => {
-				self.overlays_texture = Some(texture);
-			}
-			Err(e) => {
-				self.overlays_texture = None;
-				tracing::error!("Error rendering overlays: {:?}", e);
-			}
-		}
-
-		self.update_bindgroup();
 	}
 
 	pub(crate) fn render(&mut self, window: &Window) -> Result<(), RenderError> {
@@ -270,10 +228,6 @@ impl RenderState {
 		} else {
 			None
 		};
-
-		if let Some(scene) = self.overlays_scene.take() {
-			self.render_overlays(scene);
-		}
 
 		let (surface_texture, suboptimal) = match self.surface.get_current_texture(&self.executor.context().queue) {
 			WgpuCurrentSurfaceTexture::Success(t) => (t, false),
@@ -344,7 +298,6 @@ impl RenderState {
 	fn update_bindgroup(&mut self) {
 		self.surface_outdated = true;
 		let viewport_texture_view = self.viewport_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
-		let overlays_texture_view = self.overlays_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 		let ui_texture_view = self.ui_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 
 		let bind_group = self.executor.context().device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -356,14 +309,10 @@ impl RenderState {
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::TextureView(&overlays_texture_view),
-				},
-				wgpu::BindGroupEntry {
-					binding: 2,
 					resource: wgpu::BindingResource::TextureView(&ui_texture_view),
 				},
 				wgpu::BindGroupEntry {
-					binding: 3,
+					binding: 2,
 					resource: wgpu::BindingResource::Sampler(&self.sampler),
 				},
 			],

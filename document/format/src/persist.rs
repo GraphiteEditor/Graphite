@@ -4,9 +4,12 @@
 //! surface absorbs durability.
 
 use document_container::{AnyContainer, AsyncContainer};
+use document_graph_storage::blob::{BlobBytes, NewBlobs};
 #[cfg(feature = "conversion")]
-use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HistoryMetadata, HotOp, MetadataFact, RegistryDelta, Rev, Sorted, Subject, TimeStamp, Value, WallStamp};
+use document_graph_storage::from_runtime::RuntimeConversion;
+use document_graph_storage::{BlobHash, CrdtError, Delta, HistoryMetadata, HotOp, MetadataFact, PeerId, RegistryDelta, Rev, Sorted, Subject, TimeStamp, UserId, Value, WallStamp};
+#[cfg(feature = "conversion")]
+use document_graph_storage::{CommitError, NodeMetadataSource, Registry};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -14,7 +17,7 @@ use crate::SessionState;
 use crate::error::Error;
 use crate::layout::Layout;
 use crate::manifest::Manifest;
-use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, encode_facts, io};
+use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, RemoteChanges, encode_facts, io};
 
 /// Written after every staged payload, so its presence means the whole rewrite is ready to move into place.
 const STAGING_COMMITTED: &str = "committed";
@@ -50,19 +53,48 @@ impl<L: Layout> Gdd<L> {
 	/// Move the undo cursor back one commit (silent-zone reflog undo) and persist the new cursor. Returns
 	/// the undone `Rev`. The working registry is rewound in place by the reverse delta, so re-snapshot it
 	/// (alongside `head`) or a reopen would read a `registry.bin` inconsistent with the persisted cursor.
+	/// Records what the step named for [`take_remote_changes`](Self::take_remote_changes).
 	pub fn undo(&mut self) -> Result<Rev, Error> {
 		let rev = self.session.undo()?;
+		self.remote_changes.touched.extend(self.session.touched_between(self.session.head_rev(), rev));
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
 		Ok(rev)
 	}
 
-	/// Re-apply the most-recently-undone commit and persist the new cursor and re-snapshotted registry.
+	/// Re-apply the most-recently-undone commit and persist the new cursor and re-snapshotted registry. Records what
+	/// the step named like [`undo`](Self::undo).
 	pub fn redo(&mut self) -> Result<Rev, Error> {
+		let from = self.session.head_rev();
 		let rev = self.session.redo()?;
+		self.remote_changes.touched.extend(self.session.touched_between(from, rev));
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
 		Ok(rev)
+	}
+
+	/// Forget the latest undone commit, so redo can't bring it back, and persist the cursor.
+	pub fn forget_latest_undo(&mut self) -> Result<Option<Rev>, Error> {
+		let forgotten = self.session.forget_latest_undo();
+		if forgotten.is_some() {
+			self.persist_session_state()?;
+		}
+		Ok(forgotten)
+	}
+
+	/// Set the person using this device. `peer` must be unused, so the previous user keeps their steps. Refused while connected.
+	pub fn set_user(&mut self, user: UserId, peer: PeerId) -> Result<(), Error> {
+		if self.session.user() == user {
+			return Ok(());
+		}
+		#[cfg(feature = "network")]
+		if self.network.is_some() {
+			return Err(Error::UserChangeWhileConnected);
+		}
+		let closing = self.session.set_user(user, peer)?;
+		self.own_last_staged_ms = None;
+		self.persist_staged(&closing, Vec::new())?;
+		self.persist_session_state()
 	}
 
 	/// Edit the cached manifest and persist it. Always JSON, synchronous.
@@ -91,16 +123,27 @@ impl<L: Layout> Gdd<L> {
 		resources: &graphene_resource::ResourceRegistry,
 		byte_store: &dyn ResourceStorage,
 	) -> Result<document_graph_storage::Declarations, Error> {
-		let (hot_ops, conversion) = self.session.stage_from_runtime(network, metadata, resources)?;
-		self.persist_staged(&hot_ops)?;
+		let RuntimeConversion {
+			registry,
+			blob_bytes,
+			declaration_bytes,
+			declarations,
+			..
+		} = Registry::convert_from_runtime(network, metadata, resources, self.session.peer()).map_err(CommitError::from)?;
+
+		// The converted registry already names its large values as blobs
+		let ops = self.session.runtime_diff(&registry);
+		let bases = self.registry().blob_bases(&ops);
+		let hot_ops = self.session.stage_runtime_diff(ops, registry)?;
+		self.persist_with_blobs(&hot_ops, NewBlobs { bytes: blob_bytes, bases })?;
 
 		// Persist proto-node declaration content to the byte store (the global cache in the editor,
 		// the working-copy container for standalone export). Content-addressed, so re-storing
 		// identical bytes on every commit is an idempotent no-op.
-		for bytes in conversion.declaration_bytes.values() {
+		for bytes in declaration_bytes.values() {
 			byte_store.store(bytes);
 		}
-		Ok(conversion.declarations)
+		Ok(declarations)
 	}
 
 	/// Stage ops the caller built from what the editor recorded, rather than deriving them by converting
@@ -122,21 +165,37 @@ impl<L: Layout> Gdd<L> {
 		Ok(hot_ops)
 	}
 
-	/// Stage raw registry ops as hot ops, without the runtime diff.
+	/// Stage raw registry ops as hot ops, without the runtime diff. Large input values become blobs.
 	pub fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, Error> {
-		let hot_ops = self.session.stage_computed_ops(ops.into_iter().collect())?;
-		self.persist_staged(&hot_ops)?;
+		let mut ops: Vec<_> = ops.into_iter().collect();
+		let mut blobs = BlobBytes::new();
+		ops.iter_mut().for_each(|op| op.move_values_into_blobs(&mut blobs));
+		let bases = self.registry().blob_bases(&ops);
+
+		let hot_ops = self.session.stage_computed_ops(ops)?;
+		self.persist_with_blobs(&hot_ops, NewBlobs { bytes: blobs, bases })?;
 		Ok(hot_ops)
 	}
 
-	/// Append the frames of freshly staged hot ops, then broadcast them.
-	fn persist_staged(&mut self, hot_ops: &[HotOp]) -> Result<(), Error> {
+	/// Write the records of new blobs, then persist the hot frames that name them.
+	fn persist_with_blobs(&mut self, hot_ops: &[HotOp], blobs: NewBlobs) -> Result<(), Error> {
+		let records = self.keep_blobs(blobs)?;
+		self.persist_staged(hot_ops, records)
+	}
+
+	/// Append the frames of freshly staged hot ops, then broadcast them together with their new blob records.
+	#[cfg_attr(not(feature = "network"), expect(unused_variables, reason = "only peers receive the blob records"))]
+	fn persist_staged(&mut self, hot_ops: &[HotOp], blobs: Vec<(BlobHash, Vec<u8>)>) -> Result<(), Error> {
+		if hot_ops.iter().any(|hot_op| !matches!(hot_op.op, RegistryDelta::Meta)) {
+			self.own_staged_since_tick = true;
+		}
 		for hot_op in hot_ops {
 			self.append_hot_frame(hot_op)?;
 		}
 		#[cfg(feature = "network")]
 		if let Some(replica) = &mut self.network {
-			replica.broadcast_hot_ops(hot_ops)?;
+			let blobs = blobs.into_iter().map(|(hash, record)| peer_transport::BlobRecord { hash, record }).collect();
+			replica.broadcast_hot_ops(hot_ops, blobs)?;
 		}
 		Ok(())
 	}
@@ -183,7 +242,7 @@ impl<L: Layout> Gdd<L> {
 		if !self.retires_locally() {
 			#[cfg(feature = "network")]
 			if let Some(replica) = &mut self.network {
-				replica.broadcast_hot_ops(hot_ops)?;
+				replica.broadcast_hot_ops(hot_ops, Vec::new())?;
 			}
 			return Ok(Vec::new());
 		}
@@ -368,17 +427,205 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
+	/// How many closed interactions wait before they retire. Retiring later merges more of a gesture into one delta.
+	pub const RETIRE_AFTER_INTERACTIONS: usize = 10;
+	/// Gives every peer time to see the whole interaction.
+	pub const RETIRE_MIN_AGE_MS: f64 = 2_000.0;
+	/// The longest anything waits, so quiet sessions and interactions with gaps still retire.
+	pub const RETIRE_MAX_AGE_MS: f64 = 60_000.0;
+
 	/// Close this peer's open interaction, if any, with a marker staged like any other hot op.
 	pub fn end_interaction(&mut self) -> Result<(), Error> {
 		let staged = self.session.end_interaction()?;
-		self.persist_staged(&staged)?;
+		self.persist_staged(&staged, Vec::new())?;
 		Ok(())
+	}
+
+	/// Names this peer's open interaction. Closing it takes the name along.
+	pub fn name_interaction(&mut self, action: &str) {
+		self.session.name_interaction(action);
+	}
+
+	/// Undo this peer's latest hot interaction, here and on peers. `None` if it already retired.
+	pub fn retract_interaction(&mut self) -> Result<Option<Vec<RegistryDelta>>, Error> {
+		let Some(retraction) = self.session.retract_interaction()? else {
+			return Ok(None);
+		};
+		self.own_last_staged_ms = None;
+		self.rewrite_hot_log()?;
+		self.persist_registry_snapshot()?;
+		self.persist_session_state()?;
+		self.remote_changes.touched.extend(retraction.touched);
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.broadcast_retraction(&retraction.ids)?;
+		}
+		Ok(Some(retraction.ops))
+	}
+
+	pub fn take_remote_changes(&mut self) -> RemoteChanges {
+		std::mem::take(&mut self.remote_changes)
+	}
+
+	pub fn undo_retired_step(&mut self) -> Result<Option<Rev>, Error> {
+		if !self.can_change_line() {
+			return Ok(None);
+		}
+		let Some(rev) = self.session.latest_own_interaction() else {
+			return Ok(None);
+		};
+		// A peer promoted to host drops the step itself, so an unanswered request no longer blocks it
+		let asked = (!self.retires_locally()).then_some((rev, self.session.head_rev()));
+		if asked.is_some() && self.undo_requested == asked {
+			return Ok(None);
+		}
+		self.drop_step(rev)?;
+		self.undo_requested = asked;
+		Ok(Some(rev))
+	}
+
+	pub fn can_change_line(&self) -> bool {
+		#[cfg(feature = "network")]
+		if self.network.as_ref().is_some_and(|replica| replica.has_host()) {
+			return true;
+		}
+		self.retires_locally()
+	}
+
+	/// Drop a retired interaction from the line. A non-retiring peer asks the retirer.
+	pub fn drop_step(&mut self, rev: Rev) -> Result<(), Error> {
+		if !self.retires_locally() {
+			#[cfg(feature = "network")]
+			if let Some(replica) = &mut self.network {
+				replica.request_undo(rev, false)?;
+			}
+			return Ok(());
+		}
+
+		let (moved, touched) = self.session.drop_interaction(rev)?;
+		self.remote_changes.touched.extend(touched);
+		self.persist_rewritten_line()?;
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.broadcast_head_move(moved)?;
+		}
+		#[cfg(not(feature = "network"))]
+		let _ = moved;
+		Ok(())
+	}
+
+	/// Move the head back to an ancestor, keeping the later line as a branch. A non-retiring peer asks the retirer.
+	#[cfg(feature = "network")]
+	pub fn move_head(&mut self, rev: Rev) -> Result<(), Error> {
+		if self.retires_locally() {
+			let (moved, touched) = self.session.move_head_to(rev)?;
+			self.remote_changes.touched.extend(touched);
+			self.persist_registry_snapshot()?;
+			self.persist_session_state()?;
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_head_move(moved)?;
+			}
+		} else if let Some(replica) = &mut self.network {
+			replica.request_move(rev)?;
+		}
+		Ok(())
+	}
+
+	/// Redo a dropped step as a copy on top of the line. A non-retiring peer asks the retirer.
+	pub fn redo_retired_step(&mut self, rev: Rev) -> Result<(), Error> {
+		if !self.retires_locally() {
+			#[cfg(feature = "network")]
+			if let Some(replica) = &mut self.network {
+				replica.request_undo(rev, true)?;
+			}
+			return Ok(());
+		}
+
+		let deltas = self.restore_dropped_interaction(rev)?;
+		self.persist_rewritten_line()?;
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.broadcast_retired(&deltas, &[])?;
+		}
+		#[cfg(not(feature = "network"))]
+		let _ = deltas;
+		Ok(())
+	}
+
+	/// Restore a dropped interaction and record what it named in the remote changes. Returns the new deltas.
+	pub(crate) fn restore_dropped_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, CrdtError> {
+		let revs = self.session.restore_interaction(rev)?;
+		let deltas: Vec<Delta> = revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
+		for delta in &deltas {
+			self.remote_changes.touched.record(&delta.kind);
+		}
+		// Only the deltas peers will see are published, so a local redo stays silently undoable
+		#[cfg(feature = "network")]
+		if self.network.is_some()
+			&& let Some(&last) = revs.last()
+		{
+			self.session.publish_up_to(last);
+		}
+		Ok(deltas)
+	}
+
+	fn persist_rewritten_line(&mut self) -> Result<(), Error> {
+		self.rewrite_history()?;
+		self.persist_registry_snapshot()?;
+		self.persist_session_state()
+	}
+
+	/// Stage retracted ops as a new interaction. They count as remote changes.
+	pub fn restage_ops(&mut self, ops: Vec<RegistryDelta>) -> Result<(), Error> {
+		for op in &ops {
+			self.remote_changes.touched.record(op);
+		}
+		self.stage_ops(ops)?;
+		self.end_interaction()
+	}
+
+	/// Retire what is due at `now_ms`. Open interactions never retire. `idle` means the editor is between steps.
+	pub fn retire_due(&mut self, now_ms: f64, idle: bool) -> Result<Vec<Rev>, Error> {
+		self.wall_clock_ms = Some(now_ms);
+		// Close a quiet interaction only between steps, so a pause doesn't split a gesture
+		if self.own_staged_since_tick {
+			self.own_staged_since_tick = false;
+			self.own_last_staged_ms = Some(now_ms);
+		} else if idle && self.own_last_staged_ms.is_some_and(|last| now_ms - last >= Self::RETIRE_MIN_AGE_MS) {
+			self.end_interaction()?;
+			self.own_last_staged_ms = None;
+		}
+		if !self.retires_locally() {
+			return Ok(Vec::new());
+		}
+
+		let closed = self.session.closed_interactions();
+		let mut seen = std::mem::take(&mut self.interactions_seen);
+		let mut due = Vec::new();
+		let mut oldest_age: f64 = 0.0;
+		for interaction in &closed {
+			let Some(&marker) = interaction.ops.last() else { continue };
+			let age = now_ms - *seen.entry(marker).or_insert(now_ms);
+			if age >= Self::RETIRE_MIN_AGE_MS && (interaction.contiguous || age >= Self::RETIRE_MAX_AGE_MS) {
+				due.push(interaction.clone());
+				oldest_age = oldest_age.max(age);
+			}
+		}
+		seen.retain(|marker, _| closed.iter().any(|interaction| interaction.ops.last() == Some(marker)));
+		self.interactions_seen = seen;
+
+		if due.len() >= Self::RETIRE_AFTER_INTERACTIONS || oldest_age >= Self::RETIRE_MAX_AGE_MS {
+			self.retire_interactions(&due)
+		} else {
+			Ok(Vec::new())
+		}
 	}
 
 	/// Close this peer's open interaction and retire every closed one with no ops still on their way, whoever authored
 	/// it. A peer that does not retire only closes its own.
 	pub fn retire_pending_interaction(&mut self) -> Result<Vec<Rev>, Error> {
 		self.end_interaction()?;
+		self.own_last_staged_ms = None;
 		let closed = self.contiguous_interactions();
 		self.retire_interactions(&closed)
 	}
@@ -414,8 +661,10 @@ impl<L: Layout> Gdd<L> {
 		Ok(revs)
 	}
 
-	/// Publish and persist freshly retired deltas, then broadcast them with the hot ops they retired.
 	fn finish_retirement(&mut self, new_revs: &[Rev], retired_hot_ops: &[document_graph_storage::HotOpId]) -> Result<(), Error> {
+		if let Some(wall_ms) = self.wall_clock_ms {
+			self.session.stamp_retired_at(new_revs, wall_ms as u64);
+		}
 		// Deltas peers hold are published, so undo past them moves the shared head instead of rewinding.
 		#[cfg(feature = "network")]
 		if self.network.is_some()

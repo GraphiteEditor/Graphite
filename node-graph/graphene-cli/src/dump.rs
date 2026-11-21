@@ -2,6 +2,7 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
+use graphene_std::graphic::write_layer_path;
 use graphene_std::simplify_identifier_name;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::error::Error;
@@ -57,6 +58,7 @@ enum Kind {
 	Nullify,
 	Expand,
 	Scope,
+	LayerPath,
 }
 
 impl Kind {
@@ -68,6 +70,7 @@ impl Kind {
 			Kind::Nullify => "+nullify",
 			Kind::Expand => "+expand",
 			Kind::Scope => "+scope",
+			Kind::LayerPath => "+layer-path",
 		}
 	}
 }
@@ -234,6 +237,7 @@ fn kind(proto: &ProtoNode, origin: &[NodeId], document: &Document) -> Kind {
 		_ if appended && path.last() == Some(&NodeId(10)) => Kind::Nullify,
 		_ if proto.original_location.auto_convert_index.is_some() => Kind::Convert,
 		ConstructionArgs::Value(_) => Kind::Value,
+		_ if proto.identifier == write_layer_path::IDENTIFIER => Kind::LayerPath,
 		_ if origin.is_empty() => Kind::Scope,
 		_ if document[origin].1.as_ref() == Some(&proto.identifier) => Kind::Document,
 		_ => Kind::Expand,

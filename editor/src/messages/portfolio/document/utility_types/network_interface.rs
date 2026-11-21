@@ -1,7 +1,15 @@
 mod apply;
 mod caches;
+mod catalog;
+#[cfg(test)]
+mod catalog_tests;
+#[cfg(test)]
+pub(crate) use catalog::shipped_node_id;
+#[cfg(test)]
+pub(crate) use derived_ids::derived_node_id;
 #[cfg(test)]
 mod characterization_tests;
+mod derived_ids;
 mod deserialization;
 pub mod editor_delta;
 #[cfg(test)]
@@ -14,6 +22,7 @@ mod layout;
 mod memo_network;
 mod mutations;
 mod queries;
+mod reconcile;
 mod resolved_types;
 pub mod storage_metadata;
 mod store;
@@ -25,6 +34,7 @@ mod validation;
 mod view;
 
 pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
+pub use reconcile::{ReconcileError, Reconciled};
 use store::Guarded;
 pub use store::NodeLocator;
 pub use template::*;
@@ -38,7 +48,7 @@ use crate::consts::{
 	EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, HALF_GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH,
 	STACK_VERTICAL_GAP,
 };
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_proto_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_proto_node_definition, resolve_proto_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
 use crate::messages::portfolio::document::utility_types::text_metrics::text_width;
@@ -133,10 +143,115 @@ impl PartialEq for NodeNetworkInterface {
 }
 
 impl NodeNetworkInterface {
+	/// Gives each entry under a catalog ID that differs from the shipped network a fresh ID, rekeying its nodes so they can't collide with the shipped network's.
+	pub fn give_diverged_catalog_entries_new_ids(&mut self) {
+		loop {
+			let metadata_definitions = &self.network_metadata.persistent_metadata.definitions;
+			let diverged: HashMap<NetworkId, NetworkId> = self
+				.document_network()
+				.definitions
+				.iter()
+				.filter(|(id, network)| {
+					let Some(shipped) = catalog::entry(**id) else { return false };
+					let metadata = metadata_definitions.get(id).map(|metadata| &metadata.persistent_metadata);
+					shipped.network != **network || !metadata.is_some_and(|metadata| same_content_as_shipped(&shipped.metadata.persistent_metadata, metadata))
+				})
+				.map(|(id, _)| (*id, NetworkId::new()))
+				.collect();
+			if diverged.is_empty() {
+				return;
+			}
+
+			self.migrate_graph(|network| {
+				for (old, new) in &diverged {
+					if let Some(mut definition) = network.definitions.remove(old) {
+						definition.map_ids(|node_id| derived_ids::derived_node_id(*new, node_id));
+						network.definitions.insert(*new, definition);
+					}
+				}
+				let networks = std::iter::once(&mut network.nodes).chain(network.definitions.values_mut().map(|definition| &mut definition.nodes));
+				for node in networks.flat_map(|nodes| nodes.values_mut()) {
+					if let DocumentNodeImplementation::Definition(id) = &mut node.implementation
+						&& let Some(new) = diverged.get(id)
+					{
+						*id = *new;
+					}
+				}
+			});
+			self.migrate_metadata(|metadata, _| {
+				for (old, new) in &diverged {
+					if let Some(mut definition) = metadata.persistent_metadata.definitions.remove(old) {
+						derived_ids::rekey_node_metadata(*new, &mut definition.persistent_metadata);
+						definition.transient_metadata = Default::default();
+						metadata.persistent_metadata.definitions.insert(*new, definition);
+					}
+				}
+			});
+		}
+	}
+
+	/// Gives each catalog entry the shipped interface, which the catalog owns rather than the document.
+	pub fn adopt_catalog_interfaces(&mut self) {
+		let ids: Vec<NetworkId> = self.document_network().definitions.keys().copied().collect();
+		for id in ids {
+			self.adopt_catalog_interface(id);
+		}
+	}
+
+	/// Gives the table entry `id` the shipped interface if it is a catalog entry, which storage keeps none of.
+	pub(crate) fn adopt_catalog_interface(&mut self, id: NetworkId) {
+		let Some(shipped) = catalog::entry(id) else { return };
+		let shipped = shipped.metadata.persistent_metadata;
+
+		self.migrate_metadata(|metadata, _| {
+			let Some(definition_metadata) = metadata.persistent_metadata.definitions.get_mut(&id) else {
+				return;
+			};
+			let persistent = &mut definition_metadata.persistent_metadata;
+			persistent.import_metadata = shipped.import_metadata;
+			persistent.export_names = shipped.export_names;
+			persistent.export_descriptions = shipped.export_descriptions;
+		});
+	}
+
 	// TODO: Eventually remove this document upgrade code
-	/// Moves the interface metadata an older document stored on each instance node onto the network implementing it.
-	pub fn move_interface_metadata_into_networks(&mut self) {
-		self.migrate_metadata(NodeNetworkMetadata::move_interface_metadata_into_networks);
+	/// Gives the nodes of each definition reusing a node ID from another network IDs derived from the definition, for a document from before node IDs were unique across it.
+	/// Catalog entries keep their IDs.
+	pub fn give_reused_node_ids_new_ids(&mut self) {
+		let document_network = self.document_network();
+		let mut used: HashSet<NodeId> = document_network.nodes.keys().copied().collect();
+		let mut definition_ids: Vec<NetworkId> = document_network.definitions.keys().copied().collect();
+		definition_ids.sort_by_key(|id| (!catalog::is_protected(*id), *id));
+
+		let mut rekeyed = Vec::new();
+		for id in definition_ids {
+			let node_ids = document_network.definitions[&id].nodes.keys();
+			if node_ids.clone().any(|node_id| used.contains(node_id)) {
+				used.extend(node_ids.map(|node_id| derived_ids::derived_node_id(id, *node_id)));
+				rekeyed.push(id);
+			} else {
+				used.extend(node_ids.copied());
+			}
+		}
+		if rekeyed.is_empty() {
+			return;
+		}
+
+		self.migrate_graph(|network| {
+			for id in &rekeyed {
+				if let Some(definition) = network.definitions.get_mut(id) {
+					definition.map_ids(|node_id| derived_ids::derived_node_id(*id, node_id));
+				}
+			}
+		});
+		self.migrate_metadata(|metadata, _| {
+			for id in &rekeyed {
+				if let Some(definition) = metadata.persistent_metadata.definitions.get_mut(id) {
+					derived_ids::rekey_node_metadata(*id, &mut definition.persistent_metadata);
+					definition.transient_metadata = Default::default();
+				}
+			}
+		});
 	}
 
 	// TODO: Eventually remove this document upgrade code
@@ -187,20 +302,9 @@ mod network_interface_tests {
 			.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER))
 			.await;
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rectangle] }).await;
-		let frontend_messages = editor.handle_message(NodeGraphMessage::Copy).await;
-		let clipboard = frontend_messages
-			.into_iter()
-			.find_map(|msg| match msg {
-				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
-				_ => None,
-			})
-			.expect("copy message should be dispatched");
-		println!("Clipboard: {clipboard}");
-		editor
-			.handle_message(ClipboardMessage::ReadClipboard {
-				content: ClipboardContentRaw::Text(clipboard),
-			})
-			.await;
+		let clipboard = editor.copy_to_clipboard(NodeGraphMessage::Copy).await.expect("copy message should be dispatched");
+		println!("Clipboard: {clipboard:?}");
+		editor.paste_from_clipboard(clipboard).await;
 		let nodes = &editor.active_document().network_interface.document_network().nodes;
 		let original = nodes.get(&rectangle).expect("original node should exist");
 		assert!(
@@ -249,18 +353,58 @@ mod network_interface_tests {
 
 		let unused = NetworkId(2);
 		let mut network_with_unused = network.clone();
-		network_with_unused
-			.definitions
-			.insert(unused, NodeNetwork::value_network(instance(DocumentNodeImplementation::default())));
+		let mut unused_network = NodeNetwork::value_network(instance(DocumentNodeImplementation::default()));
+		unused_network.map_ids(|_| NodeId(1));
+		network_with_unused.definitions.insert(unused, unused_network);
 		let mut metadata_with_unused = network_metadata.clone();
 		metadata_with_unused.persistent_metadata.definitions.insert(unused, NodeNetworkMetadata::default());
 		let with_unused = NodeNetworkInterface::from_trees(network_with_unused, metadata_with_unused);
-		assert_eq!(with_unused.validate_invariants(), vec!["Node 0 in network [] has no metadata entry".to_string()]);
+		assert_eq!(with_unused.validate_invariants(), vec!["Node 1 in network [] has no metadata entry".to_string()]);
 
 		let mut mismatched_network = network;
 		mismatched_network.nodes.get_mut(&NodeId(11)).unwrap().inputs.push(NodeInput::value(TaggedValue::None, false));
 		let mismatched = NodeNetworkInterface::from_trees(mismatched_network, network_metadata);
 		assert!(mismatched.validate_invariants().iter().any(|violation| violation.contains("another instance of definition")));
+	}
+
+	#[test]
+	fn reused_node_ids_get_new_ones_derived_from_their_definition() {
+		use super::*;
+
+		let instance = |implementation| DocumentNode { implementation, ..Default::default() };
+		let (first, second) = (NetworkId(1), NetworkId(2));
+		let network = NodeNetwork {
+			nodes: [
+				(NodeId(10), instance(DocumentNodeImplementation::Definition(first))),
+				(NodeId(11), instance(DocumentNodeImplementation::Definition(second))),
+			]
+			.into_iter()
+			.collect(),
+			definitions: [first, second]
+				.into_iter()
+				.map(|id| (id, NodeNetwork::value_network(instance(DocumentNodeImplementation::default()))))
+				.collect(),
+			..Default::default()
+		};
+		let mut network_metadata = NodeNetworkMetadata::default();
+		for id in [NodeId(10), NodeId(11)] {
+			network_metadata.persistent_metadata.node_metadata.insert(id, DocumentNodeMetadata::default());
+		}
+		for id in [first, second] {
+			let mut definition_metadata = NodeNetworkMetadata::default();
+			definition_metadata.persistent_metadata.node_metadata.insert(NodeId(0), DocumentNodeMetadata::default());
+			definition_metadata.persistent_metadata.export_names = vec![String::new()];
+			network_metadata.persistent_metadata.definitions.insert(id, definition_metadata);
+		}
+
+		let mut interface = NodeNetworkInterface::from_trees(network, network_metadata);
+		assert!(interface.validate_invariants().iter().any(|violation| violation.contains("Node ID 0 is used in both")));
+
+		interface.give_reused_node_ids_new_ids();
+		let definitions = &interface.document_network().definitions;
+		assert!(definitions[&first].nodes.contains_key(&NodeId(0)), "the first network keeps its IDs");
+		assert!(definitions[&second].nodes.contains_key(&derived_ids::derived_node_id(second, NodeId(0))));
+		assert_eq!(interface.validate_invariants(), Vec::<String>::new());
 	}
 
 	#[test]
@@ -319,12 +463,11 @@ mod network_interface_tests {
 		let mut definition_metadata = NodeNetworkMetadata::default();
 		definition_metadata.persistent_metadata.node_metadata.insert(NodeId(0), DocumentNodeMetadata::default());
 
-		let mut instance_metadata = DocumentNodeMetadata::default();
-		instance_metadata.persistent_metadata.input_metadata = vec![InputMetadata::default()];
-		instance_metadata.persistent_metadata.output_names = vec![String::new()];
+		definition_metadata.persistent_metadata.import_metadata = vec![InputMetadata::default()];
+		definition_metadata.persistent_metadata.export_names = vec![String::new()];
 		let mut network_metadata = NodeNetworkMetadata::default();
 		for id in instances {
-			network_metadata.persistent_metadata.node_metadata.insert(id, instance_metadata.clone());
+			network_metadata.persistent_metadata.node_metadata.insert(id, DocumentNodeMetadata::default());
 		}
 		network_metadata.persistent_metadata.definitions.insert(definition, definition_metadata);
 
@@ -337,6 +480,31 @@ mod network_interface_tests {
 		let view = interface.view(&[]).unwrap();
 		assert_eq!(view.persistent_input_metadata(&NodeId(11), 0).unwrap().input_name, "Shared");
 		assert_eq!(view.output_names(&NodeId(11)).unwrap(), ["Result".to_string()]);
+	}
+
+	#[test]
+	fn a_proto_node_shows_its_definition_signature_over_a_stored_copy() {
+		use super::*;
+
+		let definition = resolve_proto_node_type(graphene_std::vector_nodes::fill::IDENTIFIER).expect("Fill should have a definition");
+		let mut template = definition.default_node_template();
+		for input_metadata in &mut template.input_metadata {
+			input_metadata.persistent_metadata.input_name = "Stale name".into();
+			input_metadata.persistent_metadata.input_description = "Stale description".into();
+		}
+
+		let mut interface = NodeNetworkInterface::default();
+		interface.insert_node(NodeId(1), template, &[]);
+
+		for (index, expected) in definition.node_template.input_metadata.iter().enumerate() {
+			let expected = &expected.persistent_metadata;
+			let (name, description) = interface.displayed_input_name_and_description(&NodeId(1), index, &[]);
+
+			assert_eq!(description, expected.input_description, "input {index}");
+			if !expected.input_name.is_empty() {
+				assert_eq!(name, expected.input_name, "input {index}");
+			}
+		}
 	}
 
 	#[test]

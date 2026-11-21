@@ -2,7 +2,7 @@
 
 A migration system for `.gdd` documents built around one rule: **history is always in the current shape**. A migration is a deterministic function over registry states. The runner applies it by replaying stored history and rewriting every delta into what it would have been had the author worked against the new shape, inserting deltas where the migration restructures the graph. Undo, time travel, replay, and deltas arriving from peers on an older build therefore never meet an outdated node shape, and the runtime never needs to execute one.
 
-Migrations come in two tiers sharing that rule. **Format migrations** step serialized payloads across a `format_version` bump. **Node migrations** step one proto-node declaration from `identifier@version` to its successor on the typed `Registry`. Migrations are written as plain functions whose parameter types state what they read and write, live in independent crates that register themselves, and are ordered automatically.
+Migrations come in two tiers sharing that rule. **Format migrations** step serialized payloads across a `format_version` bump. **Node migrations** step one declaration, a proto node or a built-in network definition, from `identifier@version` to its successor on the typed `Registry`. Migrations are written as plain functions whose parameter types state what they read and write, live in independent crates that register themselves, and are ordered automatically.
 
 # Motivation
 
@@ -74,9 +74,12 @@ The function runs once per **anchor**: a node of the source declaration. The run
 | `&mut Inputs` | the anchor's input slots | `set`, `insert`, `push`, `remove`, `truncate` |
 | `&mut Upstream` | new and existing nodes upstream of the anchor | `add_node`, `add_node_keyed`, `remove_node` |
 | `&mut Downstream` | the slots and exports reading the anchor's outputs, plus new downstream nodes | `consumers`, `add_node`, `add_node_keyed`, `connect` |
+| `&mut Attributes` | attributes of the anchor and of the nodes the run adds | `set`, `remove` |
 | `&mut Resources` | document resources | `add_embedded` |
 
 `Inputs` operations apply in order to the target layout being built. `node.inputs()` is always the source layout. Reads through a mutable view (such as `Downstream::consumers`) also see the source state, so nodes added by the migration never appear among the anchor's consumers.
+
+The runner places added nodes from the anchor's own position. Nodes leading up to the anchor's chain input form a row, or join the chain when the anchor is chained or a layer. Other nodes feeding the anchor or that row sit below the first one reading them, and the rest sit on the anchor. A chained anchor has no coordinates of its own, so only its chain is placed, and an anchor with no stored position gets nothing placed. A migration overrides these positions, or clears a stored name that no longer fits the anchor, through `Attributes`.
 
 A migration addresses declarations with `decl!`, values with a frozen mirror of the value variants it uses, and connections with plain connector types:
 
@@ -326,6 +329,33 @@ Cycles are rejected in CI, as are two migrations from the same declaration. Migr
 
 A node migration is pending when its source declaration is referenced anywhere in the document, *including history*. A node removed long ago still has its old shape stored in its `AddNode` and in the removal snapshot, and undo can bring it back. Pending format migrations come from `manifest.format_version`.
 
+## Network definitions
+
+Built-in subgraphs such as Merge and Artboard aren't proto nodes. Each instance is a node whose `Implementation::Network` points at its own copy of a network from the editor's catalog. They migrate through the same tier, with the differences below.
+
+**Declarations.** `Declaration` carries a kind, `Proto` or `Network`. A network declaration is written `decl!(network "Merge"@1)`, and steps name it the same way:
+
+```rust
+rename!(network "Artboard"@1 => @2);                     // Version step
+rename!(network "Merge"@1 => "graphic_nodes::merge"@2);  // Replacement by a proto node
+```
+
+A proto declaration's encoding leaves the kind out, so IDs derived from declarations written before network definitions existed stay the same.
+
+**Stored reference.** The network's `ui::reference` attribute names its definition as a `NetworkReference { identifier, version }`. Version 1 stays the bare identifier string it was before versions existed, so existing documents keep their bytes. Later versions store an object with both fields. One attribute rather than one per field keeps identifier and version under one LWW timestamp, so concurrent writes can't pair one peer's identifier with another's version, and pending detection matches the exact version.
+
+`DocumentNodeDefinition` declares the `version`. The editor writes the catalog's current version whenever it stores a reference, the way runtime conversion takes a proto node's version from `NODE_METADATA`. Opening a document migrates every instance to its definition's current version, so the editor never holds an older one in memory.
+
+**Anchors.** A node is an anchor of a network declaration when it implements a network whose reference names that declaration. `references` finds the declaration in `AddNetwork`, in `RemoveNetwork` snapshots, and in writes to `ui::reference`.
+
+**Switching.** The runner switches a network anchor to a network declaration by rewriting the reference. It switches one to a proto declaration by setting the implementation and removing the network the anchor implemented, with every node in it and every network nested in it. A proto anchor can't become a network declaration, and migrations only add proto nodes.
+
+Removing the network drops whatever it holds, including nodes the user added. This is a deliberate exception to totality, since the alternatives are worse. Reporting an edited subgraph as `unrepresentable` opens the document read-only, and keeping the edited copy usually doesn't compile anyway, since the nodes inside it typically folded into the new proto node. Built-in subgraphs are rarely edited, so the loss is rare.
+
+**Whole states.** An instance consists of two entities that history adds in separate deltas, and the editor's diff adds the network first. In between, the network names the definition without an anchor to migrate it, so `M` would leave the old reference in rewritten history, and every later open would find the migration pending again. Migrations from a network declaration therefore run on whole states only, like those reading `&Graph`.
+
+**Checks.** An editor test requires a registered migration leading to every network definition above version 1. The API dump doesn't cover network definitions yet.
+
 ## Runner pipeline
 
 1. **Format tier.** While `format_version` is below the current version, apply the step whose `migrates_from` matches (a gap is a hard error) to the registry, history records, and session, then bump the version.
@@ -373,6 +403,16 @@ A naive rewrite evaluates `M` on a full state per delta. Instead, the runner:
 - Diffs only that region.
 
 A migration whose edits are only `Inputs` operations with constant values, and every rename, is an index map over input slots. The runner applies such migrations per delta without replaying states, remapping `ChangeNodeInput`, `SetNodeInputs`, `ChangeNodeInputAttribute`, `AddNode` payloads, and removal snapshots directly. The commutation test proves this fast path equal to the state path.
+
+## The compiler and whole states
+
+Some migrations need to know what only the compiler or executor can tell, such as the type flowing through a wire or a measurement of evaluated geometry. Storing types to answer this offline isn't an option, since `TypeId`s aren't stable across builds and `type_name` output isn't stable at all. So a migration asks for the compiler with an `Option<&dyn Compiler>` parameter, which the caller opening the document offers through a `MigrationHost`, and these are the costs, paid only by what uses them:
+
+- **Whole states.** A delta in the middle of an interaction can leave a state no one ever saw, with nodes wired to what's not added yet, which reading the graph or compiling can only fail on. So a migration whose footprint reads the network runs at the boundaries undo can land on, the end of an interaction, a change of author, a branch point, or a cursor, and everything since the previous one becomes one chain. A history without interaction ends, such as an imported document's, is one evaluation. Bootstrapping marks its end, so the first edit after it is its own undo step.
+- **Order.** The compiler can't describe what the binary no longer implements, so these migrations run as late as their dependencies allow, within the one ordered pass opening runs. Within one, an anchor only runs once no other anchor is upstream of it. The declarations it needs are loaded only then, from the caller's byte store and otherwise the container.
+- **Failure.** There may be no compiler, and it may have no answer, so the migration must choose a fallback. A state that doesn't compile usually didn't before either, so there's nothing for a fallback to harm. Without a host the fallback is permanent, so the editor and CLI always offer one. A migration that itself fails falls back to truncating, as below.
+- **Determinism.** The result depends on the build, so unlike the rest of this document, two peers can compute different `Rev`s. Such a rewrite only suits a document with one peer until settling is built.
+- **Targets.** `Target` lets an anchor switch to any declaration its migration pins, which needs no version step, so documents holding a node that is only a target aren't rewritten for it.
 
 ## Errors and the truncate fallback
 
@@ -489,6 +529,8 @@ document/migrations/
 
 **Truncate always.** Simple and always possible, but it discards undo history on every node upgrade and needs every peer to agree on the truncation point.
 
+**Reference attribute vs. declaration resource for network definitions.** A content-addressed resource behind `Implementation::Network`, like `ProtoNode`, would let one resolver path cover both kinds. It changes the shape of `Implementation`, which needs a format step, and turns detaching an instance into a resource swap. A single attribute holding identifier and version gives the same atomicity and exact matching.
+
 **Frozen mirrors vs. runtime types.** Input values are stored as self-describing `graph-storage::Value`s, so a migration decodes them into its own frozen mirror. Old runtime types therefore never need to stay in the runtime crates.
 
 # Unresolved questions
@@ -499,8 +541,10 @@ document/migrations/
 - **Input attributes of inserted nodes.** `NewNode` takes bare `NodeInput`s, so inserted nodes start with empty per-input attributes. Taking `InputSlot`s would let a migration carry them over.
 - **Removal safety.** `Upstream::remove_node` is only correct when nothing else reads the removed node, which the region system can't check.
 - **`unrepresentable` in CI.** Whether reaching it in the commutation test fails CI outright.
-- **Layout.** Whether migrations may write node positions and chain placement, or leave inserted nodes to a host-side layout pass.
+- **Layout.** Migrations position the nodes they add and can move the anchor, but can't move other existing nodes, so an inserted node can overlap what sits upstream. Positions stored relative to each node's consumers would move the upstream without writing it.
 - **Multiple pending migrations.** Whether consecutive pending node migrations run as separate rewrite passes or are fused into one replay.
+- **Migrations reading a subgraph.** A migration that inspects an instance's inner nodes depends on their versions, which change independently of the definition's. The planned answer is a cascading bump: the API dump lists a definition's inner `identifier@version`s, so bumping an inner node also requires bumping every definition containing it, and pins order that node's migrations around the definition's. Nothing reads a subgraph yet, so neither a read view for it nor the cascading bump exists.
+- **Detaching.** Whether a migration may clear an edited instance's reference, keeping it as a custom subgraph, instead of collapsing it.
 
 # Future possibilities
 

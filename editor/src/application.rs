@@ -18,11 +18,13 @@ impl Editor {
 pub struct Environment {
 	pub platform: Platform,
 	pub host: Host,
+	pub url: &'static str,
 }
 #[cfg(test)]
 pub(crate) const DEFAULT_ENVIRONMENT: Environment = Environment {
 	platform: Platform::Desktop,
 	host: Host::Linux,
+	url: "https://editor.graphite.art/",
 };
 #[derive(Clone, Copy, Debug)]
 pub enum Platform {

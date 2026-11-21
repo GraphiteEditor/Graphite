@@ -15,6 +15,7 @@ export function createPersistenceManager(subscriptions: SubscriptionsRouter, edi
 	portfolioStore = portfolio;
 
 	// Run persistence operations in request order
+	const writtenDocuments = new Set<bigint>();
 	let tail: Promise<void> = Promise.resolve();
 	const enqueue = (operation: () => Promise<void>): Promise<void> => {
 		const next = tail.then(operation);
@@ -26,7 +27,7 @@ export function createPersistenceManager(subscriptions: SubscriptionsRouter, edi
 
 	subscriptions.subscribeFrontendMessage("TriggerLoadPreferences", () => enqueue(() => loadEditorPreferences(editor)));
 
-	subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteState", (data) => enqueue(() => writePersistedState(data.state)));
+	subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteState", (data) => enqueue(() => writePersistedState(data.state, writtenDocuments)));
 
 	subscriptions.subscribeFrontendMessage("TriggerPersistenceReadState", () => enqueue(() => readPersistedState(editor)));
 

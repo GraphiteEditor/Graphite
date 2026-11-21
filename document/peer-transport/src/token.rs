@@ -68,12 +68,12 @@ mod tests {
 	#[test]
 	fn parses_the_token_out_of_a_share_link() {
 		let token = SessionToken([7; 16]);
-		let link = format!(" https://editor.graphite.rs/?session={token}#top ");
+		let link = format!(" https://editor.graphite.art/?session={token}#top ");
 		assert_eq!(link.parse::<SessionToken>().unwrap(), token);
 		assert_eq!(format!("http://localhost:8080/?debug=1&session={token}").parse::<SessionToken>().unwrap(), token);
 		let other = SessionToken([9; 16]);
-		assert_eq!(format!("https://editor.graphite.rs/?next=session={other}&session={token}").parse::<SessionToken>().unwrap(), token);
-		assert!(format!("https://editor.graphite.rs/?not_session={token}").parse::<SessionToken>().is_err());
+		assert_eq!(format!("https://editor.graphite.art/?next=session={other}&session={token}").parse::<SessionToken>().unwrap(), token);
+		assert!(format!("https://editor.graphite.art/?not_session={token}").parse::<SessionToken>().is_err());
 	}
 
 	#[test]

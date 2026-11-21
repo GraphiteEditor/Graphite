@@ -30,3 +30,4 @@ dyn-any = { workspace = true }
 futures = { workspace = true }
 glam = { workspace = true }
 node-macro = { workspace = true }
+document-loader = { workspace = true }

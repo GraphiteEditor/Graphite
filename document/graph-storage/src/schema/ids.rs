@@ -1,3 +1,4 @@
+use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
 
 /// Stable, document-scoped identity for a node. Minted as a truncated `blake3(peer, counter)` so it
@@ -11,6 +12,11 @@ pub struct NodeId(pub u64);
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct NetworkId(pub u64);
+
+/// The content hash of a blob, which stores a large node input value.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BlobHash(pub ResourceHash);
 
 /// Content-addressed identity for a `Delta`.
 /// 128-bit blake3 truncation: comfortable collision headroom for any plausible document lifetime

@@ -5,6 +5,7 @@ use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_animation::AnimationCurve;
+use graphene_std::GlowTechnique;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::any::DynAnyNode;
 use graphene_std::brush::Stroke;
@@ -34,50 +35,6 @@ use std::sync::Arc;
 // TODO: turn into hashmap
 fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> {
 	let mut node_types: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-		// =============
-		// MONITOR NODES
-		// =============
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Artboard>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Graphic>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Vector>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Raster<CPU>>]),
-		#[cfg(feature = "gpu")]
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Raster<GPU>>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Color>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Gradient>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Artboard>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Graphic>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Vector>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Raster<CPU>>]),
-		#[cfg(feature = "gpu")]
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Raster<GPU>>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Color>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Gradient>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<DashPattern>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<BoxCorners>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<TransferCurve>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<String>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<f64>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<DAffine2>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Footprint>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<DVec2>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<bool>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<BlendMode>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<String>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<NodeIdPath>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<f64>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<DVec2>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<bool>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<DAffine2>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<BlendMode>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientForm>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientSpread>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientSpace>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientHueDirection>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientInterpolation>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ListDyn]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<graphene_std::brush::Stroke>]),
 		// Context nullification
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<Arc<PlatformEditorApi>>, Context => Item<graphene_std::ContextModification>]),
@@ -298,8 +255,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		}};
 	}
 	// The single list of value/enum element types that ride ranked wires as framable node parameters.
-	// Each needs both a rank promotion adapter and a cache chain (memoize/monitor/context),
-	// so both registrations below are driven from here by callback, which is what keeps a value type from ending up monitorable but not promotable, or vice versa.
+	// Each needs both a rank promotion adapter and a cache chain (memoize/context),
+	// so both registrations below are driven from here by callback, which is what keeps a value type from ending up cacheable but not promotable, or vice versa.
 	macro_rules! ranked_value_types {
 		($register:ident) => {
 			$register!(
@@ -329,6 +286,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				TonalRange,
 				AdjustmentChannel,
 				HueSaturationRange,
+				GlowTechnique,
 				Stroke,
 				ScaleType,
 				ReferencePoint,
@@ -354,7 +312,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
-	// Primary element types (graphical data and scalars) get promotion adapters here; their monitor/memoize rows are the
+	// Primary element types (graphical data and scalars) get promotion adapters here; their memoize rows are the
 	// explicit ones near the top of the registry, so they are deliberately absent from the shared value-type list above
 	node_types.extend(rank_adapter_nodes!(
 		Vector,
@@ -438,14 +396,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	));
 	#[cfg(feature = "gpu")]
 	node_types.extend(bundle_adapter_nodes!(Raster<GPU>));
-	// The memoize + monitor + context-nullification triple for each value type in the shared list above: the compiler wraps
-	// a ranked connector's broadcast sibling in a Memoize + context-nullification pair, and test instrumentation monitors any wire.
+	// The memoize + context-nullification pair the compiler wraps a ranked connector's broadcast sibling in, for each value type in the shared list above.
 	// Node identifiers are passed explicitly since `stringify!` would mangle the path's whitespace through this nested macro.
 	macro_rules! cache_chain_nodes {
 		(each: $value:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
 				async_node!(identifier: graphene_core::memo::memoize::IDENTIFIER, graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => $value]),
-				async_node!(identifier: graphene_core::memo::monitor::IDENTIFIER, graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => $value]),
 				async_node!(identifier: graphene_core::context_modification::context_modification::IDENTIFIER, graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => $value, Context => Item<graphene_std::ContextModification>]),
 			];
 			entries
@@ -549,6 +505,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		attribute_value_node!(List<Raster<GPU>>),
 		attribute_value_node!(List<Graphic>),
+		attribute_value_node!(List<Artboard>),
 	];
 	node_types.extend(attribute_value_rows);
 	// Whole-List Transform companion rows: a rank-1 content wire composes the matrix onto every item
@@ -607,7 +564,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 }
 
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
-pub static NODE_REGISTRY: once_cell::sync::Lazy<HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>> = once_cell::sync::Lazy::new(|| node_registry());
+pub static NODE_REGISTRY: once_cell::sync::Lazy<HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>> = once_cell::sync::Lazy::new(node_registry);
 
 mod node_registry_macros {
 	macro_rules! async_node {

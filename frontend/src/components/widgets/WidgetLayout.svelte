@@ -9,8 +9,10 @@
 		layoutTarget: LayoutTarget;
 		class?: string;
 		classes?: Record<string, boolean>;
+		// Asks for the rows of a virtually scrolled table from `start` up to but not including `end`
+		requestTableRows?: (start: number, end: number) => void;
 	};
-	let { layout, layoutTarget, class: className = "", classes = {} }: Props = $props();
+	let { layout, layoutTarget, class: className = "", classes = {}, requestTableRows }: Props = $props();
 </script>
 
 {#each layout as layoutGroup}
@@ -21,7 +23,7 @@
 	{:else if "NodeSection" in layoutGroup}
 		<NodeSection widgetData={layoutGroup.NodeSection} {layoutTarget} class={className} {classes} />
 	{:else if "Table" in layoutGroup}
-		<WidgetTable widgetData={layoutGroup.Table} {layoutTarget} />
+		<WidgetTable widgetData={layoutGroup.Table} {layoutTarget} requestRows={requestTableRows} />
 	{/if}
 {/each}
 

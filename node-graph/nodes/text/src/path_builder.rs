@@ -137,7 +137,7 @@ impl PathBuilder {
 		let font = run.font();
 		let font_size = run.font_size();
 
-		let normalized_coords = run.normalized_coords().iter().map(|coord| NormalizedCoord::from_bits(*coord)).collect::<Vec<_>>();
+		let normalized_coords = run.normalized_coords().iter().map(|coord| NormalizedCoord::from_bits(coord.to_bits())).collect::<Vec<_>>();
 
 		// TODO: This can be cached for better performance
 		let font_collection_ref = font.data.as_ref();

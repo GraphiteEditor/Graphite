@@ -236,7 +236,7 @@ pub fn derive_destructure_impl(item: TokenStream2) -> syn::Result<TokenStream2> 
 		}
 	};
 
-	// Memoize lets the node's outputs share one evaluation, and Monitor lets the editor inspect the struct
+	// Memoize lets the node's outputs share one evaluation
 	let registration_module = format_ident!("_{struct_snake_name}_registration");
 	let wasm_registration = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, Ordering::SeqCst), struct_ident);
 	let registration = quote! {
@@ -245,16 +245,16 @@ pub fn derive_destructure_impl(item: TokenStream2) -> syn::Result<TokenStream2> 
 			use super::*;
 			use #gcore::ctor::ctor;
 
-			#[cfg_attr(not(target_family = "wasm"), ctor)]
-			fn register_memoize_and_monitor() {
-				#graphene_core::memo::register_memoize_and_monitor::<#struct_ident>();
-				#graphene_core::memo::register_memoize_and_monitor::<#mapped_ident>();
+			#[cfg_attr(not(target_family = "wasm"), ctor(unsafe, crate_path = core_types::ctor))]
+			fn register_memoize() {
+				#graphene_core::memo::register_memoize::<#struct_ident>();
+				#graphene_core::memo::register_memoize::<#mapped_ident>();
 			}
 
 			#[cfg(target_family = "wasm")]
 			#[unsafe(no_mangle)]
 			extern "C" fn #wasm_registration() {
-				register_memoize_and_monitor();
+				register_memoize();
 			}
 		}
 	};

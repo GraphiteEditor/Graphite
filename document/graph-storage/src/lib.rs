@@ -1,6 +1,7 @@
 pub use graphene_resource::{ResourceHash, ResourceId};
 
 pub mod attributes;
+pub mod blob;
 pub mod crdt;
 pub mod delta;
 pub mod document;
@@ -8,6 +9,7 @@ pub mod history;
 mod history_metadata;
 pub mod ids;
 pub mod model;
+mod network_reference;
 mod prior;
 pub mod registry;
 pub mod resources;
@@ -29,6 +31,7 @@ pub use document::*;
 pub use history::{History, rehash_deltas};
 pub use history_metadata::{HistoryMetadata, MetadataFact, Subject, WallStamp, rev_attr, user_attr};
 pub use ids::*;
+pub use network_reference::NetworkReference;
 pub use schema::*;
 pub use session::*;
 pub use sorted::Sorted;
@@ -37,11 +40,11 @@ pub use value::{ValueError, from_value, to_value};
 
 #[cfg(any(feature = "conversion", test))]
 pub use from_runtime::{
-	EncodedDeclaration, PathResolver, RuntimeConversion, ScopedConversion, convert_input_attributes, convert_resource_entry, decode_declaration, encode_declaration, encode_input_ui_attributes,
-	encode_node_ui_attributes, node_value_resource_refs, value_resource_ref,
+	EncodedDeclaration, RuntimeConversion, ScopedConversion, convert_input, convert_input_attributes, convert_resource_entry, decode_declaration, encode_declaration, encode_node_ui_attributes,
+	node_value_resource_refs, storage_location_id, storage_node_id, value_resource_ref,
 };
 #[cfg(any(feature = "conversion", test))]
-pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};
+pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource};
 #[cfg(any(feature = "conversion", test))]
 pub use to_runtime::{Declarations, ProjectedNetwork, ProjectedNode, RuntimeProjection};
 

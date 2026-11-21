@@ -10,7 +10,6 @@
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const _editor = getContext<EditorWrapper>("editor");
-	const portfolio = getContext<PortfolioStore>("palette");
 
 	let sectionsCol: LayoutCol | undefined;
 
@@ -58,11 +57,14 @@
 
 	function editPaletteName(e: MouseEvent) {
 		const target = e.target instanceof Element ? e.target : undefined;
+		// eslint-disable-next-line graphite/require-data-selectors
 		const label = target?.closest(".widget-span.row:has(> .text-label + .text-input + .text-button) > .text-label");
 		const row = label?.parentElement;
 		if (!label || !row) return;
+		// eslint-disable-next-line graphite/require-data-selectors
 		const field = row.querySelector<HTMLElement>(":scope > .text-input");
 		if (!field || !row) return;
+		// eslint-disable-next-line graphite/require-data-selectors
 		const input = field.querySelector<HTMLInputElement>("input");
 		if (!input) return;
 
@@ -73,10 +75,13 @@
 		input.select();
 	}
 
-	function finishPaletteNameEdit(target: EventTarget | null) {
+	function finishPaletteNameEdit(target: EventTarget | undefined) {
 		const element = target instanceof Element ? target : undefined;
+		// eslint-disable-next-line graphite/require-data-selectors
 		const row = element?.closest(".widget-span.row.palette-name-editing");
+		// eslint-disable-next-line graphite/require-data-selectors
 		const field = row?.querySelector<HTMLElement>(":scope > .text-input");
+		// eslint-disable-next-line graphite/require-data-selectors
 		const input = field?.querySelector<HTMLInputElement>("input");
 		if (!row || !field || !input) return;
 
@@ -85,8 +90,9 @@
 		input.disabled = true;
 	}
 
-	function paletteNameKeyDown(e: KeyboardEvent) {
-		if (e.key === "Enter") finishPaletteNameEdit(e.target);
+	function paletteNameKeyDown(e: CustomEvent<KeyboardEvent>) {
+		const key = e.detail?.key;
+		if (key === "Enter") finishPaletteNameEdit(e.target instanceof Element ? e.target : undefined);
 	}
 
 	function reorderableSections(): Element[] {
@@ -224,7 +230,7 @@
 		bind:this={sectionsCol}
 		on:pointerdown={sectionPointerDown}
 		on:dblclick={editPaletteName}
-		on:focusout={(e) => finishPaletteNameEdit(e.target)}
+		on:focusout={(e) => finishPaletteNameEdit(e.target ?? undefined)}
 		on:keydown={paletteNameKeyDown}
 	>
 		<!-- <button class="" data-tooltop-label="hello">Click Me</button> -->
@@ -393,42 +399,6 @@
 			&:not(:has(*)) {
 				display: none;
 			}
-
-			// While dragging, buttons are grayed out unless they accept the kind of item being dragged
-			&.layer-drag-active,
-			&.chain-node-drag-active {
-				.icon-button,
-				.popover-button {
-					pointer-events: none;
-					background: none;
-
-					svg {
-						fill: var(--color-8-uppergray);
-					}
-				}
-			}
-
-			// Dropped items become the selection before the button acts, so a button disabled for the current selection still accepts them
-			&.layer-drag-active .icon-button[data-drag-droppable~="layers"],
-			&.chain-node-drag-active .icon-button[data-drag-droppable~="chain-nodes"] {
-				pointer-events: auto;
-
-				svg {
-					fill: var(--color-e-nearwhite);
-				}
-
-				&:hover {
-					background: var(--color-e-nearwhite);
-
-					svg {
-						fill: var(--color-2-mildblack);
-					}
-				}
-			}
-		}
-
-		.text-button {
-			flex-basis: 0;
 		}
 	}
 </style>

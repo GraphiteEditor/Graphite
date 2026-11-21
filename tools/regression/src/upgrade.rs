@@ -29,7 +29,7 @@ pub(crate) fn expand(paths: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn Error>> 
 /// An archive's bytes aren't stable across a reopen, so the file is only rewritten when it changed. The embedded legacy `.graphite` is dropped, since it doesn't migrate and the editor would open it in place of the migrated state.
 pub(crate) async fn upgrade(path: &Path) -> Result<bool, Box<dyn Error>> {
 	let archive = std::fs::read(path)?;
-	let gdd = graphene_cli::open_gdd(&archive).await?;
+	let gdd = document_loader::open_gdd(&archive).await?;
 	if !gdd.migrated() {
 		return Ok(false);
 	}

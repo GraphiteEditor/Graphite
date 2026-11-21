@@ -7,7 +7,6 @@ use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::{no_paths, paths_from_item_attributes};
-use graphene_std::{Cover, Coverage};
 use graphene_std::{NodeError, Poll};
 use image::ImageFormat;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -133,7 +132,7 @@ async fn artwork_bounds(executor: &DynamicExecutor, runtime: &AsyncRuntime, spaw
 		// Metadata only records the first item of a layer, so the other items count through their click targets, without their strokes.
 		let stroked = metadata.vector_data.get(layer).and_then(|item| {
 			let appearance = metadata.appearance_attributes.get(layer);
-			let stroke = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params);
+			let stroke = appearance.and_then(|appearance| appearance.first_stroke_params());
 			let paths = paths_from_item_attributes(item.as_ref()).unwrap_or_else(|| no_paths());
 			item.element().stroke_inclusive_bounding_box_with_transform(paths, transform, stroke.as_ref())
 		});
@@ -190,7 +189,10 @@ pub(crate) async fn render_frame(
 	// Execute the graph and extract its output
 	match execute_until_settled(executor, runtime, spawner, render_config).await? {
 		TaggedValue::RenderOutput(output) => match output.data {
-			RenderOutputType::Svg { svg, .. } => Ok(RenderedFrame::Svg(svg)),
+			RenderOutputType::Svg { mut svg, effect_maps, .. } => {
+				wgpu_executor.resolve_effect_maps(&mut svg, effect_maps).await;
+				Ok(RenderedFrame::Svg(svg))
+			}
 			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
 				let gpu_raster = Raster::<GPU>::new_gpu(texture);
@@ -391,7 +393,7 @@ pub async fn export_image_sequence(
 	Ok(())
 }
 
-async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
+pub async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
 	let execute = || executor.execute(render_config.into_context_with_generations(runtime.snapshot()));
 	let mut frame = execute()?;
 	while spawner.join().await {

@@ -33,6 +33,18 @@ pub fn opacity_toggles(inputs: &mut Inputs) {
 	inputs.push(literal(Tagged::Number(100.)));
 }
 
+/// Frozen mirror of the `DocumentNodeMetadata` variant the migration below uses.
+#[derive(Serialize)]
+pub enum Reflected {
+	DocumentNodePath,
+}
+
+/// Gives the node its own path.
+#[migration("vector_nodes::bounding_box"@1 => @2)]
+pub fn bounding_box_own_path(inputs: &mut Inputs) {
+	inputs.push_reflection(Reflected::DocumentNodePath);
+}
+
 pub const ROTATION: u32 = 2;
 
 /// Rotation is now stored in degrees.

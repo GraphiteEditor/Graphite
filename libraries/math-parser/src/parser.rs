@@ -17,6 +17,12 @@ impl ParseError {
 	pub fn messages(&self) -> &[ErrorMessage] {
 		&self.0
 	}
+
+	/// The error of a source that should be a lone operator or function name but isn't, spanning the given range of it.
+	pub(crate) fn lone_reducer_expected(span: Range<usize>) -> Self {
+		let message = ErrorMessage::from_prose("Expected a lone operator like `+` or a function name like `max`");
+		Self(vec![ErrorMessage { span: Some(span), ..message }])
+	}
 }
 
 impl fmt::Display for ParseError {

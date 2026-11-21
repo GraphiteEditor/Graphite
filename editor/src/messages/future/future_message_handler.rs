@@ -24,6 +24,8 @@ pub struct MessageFuture {
 }
 
 impl MessageFuture {
+	// Web futures aren't `Send`, but the web is single-threaded, so sharing native's `Arc` is harmless
+	#[cfg_attr(target_family = "wasm", allow(clippy::arc_with_non_send_sync))]
 	pub fn new(future: impl Future<Output = Message> + WasmNotSend + 'static) -> Self {
 		Self {
 			inner: Arc::new(Mutex::new(Some(Box::pin(future)))),
@@ -99,7 +101,7 @@ impl MessageHandler<FutureMessage, ()> for FutureMessageHandler {
 				}));
 			}
 			FutureMessage::Drain => {
-				while let Ok(Some(message)) = self.results_receiver.try_next() {
+				while let Ok(message) = self.results_receiver.try_recv() {
 					responses.push_back(message);
 				}
 			}

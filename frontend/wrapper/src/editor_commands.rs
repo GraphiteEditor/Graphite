@@ -7,6 +7,8 @@
 use crate::editor_wrapper::EditorWrapper;
 use graphite_proc_macros::editor_commands;
 use serde::{Deserialize, Serialize};
+#[cfg(target_family = "wasm")]
+use tsify::Ts;
 use tsify::Tsify;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;
@@ -14,12 +16,12 @@ use wasm_bindgen::prelude::*;
 #[editor_commands]
 mod editor_commands {
 	use crate::helpers::translate_key;
-	use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 	use editor::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 	use editor::messages::input_mapper::utility_types::pointer::{EditorPointerState, ScrollDelta};
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
+	use editor::messages::portfolio::ingest::utility_types::DataTransferItem;
 	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
 	use editor::messages::tool::tool_messages::tool_prelude::{DroppedFile, WidgetId};
@@ -94,7 +96,7 @@ mod editor_commands {
 	}
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
-	fn widget_value_update(layout_target: LayoutTarget, widget_id: u64, value: Any, resend_widget: bool) -> Message {
+	fn widget_value_update(layout_target: Ts<LayoutTarget>, widget_id: u64, value: Ts<Any>, resend_widget: bool) -> Message {
 		let widget_id = WidgetId(widget_id);
 		let update = LayoutMessage::WidgetValueUpdate {
 			layout_target,
@@ -111,7 +113,7 @@ mod editor_commands {
 	}
 
 	/// Commit the value of a given UI widget to the history
-	fn widget_value_commit(layout_target: LayoutTarget, widget_id: u64, value: Any) -> Message {
+	fn widget_value_commit(layout_target: Ts<LayoutTarget>, widget_id: u64, value: Ts<Any>) -> Message {
 		LayoutMessage::WidgetValueCommit {
 			layout_target,
 			widget_id: WidgetId(widget_id),
@@ -121,7 +123,7 @@ mod editor_commands {
 	}
 
 	/// Update the value of a given UI widget, and commit it to the history
-	fn widget_value_commit_and_update(layout_target: LayoutTarget, widget_id: u64, value: Any, resend_widget: bool) -> Message {
+	fn widget_value_commit_and_update(layout_target: Ts<LayoutTarget>, widget_id: u64, value: Ts<Any>, resend_widget: bool) -> Message {
 		let widget_id = WidgetId(widget_id);
 		let mut messages: Vec<Message> = vec![
 			LayoutMessage::WidgetValueCommit {
@@ -147,13 +149,13 @@ mod editor_commands {
 	}
 
 	/// Fire a widget's drag-drop action (e.g. when a draggable item is dropped on a button)
-	fn widget_value_drag_drop(layout_target: LayoutTarget, widget_id: u64) -> Message {
+	fn widget_value_drag_drop(layout_target: Ts<LayoutTarget>, widget_id: u64) -> Message {
 		let widget_id = WidgetId(widget_id);
 		LayoutMessage::WidgetValueDragDrop { layout_target, widget_id }.into()
 	}
 
 	/// Hand a file dropped on a UI widget to the widget's file drop callback
-	fn widget_value_file_drop(layout_target: LayoutTarget, widget_id: u64, name: String, mime_type: String, data: Vec<u8>) -> Message {
+	fn widget_value_file_drop(layout_target: Ts<LayoutTarget>, widget_id: u64, name: String, mime_type: String, data: Vec<u8>) -> Message {
 		let widget_id = WidgetId(widget_id);
 		let file = DroppedFile { name, mime_type, data };
 		LayoutMessage::WidgetValueFileDrop { layout_target, widget_id, file }.into()
@@ -161,7 +163,7 @@ mod editor_commands {
 
 	/// Tokenizes a math expression widget's text as it is typed, for the reply to color and typeset it, and offers names to finish
 	/// the one at the caret, where the caret is given. Unless they're `asked` for, names are offered only once part of one is typed.
-	fn analyze_math_expression(layout_target: LayoutTarget, widget_id: u64, source: String, caret: Option<u32>, asked: bool) -> Message {
+	fn analyze_math_expression(layout_target: Ts<LayoutTarget>, widget_id: u64, source: String, caret: Option<u32>, asked: bool) -> Message {
 		LayoutMessage::AnalyzeMathExpression {
 			layout_target,
 			widget_id: WidgetId(widget_id),
@@ -187,11 +189,7 @@ mod editor_commands {
 	}
 
 	fn load_preferences(preferences: Option<String>) -> Message {
-		let Some(preferences) = preferences else { return Message::NoOp };
-		let Ok(preferences) = serde_json::from_str(&preferences) else {
-			log::error!("Failed to deserialize preferences");
-			return Message::NoOp;
-		};
+		let preferences = PreferencesMessageHandler::from_stored(preferences.as_deref());
 		PreferencesMessage::Load { preferences }.into()
 	}
 
@@ -206,6 +204,11 @@ mod editor_commands {
 
 	fn new_document_dialog() -> Message {
 		DialogMessage::RequestNewDocumentDialog.into()
+	}
+
+	/// Join the live session under `token`
+	fn join_session(token: String) -> Message {
+		SyncMessage::Join { token }.into()
 	}
 
 	fn trigger_auto_save(document_id: u64) -> Message {
@@ -255,7 +258,54 @@ mod editor_commands {
 		.into()
 	}
 
-	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
+	/// Bring a panel to the front, reopening it if closed
+	fn focus_panel(panel_type: Ts<PanelType>) -> Message {
+		WorkspaceMessage::FocusPanel { panel_type }.into()
+	}
+
+	/// Show or hide an interaction's deltas
+	fn expand_history_interaction(id: String, expanded: bool) -> Message {
+		HistoryMessage::Expand { id, expanded }.into()
+	}
+
+	fn load_more_history() -> Message {
+		HistoryMessage::LoadMore.into()
+	}
+
+	fn go_back_to_history_interaction(id: String) -> Message {
+		HistoryMessage::GoBack { id }.into()
+	}
+
+	/// Remove one interaction and keep the later ones
+	fn remove_history_interaction(id: String) -> Message {
+		HistoryMessage::RemoveStep { id }.into()
+	}
+
+	/// Redo an undone interaction, or reapply an abandoned one
+	fn bring_back_history_interaction(id: String) -> Message {
+		HistoryMessage::BringBack { id }.into()
+	}
+
+	/// Show a branch's line, or the head's line when `id` is `None`
+	fn follow_history_branch(id: Option<String>) -> Message {
+		HistoryMessage::Follow { id }.into()
+	}
+
+	/// Put the steps not yet in history into it, when editing alone
+	fn retire_pending_history() -> Message {
+		HistoryMessage::RetirePending.into()
+	}
+
+	/// Name an interaction. An empty label removes the name
+	fn rename_history_interaction(id: String, label: String) -> Message {
+		HistoryMessage::Rename { id, label }.into()
+	}
+
+	fn tag_history_interaction(id: String, tag: String, on: bool) -> Message {
+		HistoryMessage::Tag { id, tag, on }.into()
+	}
+
+	fn split_panel_group(target_group: u64, direction: Ts<DockingSplitDirection>, tabs: Vec<Ts<PanelType>>, active_tab_index: usize) -> Message {
 		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),
 			direction,
@@ -435,7 +485,7 @@ mod editor_commands {
 	}
 
 	/// Update primary color from sRGB bytes (the wire format at the JS boundary).
-	fn update_primary_color(color: SRGBA8) -> Message {
+	fn update_primary_color(color: Ts<SRGBA8>) -> Message {
 		ToolMessage::SelectWorkingColor {
 			color: Color::from(color),
 			primary: true,
@@ -444,7 +494,7 @@ mod editor_commands {
 	}
 
 	/// Update secondary color from sRGB bytes (the wire format at the JS boundary).
-	fn update_secondary_color(color: SRGBA8) -> Message {
+	fn update_secondary_color(color: Ts<SRGBA8>) -> Message {
 		ToolMessage::SelectWorkingColor {
 			color: Color::from(color),
 			primary: false,
@@ -453,7 +503,7 @@ mod editor_commands {
 	}
 
 	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker />` opens).
-	fn open_color_picker(initial_value: FillChoiceSRGBA8, allow_none: bool, disabled: bool) -> Message {
+	fn open_color_picker(initial_value: Ts<FillChoiceSRGBA8>, allow_none: bool, disabled: bool) -> Message {
 		ColorPickerMessage::Open {
 			initial_value: FillChoice::from(&initial_value.0),
 			allow_none,
@@ -468,7 +518,7 @@ mod editor_commands {
 	}
 
 	/// Update the color of the currently-edited gradient stop, from sRGB bytes (the wire format at the JS boundary).
-	fn update_gradient_stop_color(color: SRGBA8) -> Message {
+	fn update_gradient_stop_color(color: Ts<SRGBA8>) -> Message {
 		GradientToolMessage::UpdateStopColor { color: Color::from(color) }.into()
 	}
 
@@ -509,6 +559,11 @@ mod editor_commands {
 			layers_missing_details: layers_missing_details.into_iter().map(NodeId).collect(),
 		}
 		.into()
+	}
+
+	/// Tell the backend which rows of the Data panel's table to send, from `start` up to but not including `end`, being those in or near view.
+	fn set_data_panel_rows_in_view(start: u32, end: u32) -> Message {
+		DataPanelMessage::SetRowsInView { rows: start as usize..end as usize }.into()
 	}
 
 	/// Select exactly the given nodes.
@@ -632,6 +687,11 @@ mod editor_commands {
 		NavigationMessage::CanvasPanByViewportFraction { delta: (delta_x, delta_y).into() }.into()
 	}
 
+	/// Gives the network open in the graph its own editable copy of the built-in node contents it lies in
+	fn make_network_editable() -> Message {
+		DocumentMessage::MakeNetworkEditable.into()
+	}
+
 	/// Merge the selected nodes into a subnetwork
 	fn merge_selected_nodes() -> Message {
 		NodeGraphMessage::MergeSelectedNodes.into()
@@ -660,46 +720,15 @@ mod editor_commands {
 	}
 
 	/// The pixels of an export that `TriggerExportImage` had the frontend rasterize, which the editor encodes and saves as the chosen file type
-	fn save_rasterized_export(name: String, file_type: FileType, width: u32, height: u32, data: Vec<u8>) -> Message {
+	fn save_rasterized_export(name: String, file_type: Ts<FileType>, width: u32, height: u32, data: Vec<u8>) -> Message {
 		PortfolioMessage::SaveRasterizedExport { name, file_type, width, height, data }.into()
 	}
 
 	/// A file headed for a known action, picked in the dialog that `TriggerBrowse` opened
-	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: IngestAction) -> Message {
-		IngestMessage::Ingest {
-			data,
-			action,
-			mime_type,
-			path: Some(PathBuf::from(name)),
-		}
-		.into()
-	}
-
-	/// A file dropped on a panel or pasted, placed by the drop position or the layer slot it landed in
-	fn ingest_file(name: Option<String>, mime_type: String, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<u32>) -> Message {
-		let action = match (insert_parent_id.zip(insert_index), mouse_x.zip(mouse_y)) {
-			(Some((parent, insert_index)), _) => IngestAction::DropOnLayers {
-				parent: LayerNodeIdentifier::new_unchecked(NodeId(parent)),
-				insert_index,
-			},
-			(None, Some(mouse)) => IngestAction::DropOnCanvas { mouse },
-			(None, None) => IngestAction::Paste,
-		};
-		IngestMessage::Ingest {
-			data,
-			action,
-			mime_type,
-			path: name.map(PathBuf::from),
-		}
-		.into()
-	}
-
-	/// Paste from a serialized JSON representation
-	fn paste_text(data: String) -> Message {
-		ClipboardMessage::ReadClipboard {
-			content: ClipboardContentRaw::Text(data),
-		}
-		.into()
+	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: Ts<IngestAction>) -> Message {
+		let mime = Some(mime_type.as_str()).filter(|mime| !mime.is_empty());
+		let content = DataTransferItem::from_file(PathBuf::from(name), mime, data).into();
+		IngestMessage::Ingest { content, action }.into()
 	}
 
 	/// Toggle visibility of a layer or node in the document network, as listed in the Layers panel
@@ -883,7 +912,6 @@ mod editor_commands {
 
 #[cfg(feature = "editor")]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
-#[tsify(from_wasm_abi)]
 pub struct FillChoiceSRGBA8(
 	/// Concrete wasm boundary form of the generic [`FillChoice`], since a `#[wasm_bindgen]` argument's TS declaration names its type without the generic's argument.
 	#[tsify(type = "FillChoice<SRGBA8>")]
@@ -893,7 +921,6 @@ pub struct FillChoiceSRGBA8(
 pub type FillChoiceSRGBA8 = Any;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
-#[tsify(from_wasm_abi)]
 pub struct Any(#[tsify(type = "any")] serde_json::Value);
 impl Any {
 	#[cfg(feature = "editor")]
@@ -918,6 +945,6 @@ editor_proxy_types! {
 	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
-	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;
+	PanelType = editor::messages::portfolio::utility_types::PanelType;
 	SRGBA8 = graphene_std::color::SRGBA8;
 }

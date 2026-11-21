@@ -16,9 +16,10 @@ workspace = true
 
 [features]
 default = ["serde"]
-serde = ["dep:serde", "core-types/serde", "raster-types/serde", "vector-types/serde"]
+serde = ["dep:serde", "core-types/serde", "graphic-types/serde", "raster-types/serde", "vector-types/serde"]
 wasm = [
 	"core-types/wasm",
+	"graphic-types/wasm",
 	"raster-types/wasm",
 	"vector-types/wasm",
 	"tsify",
@@ -33,18 +34,16 @@ core-types = { workspace = true }
 graphene-core = { workspace = true }
 graphene-resource = { workspace = true }
 graphene-hash = { workspace = true }
+graphic-types = { workspace = true }
+raster-kernels = { workspace = true }
 raster-types = { workspace = true }
 vector-types = { workspace = true }
 
 # Workspace dependencies
 bytemuck = { workspace = true }
 glam = { workspace = true }
-num_enum = { workspace = true }
 image = { workspace = true }
 ndarray = { workspace = true }
-rand = { workspace = true }
-rand_chacha = { workspace = true }
-fastnoise-lite = { workspace = true }
 serde = { workspace = true, optional = true }
 color = { workspace = true }
 thiserror = { workspace = true }

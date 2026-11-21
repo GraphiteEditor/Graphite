@@ -504,6 +504,44 @@ impl<'de> serde::Deserialize<'de> for Previewing {
 	}
 }
 
+/// Whether two networks' metadata match, ignoring view state.
+pub(crate) fn same_content(first: &NodeNetworkPersistentMetadata, second: &NodeNetworkPersistentMetadata) -> bool {
+	let content = |metadata: &NodeNetworkPersistentMetadata| {
+		let mut content = metadata.clone();
+		clear_view_state(&mut content);
+		content
+	};
+	content(first) == content(second)
+}
+
+/// Whether a network's metadata matches the shipped catalog network's, ignoring view state and the interface, which a catalog entry takes from the catalog.
+pub(crate) fn same_content_as_shipped(shipped: &NodeNetworkPersistentMetadata, metadata: &NodeNetworkPersistentMetadata) -> bool {
+	let content = |metadata: &NodeNetworkPersistentMetadata| {
+		let mut content = metadata.clone();
+		clear_view_state(&mut content);
+		content.import_metadata.clear();
+		content.export_names.clear();
+		content.export_descriptions.clear();
+		content
+	};
+	content(shipped) == content(metadata)
+}
+
+fn clear_view_state(metadata: &mut NodeNetworkPersistentMetadata) {
+	metadata.previewing = Previewing::No;
+	metadata.navigation_metadata = NavigationMetadata::default();
+	metadata.selection_undo_history.clear();
+	metadata.selection_redo_history.clear();
+
+	let nested_networks = metadata
+		.node_metadata
+		.values_mut()
+		.filter_map(|node_metadata| node_metadata.persistent_metadata.network_metadata.as_mut());
+	for nested in nested_networks.chain(metadata.definitions.values_mut()) {
+		clear_view_state(&mut nested.persistent_metadata);
+	}
+}
+
 /// A definitions table entry carried by a copy, so a paste into a document that lacks it can add it.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CopiedDefinition {
@@ -537,55 +575,24 @@ impl PartialEq for NodeNetworkMetadata {
 
 impl NodeNetworkMetadata {
 	pub fn nested_metadata(&self, location: NetworkLocation) -> Option<&Self> {
-		let mut network_metadata = match location.definition {
-			Some(id) => self.persistent_metadata.definitions.get(&id)?,
-			None => self,
-		};
-
-		for segment in location.inline_path {
-			network_metadata = network_metadata.persistent_metadata.node_metadata.get(segment)?.persistent_metadata.network_metadata.as_ref()?;
+		match location {
+			Some(id) => self.persistent_metadata.definitions.get(&id),
+			None => Some(self),
 		}
-		Some(network_metadata)
 	}
 
-	/// Get the mutable nested network given by the path of node ids
 	pub fn nested_metadata_mut(&mut self, location: NetworkLocation) -> Option<&mut Self> {
-		let mut network_metadata = match location.definition {
-			Some(id) => self.persistent_metadata.definitions.get_mut(&id)?,
-			None => self,
-		};
-
-		for segment in location.inline_path {
-			network_metadata = network_metadata.persistent_metadata.node_metadata.get_mut(segment)?.persistent_metadata.network_metadata.as_mut()?;
-		}
-		Some(network_metadata)
-	}
-
-	pub fn move_interface_metadata_into_networks(&mut self, document_network: &NodeNetwork) {
-		let mut instance_interfaces = Vec::new();
-		move_interface_metadata(document_network, self, &mut instance_interfaces);
-		for (id, definition_metadata) in &mut self.persistent_metadata.definitions {
-			if let Some(definition) = document_network.definitions.get(id) {
-				move_interface_metadata(definition, definition_metadata, &mut instance_interfaces);
-			}
-		}
-
-		for (id, interface) in instance_interfaces {
-			if let Some(definition_metadata) = self.persistent_metadata.definitions.get_mut(&id) {
-				fill_empty_interface(&mut definition_metadata.persistent_metadata, interface);
-			}
+		match location {
+			Some(id) => self.persistent_metadata.definitions.get_mut(&id),
+			None => Some(self),
 		}
 	}
 
 	/// Moves the metadata of each network that [`NodeNetwork::lift_nested_networks`] lifted into the definitions table.
 	pub fn lift_nested_metadata(&mut self, lifted: &[LiftedNetwork]) {
 		for entry in lifted {
-			let containing = NetworkLocation {
-				definition: entry.containing,
-				inline_path: &[],
-			};
 			let network_metadata = self
-				.nested_metadata_mut(containing)
+				.nested_metadata_mut(entry.containing)
 				.and_then(|containing| containing.persistent_metadata.node_metadata.get_mut(&entry.node_id))
 				.and_then(|node_metadata| node_metadata.persistent_metadata.network_metadata.take())
 				.unwrap_or_default();
@@ -605,7 +612,7 @@ impl NodeNetworkMetadata {
 		instantiated: Option<NetworkId>,
 	) -> Option<(&mut DocumentNodeMetadata, Option<&mut NodeNetworkPersistentMetadata>)> {
 		let NodeNetworkPersistentMetadata { node_metadata, definitions, .. } = &mut self.persistent_metadata;
-		let (mut nodes, definition) = match (location.definition, instantiated) {
+		let (nodes, definition) = match (location, instantiated) {
 			(None, None) => (node_metadata, None),
 			(None, Some(instantiated)) => (node_metadata, Some(definitions.get_mut(&instantiated)?)),
 			(Some(containing), None) => (&mut definitions.get_mut(&containing)?.persistent_metadata.node_metadata, None),
@@ -616,42 +623,34 @@ impl NodeNetworkMetadata {
 			(Some(_), Some(_)) => return None,
 		};
 
-		for segment in location.inline_path {
-			nodes = &mut nodes.get_mut(segment)?.persistent_metadata.network_metadata.as_mut()?.persistent_metadata.node_metadata;
-		}
 		Some((nodes.get_mut(node_id)?, definition.map(|definition| &mut definition.persistent_metadata)))
 	}
 }
 
-type InterfaceMetadata = (Vec<InputMetadata>, Vec<String>, Vec<String>);
+/// Serializes the definitions table without each catalog entry's interface, which the catalog owns rather than the document.
+fn serialize_definitions<S: serde::Serializer>(definitions: &HashMap<NetworkId, NodeNetworkMetadata>, serializer: S) -> Result<S::Ok, S::Error> {
+	use serde::ser::SerializeMap;
 
-fn move_interface_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata, instance_interfaces: &mut Vec<(NetworkId, InterfaceMetadata)>) {
-	for (node_id, node) in &network.nodes {
-		let Some(node_metadata) = metadata.persistent_metadata.node_metadata.get_mut(node_id) else {
+	let mut map = serializer.serialize_map(Some(definitions.len()))?;
+	for (id, metadata) in definitions {
+		if !super::catalog::is_protected(*id) {
+			map.serialize_entry(id, metadata)?;
 			continue;
-		};
-		let DocumentNodePersistentMetadata {
-			input_metadata,
-			output_names,
-			output_descriptions,
-			network_metadata,
-			..
-		} = &mut node_metadata.persistent_metadata;
-		let mut take_interface = || (std::mem::take(input_metadata), std::mem::take(output_names), std::mem::take(output_descriptions));
-
-		match &node.implementation {
-			DocumentNodeImplementation::Network(nested) => {
-				let Some(nested_metadata) = network_metadata else { continue };
-				fill_empty_interface(&mut nested_metadata.persistent_metadata, take_interface());
-				move_interface_metadata(nested, nested_metadata, instance_interfaces);
-			}
-			DocumentNodeImplementation::Definition(id) => instance_interfaces.push((*id, take_interface())),
-			DocumentNodeImplementation::ProtoNode(_) | DocumentNodeImplementation::Extract => {}
 		}
+
+		let mut metadata = metadata.clone();
+		let persistent = &mut metadata.persistent_metadata;
+		persistent.import_metadata.clear();
+		persistent.export_names.clear();
+		persistent.export_descriptions.clear();
+		map.serialize_entry(id, &metadata)?;
 	}
+	map.end()
 }
 
-fn fill_empty_interface(network_metadata: &mut NodeNetworkPersistentMetadata, (import_metadata, export_names, export_descriptions): InterfaceMetadata) {
+pub(super) type InterfaceMetadata = (Vec<InputMetadata>, Vec<String>, Vec<String>);
+
+pub(super) fn fill_empty_interface(network_metadata: &mut NodeNetworkPersistentMetadata, (import_metadata, export_names, export_descriptions): InterfaceMetadata) {
 	if network_metadata.import_metadata.is_empty() {
 		network_metadata.import_metadata = import_metadata;
 	}
@@ -686,7 +685,7 @@ pub struct NodeNetworkPersistentMetadata {
 	/// Stack of selection snapshots for future history states.
 	#[serde(skip)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
-	#[serde(default, skip_serializing_if = "HashMap::is_empty")]
+	#[serde(default, skip_serializing_if = "HashMap::is_empty", serialize_with = "serialize_definitions")]
 	pub definitions: HashMap<NetworkId, NodeNetworkMetadata>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub import_metadata: Vec<InputMetadata>,
@@ -935,9 +934,7 @@ pub enum WidgetOverride {
 // TODO: Custom deserialization/serialization to ensure number of input metadata rows matches number of node inputs
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InputPersistentMetadata {
-	/// A general datastore than can store key value pairs of any types for any input
-	/// Each instance of the input node needs to store its own data, since it can lose the reference to its
-	/// node definition if the node signature is modified by the user. For example adding/removing/renaming an import/export of a network node.
+	/// A general datastore that can store key value pairs of any types for any input.
 	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap_as_sorted_object")]
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
@@ -1018,21 +1015,9 @@ impl InputPersistentMetadata {
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentNodePersistentMetadata {
-	/// The identity storage holds for this node, pinned when the interface is built from a document so
-	/// a conversion back reuses it instead of re-deriving one. Absent for a node storage has not named,
-	/// which falls back to a hash of its location.
-	#[serde(default)]
-	pub storage_id: Option<u64>,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed to the user in italics.
 	#[serde(default)]
 	pub display_name: String,
-	/// Stores metadata to override the widgets in the Inspector for each input. These can either be generated automatically based on the type, or with a custom function.
-	/// Must match the length of node inputs
-	pub input_metadata: Vec<InputMetadata>,
-	pub output_names: Vec<String>,
-	/// Indexed like `output_names`, where a missing or empty entry means the output has no description.
-	#[serde(default)]
-	pub output_descriptions: Vec<String>,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,
@@ -1259,9 +1244,6 @@ pub(crate) fn visit_node_resources(node: &DocumentNode, visit: &mut impl FnMut(R
 	for input in &node.inputs {
 		visit_input_resource(input, visit);
 	}
-	if let DocumentNodeImplementation::Network(nested) = &node.implementation {
-		visit_network_resources(nested, visit);
-	}
 }
 
 pub(crate) fn visit_input_resource(input: &NodeInput, visit: &mut impl FnMut(ResourceId)) {
@@ -1277,7 +1259,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn resource_visits_reach_nested_networks_and_exports() {
+	fn resource_visits_reach_definitions_and_exports() {
 		let shared = ResourceId::from(1);
 		let uses = |id: ResourceId| NodeInput::value(TaggedValue::Resource(id), false);
 		let node = |inputs: Vec<NodeInput>| DocumentNode { inputs, ..Default::default() };
@@ -1292,13 +1274,14 @@ mod tests {
 				(
 					NodeId(3),
 					DocumentNode {
-						implementation: DocumentNodeImplementation::Network(inner),
+						implementation: DocumentNodeImplementation::Definition(NetworkId(4)),
 						..Default::default()
 					},
 				),
 			]
 			.into_iter()
 			.collect(),
+			definitions: [(NetworkId(4), inner)].into_iter().collect(),
 			..Default::default()
 		};
 

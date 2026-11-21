@@ -181,6 +181,19 @@ impl<L: Layout> Gdd<L> {
 		}
 		export_session.embed_resource_sources(links_to_promote)?;
 
+		// If the export includes history, also embed every resource referenced by the history.
+		if options.include_history {
+			let current: std::collections::HashSet<ResourceHash> = export_session.registry().resources.values().filter_map(|entry| entry.hash).collect();
+			for hash in export_session.all_referenced_resource_hashes() {
+				if current.contains(&hash) || working_copy_hashes.contains(&hash) {
+					continue;
+				}
+				if let Some(resource) = byte_store.load(hash).await {
+					embedded_bytes.push((hash, resource));
+				}
+			}
+		}
+
 		// Carry the per-peer cursor + view settings so a `.gdd` reopened elsewhere restores the viewport.
 		let mut session_state = self.exported_session_state(&export_session);
 
@@ -234,18 +247,36 @@ impl<L: Layout> Gdd<L> {
 			}
 		}
 
-		// Every resource in path order, whether its bytes sit in the working copy or come from the byte store, so where
-		// they sat does not change the archive. `None` marks bytes the working copy already holds.
-		let mut resources: std::collections::BTreeMap<String, Option<Resource>> = std::collections::BTreeMap::new();
-		let resources_dir = self.layout.resources_dir();
-		if self.working.list_dirs("").await?.iter().any(|d| d == resources_dir) {
-			resources.extend(self.working.list(resources_dir).await?.into_iter().map(|path| (path, None)));
+		// Every resource and blob record in path order. The archive is the same wherever the bytes are stored.
+		// `None` marks bytes the working copy already holds.
+		let mut entries: std::collections::BTreeMap<String, Option<Resource>> = std::collections::BTreeMap::new();
+		let directories = self.working.list_dirs("").await?;
+		let has_directory = |directory: &str| directories.iter().any(|name| name == directory);
+		if flat.is_none() && has_directory(self.layout.resources_dir()) {
+			entries.extend(self.working.list(self.layout.resources_dir()).await?.into_iter().map(|path| (path, None)));
 		}
 		for (hash, resource) in embedded_bytes {
-			resources.entry(self.layout.resource_path(&hash)).or_insert(Some(resource));
+			entries.entry(self.layout.resource_path(&hash)).or_insert(Some(resource));
 		}
 
-		for (path, resource) in resources {
+		match &flat {
+			Some(flat) => {
+				let named = flat.registry().resources.values().filter_map(|entry| entry.hash);
+				for hash in named.filter(|hash| working_copy_hashes.contains(hash)) {
+					entries.insert(self.layout.resource_path(&hash), None);
+				}
+				for hash in flat.registry().blob_hashes() {
+					let record = self.blobs.full_record(&hash).ok_or(Error::MissingResource(hash.into()))?;
+					entries.insert(self.layout.blob_path(&hash), Some(Resource::new_unchecked(record, hash.into())));
+				}
+			}
+			None if has_directory(self.layout.blobs_dir()) => {
+				entries.extend(self.working.list(self.layout.blobs_dir()).await?.into_iter().map(|path| (path, None)));
+			}
+			None => {}
+		}
+
+		for (path, resource) in entries {
 			if let Some(resource) = resource {
 				sink.write_entry(&path, resource.as_ref())?;
 				continue;

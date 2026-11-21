@@ -1,16 +1,19 @@
 use criterion::BenchmarkGroup;
 use criterion::measurement::Measurement;
 use graph_craft::proto::ProtoNetwork;
-use graph_craft::util::{DEMO_ART, compile, load_from_name};
+use graph_craft::util::{DEMO_ART, compile};
 use graphene_std::application_io::EditorApi;
-use graphene_std::runtime::{AsyncRuntime, Clock, Spawn, Task};
+use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
+use std::path::Path;
 
 pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
-	let network = load_from_name(name);
+	let network = futures::executor::block_on(document_loader::open_document(Path::new(&format!("../../demo-artwork/{name}.graphite"))))
+		.unwrap()
+		.network;
 	let editor_api = std::sync::Arc::new(EditorApi::default());
-	let mut network = wrap_network_in_scope(network, editor_api, AsyncRuntime::new(std::sync::Arc::new(DummySpawner), std::sync::Arc::new(NoClock)).handle());
+	let mut network = wrap_network_in_scope(network, editor_api, AsyncRuntime::new(std::sync::Arc::new(DummySpawner)).handle());
 	let preprocessor = preprocessor::Preprocessor::new();
 	preprocessor.preprocess(&mut network, &|_| None).unwrap();
 	let proto_network = compile(network);
@@ -32,11 +35,4 @@ where
 struct DummySpawner;
 impl Spawn for DummySpawner {
 	fn spawn(&self, _task: Task) {}
-}
-
-struct NoClock;
-impl Clock for NoClock {
-	fn now(&self) -> std::time::Duration {
-		std::time::Duration::ZERO
-	}
 }

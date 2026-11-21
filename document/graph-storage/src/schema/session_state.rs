@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SessionState {
-	/// This peer's identity for the document, stable per (device, document). Per-peer rather than
+	/// This peer's identity for the document, stable per (device, document, user). Per-peer rather than
 	/// document identity, so it lives with the cursor here, not in the manifest. Used for CRDT
 	/// tiebreaking and minting peer-scoped IDs.
 	#[serde(default)]

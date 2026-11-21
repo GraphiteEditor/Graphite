@@ -233,3 +233,16 @@ pub enum Direction {
 	Left,
 	Right,
 }
+
+/// Another peer's pointer over the node graph, in viewport pixels.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontendRemoteCursor {
+	pub x: f64,
+	pub y: f64,
+	pub name: String,
+	/// A stand-in name, shown in italics.
+	pub anonymous: bool,
+	pub color: String,
+	pub tool: Option<String>,
+}

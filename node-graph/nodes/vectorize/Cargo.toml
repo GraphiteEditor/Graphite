@@ -19,6 +19,7 @@ workspace = true
 core-types = { workspace = true }
 vector-types = { workspace = true }
 raster-types = { workspace = true }
+raster-kernels = { workspace = true }
 graphic-types = { workspace = true }
 graphene-hash = { workspace = true }
 node-macro = { workspace = true }

@@ -1,18 +1,7 @@
 //! Chains format steps over a document's serialized payloads, before they deserialize into the live types.
 
 use crate::RunnerError;
-use migration_core::{FormatMigration, HistoryPolicy, Payload};
-
-/// The serialized payloads of one document, as handed over by the load path before typed
-/// deserialization. History records are unframed: one [`Payload`] per retired delta, in stored
-/// (topological) order. A working copy that only has history has no registry.
-pub struct DocumentPayloads {
-	pub format_version: u32,
-	pub registry: Option<Payload>,
-	pub history: Vec<Payload>,
-	pub hot_log: Vec<Payload>,
-	pub session: Option<Payload>,
-}
+use migration_core::{DocumentPayloads, FormatMigration, HistoryPolicy};
 
 /// What the format tier did to history, so the load path knows whether a `Rev` rehash pass
 /// (with session-cursor remap) is required after typed deserialization. Ordered by severity so
@@ -69,6 +58,7 @@ pub fn run_format_migrations(migrations: &[&'static dyn FormatMigration], payloa
 		if let Some(session) = &payloads.session {
 			payloads.session = Some(step.migrate_session(session).map_err(fail)?);
 		}
+		step.migrate_document(payloads).map_err(fail)?;
 
 		payloads.format_version += 1;
 	}

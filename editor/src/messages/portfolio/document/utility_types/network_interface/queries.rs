@@ -62,6 +62,19 @@ impl NodeNetworkInterface {
 		layer_paths
 	}
 
+	/// The path of every node in the document's networks made from the definition.
+	pub fn node_paths_with_reference(&self, reference: &DefinitionIdentifier) -> Vec<Vec<NodeId>> {
+		let mut node_paths = Vec::new();
+		self.for_each_network(&mut |network_path, network_metadata| {
+			for node_id in network_metadata.persistent_metadata.node_metadata.keys() {
+				if self.reference(node_id, network_path).as_ref() == Some(reference) {
+					node_paths.push([network_path, &[*node_id]].concat());
+				}
+			}
+		});
+		node_paths
+	}
+
 	fn for_each_layer(&self, visit: &mut impl FnMut(&[NodeId], NodeId)) {
 		self.for_each_network(&mut |network_path, network_metadata| {
 			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
@@ -83,7 +96,6 @@ impl NodeNetworkInterface {
 			for (node_id, node) in &network.nodes {
 				let mut enclosing_definitions = enclosing_definitions.clone();
 				match node.implementation {
-					DocumentNodeImplementation::Network(_) => {}
 					DocumentNodeImplementation::Definition(id) if !enclosing_definitions.contains(&id) => enclosing_definitions.push(id),
 					_ => continue,
 				}
@@ -101,7 +113,7 @@ impl NodeNetworkInterface {
 		Some(network)
 	}
 
-	pub fn locate<'p>(&self, network_path: &'p [NodeId]) -> Option<NetworkLocation<'p>> {
+	pub fn locate(&self, network_path: &[NodeId]) -> Option<NetworkLocation> {
 		self.document_network().locate(network_path)
 	}
 
@@ -194,11 +206,7 @@ impl NodeNetworkInterface {
 
 	pub fn encapsulating_nodes(&self, network_path: &[NodeId]) -> Vec<(Vec<NodeId>, NodeId)> {
 		let Some((&node_id, parent_path)) = network_path.split_last() else { return Vec::new() };
-		let Some(NetworkLocation {
-			definition: Some(instantiated),
-			inline_path: [],
-		}) = self.locate(network_path)
-		else {
+		let Some(Some(instantiated)) = self.locate(network_path) else {
 			return vec![(parent_path.to_vec(), node_id)];
 		};
 
@@ -210,7 +218,7 @@ impl NodeNetworkInterface {
 			};
 			for (id, node) in &network.nodes {
 				let is_instance = node.implementation == DocumentNodeImplementation::Definition(instantiated);
-				if is_instance && seen.insert((location.definition, location.inline_path.to_vec(), *id)) {
+				if is_instance && seen.insert((location, *id)) {
 					instances.push((path.to_vec(), *id));
 				}
 			}
@@ -481,8 +489,10 @@ impl NodeNetworkInterface {
 			self.order_definitions_named_by(id, &mut visited, &mut ordered);
 		}
 
+		// A catalog entry is the shipped network, which the paste takes from the catalog
 		ordered
 			.into_iter()
+			.filter(|id| !catalog::is_protected(*id))
 			.filter_map(|id| {
 				Some(CopiedDefinition {
 					id,
@@ -852,7 +862,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_input_override(&mut self, node_id: &NodeId, index: usize, widget_override: Option<String>, network_path: &[NodeId]) {
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_input_override");
 			return;
 		};
@@ -1055,11 +1065,11 @@ impl NodeNetworkInterface {
 		Some(transformed.bounding_box())
 	}
 
-	/// Calculates the document bounds in document space, expanding vector layer bounds to include the rendered
-	/// stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
-	pub fn document_bounds_document_space_with_stroke(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+	/// Calculates the document bounds in document space, expanding layer bounds to include the rendered stroke width and
+	/// effects. Used for export so the output canvas captures strokes and shadows that overflow the path geometry.
+	pub fn document_bounds_document_space_with_stroke_and_effects(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
 		self.document_metadata.document_bounds(include_artboards, true, || {
-			self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document_with_stroke(layer))
+			self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document_with_stroke_and_effects(layer))
 		})
 	}
 
@@ -1076,17 +1086,17 @@ impl NodeNetworkInterface {
 			.reduce(Quad::combine_bounds)
 	}
 
-	/// Calculates the selected layer bounds in document space, expanding vector layer bounds to include the
-	/// rendered stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
-	pub fn selected_bounds_document_space_with_stroke(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
+	/// Calculates the selected layer bounds in document space, expanding layer bounds to include the rendered stroke width
+	/// and effects. Used for export so the output canvas captures strokes and shadows that overflow the path geometry.
+	pub fn selected_bounds_document_space_with_stroke_and_effects(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
-			log::error!("Could not get selected nodes in selected_bounds_document_space_with_stroke");
+			log::error!("Could not get selected nodes in selected_bounds_document_space_with_stroke_and_effects");
 			return None;
 		};
 		selected_nodes
 			.selected_layers(&self.document_metadata)
 			.filter(|&layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
-			.filter_map(|layer| self.document_metadata.bounding_box_document_with_stroke(layer))
+			.filter_map(|layer| self.document_metadata.bounding_box_document_with_stroke_and_effects(layer))
 			.reduce(Quad::combine_bounds)
 	}
 
@@ -1214,7 +1224,6 @@ impl NodeNetworkInterface {
 				node.inputs = old_node.inputs;
 				node.call_argument = old_node.manual_composition.unwrap_or_default();
 				node.visible = old_node.visible;
-				node.skip_deduplication = old_node.skip_deduplication;
 				node.original_location = old_node.original_location;
 				node_metadata.persistent_metadata.display_name = old_node.alias;
 				node_metadata.persistent_metadata.locked = old_node.locked;
@@ -1238,9 +1247,6 @@ impl NodeNetworkInterface {
 						let mut nested_path = network_path.clone();
 						nested_path.push(node_id);
 						stack.push((nested_path, old_network));
-					}
-					OldDocumentNodeImplementation::Extract => {
-						node.implementation = DocumentNodeImplementation::Extract;
 					}
 				}
 

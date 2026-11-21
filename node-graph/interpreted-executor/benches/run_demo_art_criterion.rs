@@ -2,12 +2,15 @@ use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::ProtoNetwork;
-use graph_craft::util::{DEMO_ART, compile, load_from_name};
+use graph_craft::util::{DEMO_ART, compile};
 use graphene_std::transform::Footprint;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
+use std::path::Path;
 
 fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
-	let network = load_from_name(name);
+	let network = futures::executor::block_on(document_loader::open_document(Path::new(&format!("../../demo-artwork/{name}.graphite"))))
+		.unwrap()
+		.network;
 	let proto_network = compile(network);
 	let empty = ProtoNetwork::default();
 
@@ -30,7 +33,9 @@ fn update_executor_demo(c: &mut Criterion) {
 }
 
 fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
-	let network = load_from_name(name);
+	let network = futures::executor::block_on(document_loader::open_document(Path::new(&format!("../../demo-artwork/{name}.graphite"))))
+		.unwrap()
+		.network;
 	let proto_network = compile(network);
 
 	let executor = DynamicExecutor::new(proto_network).unwrap();

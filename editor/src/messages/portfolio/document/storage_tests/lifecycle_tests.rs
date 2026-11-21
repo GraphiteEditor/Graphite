@@ -4,6 +4,7 @@ use crate::messages::frontend::utility_types::PersistedState;
 use crate::messages::portfolio::document_storage_io::document_key;
 use crate::messages::prelude::*;
 use crate::test_utils::EditorTestUtils;
+use document_container::archive::ArchiveFormat;
 use document_container::{AnyContainer, AsyncContainer};
 
 fn dispatch(editor: &mut EditorTestUtils, message: impl Into<Message>) -> Vec<FrontendMessage> {
@@ -118,19 +119,22 @@ async fn legacy_only_container_gets_storage() {
 }
 
 #[tokio::test]
-async fn legacy_mode_reads_legacy_only_and_leaves_storage_files_alone() {
+async fn saving_writes_a_zip_archive_with_the_graphite_extension() {
 	let mut editor = EditorTestUtils::create();
-	dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled: false });
-	let id = new_document(&mut editor, "Legacy");
+	let id = new_document(&mut editor, "Saved");
 	let container = container(&editor, id).await;
-	assert!(!container.exists("manifest.json").await);
-	container.write("manifest.json", b"broken").await.unwrap();
+	assert!(container.exists("manifest.json").await);
 
-	restart(&mut editor, PersistedState::default());
-
-	assert!(portfolio(&editor).documents.contains_key(&id));
-	assert!(editor.active_document().storage().is_none());
-	assert_eq!(container.read("manifest.json").await.unwrap().as_slice(), b"broken");
+	let saved = dispatch(&mut editor, DocumentMessage::SaveDocumentAs);
+	let (name, content) = saved
+		.iter()
+		.find_map(|message| match message {
+			FrontendMessage::TriggerSaveDocument { name, content, .. } => Some((name.clone(), content.clone())),
+			_ => None,
+		})
+		.expect("the save is sent to the frontend");
+	assert_eq!(name, "Saved.graphite");
+	assert_eq!(ArchiveFormat::detect(&content), Some(ArchiveFormat::Zip));
 }
 
 #[tokio::test]
@@ -172,6 +176,8 @@ async fn unchanged_content_keeps_cursor_and_redo_across_restart() {
 	let network_before = editor.active_document().document_network().clone();
 	editor.draw_rect(0., 0., 100., 100.).await;
 	dispatch(&mut editor, PortfolioMessage::AutoSaveDocument { document_id: id });
+	// Undoing a hot step takes it back instead of moving the cursor
+	editor.active_document_mut().retire_storage_interaction();
 
 	editor.handle_message(DocumentMessage::Undo).await;
 	assert_eq!(editor.active_document().document_network(), &network_before);
@@ -197,23 +203,6 @@ async fn closing_removes_the_stored_document() {
 	assert!(stored_ids(&editor).await.is_empty());
 	restart(&mut editor, PersistedState::default());
 	assert!(portfolio(&editor).persisted_state_snapshot().documents.is_empty());
-}
-
-#[tokio::test]
-async fn storage_preference_attaches_and_drops_sessions() {
-	let mut editor = EditorTestUtils::create();
-	dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled: false });
-	let id = new_document(&mut editor, "Toggle");
-	let container = container(&editor, id).await;
-	assert!(editor.active_document().storage().is_none());
-	assert!(container.exists("legacy.graphite").await);
-
-	dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled: true });
-	assert!(editor.active_document().storage().is_some());
-	assert!(container.exists("manifest.json").await);
-
-	dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled: false });
-	assert!(editor.active_document().storage().is_none());
 }
 
 #[tokio::test]

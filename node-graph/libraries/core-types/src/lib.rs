@@ -32,9 +32,10 @@ pub use glam_ext::FallibleVec2Operations;
 pub use graphene_hash;
 pub use graphene_hash::CacheHash;
 pub use list::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_END,
-	ATTR_FONT, ATTR_FONT_SIZE, ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_LETTER_SPACING,
-	ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_NAME, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_START, ATTR_TEXT_ALIGN, ATTR_TRANSFORM, ATTR_TYPE,
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME,
+	ATTR_EFFECTS, ATTR_END, ATTR_FONT, ATTR_FONT_SIZE, ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD,
+	ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_NAME, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_START, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_TYPE,
 };
 pub use memo::MemoHash;
 pub use num_traits;
@@ -54,11 +55,6 @@ pub trait Node<Input: ?Sized> {
 	/// Returns the name of the node for diagnostic purposes.
 	fn node_name(&self) -> &'static str {
 		std::any::type_name::<Self>()
-	}
-	/// Serialize the node which is used for the `introspect` function which can retrieve values from monitor nodes.
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		log::warn!("Node::serialize not implemented for {}", std::any::type_name::<Self>());
-		None
 	}
 }
 
@@ -107,9 +103,6 @@ impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for &N {
 	fn node_name(&self) -> &'static str {
 		(**self).node_name()
 	}
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		(**self).serialize()
-	}
 }
 impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for Box<N> {
 	type Output = N::Output;
@@ -120,9 +113,6 @@ impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for Box<N> {
 	fn node_name(&self) -> &'static str {
 		(**self).node_name()
 	}
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		(**self).serialize()
-	}
 }
 impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for std::sync::Arc<N> {
 	type Output = N::Output;
@@ -132,9 +122,6 @@ impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for std::sync::Arc<N> {
 	}
 	fn node_name(&self) -> &'static str {
 		(**self).node_name()
-	}
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		(**self).serialize()
 	}
 }
 

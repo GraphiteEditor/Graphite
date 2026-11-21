@@ -70,11 +70,11 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 	Ok(Item::new_from_element(intermediate))
 }
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), version(2))]
 fn render(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: impl Node<Context<'static>, Output = Item<WgpuExecutor>>,
 	data: Item<RenderIntermediate>,
+	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: impl Node<Context<'static>, Output = Item<WgpuExecutor>>,
 ) -> Result<Item<RenderOutput>, Interrupt> {
 	let footprint = ctx.footprint();
 	let render_params = ctx
@@ -99,9 +99,19 @@ fn render(
 			let output = SvgRenderOutput::from(render);
 			assert!(output.svg_defs.is_empty());
 
+			// Without a GPU, the filters' maps keep their placeholders, which leave those effects out
+			let effect_maps = match output.effect_maps.is_empty() {
+				true => Vec::new(),
+				false => match executor.eval(Context::default()) {
+					Ok(executor) => executor.element().render_effect_maps(&output.effect_maps, *footprint),
+					Err(_) => Vec::new(),
+				},
+			};
+
 			RenderOutputType::Svg {
 				svg: output.svg,
 				image_data: output.image_data.into_iter().collect(),
+				effect_maps,
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {

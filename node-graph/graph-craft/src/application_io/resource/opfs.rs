@@ -1,5 +1,6 @@
 use graphene_application_io::resource::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
 use js_sys::Uint8Array;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -57,9 +58,6 @@ impl LoadResource for OpfsResourceStorage {
 				let resource = resource.clone();
 				return Box::pin(async move { Some(resource) });
 			}
-			if !guard.on_disk.contains(&hash) {
-				return Box::pin(async move { None });
-			}
 		}
 
 		let (sender, receiver) = oneshot();
@@ -77,9 +75,9 @@ impl ResourceStorage for OpfsResourceStorage {
 		let mut guard = self.inner.lock().unwrap();
 
 		let mut bytes = None;
-		if !guard.cache.contains_key(&hash) {
+		if let Entry::Vacant(entry) = guard.cache.entry(hash) {
 			let resource_bytes = Arc::<[u8]>::from(data);
-			guard.cache.insert(hash, Resource::new_unchecked(resource_bytes.clone(), hash));
+			entry.insert(Resource::new_unchecked(resource_bytes.clone(), hash));
 			bytes = Some(resource_bytes);
 		}
 
@@ -218,15 +216,13 @@ async fn delete_file(directory: &FileSystemDirectoryHandle, hash: &ResourceHash)
 }
 
 async fn read_from_opfs(inner: Arc<Mutex<Inner>>, hash: ResourceHash) -> Option<Resource> {
-	let directory = {
+	// Another tab may have written a file this tab's listing predates, so one it doesn't know of is still looked for
+	let (directory, known) = {
 		let guard = inner.lock().unwrap();
 		if let Some(resource) = guard.cache.get(&hash) {
 			return Some(resource.clone());
 		}
-		if !guard.on_disk.contains(&hash) {
-			return None;
-		}
-		guard.directory.clone()
+		(guard.directory.clone(), guard.on_disk.contains(&hash))
 	};
 
 	let name = file_name(&hash);
@@ -238,7 +234,10 @@ async fn read_from_opfs(inner: Arc<Mutex<Inner>>, hash: ResourceHash) -> Option<
 				return None;
 			}
 		},
-		Err(error) if is_not_found(&error) => return None,
+		Err(error) if is_not_found(&error) => {
+			inner.lock().unwrap().on_disk.remove(&hash);
+			return None;
+		}
 		Err(error) => {
 			log::error!("OPFS getFileHandle for {hash} failed: {error:?}");
 			return None;
@@ -279,9 +278,10 @@ async fn read_from_opfs(inner: Arc<Mutex<Inner>>, hash: ResourceHash) -> Option<
 	if let Some(resource) = guard.cache.get(&hash) {
 		return Some(resource.clone());
 	}
-	if !guard.on_disk.contains(&hash) {
+	if known && !guard.on_disk.contains(&hash) {
 		return None;
 	}
+	guard.on_disk.insert(hash);
 
 	guard.cache.insert(hash, resource.clone());
 	Some(resource)

@@ -4,7 +4,9 @@ use super::{
 };
 use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
+use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::value::TaggedValue;
@@ -40,9 +42,6 @@ fn new_artboard_message(id: NodeId) -> GraphOperationMessage {
 #[tokio::test]
 async fn invariants_hold_through_basic_editing_flow() {
 	let mut editor = EditorTestUtils::create();
-
-	// This test covers the interface's structural invariants. The storage dual-write is out of its scope and asserted by the storage round-trip tests.
-	editor.editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: false });
 
 	editor.new_document().await;
 	assert_invariants(&editor, "after opening a new document");
@@ -457,13 +456,8 @@ async fn cutting_a_chain_node_and_pasting_it_back_keeps_its_wires() {
 	// Cutting removes just the node, keeping the node that fed its second input
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![near] }).await;
 	let clipboard = editor
-		.handle_message(ClipboardMessage::CutLayers)
+		.copy_to_clipboard(ClipboardMessage::CutLayers)
 		.await
-		.into_iter()
-		.find_map(|message| match message {
-			FrontendMessage::TriggerClipboardWrite { content } => Some(content),
-			_ => None,
-		})
 		.expect("Cutting a chain node should write it to the clipboard");
 	let network_interface = &editor.active_document().network_interface;
 	assert_eq!(chain_of(network_interface, layer), vec![far, source], "Cutting should close the chain around the node");
@@ -471,11 +465,7 @@ async fn cutting_a_chain_node_and_pasting_it_back_keeps_its_wires() {
 
 	// Pasting with the layer selected puts the node back beside the layer, wired as before
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }).await;
-	editor
-		.handle_message(ClipboardMessage::ReadClipboard {
-			content: ClipboardContentRaw::Text(clipboard),
-		})
-		.await;
+	editor.paste_from_clipboard(clipboard).await;
 	let network_interface = &editor.active_document().network_interface;
 	let chain = chain_of(network_interface, layer);
 	assert_eq!(chain.len(), 3, "The pasted node should join the chain");
@@ -757,25 +747,13 @@ async fn duplicating_a_solo_floating_layer_makes_an_offset_copy_with_its_content
 	assert_invariants(&editor, "after duplicating a solo floating layer");
 }
 
-async fn copy_in_graph(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> String {
+async fn copy_in_graph(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> DataTransfer {
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
-	editor
-		.handle_message(NodeGraphMessage::Copy)
-		.await
-		.into_iter()
-		.find_map(|message| match message {
-			FrontendMessage::TriggerClipboardWrite { content } => Some(content),
-			_ => None,
-		})
-		.expect("Copying nodes should write them to the clipboard")
+	editor.copy_to_clipboard(NodeGraphMessage::Copy).await.expect("Copying nodes should write them to the clipboard")
 }
 
-async fn paste(editor: &mut EditorTestUtils, clipboard: String) -> Vec<NodeId> {
-	editor
-		.handle_message(ClipboardMessage::ReadClipboard {
-			content: ClipboardContentRaw::Text(clipboard),
-		})
-		.await;
+async fn paste(editor: &mut EditorTestUtils, clipboard: DataTransfer) -> Vec<NodeId> {
+	editor.paste_from_clipboard(clipboard).await;
 	editor.active_document().network_interface.selected_nodes().selected_nodes().copied().collect()
 }
 
@@ -994,6 +972,7 @@ async fn signature_edits_keep_parallel_metadata_in_sync() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	let initial_imports = network_interface.number_of_imports(&path);
@@ -1030,6 +1009,7 @@ async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 
 	// Dropping an import or export just below itself leaves it where it was
 	let network_interface = &mut editor.active_document_mut().network_interface;
@@ -1048,7 +1028,7 @@ async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
 	let parameter_index = network_interface.number_of_imports(&path) - 1;
 	let previous_primary_name = network_interface.displayed_import_name(0, &path);
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor
 		.handle_message(NodeGraphMessage::ReorderImport {
 			start_index: parameter_index,
@@ -1078,6 +1058,7 @@ async fn moving_the_primary_import_among_the_secondary_ones_leaves_an_empty_prim
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.add_import(TaggedValue::Number(1.), true, -1, "Parameter", "", &path);
 	let primary_name = network_interface.displayed_import_name(0, &path);
@@ -1085,7 +1066,7 @@ async fn moving_the_primary_import_among_the_secondary_ones_leaves_an_empty_prim
 	let fed_by_primary = fed_inputs(&editor, &OutputConnector::Import(0), &path);
 
 	// Drop the primary between the first and second secondary imports
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 0, end_index: 2 }).await;
 
 	let network_interface = &editor.active_document().network_interface;
@@ -1114,7 +1095,7 @@ async fn the_primary_import_can_become_the_first_secondary_and_an_empty_primary_
 	let import_count = network_interface.number_of_imports(&path);
 
 	// Dropped just below the separator, the primary becomes the first secondary import
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 0, end_index: 1 }).await;
 
 	let network_interface = &editor.active_document().network_interface;
@@ -1142,7 +1123,7 @@ async fn the_primary_export_can_become_the_first_secondary() {
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor.handle_message(NodeGraphMessage::AddSecondaryExport).await;
 	let network_interface = &editor.active_document().network_interface;
 	let primary_source = network_interface.upstream_output_connector(&InputConnector::Export(0), &path);
@@ -1177,16 +1158,14 @@ fn fed_inputs(editor: &EditorTestUtils, output_connector: &OutputConnector, netw
 async fn dragging_a_dot_out_of_an_import_takes_over_the_wires_the_import_fed() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
-	// TODO: Remove once staging the recorded edits stores a node wired to an import inside a subgraph as it is, instead of drifting from it
-	editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: false }).await;
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.enter_editable_network(merge).await;
 	let content_import = OutputConnector::Import(1);
 	let fed_before = fed_inputs(&editor, &content_import, &path);
 	assert!(!fed_before.is_empty(), "Merge's content import should feed its subgraph: fixture is wrong");
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
 	let import_position = editor
 		.active_document()
 		.network_interface
@@ -1210,7 +1189,7 @@ async fn editing_import_and_export_descriptions_stores_them_on_the_subgraph_node
 	editor.new_document().await;
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor
 		.handle_message(NodeGraphMessage::SetImportExportDescription {
 			description: "The artwork to add.".to_string(),
@@ -1237,8 +1216,9 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
-	let path = vec![merge];
+	let subgraph = editor.create_node_by_name_at(DefinitionIdentifier::Network("Origins to Polyline".into()), 0, 0).await;
+	let path = vec![subgraph];
+	editor.enter_editable_network(subgraph).await;
 	let import_count = editor.active_document().network_interface.number_of_imports(&path);
 
 	// With a primary, the only one is past the last import
@@ -1246,24 +1226,23 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 	let empty_connectors = network_interface.empty_import_export_connectors(true, &path);
 	assert_eq!(empty_connectors.iter().map(|(index, _)| *index).collect::<Vec<_>>(), vec![import_count]);
 
-	// The attribute name given to Merge's interior Write Attribute node
-	let write_attribute = network_interface
+	// The closed setting given to the subgraph's interior Points to Polyline node
+	let points_to_polyline = network_interface
 		.nested_network(&path)
 		.and_then(|network| {
 			network
 				.nodes
 				.iter()
-				.find(|(_, node)| node.implementation == DocumentNodeImplementation::ProtoNode(graphene_std::graphic::write_attribute::IDENTIFIER))
+				.find(|(_, node)| node.implementation == DocumentNodeImplementation::ProtoNode(graphene_std::vector::points_to_polyline::IDENTIFIER))
 		})
 		.map(|(node_id, _)| *node_id)
-		.expect("Merge should contain a Write Attribute node");
-	let value_input = InputConnector::node_at_index(write_attribute, 1);
+		.expect("Origins to Polyline should contain a Points to Polyline node");
+	let value_input = InputConnector::node_at_index(points_to_polyline, 1);
 	let Some(NodeInput::Value { tagged_value, .. }) = network_interface.input_from_connector(&value_input, &path) else {
-		panic!("Merge's Write Attribute node should be given its attribute name as a value");
+		panic!("The Points to Polyline node should be given its closed setting as a value");
 	};
 	let displaced_value = (**tagged_value).clone();
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
 	editor
 		.handle_message(NodeGraphMessage::AddImportAndConnect {
 			import_index: import_count,
@@ -1278,7 +1257,7 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 		"the new import should be wired to the input"
 	);
 	let network_interface = &editor.active_document().network_interface;
-	let new_input = network_interface.input_from_connector(&InputConnector::node_at_index(merge, import_count), &[]);
+	let new_input = network_interface.input_from_connector(&InputConnector::node_at_index(subgraph, import_count), &[]);
 	assert!(
 		matches!(new_input, Some(NodeInput::Value { tagged_value, exposed: true }) if **tagged_value == displaced_value),
 		"the new import should take over the value its wire displaced, found {new_input:?}"
@@ -1294,11 +1273,11 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 	let network_interface = &editor.active_document().network_interface;
 	assert!(network_interface.empty_import_export_connectors(true, &path).iter().any(|(index, _)| *index == 0));
 
-	// The content given to Merge's interior Write Attribute node by its Into Group node
-	let wired_input = InputConnector::node_at_index(write_attribute, 0);
+	// The points given to the subgraph's interior Points to Polyline node by its Combine Paths node
+	let wired_input = InputConnector::node_at_index(points_to_polyline, 0);
 	assert!(
 		matches!(network_interface.input_from_connector(&wired_input, &path), Some(NodeInput::Node { .. })),
-		"Merge's Write Attribute node should be wired its content from another node"
+		"The Points to Polyline node should have its points wired from another node"
 	);
 	editor
 		.handle_message(NodeGraphMessage::AddImportAndConnect {
@@ -1327,10 +1306,10 @@ async fn showing_a_secondary_import_in_the_inspector_keeps_its_wires_in_the_subg
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.enter_editable_network(merge).await;
 	let content_import = OutputConnector::Import(1);
 	let fed_before = fed_inputs(&editor, &content_import, &path);
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
 	editor.handle_message(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 1, exposed: false }).await;
 
 	let network_interface = &editor.active_document().network_interface;
@@ -1620,6 +1599,7 @@ async fn a_subgraph_output_fed_by_a_value_can_produce_its_type() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
+	editor.active_document_mut().network_interface.make_editable(&path);
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.add_export(TaggedValue::Number(1.), -1, "", &path);
@@ -1735,7 +1715,7 @@ async fn a_wire_dragged_backward_from_the_dimmed_export_connector_adds_an_export
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 
 	let network_interface = &editor.active_document().network_interface;
 	let export_count = network_interface.number_of_exports(&path);
@@ -1770,7 +1750,7 @@ async fn a_wire_dragged_from_the_dimmed_import_connector_onto_empty_space_wires_
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 
 	let network_interface = &editor.active_document().network_interface;
 	let import_count = network_interface.number_of_imports(&path);
@@ -1837,7 +1817,7 @@ async fn leaving_a_subgraph_ends_the_wire_and_closes_the_node_menu_left_open_in_
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 
 	let (_, empty_export_position) = *editor
 		.active_document()
@@ -2716,7 +2696,7 @@ async fn dragging_a_dot_out_of_an_export_runs_its_wire_through_the_dot() {
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 
 	let export = InputConnector::Export(0);
 	let network_interface = &editor.active_document().network_interface;
@@ -2791,7 +2771,7 @@ async fn imports_and_exports_keep_just_a_grid_cell_from_a_dot() {
 
 	let subgraph = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
 	let path = [subgraph];
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: subgraph }).await;
+	editor.enter_editable_network(subgraph).await;
 
 	// The grid columns of the imports and exports
 	let import_export_columns = |editor: &EditorTestUtils| {
@@ -2882,7 +2862,7 @@ async fn removing_an_import_removes_the_dot_that_fed_its_input_on_the_subgraph_n
 		.network_interface
 		.create_wire(&OutputConnector::primary_output(dot), &InputConnector::node_at_index(merge, 1), &[]);
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 	editor.handle_message(NodeGraphMessage::RemoveImport { import_index: 1 }).await;
 
 	assert!(!exists(&editor, dot), "the dot fed only the removed input, so it should go with it");
@@ -2995,11 +2975,8 @@ async fn a_press_right_after_dragging_a_wire_out_of_an_output_drags_another_wire
 
 /// Opens a new subgraph with one node inside, which is all that lies between its import and its export.
 async fn subgraph_holding_one_node(editor: &mut EditorTestUtils) -> (NodeId, NodeId) {
-	// TODO: Remove once staging the recorded edits stores a node wired to an import inside a subgraph as it is, instead of drifting from it
-	editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: false }).await;
-
 	let subgraph = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: subgraph }).await;
+	editor.enter_editable_network(subgraph).await;
 	editor.handle_message(NodeGraphMessage::AddImport).await;
 	editor.handle_message(NodeGraphMessage::AddPrimaryExport).await;
 
@@ -3225,8 +3202,6 @@ async fn gliding_nudged_node(editor: &mut EditorTestUtils) -> NodeId {
 #[tokio::test]
 async fn redoing_a_nudge_undone_while_it_glides_leaves_nothing_gliding() {
 	let mut editor = EditorTestUtils::create();
-	// Undone from the history's own snapshots, rather than the storage rebuilt afresh
-	editor.editor.handle_message(PreferencesMessage::SaveAsGdd { enabled: false });
 	gliding_nudged_node(&mut editor).await;
 
 	editor.handle_message(DocumentMessage::Undo).await;
@@ -3266,7 +3241,7 @@ async fn entering_a_node_while_its_network_glides_settles_it() {
 	gliding_nudged_node(&mut editor).await;
 	let merge = editor.create_node_by_name_at(merge_definition(), 20, 0).await;
 
-	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.enter_editable_network(merge).await;
 
 	assert!(editor.active_document().network_interface.glide_offsets(&[]).is_empty());
 }
@@ -3516,7 +3491,7 @@ async fn a_session_preview_of_a_removed_node_is_dropped() {
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.toggle_preview(node, &[]);
 
-	let network_ids = HashMap::from([(graph_craft::document::OwnedNetworkLocation::default(), document_graph_storage::NetworkId(0))]);
+	let network_ids = HashMap::from([(graph_craft::document::NetworkLocation::default(), document_graph_storage::NetworkId(0))]);
 	let stored = collect_network_view_settings(network_interface, &network_ids);
 
 	// As if another peer had removed the previewed node
@@ -3533,4 +3508,180 @@ async fn a_session_preview_of_a_removed_node_is_dropped() {
 		Some(artboard),
 		"The evaluated network should fall back to the document's own export"
 	);
+}
+
+#[tokio::test]
+async fn cannot_preview_node_without_outputs() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let custom_node = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
+	let network_interface = &mut editor.active_document_mut().network_interface;
+
+	assert_eq!(network_interface.number_of_outputs(&custom_node, &[]), 0);
+
+	// Attempting to toggle preview on a node without outputs should not enable previewing
+	network_interface.toggle_preview(custom_node, &[]);
+	assert_eq!(network_interface.previewing(&[]), Previewing::No);
+}
+
+fn map_definition() -> DefinitionIdentifier {
+	DefinitionIdentifier::ProtoNode(graphene_std::graphic::map::IDENTIFIER)
+}
+
+async fn layer_with_chain_and_unwired_map(editor: &mut EditorTestUtils) -> (NodeId, NodeId, NodeId) {
+	let (layer, near, ..) = layer_with_chain(editor).await;
+	editor
+		.active_document_mut()
+		.network_interface
+		.create_wire(&OutputConnector::primary_output(layer), &InputConnector::Export(0), &[]);
+	editor.handle_message(NodeGraphMessage::RunDocumentGraph).await;
+
+	let map = editor.create_node_by_name_at(map_definition(), 0, 30).await;
+	(layer, near, map)
+}
+
+async fn drop_map_onto_chain(editor: &mut EditorTestUtils, layer: NodeId, map: NodeId) {
+	editor
+		.handle_message(NodeGraphMessage::InsertNodeBetween {
+			node_id: map,
+			input_connector: InputConnector::layer_secondary_input(layer),
+			insert_node_input_index: 0,
+		})
+		.await;
+}
+
+#[tokio::test]
+async fn dropping_a_map_node_onto_a_wire_feeds_it_the_matching_read_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, map) = layer_with_chain_and_unwired_map(&mut editor).await;
+
+	drop_map_onto_chain(&mut editor, layer, map).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let Some(NodeInput::Node { node_id: read_node, .. }) = network_interface.input_from_connector(&InputConnector::node_at_index(map, 1), &[]).cloned() else {
+		panic!("The Map node's mapped input should be fed by a new node");
+	};
+	assert_eq!(
+		network_interface.reference(&read_node, &[]),
+		Some(DefinitionIdentifier::ProtoNode(graphene_std::context::read_vector::IDENTIFIER))
+	);
+
+	let map_position = network_interface.position(&map, &[]).unwrap();
+	let near_position = network_interface.position(&near, &[]).unwrap();
+	let near_bottom = near_position.y + network_interface.node_height(&near, &[]) as i32;
+	let read_node_position = network_interface.position(&read_node, &[]).unwrap();
+	assert_eq!(read_node_position.x, map_position.x - crate::consts::NODE_CHAIN_WIDTH);
+	assert!(
+		read_node_position.y > near_bottom,
+		"The Read node should sit below the Map node's content source rather than overlap it"
+	);
+	assert_invariants(&editor, "after dropping a Map node onto a wire");
+}
+
+#[test]
+fn map_content_types_resolve_to_the_read_node_of_their_element() {
+	use super::layout::read_node_for_content;
+	use super::resolved_types::TypeSource;
+	use graph_craft::{item, list};
+	use graphene_std::context::{read_graphic, read_number, read_vector};
+	use graphene_std::list::Bundle;
+	use graphene_std::text_nodes::read_string;
+	use graphene_std::{Graphic, Vector};
+
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(Vector))), Some(read_vector::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(item!(Graphic))), Some(read_graphic::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(f64))), Some(read_number::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::TaggedValue(list!(String))), Some(read_string::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(item!(Bundle<Vector>))), Some(read_vector::IDENTIFIER));
+
+	assert_eq!(
+		read_node_for_content(&TypeSource::Compiled(list!(i64))),
+		None,
+		"Read Number yields f64, which a Map over integers can't take"
+	);
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(bool))), None);
+	assert_eq!(read_node_for_content(&TypeSource::Unknown), None);
+}
+
+#[tokio::test]
+async fn dropping_a_map_node_onto_a_wire_keeps_its_wired_mapped_input() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, _, map) = layer_with_chain_and_unwired_map(&mut editor).await;
+
+	let mapped_source = NodeId::new();
+	let read_vector = resolve_proto_node_type(graphene_std::context::read_vector::IDENTIFIER).unwrap().default_node_template();
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.insert_node(mapped_source, read_vector, &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(mapped_source), &InputConnector::node_at_index(map, 1), &[]);
+	let node_count = editor.active_document().network_interface.document_network().nodes.len();
+
+	drop_map_onto_chain(&mut editor, layer, map).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		network_interface.input_from_connector(&InputConnector::node_at_index(map, 1), &[]),
+		Some(&NodeInput::node(mapped_source, 0))
+	);
+	assert_eq!(network_interface.document_network().nodes.len(), node_count);
+}
+
+/// Pairs of layers in the root network whose boxes in the graph, which span their chains, intersect.
+fn overlapping_layers(editor: &EditorTestUtils) -> Vec<(LayerNodeIdentifier, LayerNodeIdentifier)> {
+	let document = editor.active_document();
+	let layers: Vec<_> = document.metadata().all_layers().collect();
+	let bounds = |layer: LayerNodeIdentifier| document.network_interface.node_bounding_box(&layer.to_node(), &[]).expect("a layer should have a box in the graph");
+
+	let mut overlapping = Vec::new();
+	for (index, &first) in layers.iter().enumerate() {
+		for &second in &layers[index + 1..] {
+			let ([first_min, first_max], [second_min, second_max]) = (bounds(first), bounds(second));
+			if first_min.cmplt(second_max).all() && second_min.cmplt(first_max).all() {
+				overlapping.push((first, second));
+			}
+		}
+	}
+	overlapping
+}
+
+async fn group_selected_layers(editor: &mut EditorTestUtils) {
+	editor
+		.handle_message(DocumentMessage::GroupSelectedLayers {
+			group_folder_type: GroupFolderType::Layer,
+		})
+		.await;
+}
+
+#[tokio::test]
+async fn grouping_the_top_layer_leaves_no_layers_overlapping_in_the_graph() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+	editor.draw_rect(50., 50., 150., 150.).await;
+
+	group_selected_layers(&mut editor).await;
+
+	assert_eq!(overlapping_layers(&editor), Vec::new());
+	assert_invariants(&editor, "after grouping the top layer");
+}
+
+#[tokio::test]
+async fn grouping_a_group_moves_the_layer_below_it_past_all_of_its_contents() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+	editor.draw_rect(50., 50., 150., 150.).await;
+	let bottom = editor.active_document().metadata().all_layers().last().expect("the bottom rectangle should be a layer");
+	editor.draw_rect(100., 100., 200., 200.).await;
+	editor.handle_message(DocumentMessage::SelectAllLayers).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesRemove { nodes: vec![bottom.to_node()] }).await;
+	group_selected_layers(&mut editor).await;
+	assert_eq!(overlapping_layers(&editor), Vec::new(), "grouping the top two layers should leave none overlapping");
+
+	group_selected_layers(&mut editor).await;
+
+	assert_eq!(overlapping_layers(&editor), Vec::new());
+	assert_invariants(&editor, "after grouping a group");
 }

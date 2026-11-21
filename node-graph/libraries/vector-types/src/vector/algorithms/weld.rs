@@ -33,7 +33,7 @@ impl WeldExt for Vector {
 
 		// TODO: We lose information on the winding order by using an undirected graph. Switch to a directed graph and fix the algorithm to handle that.
 		// Graph containing only short edges, referencing the data graph
-		let mut short_edges = UnGraphMap::new();
+		let mut short_edges = UnGraphMap::<_, _, rustc_hash::FxBuildHasher>::new();
 
 		for segment_id in working.segment_ids.iter().copied() {
 			let length = indices.segment_chord_length(segment_id);
@@ -409,8 +409,8 @@ fn weld_nearby_points(vector: &mut Vector, paths: &mut List<Path>, transform: DA
 	let mut grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
 
 	// Add points to grid cells without collecting all positions first
-	for i in 0..point_count {
-		let pos = transform.transform_point2(working.point_positions[i]);
+	for (i, &position) in working.point_positions.iter().enumerate() {
+		let pos = transform.transform_point2(position);
 		let grid_x = ((pos.x - min_x) / distance).floor() as i64;
 		let grid_y = ((pos.y - min_y) / distance).floor() as i64;
 

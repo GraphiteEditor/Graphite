@@ -87,6 +87,8 @@ graph-craft = { workspace = true, features = ["loading"] }
 pretty_assertions = { workspace = true }
 criterion = { workspace = true }
 gungraun = { workspace = true }
+document-loader = { workspace = true }
+futures = { workspace = true }
 
 # Benchmarks
 [[bench]]

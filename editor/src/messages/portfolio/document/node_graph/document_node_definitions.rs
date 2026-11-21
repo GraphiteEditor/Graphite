@@ -17,8 +17,6 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::{concrete, list};
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType};
-#[allow(unused_imports)]
-use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::*;
 use std::collections::{HashMap, VecDeque};
@@ -40,22 +38,7 @@ pub struct NodeInspectorContext<'a> {
 impl NodeInspectorContext<'_> {
 	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
 		let input_inspector_row = self.network_interface.persistent_input_metadata(node_id, index, self.selection_network_path)?;
-
-		// The stored override wins, falling back to the definition's own so documents saved before it gained one still
-		// pick it up. Only `Custom` is recovered, since the other kinds also need input data stored at insertion time.
-		let widget_override = input_inspector_row.widget_override.clone().or_else(|| {
-			let implementation = self.network_interface.implementation(node_id, self.selection_network_path)?;
-			let DocumentNodeImplementation::ProtoNode(proto_node_identifier) = implementation else {
-				return None;
-			};
-
-			let metadata = registry::NODE_METADATA.lock().unwrap();
-			let field = metadata.get(proto_node_identifier)?.fields.get(index)?;
-			match field.widget_override {
-				registry::RegistryWidgetOverride::Custom(name) => Some(name.to_string()),
-				_ => None,
-			}
-		})?;
+		let widget_override = input_inspector_row.widget_override.clone()?;
 
 		let Some(widget_override_lambda) = INPUT_OVERRIDES.get(&widget_override) else {
 			log::error!("Could not get widget override '{widget_override}' lambda in call_widget_override");
@@ -124,6 +107,10 @@ pub struct DocumentNodeDefinition {
 	/// Used to create the [`DefinitionIdentifier::Network`] identifier.
 	pub identifier: &'static str,
 
+	/// The definition's position in its lineage. Bump it, with a `network` migration, when a change would load existing instances wrongly.
+	/// Instances store it next to their reference. Proto-node definitions take theirs from the node macro.
+	pub version: u32,
+
 	/// The default [`NodeTemplate`] this definition instantiates.
 	pub node_template: NodeTemplate,
 
@@ -154,6 +141,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 	let custom = vec![
 		DocumentNodeDefinition {
 			identifier: "Custom Node",
+			version: 1,
 			category: "Routing",
 			icon: Some("NodeCustomNode"),
 			node_template: NodeTemplate {
@@ -165,48 +153,30 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
+			version: 1,
 			category: "Graphic",
 			icon: Some("NodeMerge"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(4), 0)],
+					exports: vec![NodeInput::node(NodeId(2), 0)],
 					nodes: [
 						// Primary (bottom) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::as_graphic::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -2)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -2)),
 							..Default::default()
 						},
 						// Secondary (left) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 1)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::into_group::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
-							..Default::default()
-						},
-						// Derive the parent layer's NodeId from the document path
-						NodeTemplate {
-							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, 0)),
-							..Default::default()
-						},
-						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
-						// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::node(NodeId(1), 0),
-								NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
-								NodeInput::node(NodeId(2), 0),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
 							..Default::default()
 						},
 						NodeTemplate {
 							call_argument: generic!(T),
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(3), 0)],
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -2)),
 							..Default::default()
@@ -233,11 +203,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Artboard",
+			version: 1,
 			category: "Graphic",
 			icon: Some("NodeArtboard"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(3), 0)],
+					exports: vec![NodeInput::node(NodeId(1), 0)],
 					nodes: [
 						NodeTemplate {
 							call_argument: generic!(T),
@@ -249,32 +220,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								NodeInput::import(item!(TaggedValue), 4),
 								NodeInput::import(item!(TaggedValue), 5),
 							],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
-							..Default::default()
-						},
-						// Derive the parent layer's NodeId from the document path
-						NodeTemplate {
-							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, 3)),
-							..Default::default()
-						},
-						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
-						// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::node(NodeId(0), 0),
-								NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
-								NodeInput::node(NodeId(1), 0),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
 							..Default::default()
 						},
 						NodeTemplate {
 							inputs: vec![
 								NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(list!(Artboard))), 0),
-								NodeInput::node(NodeId(2), 0),
+								NodeInput::node(NodeId(0), 0),
 							],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
@@ -333,6 +285,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Blend",
+			version: 1,
 			category: "Vector: Deform",
 			icon: Some("NodeBlend"),
 			node_template: NodeTemplate {
@@ -517,6 +470,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Origins to Polyline",
+			version: 1,
 			category: "Vector: Path",
 			icon: Some("NodeOriginsToPolyline"),
 			node_template: NodeTemplate {
@@ -598,6 +552,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Load Image",
+			version: 1,
 			category: "Data: I/O",
 			icon: Some("NodeLoadImage"),
 			node_template: NodeTemplate {
@@ -635,52 +590,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("Loads an image from a given URL."),
 			inspector: None,
 		},
-		#[cfg(feature = "gpu")]
-		DocumentNodeDefinition {
-			identifier: "Rasterize",
-			category: "Raster",
-			icon: Some("NodeRasterize"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
-				inputs: vec![
-					NodeInput::type_default(list!(Vector), true),
-					NodeInput::value(
-						TaggedValue::Footprint(Footprint {
-							transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
-							resolution: UVec2::new(1000, 1000),
-							..Default::default()
-						}),
-						false,
-					),
-				],
-				input_metadata: vec![
-					("Artwork", "The graphics to render as an image.").into(),
-					("Footprint", "The area of the document to render, and the resolution to render it at.").into(),
-				],
-				output_names: vec!["Canvas".to_string()],
-				output_descriptions: vec!["The rendered image.".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("Renders a view of the input graphics within an area defined by the *Footprint*, producing a raster image."),
-			inspector: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Extract",
-			category: "",
-			icon: None,
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Extract,
-				inputs: vec![NodeInput::type_default(concrete!(DocumentNode), true)],
-				input_metadata: vec![("Node", "The node to output as data rather than evaluating it.").into()],
-				output_names: vec!["Document Node".to_string()],
-				output_descriptions: vec!["The connected node itself, as data.".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("Outputs the connected node itself as data, rather than the result of evaluating it."),
-			inspector: None,
-		},
 		DocumentNodeDefinition {
 			identifier: "Regex Find",
+			version: 1,
 			category: "String: Regex",
 			icon: Some("NodeRegexFind"),
 			node_template: NodeTemplate {
@@ -756,55 +668,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			),
 			inspector: None,
 		},
-		DocumentNodeDefinition {
-			identifier: "Path",
-			category: "Vector: Geometry",
-			icon: Some("NodePath"),
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(1), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![NodeInput::import(generic!(T), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-							call_argument: generic!(T),
-							skip_deduplication: true,
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::node(NodeId(0), 0),
-								NodeInput::import(concrete!(graphene_std::vector::VectorModification), 1),
-								NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
-							],
-							call_argument: generic!(T),
-							implementation: NodeTemplateImplementation::ProtoNode(vector::path_modify::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![
-					NodeInput::type_default(item!(Vector), true),
-					NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
-				],
-				input_metadata: vec![
-					("Content", "The original shape that edits made with the Pen and Path tools are applied to.").into(),
-					("Modification", "The edits made with the Pen and Path tools, stored as changes to points and segments.").into(),
-				],
-				output_names: vec!["Modified".to_string()],
-				output_descriptions: vec!["The shape with the Pen and Path tool edits applied.".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("Holds the edits made with the Pen and Path tools, applying them to the incoming shape."),
-			inspector: None,
-		},
 	];
 
 	document_node_derive::post_process_nodes(custom)
@@ -838,10 +701,6 @@ fn static_node_inspector() -> NodeInspector {
 	map.insert("grid_inspector".to_string(), Box::new(node_inspector::grid_inspector));
 	map.insert("spiral_inspector".to_string(), Box::new(node_inspector::spiral_inspector));
 	map.insert("sample_polyline_inspector".to_string(), Box::new(node_inspector::sample_polyline_inspector));
-	map.insert(
-		"monitor_inspector".to_string(),
-		Box::new(|_node_id, _context| node_inspector::string_inspector("Used internally by the editor to read the data passing through it.")),
-	);
 	map
 }
 
@@ -1234,33 +1093,50 @@ fn static_input_inspector() -> InputInspector {
 		}),
 	);
 	map.insert(
-		"assign_colors_gradient".to_string(),
+		"vary_fill_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
 			let gradient_row = node_inspector::color_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), ColorInput::default().allow_none(false));
 			Ok(vec![gradient_row])
 		}),
 	);
 	map.insert(
-		"assign_colors_seed".to_string(),
+		"vary_fill_colors_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, vector::vary_fill_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_fill_colors_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, vector::vary_fill_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_stroke_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
-			let randomize_enabled = node_inspector::query_assign_colors_randomize(node_id, context)?;
-			let seed_row = node_inspector::number_widget(
-				ParameterWidgetsInfo::at_index(node_id, index, true, context),
-				NumberInput::default().min(0.).int().disabled(!randomize_enabled),
-			);
-			Ok(vec![seed_row.into()])
+			let gradient_row = node_inspector::color_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), ColorInput::default().allow_none(false));
+			Ok(vec![gradient_row])
 		}),
 	);
 	map.insert(
-		"assign_colors_repeat_every".to_string(),
-		Box::new(|node_id, index, context| {
-			let randomize_enabled = node_inspector::query_assign_colors_randomize(node_id, context)?;
-			let repeat_every_row = node_inspector::number_widget(
-				ParameterWidgetsInfo::at_index(node_id, index, true, context),
-				NumberInput::default().min(0.).int().disabled(randomize_enabled),
-			);
-			Ok(vec![repeat_every_row.into()])
-		}),
+		"vary_stroke_colors_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, vector::vary_stroke_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_stroke_colors_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, vector::vary_stroke_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_rotations_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, transform_nodes::vary_rotations::RandomizeInput)),
+	);
+	map.insert(
+		"vary_rotations_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, transform_nodes::vary_rotations::RandomizeInput)),
+	);
+	map.insert(
+		"vary_scales_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, transform_nodes::vary_scales::RandomizeInput)),
+	);
+	map.insert(
+		"vary_scales_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, transform_nodes::vary_scales::RandomizeInput)),
 	);
 	map.insert(
 		"transform_rotation".to_string(),
@@ -1377,8 +1253,8 @@ fn static_input_inspector() -> InputInspector {
 		}),
 	);
 	map.insert(
-		// Like `math_expression`, where a lone reducer token like `+` or `min` applied across the node's items is also valid
-		"math_expression_or_reducer".to_string(),
+		// Like `math_expression`, but taking only a lone operator or function name like `+` or `min` to apply across the node's items
+		"math_operator".to_string(),
 		Box::new(|node_id, index, context| {
 			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
 			Ok(vec![LayoutGroup::row(node_inspector::math_expression_widget(info, true))])
@@ -1431,6 +1307,13 @@ fn static_input_inspector() -> InputInspector {
 			Ok(vec![choices])
 		}),
 	);
+	map.insert(
+		"vec2_uv".to_string(),
+		Box::new(|node_id, index, context| {
+			let parameter_widgets_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![node_inspector::vec2_widget(parameter_widgets_info, "U", "V", "", None, false)])
+		}),
+	);
 	map
 }
 
@@ -1439,11 +1322,32 @@ pub fn resolve_network_node_type(identifier: &str) -> Option<&'static DocumentNo
 }
 
 pub fn resolve_proto_node_type(identifier: ProtoNodeIdentifier) -> Option<&'static DocumentNodeDefinition> {
-	resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier))
+	resolve_proto_node_definition(&identifier)
+}
+
+/// The proto node definitions keyed by their identifier, so a lookup can borrow it.
+static PROTO_NODE_DEFINITIONS: once_cell::sync::Lazy<HashMap<ProtoNodeIdentifier, &'static DocumentNodeDefinition>> = once_cell::sync::Lazy::new(|| {
+	DOCUMENT_NODE_TYPES
+		.iter()
+		.filter_map(|(identifier, definition)| match identifier {
+			DefinitionIdentifier::ProtoNode(identifier) => Some((identifier.clone(), definition)),
+			_ => None,
+		})
+		.collect()
+});
+
+/// Looks up a proto node's definition without taking its identifier, for reads frequent enough that a clone per call would show.
+pub fn resolve_proto_node_definition(identifier: &ProtoNodeIdentifier) -> Option<&'static DocumentNodeDefinition> {
+	PROTO_NODE_DEFINITIONS.get(identifier).copied()
 }
 
 pub fn resolve_document_node_type(identifier: &DefinitionIdentifier) -> Option<&'static DocumentNodeDefinition> {
 	DOCUMENT_NODE_TYPES.get(identifier)
+}
+
+/// The current version of the network definition `identifier`, or 1 for a reference that names no definition.
+pub fn network_definition_version(identifier: &str) -> u32 {
+	resolve_network_node_type(identifier).map_or(1, |definition| definition.version)
 }
 
 impl InputTypeConstraint {
@@ -1544,10 +1448,6 @@ impl InputTypeConstraint {
 				}
 				result_accepted
 			}
-			NodeTemplateImplementation::Extract => {
-				warn!("Input types for extract node {name} not supported");
-				Self::All
-			}
 			NodeTemplateImplementation::Definition(_) => {
 				warn!("Input types for definition node {name} not supported");
 				Self::All
@@ -1611,6 +1511,14 @@ pub fn collect_node_descriptions() -> Vec<(String, String)> {
 		.collect()
 }
 
+/// The identifiers of the catalog's network nodes.
+pub fn network_node_identifiers() -> impl Iterator<Item = &'static str> {
+	DOCUMENT_NODE_TYPES.keys().filter_map(|identifier| match identifier {
+		DefinitionIdentifier::Network(name) => Some(name.as_str()),
+		DefinitionIdentifier::ProtoNode(_) => None,
+	})
+}
+
 pub fn collect_node_icons() -> Vec<(String, IconName)> {
 	DOCUMENT_NODE_TYPES
 		.iter()
@@ -1647,9 +1555,41 @@ impl DocumentNodeDefinition {
 
 #[cfg(test)]
 mod test {
-	use super::resolve_network_node_type;
+	use super::{DOCUMENT_NODE_TYPES, DefinitionIdentifier, resolve_network_node_type};
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::document::NodeId;
+
+	#[test]
+	fn rasterize_defaults_to_a_1000_px_square_at_full_resolution() {
+		use glam::{DAffine2, UVec2};
+		use graph_craft::document::value::TaggedValue;
+		use graphene_std::platform_application_io::rasterize;
+
+		let definition = super::resolve_proto_node_definition(&rasterize::IDENTIFIER).expect("Rasterize should have a definition");
+		let footprint = definition.node_template.input(rasterize::FootprintInput).and_then(|input| input.as_value());
+
+		let expected = Footprint {
+			transform: DAffine2::from_scale(DVec2::splat(1000.)),
+			resolution: UVec2::splat(1000),
+			..Default::default()
+		};
+		assert_eq!(footprint, Some(&TaggedValue::Footprint(expected)));
+	}
+
+	// The executor input the compiler fills in has no type yet, which mustn't rule out every implementation
+	#[tokio::test]
+	async fn a_new_rasterize_node_offers_types_for_its_artwork() {
+		use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+		use graphene_std::platform_application_io::rasterize;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let node_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(rasterize::IDENTIFIER)).await;
+
+		let interface = &editor.active_document().network_interface;
+		let artwork_types = interface.potential_valid_input_types(&InputConnector::node_at_index(node_id, 0), &[]);
+		assert!(!artwork_types.is_empty(), "the artwork input should accept the types Rasterize is implemented for");
+	}
 
 	// Guards the embedded Map body chain (Read Vector -> Extract Transform -> Decompose Translation -> As Vector) against registry drift
 	#[tokio::test]
@@ -1722,6 +1662,20 @@ mod test {
 
 		let empty: Vec<_> = CATEGORY_ORDER.iter().filter(|category| !categories.contains(*category)).collect();
 		assert!(empty.is_empty(), "`CATEGORY_ORDER` lists categories with no nodes: {empty:?}");
+	}
+
+	#[test]
+	fn every_bumped_network_definition_has_a_migration_leading_to_it() {
+		let targets: Vec<_> = migration_core::registered_migrations().iter().map(|migration| migration.target()).collect();
+
+		for (identifier, definition) in DOCUMENT_NODE_TYPES.iter() {
+			if !matches!(identifier, DefinitionIdentifier::Network(_)) || definition.version == 1 {
+				continue;
+			}
+
+			let declaration = migration_core::Declaration::network(definition.identifier, definition.version);
+			assert!(targets.contains(&declaration), "{declaration} has no migration leading to it");
+		}
 	}
 }
 

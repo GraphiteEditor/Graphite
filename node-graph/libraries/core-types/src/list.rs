@@ -80,6 +80,9 @@ pub const ATTR_POSITION: &str = "position";
 pub const ATTR_MIDPOINT: &str = "midpoint";
 /// Item's ordered list of paint passes, of type `Appearance`. Earlier coverages paint first, compositing below later ones.
 pub const ATTR_APPEARANCE: &str = "appearance";
+/// Item's ordered list of effects, of type `Effects`, which the renderer applies in turn to the pixels the item renders to.
+/// Unlike the appearance, it doesn't cascade to descendants.
+pub const ATTR_EFFECTS: &str = "effects";
 // TODO: Add a "fill_rule" attribute as a sibling of "paint" on the coverage list (uniform across covers) once a FillRule type ships
 /// Coverage's `Graphic` paint (implicit default `Graphic::None`, painting nothing), on the
 /// `List<Coverage>` inside an `Appearance`.
@@ -124,6 +127,21 @@ pub const ATTR_SMOOTH: &str = "smooth";
 /// the internal addressing: a `PointId` on a `Vector`'s point pool, or a `SegmentId` on the `List<i64>`
 /// inside a `Path` at the anchor reference the segment departs from.
 pub const ATTR_ID: &str = "id";
+/// Point's `i64` count of the `[` branches the turtle was nested in when drawing it, on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_DEPTH: &str = "depth";
+/// Point's `f64` distance the turtle traveled from its start to reach it, on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_DISTANCE: &str = "distance";
+/// Point's `f64` direction in degrees the turtle faced arriving at it (`0.` along +X, clockwise on screen), on a `Vector`'s
+/// point pool from Turtle Path.
+pub const ATTR_HEADING: &str = "heading";
+/// Point's `f64` width the turtle drew with there, on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_WIDTH: &str = "width";
+/// Point's `DVec2` U and V numbers, counted up by `'` and `#`, on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_UV: &str = "uv";
+/// Point's `f64` turtle step length, scaled by `"` and `_`, on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_STEP: &str = "step";
+/// Point's `i64` kind set by a `.` outside a shape (default `1`), or `0` for a drawn point, on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_KIND: &str = "kind";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
 /// Text item's font, as a `Resource` of the loaded font file.

@@ -17,7 +17,10 @@ members = [
 	"document/migrations/formats",
 	"document/migrations/snapshot",
 	"document/migrations/nodes",
+	"document/migrations/compiled",
 	"document/peer-transport",
+	"document/live",
+	"document/loader",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -92,6 +95,7 @@ core-types = { path = "node-graph/libraries/core-types" }
 raster-types = { path = "node-graph/libraries/raster-types" }
 vector-types = { path = "node-graph/libraries/vector-types" }
 graphic-types = { path = "node-graph/libraries/graphic-types" }
+raster-kernels = { path = "node-graph/libraries/raster-kernels" }
 brush-types = { path = "node-graph/libraries/brush-types" }
 rendering = { path = "node-graph/libraries/rendering" }
 brush-nodes = { path = "node-graph/nodes/brush" }
@@ -113,8 +117,11 @@ migration-core = { path = "document/migrations/core", default-features = false }
 migration-macros = { path = "document/migrations/macros" }
 migration-runner = { path = "document/migrations/runner" }
 migration-formats = { path = "document/migrations/formats" }
+migration-compiled = { path = "document/migrations/compiled" }
 migration-nodes = { path = "document/migrations/nodes" }
 peer-transport = { path = "document/peer-transport" }
+document-live = { path = "document/live" }
+document-loader = { path = "document/loader" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
@@ -139,13 +146,14 @@ serde_bytes = "0.11"
 serde-wasm-bindgen = "0.6"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
 futures = "0.3"
+web-time = "1.1"
 env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
-ctor = "0.2"
+ctor = "1.0"
 convert_case = "0.12"
 titlecase = "3.6"
-fancy-regex = "0.18.0"
+fancy-regex = "0.20.0"
 unicode-segmentation = "1.13.2"
 indoc = "2.0.5"
 derivative = "2.2"
@@ -171,10 +179,10 @@ wgpu = { version = "30.0", default-features = false, features = [
 	"strict_asserts",
 ] }
 once_cell = "1.13" # Remove and replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
-wasm-bindgen = "=0.2.127" # NOTICE: keep in sync with the `wasm-bindgen-cli` version pinned in `.github/workflows/build.yml`, `.devcontainer/devcontainer.json`, `.nix/dev.nix`, `.nix/pkgs/graphite.nix`, and `tools/cargo-run/src/requirements.rs`. We pin this version because wasm-bindgen upgrades may break various things.
+wasm-bindgen = "=0.2.129" # NOTICE: keep in sync with the `wasm-bindgen-cli` version pinned in `.github/workflows/build.yml`, `.devcontainer/devcontainer.json`, `.nix/dev.nix`, `.nix/pkgs/graphite.nix`, and `tools/cargo-run/src/requirements.rs`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
-js-sys = "=0.3.104"
-web-sys = { version = "=0.3.104", features = [
+js-sys = "=0.3.106"
+web-sys = { version = "=0.3.106", features = [
 	"Document",
 	"DomRect",
 	"Element",
@@ -191,6 +199,12 @@ web-sys = { version = "=0.3.104", features = [
 	"Gpu",
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
+	"Lock",
+	"LockInfo",
+	"LockManager",
+	"LockManagerSnapshot",
+	"LockMode",
+	"LockOptions",
 ] }
 winit = "0.31.0-beta.4"
 keyboard-types = "0.8"
@@ -199,25 +213,25 @@ tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-mult
 # Linebender ecosystem (BEGIN)
 kurbo = { version = "0.13", features = ["serde"] }
 vello_gpu = { version = "0.3", default-features = false, features = ["wgpu", "full_image_support"] }
-usvg = "0.47"
+usvg = "0.49"
 simplecss = "0.2"
-parley = { version = "0.9", default-features = false, features = ["std"] }
-skrifa = "0.42"
+parley = { version = "0.12", default-features = false, features = ["std"] }
+skrifa = "0.44"
 polycool = "0.4"
 color = "0.3"
 # Linebender ecosystem (END)
-rand = { version = "0.9", default-features = false, features = ["std_rng"] }
-rand_chacha = "0.9"
-glam = { version = "0.33", default-features = false, features = [
+rand = { version = "0.10", default-features = false, features = ["std_rng"] }
+rand_chacha = "0.10"
+glam = { version = "0.34", default-features = false, features = [
 	"std",
 	"scalar-math",
 	"bytemuck",
 	"debug-glam-assert",
 	"all-types",
 ] }
-base64 = "0.22"
+base64 = "0.23"
 blake3 = "1.5"
-mmap-io = { version = "0.9", features = ["hugepages"] }
+mmap-io = { version = "1.0", features = ["hugepages"] }
 image = { version = "0.25", default-features = false, features = [
 	"png",
 	"jpeg",
@@ -234,10 +248,10 @@ image = { version = "0.25", default-features = false, features = [
 pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = { version = "0.7", default-features = false }
-num-derive = "0.4"
+num-derive = "0.5"
 num-traits = "0.2"
 tsify = { version = "0.5", default-features = false, features = ["js"] }
-syn = { version = "2.0", default-features = false, features = [
+syn = { version = "3.0", default-features = false, features = [
 	"full",
 	"derive",
 	"parsing",
@@ -251,14 +265,14 @@ syn = { version = "2.0", default-features = false, features = [
 lyon_geom = "1.0"
 delaunator = "1.0"
 robust = "1.2"
-petgraph = { version = "0.7", default-features = false, features = ["graphmap"] }
+petgraph = { version = "0.8", default-features = false, features = ["graphmap"] }
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }
 tinyvec = { version = "1", features = ["std"] }
-criterion = { version = "0.7", features = ["html_reports"] }
-gungraun = { version = "0.18" }
-ndarray = "0.16"
-ollev = "0.1.1"
-dirs = "6.0"
+criterion = { version = "0.8", features = ["html_reports"] }
+gungraun = { version = "0.20" }
+ndarray = "0.17"
+ollev = "0.1.2"
+dirs = "7.0"
 cef = "156"
 cef-dll-sys = "156"
 include_dir = "0.7"
@@ -266,14 +280,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
 rfd = "0.17"
 open = "5.3"
-spin = "0.10"
+spin = "0.12"
 clap = "4.5"
 qrcodegen = "1.8"
-lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
-scraper = "0.25"
-linesweeper = "0.4"
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
+scraper = "0.29"
+linesweeper = "0.5"
 smallvec = "1.13.2"
-zip = { version = "8", default-features = false }
+zip = { version = "9", default-features = false }
 
 [workspace.lints]
 
@@ -297,6 +311,6 @@ debug = true
 [patch.crates-io]
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
 # TODO: Remove these once the fork's fixes are upstreamed and released
-vello_gpu = { git = "https://github.com/Keavon/vello.git", rev = "f20a8dde35de04c44d05e88b33864f27ad7d6f70" }
-vello_common = { git = "https://github.com/Keavon/vello.git", rev = "f20a8dde35de04c44d05e88b33864f27ad7d6f70" }
-vello_gpu_shaders = { git = "https://github.com/Keavon/vello.git", rev = "f20a8dde35de04c44d05e88b33864f27ad7d6f70" }
+vello_gpu = { git = "https://github.com/Keavon/vello.git", rev = "4df331db2a02cb0f1cef4a0190dbbb2a00f4b075" }
+vello_common = { git = "https://github.com/Keavon/vello.git", rev = "4df331db2a02cb0f1cef4a0190dbbb2a00f4b075" }
+vello_gpu_shaders = { git = "https://github.com/Keavon/vello.git", rev = "4df331db2a02cb0f1cef4a0190dbbb2a00f4b075" }

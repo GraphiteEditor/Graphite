@@ -179,19 +179,32 @@ fn sanitize_filename_stem(name: &str) -> Option<String> {
 	if matches!(
 		first_segment.as_str(),
 		"CON"
-			| "PRN" | "AUX"
-			| "NUL" | "COM1"
-			| "COM2" | "COM3"
-			| "COM4" | "COM5"
-			| "COM6" | "COM7"
-			| "COM8" | "COM9"
-			| "COM¹" | "COM²"
-			| "COM³" | "LPT1"
-			| "LPT2" | "LPT3"
-			| "LPT4" | "LPT5"
-			| "LPT6" | "LPT7"
-			| "LPT8" | "LPT9"
-			| "LPT¹" | "LPT²"
+			| "PRN"
+			| "AUX"
+			| "NUL"
+			| "COM1"
+			| "COM2"
+			| "COM3"
+			| "COM4"
+			| "COM5"
+			| "COM6"
+			| "COM7"
+			| "COM8"
+			| "COM9"
+			| "COM¹"
+			| "COM²"
+			| "COM³"
+			| "LPT1"
+			| "LPT2"
+			| "LPT3"
+			| "LPT4"
+			| "LPT5"
+			| "LPT6"
+			| "LPT7"
+			| "LPT8"
+			| "LPT9"
+			| "LPT¹"
+			| "LPT²"
 			| "LPT³"
 	) {
 		return None;
@@ -229,6 +242,7 @@ mod tests {
 			name: name.to_string(),
 			path: None,
 			is_saved: true,
+			session: None,
 		});
 
 		let names: HashSet<_> = recovery_file_names(infos.iter()).into_iter().map(|(_, name)| name).collect();

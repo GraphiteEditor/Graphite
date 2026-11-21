@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, LAYER_SECONDARY_INPUT_INDEX, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
-use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeFilter};
+use crate::messages::portfolio::ingest::utility_types::{DataTransferItem, IngestAction, TypeFilter};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
@@ -40,7 +40,7 @@ use graphene_std::vector::style::{
 	build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
-use graphene_std::{Artboard, Graphic, Vector};
+use graphene_std::{Artboard, GlowTechnique, Graphic, Vector};
 use graphene_std::{NodeParameter, ParameterRef};
 use math_parser::parser::{MessagePart, ParseError};
 use std::path::PathBuf;
@@ -438,6 +438,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<DesaturateMethod>(x) => enum_choice::<DesaturateMethod>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<GlowTechnique>(x) => enum_choice::<GlowTechnique>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).inspector_row(),
@@ -481,16 +482,16 @@ pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetIn
 }
 
 /// A math expression's typeset text field, with a warning icon in the assist area giving the error in its tooltip while the expression fails to parse.
-pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, accepts_reducers: bool) -> Vec<WidgetInstance> {
+pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, operator_only: bool) -> Vec<WidgetInstance> {
 	let Some(TaggedValue::String(expression)) = parameter_widgets_info.input().and_then(|input| input.as_non_exposed_value()) else {
 		return text_widget(parameter_widgets_info);
 	};
-	let error = math_expression_error(expression, accepts_reducers);
-	let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(expression, accepts_reducers);
+	let error = math_expression_error(expression, operator_only);
+	let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(expression, operator_only);
 	let input = MathExpressionInput::new(expression.clone())
 		.tokens(tokens)
 		.tooltips(tooltips)
-		.accepts_reducers(accepts_reducers)
+		.operator_only(operator_only)
 		.errors(math_expression_error_ranges(expression, error.as_ref()))
 		.on_update(parameter_widgets_info.update_value(|x: &MathExpressionInput| TaggedValue::String(x.value.clone())))
 		.on_commit(commit_value)
@@ -500,7 +501,7 @@ pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, 
 	// padded to a checkbox's 16px so the field lines up with the rows around it
 	let icon = match &error {
 		Some(error) => IconLabel::new("Warning")
-			.tooltip_label("Invalid Math Expression")
+			.tooltip_label(if operator_only { "Invalid Operator" } else { "Invalid Math Expression" })
 			.tooltip_description(math_expression_error_description(error)),
 		None => IconLabel::new("Empty12px"),
 	};
@@ -1001,7 +1002,12 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		}
 	}
 
+	let parameter_widgets_info = ParameterWidgetsInfo {
+		blank_assist: false,
+		..parameter_widgets_info
+	};
 	let ParameterWidgetsInfo {
+		document_id,
 		document_node,
 		node_id,
 		index,
@@ -1025,8 +1031,27 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		Some(TaggedValue::TypeDefault(_)) => Font::default(),
 		_ => return (first_widgets, second_widgets),
 	};
+
+	let filters = vec![TypeFilter::font()];
+	let file_drop_action = IngestAction::resource_input(document_id, node_id, index, &filters);
+	let load_button = IconButton::new("FileImport", 24)
+		.tooltip_label("Load Font File")
+		.tooltip_description("Use a font that isn't in the list by loading its .ttf or .otf file. The font is saved with the document.")
+		.on_update(move |_| {
+			IngestMessage::SetResourceInput {
+				document_id,
+				node_id,
+				input_index: index,
+				filters: filters.clone(),
+			}
+			.into()
+		})
+		.widget_instance();
+
 	{
 		first_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			load_button,
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(vec![
 				fonts
@@ -1050,7 +1075,15 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					.collect::<Vec<_>>(),
 			])
 			.selected_index(fonts.font_catalog.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
+			.placeholder(font.font_family.clone())
 			.virtual_scrolling(true)
+			.on_file_drop(move |file| {
+				IngestMessage::Ingest {
+					content: DataTransferItem::from_file(PathBuf::from(&file.name), Some(file.mime_type.as_str()).filter(|mime| !mime.is_empty()), file.data.clone()).into(),
+					action: file_drop_action.clone(),
+				}
+				.into()
+			})
 			.widget_instance(),
 		]);
 
@@ -1094,6 +1127,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					})
 					.map(|i| i as u32),
 			)
+			.placeholder(font.font_style.clone())
 			.widget_instance(),
 		]);
 		second_widgets = Some(second_row);
@@ -1578,10 +1612,8 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Ve
 			.selected_index(selected_index)
 			.on_file_drop(move |file| {
 				IngestMessage::Ingest {
-					data: file.data.clone(),
+					content: DataTransferItem::from_file(PathBuf::from(&file.name), Some(file.mime_type.as_str()).filter(|mime| !mime.is_empty()), file.data.clone()).into(),
 					action: file_drop_action.clone(),
-					mime_type: file.mime_type.clone(),
-					path: Some(PathBuf::from(&file.name)),
 				}
 				.into()
 			})
@@ -1637,15 +1669,33 @@ pub fn query_noise_pattern_state(node_id: NodeId, context: &NodeInspectorContext
 	))
 }
 
-pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodeInspectorContext) -> Result<bool, String> {
-	use graphene_std::vector::assign_colors::*;
-
+fn query_vary_randomize(node_id: NodeId, context: &NodeInspectorContext, randomize: impl NodeParameter) -> Result<bool, String> {
 	let document_node = get_document_node(node_id, context)?;
 	// This is safe since the node is a proto node and the implementation cannot be changed.
-	Ok(match document_node.input(RandomizeInput).and_then(|input| input.as_value()) {
+	Ok(match document_node.input(randomize).and_then(|input| input.as_value()) {
 		Some(TaggedValue::Bool(randomize_enabled)) => *randomize_enabled,
 		_ => false,
 	})
+}
+
+/// The seed of a vary node (like Vary Fill Colors), which applies only while its given Randomize parameter is enabled.
+pub fn vary_seed_widget(node_id: NodeId, index: usize, context: &mut NodeInspectorContext, randomize: impl NodeParameter) -> Result<Vec<LayoutGroup>, String> {
+	let randomize_enabled = query_vary_randomize(node_id, context, randomize)?;
+	let seed_row = number_widget(
+		ParameterWidgetsInfo::at_index(node_id, index, true, context),
+		NumberInput::default().min(0.).int().disabled(!randomize_enabled),
+	);
+	Ok(vec![seed_row.into()])
+}
+
+/// The repeat count of a vary node (like Vary Fill Colors), which applies only while its given Randomize parameter is disabled.
+pub fn vary_repeat_every_widget(node_id: NodeId, index: usize, context: &mut NodeInspectorContext, randomize: impl NodeParameter) -> Result<Vec<LayoutGroup>, String> {
+	let randomize_enabled = query_vary_randomize(node_id, context, randomize)?;
+	let repeat_every_row = number_widget(
+		ParameterWidgetsInfo::at_index(node_id, index, true, context),
+		NumberInput::default().min(0.).int().disabled(randomize_enabled),
+	);
+	Ok(vec![repeat_every_row.into()])
 }
 
 /// 2-stop black-to-white gradient track for sliders that map a value to a grayscale axis.
@@ -3127,8 +3177,8 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 	} else {
 		let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
 		for input_index in 1..number_of_inputs {
-			// Hide inputs that are connected to a scope
-			if let Some(NodeInput::Scope(_)) = context
+			// Hide inputs that are connected to a scope or filled in by the compiler
+			if let Some(NodeInput::Scope(_) | NodeInput::Reflection(_)) = context
 				.network_interface
 				.input_from_connector(&InputConnector::node_at_index(node_id, input_index), context.selection_network_path)
 			{
@@ -3924,12 +3974,13 @@ mod tests {
 
 	#[test]
 	fn math_expressions_are_flagged_only_when_they_fail_to_parse() {
-		for (expression, accepts_reducers) in [("x * 2", false), ("", false), ("  ", true), ("min", false), ("+", true), ("min", true)] {
-			assert!(math_expression_error(expression, accepts_reducers).is_none(), "`{expression}`");
+		for (expression, operator_only) in [("x * 2", false), ("", false), ("  ", true), ("min", false), ("+", true), ("min", true), (" ≤ ", true)] {
+			assert!(math_expression_error(expression, operator_only).is_none(), "`{expression}`");
 		}
 
 		assert!(math_expression_error("2 +", false).is_some());
-		assert!(math_expression_error("+", false).is_some(), "a lone reducer is an error where the node applies none");
+		assert!(math_expression_error("+", false).is_some(), "a lone operator is an error where the node takes an expression");
+		assert!(math_expression_error("a + b", true).is_some(), "an expression is an error where the node takes a lone operator");
 		assert_eq!(description("sin(I)").as_deref(), Some("A matrix stands where a value is needed"));
 	}
 

@@ -69,8 +69,8 @@ pub fn run(options: SessionOptions) -> Result<(), String> {
 }
 
 fn serve(stream: Stream, state: &HostState) {
-	let (receiver, mut sender) = stream.split();
-	let mut receiver = BufReader::new(receiver);
+	let mut receiver = BufReader::new(&stream);
+	let mut sender = &stream;
 
 	let refusal = match socket::read_message(&mut receiver) {
 		Ok(Some(ClientMessage::Attach { version, .. })) if version != PROTOCOL_VERSION => Some(format!(

@@ -397,7 +397,8 @@ impl BrushToolData {
 			&& matches!(value(brush_strokes::DiameterInput::INDEX), Some(TaggedValue::Number(diameter)) if {
 				let target = options.stroke_diameter(document);
 				(*diameter - target).abs() <= diameter.abs().max(target.abs()) * (f64::EPSILON * 8.)
-			}) && matches!(value(brush_strokes::HardnessInput::INDEX), Some(TaggedValue::Number(hardness)) if *hardness == options.hardness)
+			})
+			&& matches!(value(brush_strokes::HardnessInput::INDEX), Some(TaggedValue::Number(hardness)) if *hardness == options.hardness)
 			&& matches!(value(brush_strokes::FlowInput::INDEX), Some(TaggedValue::Number(flow)) if *flow == options.flow)
 	}
 

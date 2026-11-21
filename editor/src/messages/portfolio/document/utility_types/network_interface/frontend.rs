@@ -118,17 +118,13 @@ impl NodeNetworkInterface {
 		})
 	}
 
-	/// Returns the input name to display in the Inspector. If the name is empty then the type is used.
+	/// Returns the input name to display in the Inspector. If the input has no name then its type is used.
 	pub fn displayed_input_name_and_description(&self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> (String, String) {
-		let Some(input_metadata) = self.persistent_input_metadata(node_id, input_index, network_path) else {
-			log::warn!("input metadata not found in displayed_input_name_and_description");
-			return (String::new(), String::new());
-		};
-		let description = input_metadata.input_description.to_string();
-		let name = if input_metadata.input_name.is_empty() {
-			self.input_type(&InputConnector::node_at_index(*node_id, input_index), network_path).resolved_type_node_string()
-		} else {
-			input_metadata.input_name.to_string()
+		let input_metadata = self.persistent_input_metadata(node_id, input_index, network_path);
+		let description = input_metadata.map(|input_metadata| input_metadata.input_description.to_string()).unwrap_or_default();
+		let name = match input_metadata.map(|input_metadata| input_metadata.input_name.as_str()) {
+			Some(name) if !name.is_empty() => name.to_string(),
+			_ => self.input_type(&InputConnector::node_at_index(*node_id, input_index), network_path).resolved_type_node_string(),
 		};
 		(name, description)
 	}
@@ -151,7 +147,7 @@ impl NodeNetworkInterface {
 		established_type_name(&self.output_type(&OutputConnector::Import(import_index), network_path)).unwrap_or_else(|| format!("Import #{import_index}"))
 	}
 
-	/// The description of a subgraph's import, which its encapsulating node stores for the input.
+	/// The description of a subgraph's import, from the interface of the network implementing it.
 	pub fn import_description(&self, import_index: usize, network_path: &[NodeId]) -> String {
 		let Some((encapsulating_node_id, encapsulating_path)) = network_path.split_last() else {
 			return String::new();

@@ -59,6 +59,10 @@ pub enum DocumentMessage {
 	DeselectAllLayers,
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
+	ChangeHistoryLine {
+		rev: document_graph_storage::Rev,
+		change: crate::messages::portfolio::history::utility_types::LineChange,
+	},
 	DocumentStructureChanged,
 	DrawArtboardOverlays {
 		context: OverlayContext,
@@ -129,6 +133,10 @@ pub enum DocumentMessage {
 	},
 	PasteNodes {
 		nodes: Vec<(NodeId, NodeTemplate)>,
+	},
+	/// Names the open interaction for the History panel, such as after the transaction a tool starts.
+	NameInteraction {
+		action: String,
 	},
 	MoveSelectedLayersToGroup {
 		parent: LayerNodeIdentifier,
@@ -248,6 +256,9 @@ pub enum DocumentMessage {
 	MakeNodeUnique {
 		node_id: NodeId,
 	},
+	/// Gives the network open in the graph its own copy of each built-in node it lies in, so it can be edited.
+	MakeNetworkEditable,
+	MakeNetworkEditableImpl,
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
@@ -320,6 +331,9 @@ pub enum DocumentMessage {
 	#[serde(skip)]
 	UpdateAppearanceAttributes {
 		appearance_attributes: HashMap<NodeId, Arc<Appearance>>,
+	},
+	UpdateEffectsReach {
+		effects_reach: HashMap<NodeId, f64>,
 	},
 	Undo,
 	UngroupSelectedLayers,

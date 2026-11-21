@@ -1,3 +1,4 @@
+use crate::BlobRecord;
 use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, MergeOutcome, PeerId, Registry, ResourceHash, RetiredMarks, Rev, Session};
 use std::collections::HashSet;
 
@@ -66,6 +67,14 @@ pub trait SyncTarget {
 		None
 	}
 	fn store_resource(&mut self, _hash: ResourceHash, _bytes: &[u8]) -> Result<(), TargetError> {
+		Ok(())
+	}
+	/// The record of every held blob, for a peer that syncs from this one. A base comes before the blobs that use it.
+	fn blob_records(&self) -> Vec<BlobRecord> {
+		Vec::new()
+	}
+	/// Hold the blobs of records from a peer. A record with a missing base is dropped and later fetched as a missing resource.
+	fn absorb_blob_records(&mut self, _records: Vec<BlobRecord>) -> Result<(), TargetError> {
 		Ok(())
 	}
 }

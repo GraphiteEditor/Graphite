@@ -5,6 +5,7 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Graph from "/src/components/views/Graph.svelte";
+	import RemoteCursor from "/src/components/views/RemoteCursor.svelte";
 	import RulerInput from "/src/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
@@ -14,7 +15,6 @@
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceColor, createSRgba8, sRgba8FromCSS } from "/src/utility-functions/colors";
-	import { pasteFile } from "/src/utility-functions/files";
 	import { cleanupInputField } from "/src/utility-functions/input";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
@@ -30,6 +30,7 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const document = getContext<DocumentStore>("document");
+	const remoteCursors = document.remoteCursorsStore;
 
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
@@ -88,7 +89,6 @@
 	let canvasWidth: number | undefined = undefined;
 	let canvasHeight: number | undefined = undefined;
 
-	let devicePixelRatio: number | undefined;
 	let removeUpdatePixelRatio: (() => void) | undefined;
 	let viewportResizeObserver: ResizeObserver | undefined;
 	let cleanupViewportResizeObserver: (() => void) | undefined;
@@ -101,13 +101,6 @@
 	// The value above in pixels, or if undefined, we fall back to 100% as a non-pixel-perfect backup that's hopefully short-lived
 	$: canvasWidthCSS = canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%";
 	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
-
-	$: canvasWidthScaled = canvasWidth && devicePixelRatio && Math.floor(canvasWidth * devicePixelRatio);
-	$: canvasHeightScaled = canvasHeight && devicePixelRatio && Math.floor(canvasHeight * devicePixelRatio);
-
-	// Used to set the canvas rendering dimensions.
-	$: canvasWidthScaledRoundedToEven = canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled);
-	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
 		if (!layoutGroup || !("Row" in layoutGroup)) return undefined;
@@ -148,7 +141,7 @@
 
 		e.preventDefault();
 
-		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor, mouse));
+		editor.ingest(e.dataTransfer, mouse?.[0], mouse?.[1]);
 	}
 
 	function panCanvasX(newValue: number) {
@@ -453,7 +446,6 @@
 		canvasWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
 		canvasHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
 
-		devicePixelRatio = window.devicePixelRatio || 1;
 		viewportBounds = viewport.getBoundingClientRect();
 
 		// Resize the rulers
@@ -713,6 +705,9 @@
 						bind:this={viewport}
 						data-viewport
 					>
+						{#each $remoteCursors as cursor}
+							<RemoteCursor {cursor} />
+						{/each}
 						{#if !$appWindow.viewportHolePunch}
 							<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 								{@html artworkSvg}
@@ -723,17 +718,6 @@
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll}></div>
 							{/if}
 						</div>
-						{#if !$appWindow.viewportHolePunch}
-							<canvas
-								class="overlays"
-								width={canvasWidthScaledRoundedToEven}
-								height={canvasHeightScaledRoundedToEven}
-								style:width={canvasWidthCSS}
-								style:height={canvasHeightCSS}
-								data-overlays-canvas
-							>
-							</canvas>
-						{/if}
 						{#if isWeb && $document.renderStatus === "Rendering"}
 							<TextLabel class="shader-compiling-overlay" italic={true} classes={{ show: !firstArtworkReceived }}>Initializing Renderer…</TextLabel>
 						{/if}
@@ -954,8 +938,7 @@
 						overflow: hidden;
 
 						.artwork,
-						.text-input,
-						.overlays {
+						.text-input {
 							position: absolute;
 							top: 0;
 							// Fallback values if JS hasn't set these to integers yet

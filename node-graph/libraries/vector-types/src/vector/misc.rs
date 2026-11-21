@@ -154,6 +154,8 @@ pub enum GridTopology {
 	Serpentine,
 	/// One path through every point that finishes each region of the grid before moving on to the next.
 	HilbertCurve,
+	/// One closed path through every point, finishing each region of the grid before moving on to the next, so animating along it loops with no visible start.
+	MooreCurve,
 	/// One path winding inward through every point, lap by lap.
 	Spiral,
 	/// One closed path through every point, so animating along it loops with no visible start. Rectangular grids with an odd number of both columns and rows leave out one corner.

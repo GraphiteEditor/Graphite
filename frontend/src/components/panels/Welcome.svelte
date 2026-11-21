@@ -6,7 +6,6 @@
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import { welcomeScreenButtonsLayout } from "/src/stores/portfolio";
-	import { pasteFile } from "/src/utility-functions/files";
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const editor = getContext<EditorWrapper>("editor");
@@ -16,7 +15,7 @@
 
 		e.preventDefault();
 
-		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor));
+		editor.ingest(e.dataTransfer);
 	}
 </script>
 

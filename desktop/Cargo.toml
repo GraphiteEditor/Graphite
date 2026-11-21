@@ -20,9 +20,8 @@ path = "src/main.rs"
 
 [features]
 default = ["recommended", "embedded_resources"]
-recommended = ["gpu", "accelerated_paint"]
+recommended = ["accelerated_paint"]
 embedded_resources = ["graphite-desktop-ui/embedded_resources"]
-gpu = ["graphite-desktop-wrapper/gpu"]
 accelerated_paint = ["graphite-desktop-ui/accelerated_paint"]
 
 [dependencies]

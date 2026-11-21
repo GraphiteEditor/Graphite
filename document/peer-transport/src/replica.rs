@@ -1,4 +1,4 @@
-use crate::packet::{Broadcast, BroadcastBody, CursorPosition, PacketError, PeerSeq, Role, SyncPacket, SyncPayload};
+use crate::packet::{BlobRecord, Broadcast, BroadcastBody, CursorPosition, PacketError, PeerSeq, Role, SyncPacket, SyncPayload};
 use crate::target::{SyncTarget, TargetError};
 use crate::transport::{Transport, TransportEvent, TransportPeerId};
 use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, ResourceHash, Rev, UserId};
@@ -122,6 +122,10 @@ impl Replica {
 		log::debug!("Join handshake: no host greeted, becoming the host");
 		self.become_host();
 		Some(Role::Host)
+	}
+
+	pub fn has_host(&self) -> bool {
+		self.current_host().is_some()
 	}
 
 	/// The link and id of the peer greeting as host. While two coexist this is the one with the lower id, which keeps
@@ -322,12 +326,13 @@ impl Replica {
 		self.requested_resources.iter().copied()
 	}
 
-	pub fn broadcast_hot_ops(&mut self, ops: &[HotOp]) -> Result<(), PacketError> {
+	/// Broadcast staged `ops` together with the records of their new blobs.
+	pub fn broadcast_hot_ops(&mut self, ops: &[HotOp], blobs: Vec<BlobRecord>) -> Result<(), PacketError> {
 		if ops.is_empty() {
 			return Ok(());
 		}
 		self.resources_stale = true;
-		self.broadcast(BroadcastBody::HotOps(ops.to_vec()))
+		self.broadcast(BroadcastBody::HotOps { ops: ops.to_vec(), blobs })
 	}
 
 	/// Ask the host to undo (`restore == false`) or redo (`restore == true`) this peer's retired interaction.
@@ -401,6 +406,12 @@ impl Replica {
 	}
 
 	pub fn send_resource(&mut self, to: TransportPeerId, hash: ResourceHash, bytes: Vec<u8>) -> Result<(), PacketError> {
+		if let Some(recipients) = self.owed_resources.get_mut(&hash) {
+			recipients.remove(&to);
+			if recipients.is_empty() {
+				self.owed_resources.remove(&hash);
+			}
+		}
 		self.transport.send(to, &SyncPacket::Resource { hash, bytes })
 	}
 
@@ -488,7 +499,7 @@ impl Replica {
 		let retired = target.retired_marks();
 		let unretired: Vec<HotOp> = target.hot_log().into_iter().filter(|hot_op| !retired.covers(hot_op.id())).collect();
 
-		self.broadcast_hot_ops(&unretired)?;
+		self.broadcast_hot_ops(&unretired, Vec::new())?;
 		if retired.is_empty() {
 			return Ok(());
 		}
@@ -682,6 +693,7 @@ impl Replica {
 					retired: target.retired_marks(),
 					document_id: target.document_id(),
 					metadata: target.metadata(),
+					blobs: target.blob_records(),
 				};
 				log::debug!("Join handshake: sync answered with {} deltas and {} hot ops", sync.deltas.len(), sync.hot_log.len());
 				self.transport.send(from, &SyncPacket::Sync(Box::new(sync)))?;
@@ -696,6 +708,7 @@ impl Replica {
 				// unretired ops, possibly the only copy of what never reached the host, are replayed on top.
 				let registry = sync.registry.filter(|_| target.known_revs().is_empty());
 				let replayed = if registry.is_some() { target.hot_log() } else { Vec::new() };
+				target.absorb_blob_records(sync.blobs)?;
 				match registry {
 					Some(registry) => target.load(registry, sync.deltas, sync.head)?,
 					None => target.merge_remote(sync.deltas, &[], sync.head)?,
@@ -742,7 +755,7 @@ impl Replica {
 				self.follow_current_host(&*target)?;
 
 				let own_hot_ops: Vec<HotOp> = target.hot_log().into_iter().filter(|hot_op| hot_op.timestamp.peer == self.peer).collect();
-				self.broadcast_hot_ops(&own_hot_ops)?;
+				self.broadcast_hot_ops(&own_hot_ops, Vec::new())?;
 
 				events.push(Event::Synced);
 			}
@@ -866,7 +879,14 @@ impl Replica {
 
 			// A failure is logged rather than abandoning the bookkeeping and the rest of the queue.
 			let applied = match broadcast.body {
-				BroadcastBody::HotOps(ops) => target.apply_remote_hot_ops(ops).map(|deferred| self.deferred.extend(deferred)),
+				BroadcastBody::HotOps { ops, blobs } => {
+					// A blob with a missing base is fetched like a missing resource
+					self.resources_stale = true;
+					target
+						.absorb_blob_records(blobs)
+						.and_then(|()| target.apply_remote_hot_ops(ops))
+						.map(|deferred| self.deferred.extend(deferred))
+				}
 				// A host lets a step with a missing parent go, since its author's whole line arrives when the author syncs.
 				BroadcastBody::Deltas { deltas, .. } if has_missing_parent(&deltas, &*target) => {
 					if self.role == Role::Host {
@@ -991,7 +1011,7 @@ mod tests {
 			epoch: 1,
 			seq,
 			seen,
-			body: BroadcastBody::HotOps(Vec::new()),
+			body: BroadcastBody::HotOps { ops: Vec::new(), blobs: Vec::new() },
 		})
 	}
 
@@ -1121,5 +1141,19 @@ mod tests {
 		network.disconnect(bare.id());
 		host.poll(&mut session);
 		assert!(host.owed_resources.is_empty(), "nothing is owed to a link that closed");
+	}
+
+	#[test]
+	fn an_answered_request_is_owed_no_more() {
+		let (mut network, mut host, host_link, mut session) = hosted_room();
+		let mut bare = connect_bare_peer(&mut network, &mut host, &mut session);
+		let hash = ResourceHash::from(b"bytes".as_slice());
+
+		bare.send(host_link, &hello(0)).unwrap();
+		bare.send(host_link, &SyncPacket::ResourceRequest(vec![hash])).unwrap();
+		network.deliver_all();
+		host.poll(&mut session);
+		host.send_resource(bare.id(), hash, b"bytes".to_vec()).unwrap();
+		assert!(host.owed_resources.is_empty());
 	}
 }

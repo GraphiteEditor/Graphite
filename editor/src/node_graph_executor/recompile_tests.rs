@@ -13,12 +13,13 @@ async fn compile_and_run(editor: &mut EditorTestUtils) {
 	executor
 		.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO)
 		.unwrap();
+	editor.runtime.update();
 	editor.runtime.run().await;
 	editor.dispatch(Message::Wake);
 }
 
 /// The proto node IDs compiled for the document node paths that pass `keep`. The executor keeps the nodes an update drops
-/// for one more update, so a first update clears those of the test harness's instrumented graph.
+/// for one more update, so a first update clears those of the graph before it.
 async fn compiled_ids(editor: &mut EditorTestUtils, keep: impl Fn(&[NodeId]) -> bool) -> HashSet<NodeId> {
 	compile_and_run(editor).await;
 	compile_and_run(editor).await;

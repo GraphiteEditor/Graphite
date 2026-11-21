@@ -11,7 +11,7 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
 use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
 use crate::messages::tool::common_functionality::transformation_cage::MIN_FEATURE_TRAVEL;
-use crate::messages::tool::common_functionality::utility_functions::{is_almost_colinear, push_nearest_anchors};
+use crate::messages::tool::common_functionality::utility_functions::{is_almost_colinear, name_layer_action, push_nearest_anchors};
 use crate::messages::tool::tool_messages::path_tool::MAX_SNAPPING_POINTS;
 use crate::messages::tool::tool_messages::select_tool;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
@@ -321,6 +321,12 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 			// Messages
 			TransformLayerMessage::ApplyTransformOperation { final_transform } => {
+				let verb = match self.transform_operation {
+					TransformOperation::Grabbing(_) => Some("Moved"),
+					TransformOperation::Rotating(_) => Some("Rotated"),
+					TransformOperation::Scaling(_) => Some("Scaled"),
+					TransformOperation::None => None,
+				};
 				selected.original_transforms.clear();
 				self.typing.clear();
 				if final_transform {
@@ -337,6 +343,12 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				} else {
 					update_colinear_handles(&selected_layers, document, responses);
 					responses.add(DocumentMessage::EndTransaction);
+					if let Some(verb) = verb {
+						responses.add(match using_path_tool {
+							true => DocumentMessage::NameInteraction { action: format!("{verb} Points") },
+							false => name_layer_action(verb, selected_layers.len()),
+						});
+					}
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
@@ -1178,6 +1190,32 @@ mod test_transform_layer {
 			(final_translation - original_translation).length() < 5. || final_translation.length() < 0.001,
 			"Transform neither restored to original nor reset to identity. Original: {original_translation:?}, Final: {final_translation:?}"
 		);
+	}
+
+	#[tokio::test]
+	async fn a_cancelled_grab_is_taken_back_for_good_and_leaves_the_drawing_as_the_step_to_undo() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+		assert_eq!(get_layer_transform(&mut editor, layer).await.unwrap(), original_transform);
+
+		editor.handle_message(DocumentMessage::DocumentHistoryForward).await;
+		assert_eq!(get_layer_transform(&mut editor, layer).await.unwrap(), original_transform, "the cancelled grab can't be redone");
+
+		editor.handle_message(DocumentMessage::DocumentHistoryBackward).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "undo takes back the drawing, not the grab");
 	}
 
 	#[tokio::test]

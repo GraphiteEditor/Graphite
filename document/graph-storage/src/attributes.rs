@@ -7,6 +7,15 @@ use std::collections::{BTreeMap, btree_map};
 /// keys live on `Node.inputs_attributes[i]`; per-network keys live on `Network.attributes`.
 pub mod attr;
 
+/// Unified storage-side position. The valid variants depend on `attr::node::ui::IS_LAYER`:
+/// layers use `Absolute` or `Stack`; non-layer nodes use `Absolute` or `Chain`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Position {
+	Absolute([i32; 2]),
+	Chain,
+	Stack(u32),
+}
+
 impl AttributeValue {
 	pub fn new(value: Value, timestamp: TimeStamp) -> Self {
 		Self { value, timestamp, deleted: false }

@@ -1,4 +1,9 @@
+use super::resolved_types::TypeSource;
 use super::*;
+use graph_craft::{ProtoNodeIdentifier, concrete};
+use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::vector::style::Gradient;
+use graphene_std::{Color, Graphic};
 
 impl NodeNetworkInterface {
 	/// The top left corner of a node in node graph grid coordinates.
@@ -278,7 +283,8 @@ impl NodeNetworkInterface {
 		if let Some(outward_wires) = self
 			.outward_wires(network_path)
 			.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(*node_id)))
-			.cloned() && outward_wires.len() == 1
+			.cloned()
+			&& outward_wires.len() == 1
 		{
 			self.try_set_upstream_to_chain(&outward_wires[0], network_path);
 		}
@@ -1080,8 +1086,80 @@ impl NodeNetworkInterface {
 			self.take_over_outward_wires(layer.to_node(), network_path);
 		}
 		self.unload_upstream_node_click_targets(vec![layer.to_node()], network_path);
+		self.push_stacks_below_ancestors_past_their_content(layer.to_node(), network_path);
 
 		self.remove_orphaned_dots(network_path);
+	}
+
+	/// Moves the layers stacked below each layer that `layer` is nested within down past that layer's grown content.
+	fn push_stacks_below_ancestors_past_their_content(&mut self, layer: NodeId, network_path: &[NodeId]) {
+		let mut visited = HashSet::new();
+		let mut ancestor = self.content_parent(layer, network_path, &mut visited);
+		while let Some(parent) = ancestor {
+			let stack_below = self
+				.input_from_connector(&InputConnector::primary_input(parent), network_path)
+				.and_then(NodeInput::as_node)
+				.filter(|stack_below| self.is_layer(stack_below, network_path));
+			if let (Some(stack_below), Some(parent_position)) = (stack_below, self.position(&parent, network_path))
+				&& let Some(stack_below_position) = self.position(&stack_below, network_path)
+			{
+				let content_bottom_row = self
+					.upstream_nodes_below_layer(&parent, network_path)
+					.iter()
+					.filter_map(|node_id| self.stacked_box_rows(node_id, network_path))
+					.map(|(_, bottom)| bottom)
+					.fold(parent_position.y + STACK_VERTICAL_GAP, i32::max);
+				if content_bottom_row > stack_below_position.y {
+					self.shift_stack_down(stack_below, content_bottom_row - stack_below_position.y, network_path);
+				}
+			}
+			ancestor = self.content_parent(parent, network_path, &mut visited);
+		}
+	}
+
+	/// Shifts a stack of layers down by `rows`, along with the absolutely positioned content they own, which would otherwise stay behind.
+	fn shift_stack_down(&mut self, stack_top: NodeId, rows: i32, network_path: &[NodeId]) {
+		let stack = self
+			.upstream_flow_back_from_nodes(vec![stack_top], network_path, FlowType::PrimaryFlow)
+			.take_while(|node_id| self.is_layer(node_id, network_path))
+			.collect::<Vec<_>>();
+		let absolute_content = stack
+			.iter()
+			.flat_map(|layer| self.upstream_nodes_below_layer(layer, network_path))
+			.filter(|node_id| self.is_absolute(node_id, network_path))
+			.collect::<HashSet<_>>();
+
+		self.shift_node(&stack_top, IVec2::new(0, rows), network_path);
+		for node_id in absolute_content {
+			self.shift_node(&node_id, IVec2::new(0, rows), network_path);
+		}
+	}
+
+	/// The layer whose content holds the stack `layer` is part of, reached through any chain nodes feeding that layer.
+	/// `visited` stops the walk on a cyclic graph, which concurrent edits can produce.
+	fn content_parent(&self, layer: NodeId, network_path: &[NodeId], visited: &mut HashSet<NodeId>) -> Option<NodeId> {
+		let mut current = layer;
+		while visited.insert(current) {
+			let consumers = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(current)).cloned())??;
+
+			let mut layer_stacked_upon = None;
+			for consumer in consumers {
+				let Some(consumer_node) = consumer.node_id() else { continue };
+				if !self.is_layer(&consumer_node, network_path) {
+					if self.is_chain(&consumer_node, network_path) {
+						return self.downstream_layer_for_chain_node(&consumer_node, network_path);
+					}
+				} else if consumer.input_index() == 0 {
+					layer_stacked_upon = Some(consumer_node);
+				} else {
+					return Some(consumer_node);
+				}
+			}
+			current = layer_stacked_upon?;
+		}
+
+		log::error!("Cycle reached while finding the content parent of layer {layer}");
+		None
 	}
 
 	/// Shifts `upstream_node_id` and everything stacked below it down until a layer needing
@@ -1153,6 +1231,41 @@ impl NodeNetworkInterface {
 
 		// Connect the new node to the previous node
 		self.create_wire(&upstream_output, &InputConnector::node_at_index(*node_id, insert_node_input_index), network_path);
+	}
+
+	/// Feeds an unconnected Map node's mapped input with the Read node matching the element type of its content.
+	pub fn connect_read_node_to_map(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		if self.reference(node_id, network_path) != Some(DefinitionIdentifier::ProtoNode(graphene_std::graphic::map::IDENTIFIER)) {
+			return;
+		}
+
+		let mapped_input = InputConnector::node_at_index(*node_id, 1);
+		if !matches!(self.input_from_connector(&mapped_input, network_path), Some(NodeInput::Value { .. })) {
+			return;
+		}
+
+		let Some(content_source) = self.upstream_output_connector(&InputConnector::primary_input(*node_id), network_path) else {
+			return;
+		};
+		let Some(mut read_node_template) = read_node_for_content(&self.output_type(&content_source, network_path))
+			.and_then(resolve_proto_node_type)
+			.map(|definition| definition.default_node_template())
+		else {
+			return;
+		};
+		let Some(map_position) = self.position(node_id, network_path) else {
+			return;
+		};
+
+		let below_content_source = content_source
+			.node_id()
+			.and_then(|source| Some(self.position(&source, network_path)?.y + self.node_height(&source, network_path) as i32 + 1));
+		let read_node_position = IVec2::new(map_position.x - NODE_CHAIN_WIDTH, below_content_source.unwrap_or(map_position.y + 2));
+		read_node_template.node_type_metadata = NodeTypePersistentMetadata::node(read_node_position);
+
+		let read_node_id = NodeId::new();
+		self.insert_node(read_node_id, read_node_template, network_path);
+		self.create_wire(&OutputConnector::primary_output(read_node_id), &mapped_input, network_path);
 	}
 
 	/// Inserts the freshly-created `node_id` onto the wire feeding `input_connector`: the previous upstream becomes the
@@ -1574,4 +1687,31 @@ impl NodeNetworkInterface {
 		self.remove_orphaned_dots(network_path);
 		self.layer_chain(layer, network_path) == intended_chain
 	}
+}
+
+/// The Read node yielding each element of a Map node's content, unbundling a whole-list `Item<Bundle<T>>` wire to its `T`.
+pub(super) fn read_node_for_content(content_type: &TypeSource) -> Option<ProtoNodeIdentifier> {
+	use graphene_std::context::{read_color, read_gradient, read_graphic, read_number, read_raster, read_vector};
+	use graphene_std::text_nodes::read_string;
+
+	let bundle_element = content_type.compiled_nested_type().and_then(Type::bundle_element_name);
+	let element_type = content_type.compiled_element_type()?;
+
+	[
+		(concrete!(Vector), read_vector::IDENTIFIER),
+		(concrete!(Graphic), read_graphic::IDENTIFIER),
+		(concrete!(Raster<CPU>), read_raster::IDENTIFIER),
+		(concrete!(Color), read_color::IDENTIFIER),
+		(concrete!(Gradient), read_gradient::IDENTIFIER),
+		(concrete!(f64), read_number::IDENTIFIER),
+		(concrete!(String), read_string::IDENTIFIER),
+	]
+	.into_iter()
+	.find_map(|(candidate, read_node)| {
+		let matches = match (bundle_element, &candidate) {
+			(Some(bundle_element), Type::Concrete(descriptor)) => descriptor.name == bundle_element,
+			_ => candidate == *element_type,
+		};
+		matches.then_some(read_node)
+	})
 }

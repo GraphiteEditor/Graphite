@@ -26,6 +26,7 @@ graphene-hash = { workspace = true }
 graphene-resource = { workspace = true }
 vector-types = { workspace = true }
 node-macro = { workspace = true }
+math-parser = { workspace = true }
 
 # Workspace dependencies
 dyn-any = { workspace = true }

@@ -14,9 +14,6 @@ publish.workspace = true
 [lints]
 workspace = true
 
-[features]
-gpu = ["graphite-editor/gpu"]
-
 [dependencies]
 # Local dependencies
 graphite-editor = { workspace = true }
@@ -27,7 +24,6 @@ wgpu-executor = { workspace = true }
 wgpu = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-dirs = { workspace = true }
 image = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

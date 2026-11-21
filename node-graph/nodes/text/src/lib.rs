@@ -1,6 +1,7 @@
 pub mod fallback;
 mod font;
 pub mod json;
+pub mod l_system;
 mod path_builder;
 pub mod regex;
 mod text_context;
@@ -15,7 +16,7 @@ use core_types::misc::{format_f64, parse_f64};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::DVec2;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use unicode_segmentation::UnicodeSegmentation;
 
 // Re-export for convenience

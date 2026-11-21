@@ -9,6 +9,7 @@ use crate::messages::prelude::*;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::ops::Range;
 use std::sync::Arc;
 
 #[repr(transparent)]
@@ -24,7 +25,7 @@ impl core::fmt::Display for WidgetId {
 
 macro_rules! define_layout_target {
 	($($(#[$attr:meta])* $variant:ident),* $(,)?) => {
-		#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+		#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 		#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize)]
 		#[repr(u8)]
 		pub enum LayoutTarget {
@@ -82,6 +83,7 @@ define_layout_target!(
 	NodeGraphControlBar,
 	/// The body of the Inspector containing many collapsable sections.
 	Inspector,
+	CollaborationPanel,
 	/// The contextual input key/mouse combination shortcuts shown in the status bar at the bottom of the window.
 	StatusBarHints,
 	/// The version information shown in the status bar at the bottom right of the window.
@@ -219,6 +221,14 @@ impl Layout {
 			stack: self.0.iter_mut().collect(),
 			..Default::default()
 		}
+	}
+
+	/// Disables every widget, and stops every node section from being dragged to reorder it.
+	pub fn disable(&mut self) {
+		for widget in self.iter_mut() {
+			widget.widget.disable();
+		}
+		self.0.iter_mut().for_each(LayoutGroup::stop_dragging);
 	}
 }
 
@@ -398,6 +408,21 @@ pub struct WidgetTable {
 	#[serde(rename = "tableWidgets")]
 	pub rows: Vec<Vec<Vec<WidgetInstance>>>,
 	pub unstyled: bool,
+	/// For a table too long to send whole, the rows left out around those sent, which are only the ones in or near view.
+	#[serde(rename = "scrollWindow")]
+	pub scroll_window: Option<TableScrollWindow>,
+}
+
+/// How many rows a virtually scrolled table leaves out on either side of the rows it sends after its heading row, which is always sent.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TableScrollWindow {
+	/// The rows left out between the heading row and the first row sent.
+	#[serde(rename = "rowsBefore")]
+	pub rows_before: u32,
+	/// The rows left out after the last row sent.
+	#[serde(rename = "rowsAfter")]
+	pub rows_after: u32,
 }
 
 /// A wire drawn between Inspector sections, styled like the graph's wire carrying the same data.
@@ -473,12 +498,31 @@ impl LayoutGroup {
 	/// A table with one widget per cell.
 	pub fn table(rows: Vec<Vec<WidgetInstance>>, unstyled: bool) -> Self {
 		let rows = rows.into_iter().map(|row| row.into_iter().map(|widget| vec![widget]).collect()).collect();
-		Self::Table(WidgetTable { rows, unstyled })
+		Self::Table(WidgetTable { rows, unstyled, scroll_window: None })
 	}
 
 	/// A table whose cells may each hold multiple widgets laid out inline.
 	pub fn table_of_cells(rows: Vec<Vec<Vec<WidgetInstance>>>, unstyled: bool) -> Self {
-		Self::Table(WidgetTable { rows, unstyled })
+		Self::Table(WidgetTable { rows, unstyled, scroll_window: None })
+	}
+
+	/// A table under a heading row that sends only the rows in `rows_sent`, each made by `build_row` from its index. O(rows sent).
+	pub fn virtually_scrolled_table_of_cells(heading: Vec<Vec<WidgetInstance>>, row_count: usize, rows_sent: Range<usize>, build_row: impl FnMut(usize) -> Vec<Vec<WidgetInstance>>) -> Self {
+		// Asking past the end of the table sends as many of its last rows instead
+		let end = rows_sent.end.min(row_count);
+		let start = rows_sent.start.min(end.saturating_sub(rows_sent.len()));
+
+		let rows = std::iter::once(heading).chain((start..end).map(build_row)).collect();
+		let scroll_window = TableScrollWindow {
+			rows_before: start as u32,
+			rows_after: (row_count - end) as u32,
+		};
+
+		Self::Table(WidgetTable {
+			rows,
+			unstyled: false,
+			scroll_window: Some(scroll_window),
+		})
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -545,6 +589,13 @@ impl LayoutGroup {
 			}
 		}
 		if is_col { Self::Column(WidgetColumn { widgets }) } else { Self::Row(WidgetRow { widgets }) }
+	}
+
+	fn stop_dragging(&mut self) {
+		if let LayoutGroup::NodeSection(section) = self {
+			section.draggable = false;
+			section.layout.0.iter_mut().for_each(LayoutGroup::stop_dragging);
+		}
 	}
 
 	pub fn iter_mut(&mut self) -> WidgetIterMut<'_> {
@@ -928,6 +979,40 @@ pub enum Widget {
 	TextLabel(TextLabel),
 	VisualColorPickersInput(VisualColorPickersInput),
 	WorkingColorsInput(WorkingColorsInput),
+}
+
+impl Widget {
+	/// Dims the widget and stops it from taking input, if it has a disabled state.
+	pub fn disable(&mut self) {
+		let disabled = match self {
+			Self::BreadcrumbTrailButtons(widget) => &mut widget.disabled,
+			Self::CheckboxInput(widget) => &mut widget.disabled,
+			Self::ColorComparisonInput(widget) => &mut widget.disabled,
+			Self::ColorInput(widget) => &mut widget.disabled,
+			Self::ColorPresetsInput(widget) => &mut widget.disabled,
+			Self::TransferCurveInput(widget) => &mut widget.disabled,
+			Self::DropdownInput(widget) => &mut widget.disabled,
+			Self::IconButton(widget) => &mut widget.disabled,
+			Self::IconLabel(widget) => &mut widget.disabled,
+			Self::ParameterExposeButton(widget) => &mut widget.disabled,
+			Self::MathExpressionInput(widget) => &mut widget.disabled,
+			Self::NodeCatalog(widget) => &mut widget.disabled,
+			Self::NumberInput(widget) => &mut widget.disabled,
+			Self::ReferencePointInput(widget) => &mut widget.disabled,
+			Self::PopoverButton(widget) => &mut widget.disabled,
+			Self::RadioInput(widget) => &mut widget.disabled,
+			Self::SliderInput(widget) => &mut widget.disabled,
+			Self::TextAreaInput(widget) => &mut widget.disabled,
+			Self::TextButton(widget) => &mut widget.disabled,
+			Self::TextInput(widget) => &mut widget.disabled,
+			Self::TextLabel(widget) => &mut widget.disabled,
+			Self::VisualColorPickersInput(widget) => &mut widget.disabled,
+			Self::ImageButton(_) | Self::ImageLabel(_) | Self::ShortcutLabel(_) | Self::ParameterChainToggle(_) | Self::Separator(_) | Self::WorkingColorsInput(_) => {
+				return;
+			}
+		};
+		*disabled = true;
+	}
 }
 
 /// How a widget claims width within its row, borrowing the model of flexbox. Parts left unset follow the defaults of the layout it appears in.
