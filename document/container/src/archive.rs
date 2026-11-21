@@ -54,10 +54,17 @@ pub trait Archive {
 
 	fn writer<W: Write + Seek>(output: W) -> Result<Self::Writer<W>>;
 
+	fn unpack<R: Read + Seek>(source: R, sink: &mut UnpackEntry) -> Result<()>;
+
 	/// Read entries from `source` and write each into `dest`, streaming so neither the full
 	/// archive nor the full container ever sits in memory at once.
-	fn open<R: Read + Seek, C: AsyncContainer>(source: R, dest: &mut C) -> Result<()>;
+	fn open<R: Read + Seek, C: AsyncContainer>(source: R, dest: &mut C) -> Result<()> {
+		Self::unpack(source, &mut |path, size, fill| dest.write_sized_non_blocking(path, size, fill))
+	}
 }
+
+/// See [`Archive::unpack`].
+pub type UnpackEntry<'a> = dyn FnMut(&str, usize, &mut dyn FnMut(&mut [u8]) -> Result<()>) -> Result<()> + 'a;
 
 pub trait ArchiveWriter: Sized {
 	type Sink;
@@ -100,12 +107,18 @@ impl ArchiveFormat {
 /// Errors if the bytes are neither a recognized xz nor zip archive.
 #[cfg(any(feature = "xz", feature = "zip"))]
 pub fn open_auto<C: AsyncContainer>(bytes: &[u8], dest: &mut C) -> Result<()> {
+	unpack_auto(bytes, &mut |path, size, fill| dest.write_sized_non_blocking(path, size, fill))
+}
+
+/// Like [`open_auto`], but hands each entry to `sink` instead of writing it into a container.
+#[cfg(any(feature = "xz", feature = "zip"))]
+pub fn unpack_auto(bytes: &[u8], sink: &mut UnpackEntry) -> Result<()> {
 	let source = std::io::Cursor::new(bytes);
 	match ArchiveFormat::detect(bytes) {
 		#[cfg(feature = "xz")]
-		Some(ArchiveFormat::Xz) => Xz::open(source, dest),
+		Some(ArchiveFormat::Xz) => Xz::unpack(source, sink),
 		#[cfg(feature = "zip")]
-		Some(ArchiveFormat::Zip) => Zip::open(source, dest),
+		Some(ArchiveFormat::Zip) => Zip::unpack(source, sink),
 		#[allow(unreachable_patterns)]
 		Some(format) => Err(ContainerError::Codec(format!("tried to open {format:?}, but the binary was compiled without the feature enabled  "))),
 		None => Err(ContainerError::Codec("unrecognized archive format (not xz or zip) ".into())),

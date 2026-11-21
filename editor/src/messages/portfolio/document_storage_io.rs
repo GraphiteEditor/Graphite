@@ -20,7 +20,6 @@ use document_container::store::{DocumentKey, DocumentStore, MemoryStore};
 use document_container::{AnyContainer, AsyncContainer};
 use document_format::{Error as DocumentFormatError, GddV1, GddV1Layout, Layout, ReadError};
 use document_graph_storage::{Declarations, PeerId, UserId};
-use graph_craft::application_io::resource::LoadResource;
 use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceStorage};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -221,8 +220,19 @@ pub(super) async fn open_document_file(
 ) -> Message {
 	document_locks::claim(document_id).await;
 	let materialized = async {
-		let mut container = store.open(document_key(document_id)).await.map_err(|error| error.to_string())?;
-		document_container::archive::open_auto(&content, &mut container).map_err(|error| error.to_string())?;
+		let container = store.open(document_key(document_id)).await.map_err(|error| error.to_string())?;
+		let resources_prefix = format!("{}/", GddV1Layout.resources_dir());
+		document_container::archive::unpack_auto(&content, &mut |path, size, fill| {
+			if path.starts_with(&resources_prefix) {
+				let mut bytes = vec![0; size];
+				fill(&mut bytes)?;
+				resources.store(&bytes);
+				return Ok(());
+			}
+
+			container.write_sized_non_blocking(path, size, fill)
+		})
+		.map_err(|error| error.to_string())?;
 		Ok::<_, String>(container)
 	}
 	.await;
@@ -287,12 +297,12 @@ pub(super) async fn load_from_container(container: AnyContainer, document_id: Do
 }
 
 /// Open a document's storage, offering its migrations the compiler and the global cache's declarations.
-async fn open_migrating(container: AnyContainer, resources: &dyn LoadResource) -> Result<GddV1, DocumentFormatError> {
+async fn open_migrating(container: AnyContainer, resources: &dyn ResourceStorage) -> Result<GddV1, DocumentFormatError> {
 	let host = migration_compiled::CompilerHost::default();
 	GddV1::open_in_with(container, GddV1Layout, Some(resources), Some(&host)).await
 }
 
-async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id: DocumentId, resources: &dyn LoadResource) -> Option<GddV1> {
+async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id: DocumentId, resources: &dyn ResourceStorage) -> Option<GddV1> {
 	match open_migrating(container.clone(), resources).await {
 		Ok(gdd) => return Some(gdd),
 		Err(DocumentFormatError::MissingManifest) => {}
@@ -327,12 +337,12 @@ async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id
 async fn load_declarations(gdd: Option<&GddV1>, resources: &ResourcesHandle, document_id: DocumentId) -> Declarations {
 	let Some(gdd) = gdd else { return Declarations::new() };
 
-	// Migrations store the declarations they introduce in the container, which this device's cache may not have seen
+	// A container written before resources stayed out of it still holds some
 	hydrate_resources(gdd, resources, document_id).await;
 	gdd.declarations(resources).await
 }
 
-/// Copy every resource stored in `gdd`'s container that the global cache lacks into it.
+/// Move every resource stored in `gdd`'s container into the global cache.
 async fn hydrate_resources(gdd: &GddV1, byte_store: &ResourcesHandle, document_id: DocumentId) {
 	let hashes = match gdd.resource_hashes().await {
 		Ok(hashes) => hashes,
@@ -342,12 +352,20 @@ async fn hydrate_resources(gdd: &GddV1, byte_store: &ResourcesHandle, document_i
 		}
 	};
 
-	for hash in hashes.into_iter().filter(|hash| !byte_store.contains(hash)) {
-		match gdd.read_resource(&hash).await {
-			Ok(holder) => {
-				byte_store.store(holder.as_slice());
+	for hash in hashes {
+		if !byte_store.contains(&hash) {
+			match gdd.read_resource(&hash).await {
+				Ok(holder) => {
+					byte_store.store(holder.as_slice());
+				}
+				Err(error) => {
+					log::error!("Opening document {document_id:?}: failed to read resource {hash}: {error}");
+					continue;
+				}
 			}
-			Err(error) => log::error!("Opening document {document_id:?}: failed to read resource {hash}: {error}"),
+		}
+		if let Err(error) = gdd.remove_resource(&hash) {
+			log::error!("Opening document {document_id:?}: failed to remove resource {hash}: {error}");
 		}
 	}
 }
