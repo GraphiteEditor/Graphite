@@ -138,6 +138,49 @@ async fn saving_writes_a_zip_archive_with_the_graphite_extension() {
 }
 
 #[tokio::test]
+async fn opening_a_file_moves_its_resources_into_the_resource_storage() {
+	use graphene_std::raster::{Color, Image};
+
+	fn save(editor: &mut EditorTestUtils) -> Vec<u8> {
+		let saved = dispatch(editor, DocumentMessage::SaveDocumentAs);
+		let content = saved.iter().find_map(|message| match message {
+			FrontendMessage::TriggerSaveDocument { content, .. } => Some(content.to_vec()),
+			_ => None,
+		});
+		content.expect("the save is sent to the frontend")
+	}
+	async fn saved_resources(content: &[u8]) -> Vec<String> {
+		let mut unpacked = document_container::backends::memory::MemoryBackend::new();
+		document_container::archive::open_auto(content, &mut unpacked).unwrap();
+		let mut resources = unpacked.list("resources").await.unwrap_or_default();
+		resources.sort();
+		resources
+	}
+
+	let mut editor = EditorTestUtils::create();
+	let id = new_document(&mut editor, "Saved");
+	editor.create_raster_image(Image::new(2, 2, Color::WHITE), None).await;
+	let content = save(&mut editor);
+	let resources = saved_resources(&content).await;
+	assert!(!resources.is_empty(), "the file carries the document's resources");
+
+	editor
+		.handle_message(PortfolioMessage::OpenDocumentFile {
+			document_name: Some("Opened".into()),
+			document_path: None,
+			content,
+			fresh_identity: true,
+		})
+		.await;
+	let opened = portfolio(&editor).active_document_id.unwrap();
+	assert_ne!(opened, id);
+
+	let container = container(&editor, opened).await;
+	assert_eq!(container.list("resources").await.unwrap_or_default(), Vec::<String>::new(), "the working copy keeps no resources");
+	assert_eq!(saved_resources(&save(&mut editor)).await, resources, "saving writes them from the resource storage");
+}
+
+#[tokio::test]
 async fn storage_only_container_recovers_and_writes_legacy() {
 	let mut editor = EditorTestUtils::create();
 	let id = new_document(&mut editor, "Storage");

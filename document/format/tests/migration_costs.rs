@@ -73,6 +73,18 @@ impl LoadResource for EmptyStore {
 	}
 }
 
+impl ResourceStorage for EmptyStore {
+	fn store(&self, data: &[u8]) -> ResourceHash {
+		ResourceHash::from(data)
+	}
+
+	fn contains(&self, _hash: &ResourceHash) -> bool {
+		false
+	}
+
+	fn garbage_collect(&self, _used: &[ResourceHash]) {}
+}
+
 fn network_of(nodes: &[(u64, &'static str)]) -> NodeNetwork {
 	let node = |identifier: &'static str| DocumentNode {
 		implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
