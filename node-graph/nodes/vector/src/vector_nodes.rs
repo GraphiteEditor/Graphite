@@ -3928,7 +3928,7 @@ fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
 	Item::new_from_element(length)
 }
 
-#[node_macro::node(category("Vector: Measure"), icon("NodeArea"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Measure"), icon("NodeArea"), path(core_types::vector), version(2))]
 fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectFootprint, content: impl Node<Context<'static>, Output = Item<Vector>>) -> Result<Item<f64>, Interrupt> {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector = content.eval(new_ctx)?;
@@ -3947,7 +3947,7 @@ pub enum CentroidError {
 	NoPoints,
 }
 
-#[node_macro::node(category("Vector: Measure"), icon("NodeCentroid"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Measure"), icon("NodeCentroid"), path(core_types::vector), version(2))]
 fn centroid(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectFootprint,
 	content: impl Node<Context<'static>, Output = Item<Vector>>,
