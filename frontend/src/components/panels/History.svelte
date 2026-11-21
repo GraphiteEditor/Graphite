@@ -63,8 +63,6 @@
 		if (input instanceof HTMLElement) input.focus();
 	}
 
-	$: previewedRow = $history.rows.find((row) => row.id === $history.previewing);
-
 	// Alone, steps not yet in history enter it once the pointer reaches the panel, so they can be acted on
 	function retirePending() {
 		if (pendingHead) editor.retirePendingHistory();
@@ -230,7 +228,7 @@
 			<TextLabel italic={true}>Nothing in the history yet.</TextLabel>
 		{/if}
 	</LayoutCol>
-	{#if previewedRow}
+	{#if $history.previewing}
 		<LayoutRow class="banner">
 			<TextLabel>Previewing</TextLabel>
 			<LayoutRow class="banner-actions">
@@ -238,14 +236,14 @@
 					<TextButton
 						label="Go back to here"
 						tooltipDescription="Make this step current. The steps since stay as a branch. Editing while previewing does the same."
-						action={() => previewedRow && editor.goBackToHistoryInteraction(previewedRow.id)}
+						action={() => $history.previewing && editor.goBackToHistoryInteraction($history.previewing)}
 					/>
 				{/if}
 				<TextButton label="Back to now" tooltipDescription="Show the current state again. Esc does the same." action={() => editor.previewHistoryInteraction(undefined)} />
 			</LayoutRow>
 		</LayoutRow>
 	{/if}
-	{#if $history.following && !previewedRow}
+	{#if $history.following && !$history.previewing}
 		<LayoutRow class="banner">
 			<TextLabel>Viewing a branch</TextLabel>
 			<TextButton label="Back to now" action={() => editor.followHistoryBranch(undefined)} />

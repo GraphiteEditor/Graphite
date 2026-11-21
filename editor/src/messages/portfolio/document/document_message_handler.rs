@@ -3144,6 +3144,18 @@ impl DocumentMessageHandler {
 		self.history_preview.as_ref().map(|preview| preview.rev)
 	}
 
+	/// Runs `action` with the current state installed in place of a previewed step.
+	pub fn with_current_state<T>(&mut self, action: impl FnOnce(&mut Self) -> T) -> T {
+		let Some(mut preview) = self.history_preview.take() else { return action(self) };
+
+		std::mem::swap(&mut self.network_interface, &mut preview.current);
+		let result = action(self);
+		std::mem::swap(&mut self.network_interface, &mut preview.current);
+
+		self.history_preview = Some(preview);
+		result
+	}
+
 	/// An edit while previewing continues from the previewed step, leaving the steps after it as a branch. In a session
 	/// it applies to the current state instead, since moving the head would move everyone's document.
 	fn continue_from_history_preview(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, byte_store: &dyn ResourceStorage, responses: &mut VecDeque<Message>) {

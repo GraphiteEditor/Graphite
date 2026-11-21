@@ -267,13 +267,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
 				let Some(document) = self.documents.get_mut(&document_id) else { return };
-				if document.previewed_history_step().is_some() {
-					responses.add(PersistentStateMessage::WriteState);
-					return;
-				}
 				let Some(container) = document.container.clone() else { return };
 
-				match container.write_non_blocking(legacy_path(), document.serialize_document().as_bytes()) {
+				document.with_current_state(|document| match container.write_non_blocking(legacy_path(), document.serialize_document().as_bytes()) {
 					Ok(()) => {
 						document.commit_storage_snapshot(&resource_storage.resources_mut());
 						document.set_auto_save_state(true);
@@ -286,7 +282,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							description: format!("Save your documents manually to avoid losing changes.\n\n{error}"),
 						});
 					}
-				}
+				});
 				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::CloseActiveDocumentWithConfirmation => {
