@@ -72,9 +72,9 @@ pub struct NodeRuntime {
 	wasm_canvas_cache: CanvasSurfaceHandle,
 	/// The viewport's latest artwork.
 	viewport_artwork: Option<Texture>,
-	/// The layers as the viewport's latest artwork has them.
+	/// The layers from the render of the viewport's latest artwork.
 	rendered_layers: RenderedLayers,
-	/// The latest overlays, drawn again over each new artwork.
+	/// The latest overlays, rendered again over each new artwork.
 	overlays: Option<OverlayContext>,
 	/// Whether the overlays or the artwork changed since the overlays were last rendered.
 	overlays_stale: bool,

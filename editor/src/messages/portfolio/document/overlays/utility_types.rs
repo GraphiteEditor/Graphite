@@ -16,7 +16,6 @@ use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork};
-use graphene_std::ATTR_TRANSFORM;
 use graphene_std::list::{Item, List};
 use graphene_std::math::quad::Quad;
 use graphene_std::renderer::RenderMetadata;
@@ -24,7 +23,8 @@ use graphene_std::renderer::vello_scene_builder::VelloSceneBuilder;
 use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::point_to_dvec2;
-use graphene_std::vector::{PointId, SegmentId, Vector, VectorGeometry, no_paths, paths_from_list_row_attributes};
+use graphene_std::vector::{PointId, SegmentId, Vector, VectorGeometry, no_paths, path, paths_from_list_row_attributes};
+use graphene_std::{ATTR_TRANSFORM, NodeParameter};
 use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
 use std::borrow::Cow;
@@ -201,8 +201,8 @@ impl OverlaysVisibilitySettings {
 	}
 }
 
-/// Records the overlays as commands, which the graph runtime replays over each frame of artwork it shows.
-/// Commands that resolve layers against that frame's render keep them in step with the artwork.
+/// Records overlay draw commands, which the graph runtime replays over each new frame of artwork.
+/// Commands can look up layers in that frame's render, so the overlays stay aligned with the artwork.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct OverlayContext {
@@ -225,10 +225,9 @@ impl PartialEq for OverlayContext {
 impl std::fmt::Debug for OverlayContext {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("OverlayContext")
-			.field("commands", &self.commands().len())
 			.field("viewport", &self.viewport)
 			.field("visibility_settings", &self.visibility_settings)
-			.finish()
+			.finish_non_exhaustive()
 	}
 }
 
@@ -237,30 +236,33 @@ impl core::hash::Hash for OverlayContext {
 	fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
 }
 
-/// The layers' geometry in a render, which the overlays shown over its artwork resolve layers against.
+/// Layer geometry and transforms from one render, used to place overlays over its artwork.
 #[derive(Debug, Default)]
 pub struct RenderedLayers {
-	/// Each rendered layer's footprint transform, from document space to the viewport.
+	/// The footprint transform of each rendered layer, from document space to the viewport.
 	footprints: HashMap<NodeId, DAffine2>,
 	local_transforms: HashMap<NodeId, DAffine2>,
-	/// Each layer's own outline targets if it has any, otherwise its own click targets, leaving out a group's descendants.
+	/// The outline targets of each layer, or its click targets if it has no outlines.
+	/// A group's targets exclude those of its descendants.
 	targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
-	/// Each Path node's vector after the modification the render applied.
+	/// The output of each Path node, computed by applying its modification to the input the render recorded.
 	path_vectors: HashMap<NodeId, VectorGeometry>,
 	layer_vectors: HashMap<NodeId, Arc<Item<Vector>>>,
 }
 
-/// Where a layer's editable vector and its transform come from, as `compute_modified_vector` and `transform_to_viewport_if_feeds` find them.
+/// Identifies where a layer's editable vector and its transform come from, matching `compute_modified_vector` and `transform_to_viewport_if_feeds`.
 #[derive(Clone, Copy, Debug)]
 pub struct LayerVectorSource {
 	pub layer: LayerNodeIdentifier,
-	/// The visible Path node upstream in the layer, whose output is the vector when the render recorded it.
+	/// The visible upstream Path node. Its rendered output is the vector if the render recorded it.
 	pub path_node: Option<NodeId>,
 	pub local_transform_feeds: bool,
+	/// The editor's transform from the editable vector to the viewport, for when the render lacks the layer.
+	pub layer_to_viewport: DAffine2,
 }
 
 impl RenderedLayers {
-	/// Gathers the layers from a render's metadata and the Path node vectors it recorded in the network it evaluated.
+	/// Collects the layers from the render metadata and computes each Path node's output from its recorded input and its modification in `network`.
 	pub fn new(metadata: &RenderMetadata, path_inputs: &HashMap<NodeId, VectorGeometry>, network: Option<&NodeNetwork>) -> Self {
 		let mut targets = metadata.click_targets.clone();
 		targets.extend(metadata.outlines.iter().map(|(node, outlines)| (*node, outlines.clone())));
@@ -271,7 +273,7 @@ impl RenderedLayers {
 				let mut vector = input.clone();
 				let modification = network
 					.and_then(|network| network.nodes.get(&path_node))
-					.and_then(|node| node.inputs.get(1))
+					.and_then(|node| node.inputs.get(path::ModificationInput::INDEX))
 					.and_then(|input| input.as_value());
 				if let Some(TaggedValue::VectorModification(modification)) = modification {
 					modification.apply(&mut vector.vector, &mut vector.paths);
@@ -302,7 +304,8 @@ impl RenderedLayers {
 		Some((transform, self.targets.get(&layer.to_node()).map(Vec::as_slice).unwrap_or_default()))
 	}
 
-	/// How the layer moved in the viewport from `layer_to_viewport`, the transform the overlays were made with, to this render, or the identity if the render lacks the layer.
+	/// The viewport-space movement of the layer from `layer_to_viewport`, its transform when the overlays were made, to its transform in this render.
+	/// Returns the identity if the render lacks the layer or `layer_to_viewport` isn't invertible.
 	pub fn movement(&self, layer: LayerNodeIdentifier, layer_to_viewport: DAffine2) -> DAffine2 {
 		match self.transform_to_viewport(layer, true) {
 			Some(rendered) if layer_to_viewport.matrix2.determinant() != 0. => rendered * layer_to_viewport.inverse(),
@@ -357,13 +360,13 @@ impl OverlayContext {
 		self.commands().push(Box::new(command));
 	}
 
-	/// Draws the overlays from `draw` once they're rendered, giving it how `layer` moved in the viewport since `layer_to_viewport`, its transform the overlays were made with.
-	/// Overlays placed by a layer's transform follow it this way, such as a cage around it.
+	/// Defers `draw` until render time and passes it the movement of `layer` since `layer_to_viewport` (see [`RenderedLayers::movement`]).
+	/// Used for overlays placed by a layer's transform, such as its transform cage.
 	pub fn follow_layer(&mut self, layer: LayerNodeIdentifier, layer_to_viewport: DAffine2, draw: impl Fn(&mut OverlayContext, DAffine2) + Send + 'static) {
 		self.with_rendered_layers(move |overlay_context, rendered| draw(overlay_context, rendered.movement(layer, layer_to_viewport)));
 	}
 
-	/// Draws the overlays from `draw` once they're rendered, giving it the render they're shown over.
+	/// Defers `draw` until render time and passes it the layers of the render the overlays are shown over.
 	pub fn with_rendered_layers(&mut self, draw: impl Fn(&mut OverlayContext, &RenderedLayers) + Send + 'static) {
 		let (viewport, visibility_settings) = (self.viewport, self.visibility_settings);
 		self.record_resolved(move |overlays, rendered| {
@@ -560,8 +563,9 @@ impl OverlayContext {
 		self.record(move |overlays| overlays.outline(target_types.iter(), transform, color.as_deref()));
 	}
 
-	/// Outlines the layers as the render the overlays are shown over has them, each by its own targets, or draws `target_types` placed by `transform` if that render lacks any of them.
-	/// A group is outlined by passing it along with its descendants.
+	/// Outlines each layer with its own targets from the render the overlays are shown over.
+	/// Falls back to `target_types` placed by `transform` if the render lacks any of the layers.
+	/// To outline a group, pass it together with its descendants.
 	pub fn outline_rendered_layers(&mut self, layers: Vec<LayerNodeIdentifier>, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
 		let (target_types, color) = (target_types.map(|target_type| target_type.borrow().clone()).collect::<Vec<_>>(), owned(color));
 		self.record_resolved(move |overlays, rendered| {

@@ -173,7 +173,7 @@ fn overlay_bezier_handle_specific_point(
 	}
 }
 
-/// Draws the path, handles, and anchors of each selected visible and unlocked layer, as the render shown under the overlays has them.
+/// Draws the path, handles, and anchors of each selected visible and unlocked layer, using its geometry from the render the overlays are shown over.
 pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandles, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
 	let document_zoom = document_zoom(document);
 	let draw_handles = Arc::new(draw_handles);
@@ -181,13 +181,12 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 	// Locked layers can't be edited, so they get no points to grab
 	for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
-		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		let source = document.network_interface.layer_vector_source(layer);
 		let selected_shape_state = shape_editor.selected_shape_state.entry(layer).or_default().clone();
 		let draw_handles = draw_handles.clone();
 
 		overlay_context.with_rendered_layers(move |overlay_context, rendered| {
-			let (vector, transform) = rendered.vector(source).unwrap_or((Cow::Borrowed(&vector), transform));
+			let (vector, transform) = rendered.vector(source).unwrap_or((Cow::Borrowed(&vector), source.layer_to_viewport));
 			layer_path_overlays(layer, &vector, transform, &draw_handles, &selected_shape_state, document_zoom, overlay_context);
 		});
 	}
@@ -210,7 +209,6 @@ fn layer_path_overlays(
 		overlay_context.outline_vector(vector, transform);
 	}
 
-	// Get the selected segments and then add a bold line overlay on them
 	for (segment_id, bezier, _, _) in vector.segment_iter() {
 		if selected_shape_state.is_segment_selected(segment_id) {
 			overlay_context.outline_select_bezier(bezier, transform);
@@ -250,18 +248,15 @@ fn layer_path_overlays(
 			}
 			DrawHandles::FrontierHandles(segment_endpoints_by_layer) => {
 				if let Some(segment_endpoints) = segment_endpoints_by_layer.get(&layer) {
-					vector
-						.segment_iter()
-						.filter(|(segment_id, ..)| segment_endpoints.contains_key(segment_id))
-						.for_each(|(segment_id, segment, start, end)| {
-							let drawn = if segment_endpoints.get(&segment_id).unwrap().len() == 1 {
-								let point_to_render = segment_endpoints.get(&segment_id).unwrap()[0];
-								overlay_bezier_handle_specific_point(segment, segment_id, (start, end), point_to_render, transform, is_selected, overlay_context)
-							} else {
-								overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context)
-							};
-							drawn_handles.extend(drawn.into_iter().flatten());
-						});
+					for (segment_id, segment, start, end) in vector.segment_iter() {
+						let Some(endpoints) = segment_endpoints.get(&segment_id) else { continue };
+
+						let drawn = match endpoints.as_slice() {
+							&[point_to_render] => overlay_bezier_handle_specific_point(segment, segment_id, (start, end), point_to_render, transform, is_selected, overlay_context),
+							_ => overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context),
+						};
+						drawn_handles.extend(drawn.into_iter().flatten());
+					}
 				}
 			}
 			DrawHandles::None => {}
@@ -279,7 +274,7 @@ fn layer_path_overlays(
 
 /// Draws an anchor overlay at each endpoint of every open path on the selected visible layers, in the selected style for endpoints that are part of the path editing selection.
 /// Given a pointer position, the endpoint a press there would continue from is drawn in the hover style instead.
-/// The paths are drawn as the render shown under the overlays has them.
+/// Paths use their geometry from the render the overlays are shown over.
 pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &ShapeState, pointer: Option<DVec2>, overlay_context: &mut OverlayContext) {
 	if !overlay_context.visibility_settings.anchors() {
 		return;
@@ -298,13 +293,12 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 
 	for layer in selected_nodes.selected_visible_layers(&document.network_interface) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
-		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		let source = document.network_interface.layer_vector_source(layer);
 		let selected_anchors = selected_anchors_of(layer);
 		let hovered_anchor = hovered.and_then(|(hovered_layer, id, _)| (hovered_layer == layer).then_some(id));
 
 		overlay_context.with_rendered_layers(move |overlay_context, rendered| {
-			let (vector, transform) = rendered.vector(source).unwrap_or((Cow::Borrowed(&vector), transform));
+			let (vector, transform) = rendered.vector(source).unwrap_or((Cow::Borrowed(&vector), source.layer_to_viewport));
 			let path_index_labels = path_marker_overlays(&vector, transform, document_zoom, true, overlay_context);
 
 			for id in vector.anchor_endpoints() {
@@ -322,12 +316,11 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 
 	// Drawn last so its halo sits above any other endpoint at the same spot
 	if let Some((layer, id, position)) = hovered {
-		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		let source = document.network_interface.layer_vector_source(layer);
 		let selected = selected_anchors_of(layer).contains(&id);
 
 		overlay_context.with_rendered_layers(move |overlay_context, rendered| {
-			let transform = rendered.vector(source).map_or(transform, |(_, transform)| transform);
+			let transform = rendered.vector(source).map_or(source.layer_to_viewport, |(_, transform)| transform);
 			overlay_context.hover_manipulator_anchor(transform.transform_point2(position), selected);
 		});
 	}
