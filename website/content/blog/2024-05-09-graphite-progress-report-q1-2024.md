@@ -1,11 +1,13 @@
 +++
 title = "Graphite progress report (Q1 2024)"
 date = 2024-05-09
+authors = ["Keavon Chambers", "Hypercube"]
+description = "Graphite's Q1 2024 update introduces a precise snapping system and a customizable grid for enhanced design control. The update also includes improved procedural scattering with the 'Copy to Points' node, demonstrated in new demo artwork."
+
+
 [extra]
 banner = "https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024__2.avif"
 banner_png = "https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024__2.png"
-author = "Keavon Chambers & Hypercube"
-summary = "Graphite's Q1 2024 update introduces a precise snapping system and a customizable grid for enhanced design control. The update also includes improved procedural scattering with the 'Copy to Points' node, demonstrated in new demo artwork."
 reddit = "https://www.reddit.com/r/graphite/comments/1coa0if/blog_post_graphite_progress_report_q1_2024/"
 twitter = "https://twitter.com/GraphiteEditor/status/1788698448348266946"
 css = ["/component/demo-artwork.css"]
@@ -22,18 +24,18 @@ Over the first three months of the year, we are delighted to have seen many cont
 All Q1 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-01-01&until=2024-03-31) and all noteworthy changes are detailed below. As two of the major new features are the grid and snapping systems, the *Isometric Fountain* artwork shown on this blog post demonstrates what those features can achieve.
 
 <div class="demo-artwork">
-	<a href="https://editor.graphite.art/#demo/isometric-fountain">
-		<img src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024__2.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Isometric Fountain" />
-	</a>
-	<p>
-		<span>
-			<em>Isometric Fountain</em>
-		</span>
-		<br />
-		<span>
-			<a href="https://editor.graphite.art/#demo/isometric-fountain">Open this artwork</a> to<br />explore it yourself.
-		</span>
-	</p>
+ <a href="https://editor.graphite.art/#demo/isometric-fountain">
+  <img src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024__2.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Isometric Fountain" />
+ </a>
+ <p>
+  <span>
+   <em>Isometric Fountain</em>
+  </span>
+  <br />
+  <span>
+   <a href="https://editor.graphite.art/#demo/isometric-fountain">Open this artwork</a> to<br />explore it yourself.
+  </span>
+ </p>
 </div>
 
 <!--
@@ -44,43 +46,43 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
 - *Copy to Points* node improvements, including randomization of scale and rotation with biasing <small>([#1540](https://github.com/GraphiteEditor/Graphite/pull/1540), [#1541](https://github.com/GraphiteEditor/Graphite/pull/1541), [commit ed82c5](https://github.com/GraphiteEditor/Graphite/commit/ed82c5f20fccd66a959334dee33351657968cdb6), [#1592](https://github.com/GraphiteEditor/Graphite/pull/1592), [commit 7e5069](https://github.com/GraphiteEditor/Graphite/commit/7e5069f638cfcc3e7af21f32eded67a005490402))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/copy-to-points-node-improvements.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/copy-to-points-node-improvements.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/copy-to-points-node-improvements.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/copy-to-points-node-improvements.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Improvements to the node graph UI <small>([#1564](https://github.com/GraphiteEditor/Graphite/pull/1564), [#1568](https://github.com/GraphiteEditor/Graphite/pull/1568))</small>
 
 - Grid overlay for the canvas with customizable rectangular and isometric grid lines <small>([#1521](https://github.com/GraphiteEditor/Graphite/pull/1521), [commit 5c9d3c](https://github.com/GraphiteEditor/Graphite/commit/5c9d3c5d755e67411c110c0d5fd38d991cb6696c))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/grid-popover.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/grid-popover.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/grid-popover.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/grid-popover.mp4" type="video/mp4" />
+   </video>
   </div>
   
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/grid-demo-art.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/grid-demo-art.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/grid-demo-art.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/grid-demo-art.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - New and improved snapping system for aligning shapes with one another and the grid <small>([#1521](https://github.com/GraphiteEditor/Graphite/pull/1521), [#1567](https://github.com/GraphiteEditor/Graphite/pull/1567), [#1547](https://github.com/GraphiteEditor/Graphite/pull/1547), [#1570](https://github.com/GraphiteEditor/Graphite/pull/1570), [#1574](https://github.com/GraphiteEditor/Graphite/pull/1574))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/snapping.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/snapping.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/snapping.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/snapping.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - *Morph* node for tweening vector shapes <small>([#1576](https://github.com/GraphiteEditor/Graphite/pull/1576))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/morph-node.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/morph-node.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/morph-node.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/morph-node.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Visualize which nodes are the source of a graph type error <small>([#1577](https://github.com/GraphiteEditor/Graphite/pull/1577))</small>
@@ -91,70 +93,70 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
 - SVG import <small>([#1579](https://github.com/GraphiteEditor/Graphite/pull/1579), [#1656](https://github.com/GraphiteEditor/Graphite/pull/1656))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/svg-import.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/svg-import.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/svg-import.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/svg-import.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Re-add Select tool functionality that was lost from a code change last year <small>([#1583](https://github.com/GraphiteEditor/Graphite/pull/1583))</small>
 
 - *Poisson-Disk Points* node for sampling randomly distributed points in a shape, with Red Dress demo artwork <small>([#1586](https://github.com/GraphiteEditor/Graphite/pull/1586), [commit 12e16b](https://github.com/GraphiteEditor/Graphite/commit/12e16b9a4efe40fcf779c34f83d3df8b3e3542f3), [#1590](https://github.com/GraphiteEditor/Graphite/pull/1590), [#1596](https://github.com/GraphiteEditor/Graphite/pull/1596))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/poisson-disk-points-node-demo-art.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/poisson-disk-points-node-demo-art.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/poisson-disk-points-node-demo-art.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/poisson-disk-points-node-demo-art.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Pen tool point-by-point undo while drawing without wiping out the full in-progress shape <small>([#1587](https://github.com/GraphiteEditor/Graphite/pull/1587), [#1597](https://github.com/GraphiteEditor/Graphite/pull/1597))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/pen-tool-point-by-point-undo.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/pen-tool-point-by-point-undo.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/pen-tool-point-by-point-undo.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/pen-tool-point-by-point-undo.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Freehand tool support for extending the endpoints of open paths <small>([#1594](https://github.com/GraphiteEditor/Graphite/pull/1594), [#1623](https://github.com/GraphiteEditor/Graphite/pull/1623))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/freehand-tool-endpoint-extension.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/freehand-tool-endpoint-extension.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/freehand-tool-endpoint-extension.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/freehand-tool-endpoint-extension.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Path tool support for breaking a closed shape into an open path by deleting (not dissolving) a point <small>([#1593](https://github.com/GraphiteEditor/Graphite/pull/1593))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/point-deletion-breaking-closed-shapes.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/point-deletion-breaking-closed-shapes.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/point-deletion-breaking-closed-shapes.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/point-deletion-breaking-closed-shapes.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Path tool insertion of a point on a path segment by sliding to the desired spot <small>([#1581](https://github.com/GraphiteEditor/Graphite/pull/1581))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/sliding-point-insertion.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/sliding-point-insertion.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/sliding-point-insertion.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/sliding-point-insertion.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Box-based drag selection in the node graph <small>([#1616](https://github.com/GraphiteEditor/Graphite/pull/1616))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/box-selection-in-node-graph.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/box-selection-in-node-graph.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/box-selection-in-node-graph.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/box-selection-in-node-graph.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Auto-save the document every 30 seconds <small>([#1580](https://github.com/GraphiteEditor/Graphite/pull/1580))</small>
 
 - Auto-panning when drawing with each interactive tool when the user's pointer extends past the edge of the viewport <small>([#1625](https://github.com/GraphiteEditor/Graphite/pull/1625), [#1652](https://github.com/GraphiteEditor/Graphite/pull/1652), [#1682](https://github.com/GraphiteEditor/Graphite/pull/1682), [#1690](https://github.com/GraphiteEditor/Graphite/pull/1690))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/auto-panning-in-viewport.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/auto-panning-in-viewport.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/auto-panning-in-viewport.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/auto-panning-in-viewport.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Launch of the Alpha 3 release series in February <small>([commit f02dd5](https://github.com/GraphiteEditor/Graphite/commit/f02dd5c0f625b25bf3510ba0e9839ca182d930e4))</small>
@@ -163,10 +165,10 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
 - Search functionality by typing in menu lists <small>([#1499](https://github.com/GraphiteEditor/Graphite/pull/1499))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/search-in-menu-lists.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/search-in-menu-lists.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/search-in-menu-lists.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/search-in-menu-lists.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Improvements to the dynamic input hints of several tools <small>([commit 9f8466](https://github.com/GraphiteEditor/Graphite/commit/9f84661facd545bfdfeaa5d37038abeacc00ee08), [#1667](https://github.com/GraphiteEditor/Graphite/pull/1667), [#1670](https://github.com/GraphiteEditor/Graphite/pull/1670))</small>
@@ -175,10 +177,10 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
 - Path tool point selection checkbox for locking an anchor point's handles as colinear <small>([commit 5bca93](https://github.com/GraphiteEditor/Graphite/commit/5bca931813e456e2f6035844c21e77ee590b7728))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/colinear-handles-checkbox.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/colinear-handles-checkbox.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/colinear-handles-checkbox.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024/colinear-handles-checkbox.mp4" type="video/mp4" />
+   </video>
   </div>
 
 ## Fixes
