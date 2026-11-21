@@ -19,6 +19,8 @@ pub struct HistoryPanelState {
 	pub progress: Vec<HistoryProgressRow>,
 	pub more: bool,
 	pub following: Option<String>,
+	/// The step the document shows in place of its current state.
+	pub previewing: Option<String>,
 	/// Whether others are connected.
 	pub collaborating: bool,
 }

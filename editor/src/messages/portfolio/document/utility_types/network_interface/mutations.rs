@@ -4,7 +4,7 @@ use super::*;
 impl NodeNetworkInterface {
 	pub fn copy_all_navigation_metadata(&mut self, other_interface: &NodeNetworkInterface) {
 		self.for_each_network_view_state_mut(|path, view| {
-			if let Some(other_network_metadata) = other_interface.network_metadata(path) {
+			if let Some(other_network_metadata) = other_interface.nested_metadata(path) {
 				*view.navigation = other_network_metadata.persistent_metadata.navigation_metadata.clone();
 			}
 		});

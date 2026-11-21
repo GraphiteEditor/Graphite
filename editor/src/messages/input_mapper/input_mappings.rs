@@ -44,6 +44,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyUp(MouseRight); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false }),
 		entry!(KeyDown(MouseRight); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: true }),
 		entry!(KeyDown(Escape); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: true }),
+		entry!(KeyDown(Escape); action_dispatch=DocumentMessage::PreviewHistoryStep { rev: None }),
 		entry!(KeyDown(MouseLeft); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: MouseLeft }),
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: MouseMiddle }),
 		entry!(KeyDown(MouseRight); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: MouseRight }),

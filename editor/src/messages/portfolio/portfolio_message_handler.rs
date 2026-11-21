@@ -166,6 +166,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					has_no_documents: self.document_ids.is_empty(),
 				};
 				self.workspace.process_message(message, responses, context);
+				self.end_history_preview_without_panel(responses);
 			}
 
 			// Messages
@@ -268,7 +269,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let Some(document) = self.documents.get_mut(&document_id) else { return };
 				let Some(container) = document.container.clone() else { return };
 
-				match container.write_non_blocking(legacy_path(), document.serialize_document().as_bytes()) {
+				document.with_current_state(|document| match container.write_non_blocking(legacy_path(), document.serialize_document().as_bytes()) {
 					Ok(()) => {
 						document.commit_storage_snapshot(&resource_storage.resources_mut());
 						document.set_auto_save_state(true);
@@ -281,7 +282,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							description: format!("Save your documents manually to avoid losing changes.\n\n{error}"),
 						});
 					}
-				}
+				});
 				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::CloseActiveDocumentWithConfirmation => {
@@ -941,6 +942,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.active_document_id = Some(document_id);
 				self.restore_select = None;
 
+				self.end_history_preview_without_panel(responses);
+
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });
@@ -1213,6 +1216,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 }
 
 impl PortfolioMessageHandler {
+	/// Ends the active document's preview while the History panel is hidden, since the next edit would continue from it.
+	fn end_history_preview_without_panel(&self, responses: &mut VecDeque<Message>) {
+		let history_panel_shown = self.workspace.panel_layout.is_panel_visible(PanelType::History) && !self.workspace.panel_layout.focus_document;
+		if !history_panel_shown && self.active_document().is_some_and(|document| document.previewed_history_step().is_some()) {
+			responses.add(DocumentMessage::PreviewHistoryStep { rev: None });
+		}
+	}
+
 	pub fn new(executor: NodeGraphExecutor, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
 		Self {
 			documents: Default::default(),
