@@ -718,8 +718,13 @@
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll}></div>
 							{/if}
 						</div>
-						{#if isWeb && $document.renderStatus === "Rendering"}
+						{#if isWeb && !["Error", "Panic"].includes($document.renderStatus)}
 							<TextLabel class="shader-compiling-overlay" italic={true} classes={{ show: !firstArtworkReceived }}>Initializing Renderer…</TextLabel>
+						{/if}
+						{#if $document.renderStatus === "Partial"}
+							<div class="render-status-outline"></div>
+						{:else if ["Fallback", "Error", "Panic"].includes($document.renderStatus)}
+							<div class="render-status-outline failed"></div>
 						{/if}
 						{#if $document.renderStatus === "Error"}
 							<LayoutCol class="render-status-overlay">
@@ -980,6 +985,19 @@
 								to {
 									opacity: 1;
 								}
+							}
+						}
+
+						.render-status-outline {
+							position: absolute;
+							inset: 0;
+							// Above the error overlays so the outline frames them too
+							z-index: 1;
+							box-shadow: inset 0 0 0 1px var(--color-warning-yellow);
+							pointer-events: none;
+
+							&.failed {
+								box-shadow: inset 0 0 0 1px var(--color-error-red);
 							}
 						}
 

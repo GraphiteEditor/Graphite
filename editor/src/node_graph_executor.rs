@@ -59,6 +59,8 @@ pub enum ObservationKey {
 pub enum ExecutionResult {
 	Pending,
 	Value(TaggedValue),
+	/// A value computed from provisional data, which is evaluated again once that data is final.
+	Partial(TaggedValue),
 	Fallback(TaggedValue, EvaluationErrors),
 	Error(EvaluationErrors),
 	Panic(Box<dyn Any + Send>),
@@ -599,7 +601,7 @@ impl NodeGraphExecutor {
 									})
 									.collect()
 							}
-							ExecutionResult::Pending | ExecutionResult::Value(_) | ExecutionResult::Panic(_) | ExecutionResult::Uncompiled => Vec::new(),
+							ExecutionResult::Pending | ExecutionResult::Value(_) | ExecutionResult::Partial(_) | ExecutionResult::Panic(_) | ExecutionResult::Uncompiled => Vec::new(),
 						};
 						responses.add(NodeGraphMessage::UpdateEvaluationErrors { errors });
 					}
@@ -608,9 +610,14 @@ impl NodeGraphExecutor {
 					{
 						self.evaluation_errors = None;
 					}
+					let render_status = match result {
+						ExecutionResult::Partial(_) => RenderStatus::Partial,
+						ExecutionResult::Fallback(..) => RenderStatus::Fallback,
+						ExecutionResult::Pending | ExecutionResult::Value(_) | ExecutionResult::Error(_) | ExecutionResult::Panic(_) | ExecutionResult::Uncompiled => RenderStatus::Rendering,
+					};
 					let node_graph_output = match result {
 						ExecutionResult::Pending => Ok(None),
-						ExecutionResult::Value(value) => Ok(Some(value)),
+						ExecutionResult::Value(value) | ExecutionResult::Partial(value) => Ok(Some(value)),
 						ExecutionResult::Fallback(value, _errors) => {
 							#[cfg(test)]
 							{
@@ -664,7 +671,7 @@ impl NodeGraphExecutor {
 
 					match (node_graph_output, execution_context.export_config) {
 						(Some(node_graph_output), Some(export_config)) => self.process_export(node_graph_output, export_config, document, responses),
-						(Some(node_graph_output), None) => self.process_node_graph_output(node_graph_output, execution_context.document_to_viewport, responses),
+						(Some(node_graph_output), None) => self.process_node_graph_output(node_graph_output, execution_context.document_to_viewport, render_status, responses),
 						(None, _) => {}
 					}
 					responses.add(DeferMessage::TriggerGraphRun {
@@ -999,7 +1006,7 @@ impl NodeGraphExecutor {
 		self.node_graph_hash = 0;
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, document_to_viewport: DAffine2, responses: &mut VecDeque<Message>) {
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, document_to_viewport: DAffine2, render_status: RenderStatus, responses: &mut VecDeque<Message>) {
 		let TaggedValue::RenderOutput(render_output) = node_graph_output else {
 			log::error!("Invalid node graph output type: {node_graph_output:#?}");
 			responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
@@ -1081,7 +1088,7 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
 
-		responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Rendering });
+		responses.add(FrontendMessage::UpdateRenderStatus { status: render_status });
 	}
 
 	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
