@@ -875,13 +875,12 @@ impl SelectToolData {
 /// (e.g. the pre-solidified centerline for a Solidify Stroke layer); otherwise uses the layer's recorded outlines.
 pub fn draw_layer_outline(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, color: Option<&str>) {
 	if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
-		let layer_to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		let source = document.network_interface.layer_vector_source(layer);
 		let color = color.map(str::to_owned);
 
 		overlay_context.with_rendered_layers(move |overlay_context, rendered| match rendered.vector(source) {
 			Some((vector, transform)) => overlay_context.outline(vector_outline_targets(&vector).iter(), transform, color.as_deref()),
-			None => overlay_context.outline(targets.iter(), layer_to_viewport, color.as_deref()),
+			None => overlay_context.outline(targets.iter(), source.layer_to_viewport, color.as_deref()),
 		});
 	} else {
 		let metadata = document.metadata();
@@ -903,7 +902,7 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 		.unwrap_or_default()
 }
 
-/// Draws the dowel pin at the layer's origin, following the layer as the render under the overlays has it.
+/// Draws the dowel pin at the layer's origin, following the layer's movement in the render.
 fn draw_dowel_pin(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, origin: DVec2, angle: f64, color: Option<&'static str>) {
 	let followed = document.metadata().layer_to_follow(layer);
 	let layer_to_viewport = document.metadata().transform_to_viewport(followed);
@@ -913,8 +912,8 @@ fn draw_dowel_pin(overlay_context: &mut OverlayContext, document: &DocumentMessa
 	});
 }
 
-/// Draws the overlays placed around the selection from `draw` once they're rendered, giving it how the selection moved since they were made.
-/// The selection moves as the layer the cage is built around does.
+/// Defers `draw` until render time and passes it the movement of the selection since the overlays were made.
+/// Takes the movement of the first selected layer that isn't an artboard, assuming the selection moves as one.
 fn follow_selection(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, draw: impl Fn(&mut OverlayContext, DAffine2) + Send + 'static) {
 	let metadata = document.metadata();
 	let layer = document
@@ -1085,9 +1084,7 @@ impl Fsm for SelectToolFsmState {
 					if overlay_context.visibility_settings.transform_cage() {
 						let cage = bounding_box_manager.clone();
 						follow_selection(&mut overlay_context, document, move |overlay_context, movement| {
-							let mut cage = cage.clone();
-							cage.transform = movement * cage.transform;
-							cage.render_overlays(overlay_context, true);
+							cage.moved_by(movement).render_overlays(overlay_context, true)
 						});
 					}
 				} else {
@@ -1130,9 +1127,7 @@ impl Fsm for SelectToolFsmState {
 					if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
 						let (cage, skew_edge) = (bounds.clone(), tool_data.skew_edge);
 						follow_selection(&mut overlay_context, document, move |overlay_context, movement| {
-							let mut cage = cage.clone();
-							cage.transform = movement * cage.transform;
-							cage.render_skew_gizmos(overlay_context, skew_edge);
+							cage.moved_by(movement).render_skew_gizmos(overlay_context, skew_edge)
 						});
 					}
 					if !is_skewing

@@ -23,14 +23,16 @@ impl NodeNetworkInterface {
 		self.document_metadata.layer_vector_data.get(&layer).map(|item| VectorGeometry::from_item(item))
 	}
 
-	/// Where [`Self::compute_modified_vector`] and the layer's transform come from, for overlays to look them up in the render they're shown over.
+	/// The source of [`Self::compute_modified_vector`] and the layer's transform, so overlays can look them up in the render.
 	pub fn layer_vector_source(&self, layer: LayerNodeIdentifier) -> LayerVectorSource {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
+		let local_transform_feeds = self.document_metadata.local_transform_feeds(layer, self);
 
 		LayerVectorSource {
 			layer,
 			path_node: graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER)),
-			local_transform_feeds: self.document_metadata.local_transform_feeds(layer, self),
+			local_transform_feeds,
+			layer_to_viewport: self.document_metadata.transform_to_viewport_including_local(layer, local_transform_feeds),
 		}
 	}
 

@@ -112,15 +112,7 @@ impl DocumentMetadata {
 	}
 
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		// We're not allowed to convert the root parent to a node id
-		if layer == LayerNodeIdentifier::ROOT_PARENT {
-			return self.document_to_viewport;
-		}
-
-		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
-		let local_transform = self.local_transforms.get(&layer.to_node()).copied().unwrap_or_default();
-
-		footprint * local_transform
+		self.transform_to_viewport_including_local(layer, true)
 	}
 
 	pub fn transform_to_viewport_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
@@ -129,15 +121,24 @@ impl DocumentMetadata {
 			return self.document_to_viewport;
 		}
 
-		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
+		self.transform_to_viewport_including_local(layer, self.local_transform_feeds(layer, network_interface))
+	}
 
-		let use_local = self.local_transform_feeds(layer, network_interface);
-		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
+	/// The layer's footprint transform to the viewport, followed by its local transform if `include_local` is set.
+	pub fn transform_to_viewport_including_local(&self, layer: LayerNodeIdentifier, include_local: bool) -> DAffine2 {
+		// We're not allowed to convert the root parent to a node id
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			return self.document_to_viewport;
+		}
+
+		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
+		let local_transform = include_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
 
 		footprint * local_transform
 	}
 
-	/// Whether the layer's local transform applies to the vector its upstream Path node edits, which it doesn't when the first element comes from elsewhere.
+	/// Whether the layer's local transform applies to the vector edited by its upstream Path node.
+	/// It doesn't if the layer's first element comes from a node that isn't upstream of the Path node.
 	pub fn local_transform_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
 		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::path::IDENTIFIER);
@@ -147,7 +148,6 @@ impl DocumentMetadata {
 				.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
 				.any(|upstream| Some(upstream) == source)
 		{
-			info!("Local transform is invalid. Using the identity for the local transform instead.");
 			return false;
 		}
 
@@ -196,7 +196,8 @@ impl DocumentMetadata {
 		footprint * transform
 	}
 
-	/// The layer whose transform moves along with this one's: itself, or for a group without a local transform, its first descendant that has one.
+	/// The first of the layer and its descendants that has a local transform, or the layer itself if none has one.
+	/// Overlays around a group without a local transform follow the movement of this layer.
 	pub fn layer_to_follow(&self, layer: LayerNodeIdentifier) -> LayerNodeIdentifier {
 		std::iter::once(layer)
 			.chain(layer.descendants(self))

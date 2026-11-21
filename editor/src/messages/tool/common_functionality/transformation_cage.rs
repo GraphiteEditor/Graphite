@@ -382,6 +382,14 @@ pub struct BoundingBoxManager {
 }
 
 impl BoundingBoxManager {
+	/// A copy of the cage with `movement` applied after its transform.
+	pub fn moved_by(&self, movement: DAffine2) -> Self {
+		Self {
+			transform: movement * self.transform,
+			..self.clone()
+		}
+	}
+
 	/// Calculates the transformed handle positions based on the bounding box and the transform
 	pub fn evaluate_transform_handle_positions(&self) -> [DVec2; 8] {
 		let (left, top): (f64, f64) = self.bounds[0].into();
