@@ -9,7 +9,6 @@
 	import type { MenuListEntry, ActionShortcut, WidgetSizing, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	export let menuDirection: MenuDirection = "Bottom";
-
 	const dispatch = createEventDispatcher<{ selectedIndex: number; previewIndex: number; fileDrop: File }>();
 
 	let self: LayoutRow | undefined;

@@ -96,7 +96,6 @@ impl DataType {
 			GRAPHITE_LEGACY_MIME => Self::GraphiteLegacy,
 			GDD_MIME => Self::Gdd,
 			SVG_MIME => Self::Svg,
-
 			GPL_PALETTE_MIME => Self::PaletteGPL,
 			KPL_PALETTE_MIME => Self::PaletteKPL,
 			TEXT_MIME => Self::Text,

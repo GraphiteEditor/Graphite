@@ -289,7 +289,6 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				let panel_type = PanelType::Data;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
-
 			WorkspaceMessage::TogglePalettePanelOpen => {
 				if self.panel_layout.focus_document {
 					return;
