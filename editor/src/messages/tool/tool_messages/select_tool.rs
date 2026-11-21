@@ -908,8 +908,13 @@ fn draw_dowel_pin(overlay_context: &mut OverlayContext, document: &DocumentMessa
 	let layer_to_viewport = document.metadata().transform_to_viewport(followed);
 
 	overlay_context.follow_layer(followed, layer_to_viewport, move |overlay_context, movement| {
-		overlay_context.dowel_pin(movement.transform_point2(origin), angle, color);
+		overlay_context.dowel_pin(movement.transform_point2(origin), moved_angle(movement, angle), color);
 	});
+}
+
+/// The direction at `angle` after `movement` rotates it.
+fn moved_angle(movement: DAffine2, angle: f64) -> f64 {
+	movement.transform_vector2(DVec2::from_angle(angle)).to_angle()
 }
 
 /// Defers `draw` until render time and passes it the movement of the selection since the overlays were made.
@@ -1216,7 +1221,7 @@ impl Fsm for SelectToolFsmState {
 					let shift = tool_data.pivot_gizmo_shift.unwrap_or_default();
 					let position = pivot + offset + shift;
 					follow_selection(&mut overlay_context, document, move |overlay_context, movement| {
-						overlay_context.pivot(movement.transform_point2(position), angle)
+						overlay_context.pivot(movement.transform_point2(position), moved_angle(movement, angle))
 					});
 				}
 
@@ -1229,7 +1234,7 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					follow_selection(&mut overlay_context, document, move |overlay_context, movement| {
-						overlay_context.compass_rose(movement.transform_point2(compass_center), angle, show_compass_with_ring);
+						overlay_context.compass_rose(movement.transform_point2(compass_center), moved_angle(movement, angle), show_compass_with_ring);
 					});
 
 					let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {

@@ -320,7 +320,10 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 		let selected = selected_anchors_of(layer).contains(&id);
 
 		overlay_context.with_rendered_layers(move |overlay_context, rendered| {
-			let transform = rendered.vector(source).map_or(source.layer_to_viewport, |(_, transform)| transform);
+			let (position, transform) = rendered
+				.vector(source)
+				.and_then(|(vector, transform)| Some((vector.position_from_id(id)?, transform)))
+				.unwrap_or((position, source.layer_to_viewport));
 			overlay_context.hover_manipulator_anchor(transform.transform_point2(position), selected);
 		});
 	}

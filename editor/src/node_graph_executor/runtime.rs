@@ -333,12 +333,13 @@ impl NodeRuntime {
 		self.thumbnails.set_scale(request.render_config.scale);
 
 		let mut result = self.evaluate(request)?;
+		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 
 		let texture = if let Some(RenderOutput { data, metadata }) = result.render_output()
 			&& let RenderOutputType::Texture(texture) = data
 		{
 			self.viewport_artwork = Some(texture.clone());
-			let path_contents = path_contents(&self.observer.evaluate(&self.executor, self.old_graph.as_ref()));
+			let path_contents = path_contents(&observations);
 			self.rendered_layers = RenderedLayers::new(metadata, &path_contents, self.old_graph.as_ref());
 			self.overlays_stale = true;
 			let frame = self.composite_viewport_frame();
@@ -357,7 +358,7 @@ impl NodeRuntime {
 		};
 
 		self.resolve_effect_maps(&mut result).await;
-		self.respond(request.execution_id, result).await;
+		self.respond(request.execution_id, result, observations).await;
 		texture
 	}
 
@@ -419,7 +420,8 @@ impl NodeRuntime {
 			*data = RenderOutputType::Buffer { data: buffer, width, height };
 		}
 		self.resolve_effect_maps(&mut result).await;
-		self.respond(request.execution_id, result).await;
+		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
+		self.respond(request.execution_id, result, observations).await;
 	}
 
 	async fn run_eyedropper(&mut self, mut request: ExecutionRequest) {
@@ -478,12 +480,11 @@ impl NodeRuntime {
 		Some(result)
 	}
 
-	async fn respond(&mut self, execution_id: u64, result: ExecutionResult) {
+	async fn respond(&mut self, execution_id: u64, result: ExecutionResult, observations: HashMap<ObservationKey, InspectResult>) {
 		let mut responses = VecDeque::new();
 
 		// While the graph fails to compile, thumbnails stay stale to render once it compiles, not from the last network that did
 		let dropped_thumbnails = if self.compile_failed { Vec::new() } else { self.update_thumbnails(&mut responses).await };
-		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 
 		let response = ExecutionResponse {
 			execution_id,
