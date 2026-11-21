@@ -1071,7 +1071,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				// TODO: Remove this when we do the SVG rendering with a separate library on desktop, thus avoiding a need for the hole punch.
-				// TODO: See #3796. There is a second instance of this todo comment and code block (be sure to remove both).
+				// TODO: See #3796.
 				#[cfg(not(target_family = "wasm"))]
 				responses.add_front(FrontendMessage::UpdateViewportHolePunch {
 					active: document.render_mode != graphene_std::vector::style::RenderMode::SvgPreview,

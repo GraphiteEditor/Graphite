@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
-	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "/src/components/floating-menus/EyedropperPreview.svelte";
+	import EyedropperPreview from "/src/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Graph from "/src/components/views/Graph.svelte";
@@ -17,7 +17,6 @@
 	import { fillChoiceColor, createSRgba8, sRgba8FromCSS } from "/src/utility-functions/colors";
 	import { cleanupInputField } from "/src/utility-functions/input";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
-	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived } from "/src/utility-functions/viewports";
 	import type { EditorWrapper, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -55,8 +54,6 @@
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
-	// The rendered SVG as sent, with its outer tags
-	let artworkSvgDocuments = "";
 
 	// Web-only "Initializing Renderer…" overlay shown until the first Vello-rendered artwork arrives
 	const isWeb = import.meta.env.MODE !== "native";
@@ -64,10 +61,6 @@
 
 	// The canvas color around artboards, parsed once from its CSS variable
 	let outsideArtboardsBackground: SRGBA8 | undefined = undefined;
-
-	// Rasterized SVG viewport data, or none if it's not up-to-date
-	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
-	let rasterizedContext: CanvasRenderingContext2D | undefined = undefined;
 
 	// Cursor icon to display while hovering over the canvas
 	let canvasCursor = "default";
@@ -173,8 +166,6 @@
 			.trim()
 			.replace(/<svg[^>]*>/, "")
 			.slice(0, -"</svg>".length);
-		artworkSvgDocuments = svg.trim();
-		rasterizedCanvas = undefined;
 
 		await tick();
 
@@ -220,55 +211,18 @@
 		});
 	}
 
-	export async function updateEyedropperSamplingState(
-		// `image` is currently only used for Vello renders
-		image: ImageData | undefined,
-		mousePosition: [number, number] | undefined,
-		colorPrimary: string,
-		colorSecondary: string,
-	): Promise<SRGBA8 | undefined> {
-		if (mousePosition === undefined) {
+	export function updateEyedropperSamplingState(image: ImageData | undefined, mousePosition: [number, number] | undefined, colorPrimary: string, colorSecondary: string): SRGBA8 | undefined {
+		if (mousePosition === undefined || image === undefined) {
 			cursorEyedropper = false;
 			return undefined;
 		}
 		cursorEyedropper = true;
 
-		if (canvasWidth === undefined || canvasHeight === undefined) return undefined;
-
 		cursorLeft = mousePosition[0];
 		cursorTop = mousePosition[1];
 
-		const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
-
-		outsideArtboardsBackground ||= sRgba8FromCSS(outsideArtboardsColor);
-		const background = outsideArtboardsBackground;
-		let preview = image && (background ? withBackgroundColor(image, background) : image);
-		if (!preview) {
-			// This works nearly perfectly, but sometimes at odd DPI scale factors like 1.25, the anti-aliasing color can yield slightly incorrect colors (potential room for future improvement)
-			const dpiFactor = window.devicePixelRatio;
-			const [width, height] = [canvasWidth, canvasHeight];
-
-			const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
-
-			// The documents are nested whole, as stripping several (the canvas background, then the artwork) leaves invalid XML
-			const svg = `
-				<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" width="${width}" height="${height}">${outsideArtboards}${artworkSvgDocuments}</svg>
-				`.trim();
-
-			if (!rasterizedCanvas) {
-				rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor);
-				rasterizedContext = rasterizedCanvas.getContext("2d", { willReadFrequently: true }) || undefined;
-			}
-			if (!rasterizedContext) return undefined;
-
-			preview = rasterizedContext.getImageData(
-				mousePosition[0] * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
-				mousePosition[1] * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
-				ZOOM_WINDOW_DIMENSIONS,
-				ZOOM_WINDOW_DIMENSIONS,
-			);
-			if (!preview) return undefined;
-		}
+		outsideArtboardsBackground ||= sRgba8FromCSS(getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack"));
+		const preview = outsideArtboardsBackground ? withBackgroundColor(image, outsideArtboardsBackground) : image;
 
 		const centerPixel = (() => {
 			const { width, height, data } = preview;
@@ -501,7 +455,7 @@
 
 			const { image, mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
 			const imageData = image !== undefined ? new ImageData(new Uint8ClampedArray(image.data), image.width, image.height) : undefined;
-			const sRgba8 = await updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
+			const sRgba8 = updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
 
 			if (setColorChoice && sRgba8) {
 				if (setColorChoice === "Primary") editor.updatePrimaryColor(sRgba8);
