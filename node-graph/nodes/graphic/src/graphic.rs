@@ -14,7 +14,7 @@ use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
-#[node_macro::node(category("Data: List"), icon("NodeRemoveAtIndex"), name("Remove at Index"))]
+#[node_macro::node(category("Data: List"), icon("NodeRemoveAtIndex"), name("Remove at Index"), footprint_invariant)]
 fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The list of data.
@@ -48,7 +48,7 @@ fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 
 /// Returns the item at the specified index in a list, keeping its attributes.
 /// If no value exists at that index, the element type's default is returned.
-#[node_macro::node(category("Data: List"), icon("NodeItemAtIndex"), name("Item at Index"))]
+#[node_macro::node(category("Data: List"), icon("NodeItemAtIndex"), name("Item at Index"), footprint_invariant)]
 fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to take the item from.
@@ -85,7 +85,7 @@ fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 }
 
 /// Keeps chosen items from a list (those corresponding to `true` values) and discards the others (those corresponding to `false` values) based on the *Keep Pattern* `Bool` list. A short pattern is repeated over the remainder of the filtered list, allowing a pattern like `[true, false]` to keep every other item starting from the first. An empty pattern keeps all items.
-#[node_macro::node(category("Data: List"), icon("NodeFilter"))]
+#[node_macro::node(category("Data: List"), icon("NodeFilter"), footprint_invariant)]
 fn filter<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to filter.
@@ -143,7 +143,7 @@ fn reverse<T: Send + Sync + Clone + 'static>(
 }
 
 /// Shifts the items in a list by a number of positions. With wrapping, items pushed off one end reappear at the other. Otherwise they are dropped, shortening the list.
-#[node_macro::node(category("Data: List"), icon("NodeShift"))]
+#[node_macro::node(category("Data: List"), icon("NodeShift"), footprint_invariant)]
 fn shift<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to shift.
@@ -188,7 +188,7 @@ fn shift<T: Send + Sync + Clone + 'static>(
 }
 
 /// Randomly reorders the items in a list. The same seed always produces the same ordering.
-#[node_macro::node(category("Data: List"), icon("NodeShuffle"))]
+#[node_macro::node(category("Data: List"), icon("NodeShuffle"), footprint_invariant)]
 fn shuffle<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list to have its items randomly reordered.
@@ -244,7 +244,7 @@ fn number_sequence(
 // TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall these indices off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 /// Counts out the index of each item in a list (0, 1, 2, and so on), producing a list of numbers with one for each item.
-#[node_macro::node(category("Data: List"), icon("NodeIndices"))]
+#[node_macro::node(category("Data: List"), icon("NodeIndices"), footprint_invariant)]
 fn indices(
 	_: impl Ctx,
 	/// The list whose items are counted.
@@ -260,7 +260,7 @@ fn indices(
 /// Extracts a portion of a list, starting at "Start" and ending before "End".
 ///
 /// Negative indices count from the end of the list. If the index of "Start" equals or exceeds "End", the result is an empty list.
-#[node_macro::node(category("Data: List"), icon("NodeSlice"))]
+#[node_macro::node(category("Data: List"), icon("NodeSlice"), footprint_invariant)]
 fn slice<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to take a portion of.
@@ -342,7 +342,7 @@ pub enum SortError {
 }
 
 /// Reorders a list's items from smallest to largest, either by each item's own value or by a parallel list of sortable values in the *Sort Order* input. The sort is stable, so items with the same sort order retain their relative positions.
-#[node_macro::node(category("Data: List"), icon("NodeSort"))]
+#[node_macro::node(category("Data: List"), icon("NodeSort"), footprint_invariant)]
 fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to reorder.
@@ -396,7 +396,7 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 	Ok(result)
 }
 
-#[node_macro::node(category("Data: List"), icon("NodeMap"))]
+#[node_macro::node(category("Data: List"), icon("NodeMap"), footprint_invariant)]
 fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
@@ -514,7 +514,7 @@ impl HasText for Raster<GPU> {}
 impl HasText for Color {}
 impl HasText for Gradient {}
 
-#[node_macro::node(category("Graphic"), icon("NodeMirror"))]
+#[node_macro::node(category("Graphic"), icon("NodeMirror"), footprint_invariant)]
 fn mirror<T: BoundingBox + HasText + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(

@@ -11,7 +11,7 @@ use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
-	ExtractAll, OwnedContextImpl,
+	ExtractAll, InjectFootprint, OwnedContextImpl,
 };
 use core_types::{Interrupt, NodeError};
 use glam::{DAffine2, DMat2, DVec2};
@@ -282,7 +282,7 @@ pub enum VaryColorsError {
 }
 
 /// Uniquely recolors the fill of every vector element to individual colors sampled along a chosen gradient.
-#[node_macro::node(category("Vector: Style"), icon("NodeVaryFillColors"), path(graphene_core::vector), version(2))]
+#[node_macro::node(category("Vector: Style"), icon("NodeVaryFillColors"), path(graphene_core::vector), version(2), footprint_invariant)]
 fn vary_fill_colors<T>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
@@ -313,7 +313,7 @@ where
 }
 
 /// Uniquely recolors the stroke of every vector element to individual colors sampled along a chosen gradient.
-#[node_macro::node(category("Vector: Style"), icon("NodeVaryStrokeColors"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Style"), icon("NodeVaryStrokeColors"), path(graphene_core::vector), footprint_invariant)]
 fn vary_stroke_colors<T>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
@@ -794,7 +794,7 @@ fn unweld<V: MapVectorItems + Send + Sync + 'static>(
 }
 
 /// Wraps the points and paths of the vector content in a closed path in the shape of a rubber band stretched around everything. A curvature above zero may be given to obtain the concave hull, letting the (closed, open, or mesh-like) path or paths press into indents of the content where a ball with that curvature would be able to reach.
-#[node_macro::node(category("Vector: Point"), icon("NodeConvexHull"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeConvexHull"), path(core_types::vector), footprint_invariant)]
 fn convex_hull<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector content to envelop in the hull, which may be points, paths, or both.
@@ -1102,7 +1102,7 @@ pub enum BoxWarpError {
 	TooFewCorners,
 }
 
-#[node_macro::node(category("Vector: Deform"), icon("NodeBoxWarp"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Deform"), icon("NodeBoxWarp"), path(core_types::vector), footprint_invariant)]
 fn box_warp<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>, #[expose] rectangle: Item<Vector>) -> Result<Item<V>, BoxWarpError> {
 	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let target_paths = shared_paths_from_item_attributes(&rectangle);
@@ -1171,7 +1171,7 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 	tl * (1. - t.x) * (1. - t.y) + tr * t.x * (1. - t.y) + br * t.x * t.y + bl * (1. - t.x) * t.y
 }
 
-#[node_macro::node(category("Transform"), icon("NodePackStrips"), path(graphene_core::vector))]
+#[node_macro::node(category("Transform"), icon("NodePackStrips"), path(graphene_core::vector), footprint_invariant)]
 fn pack_strips<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
@@ -1473,7 +1473,7 @@ fn push_contour(vector: &mut Vector, paths: &mut List<Path>, anchors: &[u32], ma
 	push_paths(paths, runs);
 }
 
-#[node_macro::node(category("Vector: Geometry"), icon("NodeBoundingBox"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeBoundingBox"), path(core_types::vector), footprint_invariant)]
 fn bounding_box<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
@@ -1490,7 +1490,7 @@ fn bounding_box<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic
 	})
 }
 
-#[node_macro::node(category("Vector: Measure"), icon("NodeDimensions"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Measure"), icon("NodeDimensions"), path(core_types::vector), footprint_invariant)]
 fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 	let paths = paths_from_item_attributes(&content).unwrap_or_else(|| no_paths());
 	let dimensions = content
@@ -1509,7 +1509,7 @@ fn as_vector(_: impl Ctx, value: Item<Vector>) -> Item<Vector> {
 }
 
 /// Creates vector points at the given positions, as a point cloud with nothing connecting them. **Points to Polyline** can join them into a path.
-#[node_macro::node(category("Vector: Point"), icon("NodePointsToVector"), name("Points to Vector"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodePointsToVector"), name("Points to Vector"), path(core_types::vector), footprint_invariant)]
 fn points_to_vector(
 	_: impl Ctx,
 	/// The positions to place the points at, in order.
@@ -1635,7 +1635,7 @@ fn relax_points<V: MapVectorItems + Send>(
 /// Builds a Voronoi diagram from the anchor points. Each point claims the region of space closest to it, and those regions tessellate the plane. Cells around the outside are clipped to the convex hull of the points so the diagram stays finite.
 ///
 /// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh.
-#[node_macro::node(category("Vector: Point"), icon("NodeVoronoiCells"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeVoronoiCells"), path(core_types::vector), footprint_invariant)]
 fn voronoi_cells<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Result<Item<V>, PointDiagramError> {
 	V::try_map_vector_items(source, |source| {
 		let mut source = source;
@@ -1658,7 +1658,7 @@ fn voronoi_cells<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphi
 /// Builds a Delaunay triangulation connecting the anchor points. It is the geometric dual of the **Voronoi** node: a mesh of triangles in which no point lies inside any triangle's circumscribed circle.
 ///
 /// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh.
-#[node_macro::node(category("Vector: Point"), icon("NodeTriangulate"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeTriangulate"), path(core_types::vector), footprint_invariant)]
 fn triangulate<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Result<Item<V>, PointDiagramError> {
 	V::try_map_vector_items(source, |source| {
 		let mut source = source;
@@ -2836,7 +2836,7 @@ fn offset_points<V: MapVectorItems + Send>(
 /// Interpolates the geometry, appearance, and transform between multiple vector layers, producing a single morphed vector shape.
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
-#[node_macro::node(category("Vector: Deform"), icon("NodeMorph"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Deform"), icon("NodeMorph"), path(core_types::vector), footprint_invariant)]
 fn morph(
 	_: impl Ctx,
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
@@ -3871,12 +3871,12 @@ fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<b
 
 // TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall this count off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
-#[node_macro::node(category("Data: List"), icon("NodeCount"), path(graphene_core::vector))]
+#[node_macro::node(category("Data: List"), icon("NodeCount"), path(graphene_core::vector), footprint_invariant)]
 fn count(_: impl Ctx, content: ListDyn) -> Item<f64> {
 	Item::new_from_element(content.len() as f64)
 }
 
-#[node_macro::node(category("Vector: Measure"), icon("NodeCountPoints"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Measure"), icon("NodeCountPoints"), path(graphene_core::vector), footprint_invariant)]
 fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
 	let paths = paths_from_item_attributes(&content).unwrap_or_else(|| no_paths());
 	let count = content.element().anchor_indices(paths).len() as f64;
@@ -3886,7 +3886,7 @@ fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
 
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index within a vector element.
 /// If no value exists at that index, the position (0, 0) is returned.
-#[node_macro::node(category("Vector: Measure"), icon("NodeIndexPoints"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Measure"), icon("NodeIndexPoints"), path(graphene_core::vector), footprint_invariant)]
 fn index_points(
 	_: impl Ctx,
 	/// The vector element containing the anchor points to be retrieved.
@@ -3912,7 +3912,7 @@ fn index_points(
 	Item::new_from_element(positions[index])
 }
 
-#[node_macro::node(category("Vector: Measure"), icon("NodePathLength"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Measure"), icon("NodePathLength"), path(core_types::vector), footprint_invariant)]
 fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
 	let paths = paths_from_item_attributes(&source).unwrap_or_else(|| no_paths());
 	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -3928,8 +3928,8 @@ fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
 	Item::new_from_element(length)
 }
 
-#[node_macro::node(category("Vector: Measure"), icon("NodeArea"), path(core_types::vector))]
-fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>) -> Result<Item<f64>, Interrupt> {
+#[node_macro::node(category("Vector: Measure"), icon("NodeArea"), path(core_types::vector), version(2))]
+fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectFootprint, content: impl Node<Context<'static>, Output = Item<Vector>>) -> Result<Item<f64>, Interrupt> {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector = content.eval(new_ctx)?;
 
@@ -3947,8 +3947,12 @@ pub enum CentroidError {
 	NoPoints,
 }
 
-#[node_macro::node(category("Vector: Measure"), icon("NodeCentroid"), path(core_types::vector))]
-fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>, centroid_type: Item<CentroidType>) -> Result<Item<DVec2>, Interrupt> {
+#[node_macro::node(category("Vector: Measure"), icon("NodeCentroid"), path(core_types::vector), version(2))]
+fn centroid(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectFootprint,
+	content: impl Node<Context<'static>, Output = Item<Vector>>,
+	centroid_type: Item<CentroidType>,
+) -> Result<Item<DVec2>, Interrupt> {
 	let centroid_type = centroid_type.into_element();
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector = content.eval(new_ctx)?;
