@@ -1,7 +1,9 @@
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
+use core_types::{
+	ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, InjectIndex, Interrupt, OwnedContextImpl,
+};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
 use graphic_types::{Artboard, Vector};
@@ -398,7 +400,7 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 
 #[node_macro::node(category("Data: List"), icon("NodeMap"), footprint_invariant)]
 fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectIndex,
 	#[implementations(
 		List<String>,
 		List<bool>,
@@ -448,7 +450,7 @@ fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 /// Feeds the content through the same steps over and over, each time starting from the previous result. Inside the steps, a **Read** node like **Read String** or **Read Vector** reads the result so far, and **Read Index** reads how many times around it has been.
 #[node_macro::node(category("Routing"), icon("NodeIterate"))]
 fn iterate<T: AnyHash + Send + Sync + CacheHash + Clone>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectIndex,
 	/// The starting value, which the steps rework each time around.
 	#[implementations(String, f64, Vector, Graphic, Raster<CPU>, Color, Gradient)]
 	content: Item<T>,
@@ -619,7 +621,7 @@ fn write_layer_path<T: 'static + Send>(
 /// monomorphizes over `T` instead of the cartesian product `(T, U)`.
 #[node_macro::node(category("Data: Attribute"), icon("NodeWriteAttribute"))]
 fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl ExtractAll + CloneVarArgs + Ctx + InjectIndex,
 	/// The list to set the named attribute on (one value per item).
 	#[implementations(
 		List<String>,

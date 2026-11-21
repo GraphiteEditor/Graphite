@@ -123,6 +123,15 @@ impl Parse for ParsedWidgetOverride {
 	}
 }
 
+/// How a field takes part in loop index tracking, from `#[index_level]`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ParsedIndexRole {
+	#[default]
+	None,
+	/// This field's constant value selects which loop level's index the node reads.
+	Level,
+}
+
 #[derive(Clone, Debug)]
 pub struct ParsedField {
 	pub pat_ident: PatIdent,
@@ -136,6 +145,7 @@ pub struct ParsedField {
 	pub multiline: bool,
 	pub progression: bool,
 	pub constant: bool,
+	pub index_role: ParsedIndexRole,
 	pub is_data_field: bool,
 }
 
@@ -169,6 +179,7 @@ impl ParsedField {
 			multiline: false,
 			progression: false,
 			constant: false,
+			index_role: ParsedIndexRole::None,
 			is_data_field: false,
 		}
 	}
@@ -856,8 +867,14 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 
 	let exposed = extract_attribute(attrs, "expose").is_some();
 
-	// The `#[constant]` marker makes the compiler reject inputs not fed by a value known at compile time
-	let constant = extract_attribute(attrs, "constant").is_some();
+	let index_role = match extract_attribute(attrs, "index_level") {
+		Some(_) => ParsedIndexRole::Level,
+		None => ParsedIndexRole::None,
+	};
+
+	// The `#[constant]` marker makes the compiler reject inputs not fed by a value known at compile time.
+	// An `#[index_level]` must be constant too, so the compiler knows which loop's index is read.
+	let constant = extract_attribute(attrs, "constant").is_some() || index_role == ParsedIndexRole::Level;
 
 	// Gives a synchronous node its `SourceId`, as async nodes get it, so it can bump its own generation
 	let source_id = extract_attribute(attrs, "source_id").is_some();
@@ -887,6 +904,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				&pat_ident,
 				"Data fields (#[data]) cannot be #[constant]. They are internal state, not node parameters",
 			));
+		}
+		if index_role != ParsedIndexRole::None {
+			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot be #[index_level]"));
 		}
 		if source_id {
 			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[source_id] attribute"));
@@ -1035,6 +1055,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			multiline,
 			progression,
 			constant,
+			index_role,
 			is_data_field,
 		})
 	} else {
@@ -1087,6 +1108,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			multiline,
 			progression,
 			constant,
+			index_role,
 			is_data_field,
 		})
 	}
@@ -1386,6 +1408,7 @@ mod tests {
 				multiline: false,
 				progression: false,
 				constant: false,
+				index_role: ParsedIndexRole::None,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1448,6 +1471,7 @@ mod tests {
 					multiline: false,
 					progression: false,
 					constant: false,
+					index_role: ParsedIndexRole::None,
 					is_data_field: false,
 				},
 				ParsedField {
@@ -1472,6 +1496,7 @@ mod tests {
 					multiline: false,
 					progression: false,
 					constant: false,
+					index_role: ParsedIndexRole::None,
 					is_data_field: false,
 				},
 			],
@@ -1535,6 +1560,7 @@ mod tests {
 				multiline: false,
 				progression: false,
 				constant: false,
+				index_role: ParsedIndexRole::None,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1601,6 +1627,7 @@ mod tests {
 				multiline: false,
 				progression: false,
 				constant: false,
+				index_role: ParsedIndexRole::None,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1670,6 +1697,7 @@ mod tests {
 				multiline: false,
 				progression: false,
 				constant: false,
+				index_role: ParsedIndexRole::None,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1764,6 +1792,7 @@ mod tests {
 				multiline: false,
 				progression: false,
 				constant: false,
+				index_role: ParsedIndexRole::None,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),

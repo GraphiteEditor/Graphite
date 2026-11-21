@@ -205,12 +205,17 @@ impl Preprocessor {
 				context_features,
 				..
 			} = metadata;
-			let constant_inputs = fields.iter().enumerate().filter(|(_, field)| field.constant).fold(0, |mask, (index, _)| mask | 1 << index);
+			let input_mask = |predicate: &dyn Fn(&FieldMetadata) -> bool| fields.iter().enumerate().filter(|(_, field)| predicate(field)).fold(0, |mask, (index, _)| mask | 1 << index);
+			let context_metadata = NodeCompileMetadata::from(context_features.as_slice());
+			let pushes_index = context_metadata.inject.contains(ContextFeatures::INDEX);
+
 			let node_compile_metadata = NodeCompileMetadata {
 				footprint_invariant: *footprint_invariant,
 				forwards_input: *forwards_input,
-				constant_inputs,
-				..NodeCompileMetadata::from(context_features.as_slice())
+				constant_inputs: input_mask(&|field| field.constant),
+				loop_body_inputs: if pushes_index { input_mask(&|field| field.lazy) } else { 0 },
+				index_level_input: fields.iter().position(|field| field.index_role == FieldIndexRole::Level).map(|index| index as u8),
+				..context_metadata
 			};
 			compile_metadata.insert(id.clone(), node_compile_metadata);
 
@@ -863,5 +868,23 @@ mod tests {
 		for identifier in [graphene_core::memo::memoize::IDENTIFIER, ops::passthrough::IDENTIFIER] {
 			assert!(compile_metadata(&identifier).forwards_input, "{identifier:?} should forward its input");
 		}
+	}
+
+	#[test]
+	fn loop_index_roles_reach_the_compile_metadata() {
+		use graphene_std::context::read_index;
+		use graphene_std::graphic::map;
+
+		let preprocessor = Preprocessor::new();
+		let compile_metadata = |identifier: &ProtoNodeIdentifier| preprocessor.compile_metadata.get(identifier).copied().unwrap_or_default();
+
+		let map_metadata = compile_metadata(&map::IDENTIFIER);
+		assert!(map_metadata.is_loop_body_input(<map::MappedInput as NodeParameter>::INDEX));
+		assert_eq!(map_metadata.loop_body_inputs.count_ones(), 1, "Only the mapped lambda runs inside the loop");
+
+		let read_index_metadata = compile_metadata(&read_index::IDENTIFIER);
+		let loop_level_index = <read_index::LoopLevelInput as NodeParameter>::INDEX;
+		assert_eq!(read_index_metadata.index_level_input, Some(loop_level_index as u8));
+		assert!(read_index_metadata.requires_constant_input(loop_level_index), "The loop level must be a constant");
 	}
 }

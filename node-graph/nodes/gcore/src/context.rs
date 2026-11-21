@@ -88,6 +88,7 @@ fn read_index(
 	///
 	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
 	#[hard(0..)]
+	#[index_level]
 	loop_level: Item<i64>,
 ) -> Result<Item<f64>, ReadContextError> {
 	// The graph outside any loop runs once, as index 0

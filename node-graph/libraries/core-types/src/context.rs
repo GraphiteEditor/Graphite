@@ -233,11 +233,25 @@ pub struct NodeCompileMetadata {
 	pub forwards_input: bool,
 	#[cfg_attr(feature = "serde", serde(default))]
 	pub constant_inputs: u64,
+	/// Inputs evaluated inside the loop scope this node pushes an index for.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub loop_body_inputs: u64,
+	/// The input whose constant value selects the loop level this node reads the index from.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub index_level_input: Option<u8>,
 }
 
 impl NodeCompileMetadata {
 	pub fn requires_constant_input(&self, index: usize) -> bool {
-		index < u64::BITS as usize && self.constant_inputs & (1 << index) != 0
+		Self::contains_input(self.constant_inputs, index)
+	}
+
+	pub fn is_loop_body_input(&self, index: usize) -> bool {
+		Self::contains_input(self.loop_body_inputs, index)
+	}
+
+	fn contains_input(mask: u64, index: usize) -> bool {
+		index < u64::BITS as usize && mask & (1 << index) != 0
 	}
 }
 

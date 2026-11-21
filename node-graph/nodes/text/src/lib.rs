@@ -13,7 +13,7 @@ use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::math::float_noise::round_away_float_noise;
 use core_types::misc::{format_f64, parse_f64};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, InjectIndex, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::DVec2;
 use rand::{RngExt, SeedableRng};
@@ -965,7 +965,7 @@ fn string_join(
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
 #[node_macro::node(category("String"), icon("NodeStringMap"))]
 fn string_map(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectIndex,
 	strings: List<String>,
 	#[expose]
 	#[implementations(Context -> Item<String>)]

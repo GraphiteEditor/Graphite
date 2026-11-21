@@ -318,6 +318,20 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote!(#constant)
 		})
 		.collect();
+	let index_role: Vec<_> = regular_fields
+		.iter()
+		.map(|field| match field.index_role {
+			ParsedIndexRole::None => quote!(gcore::registry::FieldIndexRole::None),
+			ParsedIndexRole::Level => quote!(gcore::registry::FieldIndexRole::Level),
+		})
+		.collect();
+	let lazy: Vec<_> = regular_fields
+		.iter()
+		.map(|field| {
+			let lazy = matches!(field.ty, ParsedFieldType::Node(_));
+			quote!(#lazy)
+		})
+		.collect();
 
 	let exposed: Vec<_> = regular_fields
 		.iter()
@@ -1078,6 +1092,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								multiline: #multiline,
 								progression: #progression,
 								constant: #constant,
+								index_role: #index_role,
+								lazy: #lazy,
 							},
 						)*
 					],

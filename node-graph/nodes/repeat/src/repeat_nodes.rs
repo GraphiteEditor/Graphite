@@ -1,7 +1,7 @@
 use crate::gcore::Context;
 use core::f64::consts::TAU;
 use core_types::list::{Item, List};
-use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, Interrupt, OwnedContextImpl};
+use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectIndex, InjectVarArgs, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
@@ -10,7 +10,7 @@ use vector_types::vector::{no_paths, paths_from_list_row_attributes};
 
 #[node_macro::node(category("Graphic"), icon("NodeRepeat"))]
 fn repeat<T: Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl ExtractAll + CloneVarArgs + Ctx + InjectIndex,
 	#[implementations(
 		Context -> List<String>,
 		Context -> List<bool>,
@@ -55,7 +55,7 @@ fn repeat<T: Send + Clone + 'static>(
 
 #[node_macro::node(category("Graphic"), icon("NodeRepeatArray"))]
 fn repeat_array<T: Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl ExtractAll + CloneVarArgs + Ctx + InjectIndex,
 	#[implementations(
 		Context -> List<String>,
 		Context -> List<bool>,
@@ -116,7 +116,7 @@ fn repeat_array<T: Send + Clone + 'static>(
 
 #[node_macro::node(category("Graphic"), icon("NodeRepeatRadial"))]
 fn repeat_radial<T: Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl ExtractAll + CloneVarArgs + Ctx + InjectIndex,
 	#[implementations(
 		Context -> List<String>,
 		Context -> List<bool>,
@@ -173,7 +173,7 @@ fn repeat_radial<T: Send + Clone + 'static>(
 
 #[node_macro::node(category("Graphic"), icon("NodeRepeatOnPoints"), name("Repeat on Points"))]
 fn repeat_on_points<T: Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectVarArgs,
+	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectVarArgs + InjectIndex,
 	points: List<Vector>,
 	#[implementations(
 		Context -> List<String>,

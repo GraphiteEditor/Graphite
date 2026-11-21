@@ -127,6 +127,8 @@ pub struct ProtoNode {
 	pub(crate) compile_metadata: NodeCompileMetadata,
 	/// The context features read by this node and everything upstream of it.
 	pub upstream_context_features: ContextFeatures,
+	/// The loop levels whose index this node and everything upstream of it read, as a bitmask where bit `k` is the `k`-th innermost loop.
+	pub upstream_index_levels: u64,
 }
 
 impl Default for ProtoNode {
@@ -138,6 +140,7 @@ impl Default for ProtoNode {
 			original_location: OriginalLocation::default(),
 			compile_metadata: Default::default(),
 			upstream_context_features: ContextFeatures::empty(),
+			upstream_index_levels: 0,
 		}
 	}
 }
@@ -169,6 +172,7 @@ impl ProtoNode {
 			},
 			compile_metadata: Default::default(),
 			upstream_context_features: ContextFeatures::empty(),
+			upstream_index_levels: 0,
 		}
 	}
 
@@ -304,19 +308,39 @@ impl ProtoNetwork {
 			.collect()
 	}
 
-	fn resolves_to_value(&self, mut id: NodeId) -> bool {
+	fn resolves_to_value(&self, id: NodeId) -> bool {
+		self.constant_value(id).is_some()
+	}
+
+	/// The value feeding this node, following nodes which forward their first input.
+	fn constant_value(&self, mut id: NodeId) -> Option<&TaggedValue> {
 		loop {
-			let Some((node_id, node)) = self.nodes.get(id.0 as usize) else { return false };
+			let (node_id, node) = self.nodes.get(id.0 as usize)?;
 			debug_assert_eq!(*node_id, id, "Node IDs must be dense indices");
 
 			match &node.construction_args {
-				ConstructionArgs::Value(_) => return true,
-				ConstructionArgs::Nodes(inputs) if node.compile_metadata.forwards_input => match inputs.first() {
-					Some(&input) => id = input,
-					None => return false,
-				},
-				_ => return false,
+				ConstructionArgs::Value(value) => return Some(&**value),
+				ConstructionArgs::Nodes(inputs) if node.compile_metadata.forwards_input => id = *inputs.first()?,
+				_ => return None,
 			}
+		}
+	}
+
+	/// The loop levels a node reads the index from itself, assuming all levels when the level isn't known at compile time.
+	fn own_index_levels(&self, node: &ProtoNode) -> u64 {
+		if !node.compile_metadata.extract.contains(ContextFeatures::INDEX) {
+			return 0;
+		}
+
+		let ConstructionArgs::Nodes(inputs) = &node.construction_args else { return u64::MAX };
+		let level_value = node
+			.compile_metadata
+			.index_level_input
+			.and_then(|index| inputs.get(index as usize))
+			.and_then(|&input| self.constant_value(input));
+		match level_value {
+			Some(TaggedValue::Integer(level)) => u32::try_from((*level).max(0)).ok().and_then(|level| 1_u64.checked_shl(level)).unwrap_or(u64::MAX),
+			_ => u64::MAX,
 		}
 	}
 
@@ -330,6 +354,7 @@ impl ProtoNetwork {
 		}
 
 		let features = context_deps.features;
+		let index_levels = node.upstream_index_levels;
 		let forwarding = NodeCompileMetadata {
 			forwards_input: true,
 			..Default::default()
@@ -348,6 +373,7 @@ impl ProtoNetwork {
 				},
 				compile_metadata: forwarding,
 				upstream_context_features: features,
+				upstream_index_levels: index_levels,
 			},
 		));
 
@@ -379,6 +405,7 @@ impl ProtoNetwork {
 				},
 				compile_metadata: forwarding,
 				upstream_context_features: features,
+				upstream_index_levels: index_levels,
 			},
 		));
 		nullification_node_id
@@ -427,16 +454,34 @@ impl ProtoNetwork {
 		};
 
 		// Compute the dependencies for each branch and combine all of them
-		for &node in &inputs {
+		// An index injection without a loop body replaces the whole index stack for everything upstream
+		let replaces_index_stack = dependencies.inject.contains(ContextFeatures::INDEX) && dependencies.loop_body_inputs == 0;
+
+		let mut index_levels = self.own_index_levels(&self.nodes[node_index].1);
+		for (input_index, &node) in inputs.iter().enumerate() {
 			let branch = self.find_context_dependencies(node, analyzed);
 			self.nodes[node.0 as usize].1.upstream_context_features = branch.0.features;
+
+			// A loop body's innermost index is the one this node pushes, so its outer levels are one closer to us
+			let branch_index_levels = self.nodes[node.0 as usize].1.upstream_index_levels;
+			index_levels |= if replaces_index_stack {
+				0
+			} else if dependencies.is_loop_body_input(input_index) {
+				branch_index_levels >> 1
+			} else {
+				branch_index_levels
+			};
 
 			combined_deps.features |= branch.0.features;
 			combined_deps.sources.extend(&branch.0.sources);
 			branch_dependencies.push(branch);
 		}
-		// Remove requirements which this node provides and add requirements we have
-		let features = (combined_deps.features & !dependencies.inject) | dependencies.extract;
+		self.nodes[node_index].1.upstream_index_levels = index_levels;
+
+		// Remove requirements which this node provides and add requirements we have, with the index tracked per loop level instead
+		let inject = dependencies.inject - ContextFeatures::INDEX;
+		let mut features = (combined_deps.features & !inject) | (dependencies.extract - ContextFeatures::INDEX);
+		features.set(ContextFeatures::INDEX, index_levels != 0);
 
 		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
 		let we_introduces_new_deps = !combined_deps.features.contains(features);
@@ -451,14 +496,8 @@ impl ProtoNetwork {
 		}
 		self.nodes[node_index].1.construction_args = ConstructionArgs::Nodes(inputs);
 
-		// Which dependencies do we supply (and don't need ourselves)?
-		let net_injections = dependencies.inject.difference(dependencies.extract);
-
-		// Which dependencies still need to be met after this node?
-		let remaining_deps_from_children = combined_deps.features.difference(net_injections);
-
-		// Do we satisfy any existing dependencies?
-		let we_supply_existing_deps = !combined_deps.features.difference(remaining_deps_from_children).is_empty();
+		// Do we satisfy any existing dependencies, so they are no longer needed after this node?
+		let we_supply_existing_deps = !combined_deps.features.difference(features).is_empty();
 
 		let new_deps = ContextModification {
 			features,
@@ -1328,6 +1367,66 @@ mod test {
 		assert!(violations[0].error == GraphErrorType::FootprintDependentInput);
 
 		assert!(warnings(true).is_empty());
+	}
+
+	fn loop_test_node(name: &'static str, inputs: Vec<NodeId>, compile_metadata: NodeCompileMetadata) -> ProtoNode {
+		ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args: ConstructionArgs::Nodes(inputs),
+			compile_metadata,
+			..Default::default()
+		}
+	}
+
+	fn integer_value(value: i64) -> ProtoNode {
+		ProtoNode::value(ConstructionArgs::Value(TaggedValue::Integer(value).into()), vec![])
+	}
+
+	const INDEX_READER: NodeCompileMetadata = NodeCompileMetadata {
+		extract: ContextFeatures::INDEX,
+		inject: ContextFeatures::empty(),
+		footprint_invariant: false,
+		forwards_input: false,
+		constant_inputs: 0b1,
+		loop_body_inputs: 0,
+		index_level_input: Some(0),
+	};
+
+	/// A loop evaluating its second input once per row of its first input.
+	const MAP: NodeCompileMetadata = NodeCompileMetadata {
+		extract: ContextFeatures::empty(),
+		inject: ContextFeatures::INDEX,
+		footprint_invariant: false,
+		forwards_input: false,
+		constant_inputs: 0,
+		loop_body_inputs: 0b10,
+		index_level_input: None,
+	};
+
+	#[test]
+	fn nested_loops_keep_the_outer_index_for_the_inner_body() {
+		let nodes = vec![
+			(NodeId(0), integer_value(1)),
+			(NodeId(1), loop_test_node("index_reader", vec![NodeId(0)], INDEX_READER)),
+			(NodeId(2), integer_value(2)),
+			(NodeId(3), loop_test_node("inner_map", vec![NodeId(2), NodeId(1)], MAP)),
+			(NodeId(4), integer_value(3)),
+			(NodeId(5), loop_test_node("outer_map", vec![NodeId(4), NodeId(3)], MAP)),
+		];
+
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(5),
+			nodes,
+		};
+		network.insert_context_nullification_nodes().unwrap();
+
+		let node_named = |name: &str| &network.nodes.iter().find(|(_, node)| node.identifier.as_str() == name).unwrap().1;
+		assert!(node_named("inner_map").upstream_context_features.contains(ContextFeatures::INDEX));
+		assert_eq!(node_named("inner_map").upstream_index_levels, 0b1);
+		assert_eq!(node_named("outer_map").upstream_index_levels, 0);
+		assert!(!node_named("outer_map").upstream_context_features.contains(ContextFeatures::INDEX));
 	}
 
 	#[test]

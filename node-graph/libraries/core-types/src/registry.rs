@@ -60,6 +60,18 @@ pub struct FieldMetadata {
 	pub progression: bool,
 	/// Whether the input must be fed by a value known at compile time, from `#[constant]`.
 	pub constant: bool,
+	pub index_role: FieldIndexRole,
+	/// Whether the node evaluates the input itself (an `impl Node` parameter) rather than receiving its value.
+	pub lazy: bool,
+}
+
+/// How an input takes part in loop index tracking.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FieldIndexRole {
+	#[default]
+	None,
+	/// This input's constant value selects which loop level's index is read, from `#[index_level]`.
+	Level,
 }
 
 #[derive(Clone, Debug)]

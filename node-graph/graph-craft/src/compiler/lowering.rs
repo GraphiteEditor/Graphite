@@ -28,6 +28,7 @@ impl DocumentNode {
 			original_location: self.original_location,
 			compile_metadata: self.compile_metadata.unwrap_or_default(),
 			upstream_context_features: Default::default(),
+			upstream_index_levels: 0,
 		}
 	}
 }

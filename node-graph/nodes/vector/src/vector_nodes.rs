@@ -11,7 +11,7 @@ use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
-	ExtractAll, InjectFootprint, OwnedContextImpl,
+	ExtractAll, InjectFootprint, InjectIndex, OwnedContextImpl,
 };
 use core_types::{Interrupt, NodeError};
 use glam::{DAffine2, DMat2, DVec2};
@@ -2045,7 +2045,7 @@ fn path_is_closed(
 
 #[node_macro::node(category("Vector: Point"), icon("NodeMapPoints"), path(graphene_core::vector))]
 fn map_points<V: MapVectorItems + Send>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectIndex,
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	mapped: impl Node<Context<'static>, Output = Item<DVec2>>,
 ) -> Result<Item<V>, Interrupt> {
