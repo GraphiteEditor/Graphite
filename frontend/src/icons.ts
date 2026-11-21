@@ -121,8 +121,6 @@ import NodeAsInteger from "/../branding/assets/16x16-nodes/node-as-integer.svg";
 import NodeAsNumber from "/../branding/assets/16x16-nodes/node-as-number.svg";
 import NodeAsString from "/../branding/assets/16x16-nodes/node-as-string.svg";
 import NodeAsVector from "/../branding/assets/16x16-nodes/node-as-vector.svg";
-import NodeVaryRotations from "/../branding/assets/16x16-nodes/node-assign-rotations.svg";
-import NodeVaryScales from "/../branding/assets/16x16-nodes/node-assign-scales.svg";
 import NodeAverage from "/../branding/assets/16x16-nodes/node-average.svg";
 import NodeBakeTransform from "/../branding/assets/16x16-nodes/node-bake-transform.svg";
 import NodeBasicBrush from "/../branding/assets/16x16-nodes/node-basic-brush.svg";
@@ -175,6 +173,7 @@ import NodeDimensions from "/../branding/assets/16x16-nodes/node-dimensions.svg"
 import NodeDistance from "/../branding/assets/16x16-nodes/node-distance.svg";
 import NodeDivide from "/../branding/assets/16x16-nodes/node-divide.svg";
 import NodeDotProduct from "/../branding/assets/16x16-nodes/node-dot-product.svg";
+import NodeDropShadow from "/../branding/assets/16x16-nodes/node-drop-shadow.svg";
 import NodeEllipse from "/../branding/assets/16x16-nodes/node-ellipse.svg";
 import NodeEquals from "/../branding/assets/16x16-nodes/node-equals.svg";
 import NodeEvaluateGradient from "/../branding/assets/16x16-nodes/node-evaluate-gradient.svg";
@@ -224,6 +223,7 @@ import NodeImageToChannels from "/../branding/assets/16x16-nodes/node-image-to-c
 import NodeImage from "/../branding/assets/16x16-nodes/node-image.svg";
 import NodeIndexPoints from "/../branding/assets/16x16-nodes/node-index-points.svg";
 import NodeIndices from "/../branding/assets/16x16-nodes/node-indices.svg";
+import NodeInnerShadow from "/../branding/assets/16x16-nodes/node-inner-shadow.svg";
 import NodeInvertTransform from "/../branding/assets/16x16-nodes/node-invert-transform.svg";
 import NodeInvert from "/../branding/assets/16x16-nodes/node-invert.svg";
 import NodeIsNonzero from "/../branding/assets/16x16-nodes/node-is-nonzero.svg";
@@ -276,6 +276,7 @@ import NodeOffsetPoints from "/../branding/assets/16x16-nodes/node-offset-points
 import NodeOpacity from "/../branding/assets/16x16-nodes/node-opacity.svg";
 import NodeOpenEnds from "/../branding/assets/16x16-nodes/node-open-ends.svg";
 import NodeOriginsToPolyline from "/../branding/assets/16x16-nodes/node-origins-to-polyline.svg";
+import NodeOuterGlow from "/../branding/assets/16x16-nodes/node-outer-glow.svg";
 import NodePackStrips from "/../branding/assets/16x16-nodes/node-pack-strips.svg";
 import NodePassthrough from "/../branding/assets/16x16-nodes/node-passthrough.svg";
 import NodePathIsClosed from "/../branding/assets/16x16-nodes/node-path-is-closed.svg";
@@ -380,10 +381,13 @@ import NodeTurtlePath from "/../branding/assets/16x16-nodes/node-turtle-path.svg
 import NodeUngroup from "/../branding/assets/16x16-nodes/node-ungroup.svg";
 import NodeUnweld from "/../branding/assets/16x16-nodes/node-unweld.svg";
 import NodeVaryFillColors from "/../branding/assets/16x16-nodes/node-vary-fill-colors.svg";
+import NodeVaryRotations from "/../branding/assets/16x16-nodes/node-vary-rotations.svg";
+import NodeVaryScales from "/../branding/assets/16x16-nodes/node-vary-scales.svg";
 import NodeVaryStrokeColors from "/../branding/assets/16x16-nodes/node-vary-stroke-colors.svg";
 import NodeVec2ToNumbers from "/../branding/assets/16x16-nodes/node-vec2-to-numbers.svg";
 import NodeVec2Value from "/../branding/assets/16x16-nodes/node-vec2-value.svg";
 import NodeVectorToPoints from "/../branding/assets/16x16-nodes/node-vector-to-points.svg";
+import NodeVectorize from "/../branding/assets/16x16-nodes/node-vectorize.svg";
 import NodeVibrance from "/../branding/assets/16x16-nodes/node-vibrance.svg";
 import NodeVoronoiCells from "/../branding/assets/16x16-nodes/node-voronoi-cells.svg";
 import NodeWeld from "/../branding/assets/16x16-nodes/node-weld.svg";
@@ -459,6 +463,7 @@ export const ICON_16X16_NODES = {
 	NodeDistance: { svg: NodeDistance, size: 16 },
 	NodeDivide: { svg: NodeDivide, size: 16 },
 	NodeDotProduct: { svg: NodeDotProduct, size: 16 },
+	NodeDropShadow: { svg: NodeDropShadow, size: 16 },
 	NodeEllipse: { svg: NodeEllipse, size: 16 },
 	NodeEquals: { svg: NodeEquals, size: 16 },
 	NodeEvaluateGradient: { svg: NodeEvaluateGradient, size: 16 },
@@ -508,6 +513,7 @@ export const ICON_16X16_NODES = {
 	NodeImageToChannels: { svg: NodeImageToChannels, size: 16 },
 	NodeIndexPoints: { svg: NodeIndexPoints, size: 16 },
 	NodeIndices: { svg: NodeIndices, size: 16 },
+	NodeInnerShadow: { svg: NodeInnerShadow, size: 16 },
 	NodeInvert: { svg: NodeInvert, size: 16 },
 	NodeInvertTransform: { svg: NodeInvertTransform, size: 16 },
 	NodeIsNonzero: { svg: NodeIsNonzero, size: 16 },
@@ -560,6 +566,7 @@ export const ICON_16X16_NODES = {
 	NodeOpacity: { svg: NodeOpacity, size: 16 },
 	NodeOpenEnds: { svg: NodeOpenEnds, size: 16 },
 	NodeOriginsToPolyline: { svg: NodeOriginsToPolyline, size: 16 },
+	NodeOuterGlow: { svg: NodeOuterGlow, size: 16 },
 	NodePackStrips: { svg: NodePackStrips, size: 16 },
 	NodePassthrough: { svg: NodePassthrough, size: 16 },
 	NodePath: { svg: NodePath, size: 16 },
@@ -670,6 +677,7 @@ export const ICON_16X16_NODES = {
 	NodeVec2ToNumbers: { svg: NodeVec2ToNumbers, size: 16 },
 	NodeVec2Value: { svg: NodeVec2Value, size: 16 },
 	NodeVectorToPoints: { svg: NodeVectorToPoints, size: 16 },
+	NodeVectorize: { svg: NodeVectorize, size: 16 },
 	NodeVibrance: { svg: NodeVibrance, size: 16 },
 	NodeVoronoiCells: { svg: NodeVoronoiCells, size: 16 },
 	NodeWeld: { svg: NodeWeld, size: 16 },

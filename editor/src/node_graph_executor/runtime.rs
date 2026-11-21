@@ -344,6 +344,7 @@ impl NodeRuntime {
 			None
 		};
 
+		self.resolve_effect_maps(&mut result).await;
 		self.respond(request.execution_id, result).await;
 		texture
 	}
@@ -403,6 +404,7 @@ impl NodeRuntime {
 			let (buffer, width, height) = self.read_back(texture.clone()).await.to_flat_u8();
 			*data = RenderOutputType::Buffer { data: buffer, width, height };
 		}
+		self.resolve_effect_maps(&mut result).await;
 		self.respond(request.execution_id, result).await;
 	}
 
@@ -482,6 +484,21 @@ impl NodeRuntime {
 		let mut observer = Observer::default();
 		observer.set((), Some(observation));
 		observer.evaluate(&self.executor, self.old_graph.as_ref()).remove(&())?.data
+	}
+
+	/// Puts the maps of effects' coverages the GPU rendered into an SVG result, in place of the placeholders its filters hold for them.
+	async fn resolve_effect_maps(&self, result: &mut ExecutionResult) {
+		let Some(RenderOutputType::Svg { svg, effect_maps, .. }) = result.render_output() else {
+			return;
+		};
+		if effect_maps.is_empty() {
+			return;
+		}
+		let Some(executor) = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
+			return;
+		};
+
+		executor.resolve_effect_maps(svg, std::mem::take(effect_maps)).await;
 	}
 
 	async fn read_back(&self, texture: Texture) -> Raster<CPU> {

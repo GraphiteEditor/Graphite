@@ -25,4 +25,5 @@ vector-types = { workspace = true }
 # Workspace dependencies
 fastnoise-lite = { workspace = true }
 glam = { workspace = true }
+log = { workspace = true }
 thiserror = { workspace = true }

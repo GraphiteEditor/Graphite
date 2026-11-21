@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::adjust::Adjust;
+use crate::adjust::{Adjust, adjust_item};
 use crate::color_lookup_table::{LutParseError, parse_cached};
 use core_types::color::Color;
 use core_types::context::Ctx;
@@ -17,11 +17,8 @@ pub use graphic_types::generator::{CellularDistanceFunction, CellularReturnType,
 use raster_types::{CPU, Image, Raster};
 use vector_types::Gradient;
 
-/// Applies the adjustment to the item's element.
 fn adjust<T: Adjust>(item: Item<T>, adjustment: Adjustment) -> Item<T> {
-	let mut item = item;
-	item.element_mut().adjust(&adjustment);
-	item
+	adjust_item(item, &adjustment)
 }
 
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeDesaturate"))]
@@ -65,7 +62,7 @@ pub struct ImageChannels {
 /// Separates an image into its red, green, blue, and alpha channels, each provided as a grayscale image.
 #[node_macro::node(category("Raster"), icon("NodeImageToChannels"), name("Image to Channels"))]
 fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
-	let (image, attributes) = image.into_parts();
+	let (image, attributes) = raster_kernels::evaluate_raster_effects(image).into_parts();
 	let (width, height) = (image.width, image.height);
 
 	// O(4 × pixels), since all four channels are written even when only some outputs are connected
@@ -1462,6 +1459,33 @@ mod tests {
 		for channel in 0..3 {
 			assert!((actual[channel] - expected[channel]).abs() <= 1.5, "{label}: expected {expected:?}, got {actual:?}");
 		}
+	}
+
+	#[test]
+	fn an_adjustment_after_an_effect_applies_to_its_result() {
+		use core_types::ATTR_TRANSFORM;
+		use glam::DAffine2;
+		use graphic_types::{EffectOperation, Effects};
+
+		// A red shadow cast beside a white square by light from its left, which desaturating after the shadow turns gray
+		let shadow = EffectOperation::DropShadow {
+			color: Color::RED,
+			angle: 180.,
+			distance: 4.,
+			spread: 0.,
+			size: 0.,
+			contour: Default::default(),
+			knockout: true,
+		};
+		let square = Item::new_from_element(Raster::new_cpu(Image::new(4, 4, Color::WHITE)))
+			.with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(4.)))
+			.with_attribute(core_types::list::ATTR_EFFECTS, Effects::from_operations([shadow]));
+
+		let desaturated = desaturate((), square, DesaturateMethod::default().into());
+
+		let shaded = desaturated.element().data.iter().filter(|pixel| pixel.a() > 0.5 && pixel.r() < 0.99).collect::<Vec<_>>();
+		assert!(!shaded.is_empty(), "the shadow was carried out");
+		assert!(shaded.iter().all(|pixel| (pixel.r() - pixel.g()).abs() < 0.01), "the shadow stayed red");
 	}
 
 	/// Runs the node on one gamma-space gray value (0..255) and returns the gamma-space result on the same scale.

@@ -457,11 +457,11 @@ impl NodeGraphExecutor {
 		};
 
 		// Calculate the bounding box of the region to be exported (artboard bounds always contribute).
-		// `AllArtwork` and `Selection` expand vector layer bounds by the rendered stroke width so strokes
-		// drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
+		// `AllArtwork` and `Selection` expand layer bounds by the rendered stroke width and effects reach so strokes
+		// and shadows drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space_with_stroke(true),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space_with_stroke(true, &[]),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space_with_stroke_and_effects(true),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space_with_stroke_and_effects(true, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -1007,7 +1007,7 @@ impl NodeGraphExecutor {
 		};
 
 		match render_output.data {
-			RenderOutputType::Svg { svg, image_data } => {
+			RenderOutputType::Svg { svg, image_data, .. } => {
 				// The frontend keeps the canvases it was sent until a render stops using them, so only the images it lacks are sent
 				let canvas_ids_in_use: Vec<u64> = image_data.iter().map(|(id, _)| *id).collect();
 				let in_use: HashSet<u64> = canvas_ids_in_use.iter().copied().collect();
@@ -1059,6 +1059,7 @@ impl NodeGraphExecutor {
 			clip_targets,
 			vector_data,
 			appearance_attributes,
+			effects_reach,
 			backgrounds: _,
 		} = render_output.metadata;
 
@@ -1075,6 +1076,7 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::UpdateVectorData { vector_data });
 		responses.add(DocumentMessage::UpdateAppearanceAttributes { appearance_attributes });
+		responses.add(DocumentMessage::UpdateEffectsReach { effects_reach });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
