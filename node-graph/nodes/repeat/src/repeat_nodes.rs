@@ -1,8 +1,9 @@
 use crate::gcore::Context;
 use core::f64::consts::TAU;
 use core_types::list::{Item, List};
-use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, Interrupt, OwnedContextImpl};
-use glam::{DAffine2, DVec2};
+use core_types::transform::{ApplyTransform, Footprint};
+use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, ExtractFootprint, InjectFootprint, InjectVarArgs, Interrupt, NodeError, OwnedContextImpl, Poll};
+use glam::{DAffine2, DVec2, I64Vec2};
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
@@ -112,6 +113,122 @@ fn repeat_array<T: Send + Clone + 'static>(
 	}
 
 	Ok(result_list)
+}
+
+const MAX_TILE_COUNT: f64 = 10_000.;
+const DEGENERATE_VIEWPORT_CELL_COUNT: f64 = 4.;
+
+/// The range of cells covering the viewport, or a fixed block of cells at the origin when the footprint can't map the viewport into local space.
+fn visible_cell_range(footprint: &Footprint, spacing: DVec2) -> (DVec2, DVec2) {
+	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+	let viewport_size = viewport_bounds.size();
+	let is_degenerate = !(viewport_size.x > 0. && viewport_size.y > 0. && viewport_size.is_finite() && viewport_bounds.start.is_finite());
+	if is_degenerate {
+		return (DVec2::ZERO, DVec2::splat(DEGENERATE_VIEWPORT_CELL_COUNT));
+	}
+
+	// One cell of padding on each side keeps content reaching past its own cell from being culled at the viewport edges
+	let first_cell = (viewport_bounds.start / spacing).floor() - DVec2::ONE;
+	let last_cell = (viewport_bounds.end / spacing).ceil() + DVec2::ONE;
+	(first_cell, last_cell)
+}
+
+/// Shrinks the cell range to a window of at most `max_count` cells centered on the original range.
+fn centered_cell_window(first_cell: DVec2, last_cell: DVec2, max_count: f64) -> (I64Vec2, I64Vec2) {
+	let cell_count = last_cell - first_cell;
+	let scale = (max_count / (cell_count.x * cell_count.y)).sqrt();
+
+	let width = (cell_count.x * scale).floor().clamp(1., cell_count.x.min(max_count));
+	let height = (max_count / width).floor().clamp(1., cell_count.y);
+	let window = DVec2::new(width, height);
+
+	let start = (first_cell + (cell_count - window) / 2.).floor();
+	(start.as_i64vec2(), (start + window).as_i64vec2())
+}
+
+/// Repeats the content on a grid that covers the visible viewport.
+#[node_macro::node(category("Graphic"), icon("NodeRepeatArray"))]
+fn tile<T: Send + Clone + 'static>(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx + ExtractFootprint + InjectFootprint,
+	#[implementations(
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+	)]
+	content: impl Node<Context<'static>, Output = List<T>>,
+	#[unit(" px")]
+	#[default(100., 100.)]
+	spacing: Item<DVec2>,
+) -> Poll<List<T>> {
+	let spacing = spacing.into_element();
+	if spacing.x <= 0. || spacing.y <= 0. || !spacing.is_finite() {
+		return Poll::Final(List::new());
+	}
+
+	let footprint = *ctx.footprint();
+	let (first_cell, last_cell) = visible_cell_range(&footprint, spacing);
+
+	let cell_count = last_cell - first_cell;
+	let visible_tile_count = cell_count.x * cell_count.y;
+	let exceeds_limit = visible_tile_count > MAX_TILE_COUNT;
+	let (first_cell, last_cell) = if exceeds_limit {
+		centered_cell_window(first_cell, last_cell, MAX_TILE_COUNT)
+	} else {
+		(first_cell.as_i64vec2(), last_cell.as_i64vec2())
+	};
+
+	let mut result_list = List::new();
+	let mut partial = false;
+	let mut upstream_error = None;
+
+	for y in first_cell.y..last_cell.y {
+		for x in first_cell.x..last_cell.x {
+			let tile_origin = DVec2::new(x as f64, y as f64) * spacing;
+			let offset = DAffine2::from_translation(tile_origin);
+
+			let mut tile_footprint = footprint;
+			tile_footprint.apply_transform(&offset);
+
+			let tile_ctx = OwnedContextImpl::from(ctx.clone()).with_footprint(tile_footprint).with_position(tile_origin);
+			let generated_content = match content.eval(&tile_ctx.into_context()) {
+				Poll::Final(value) => value,
+				Poll::Partial(value) => {
+					partial = true;
+					value
+				}
+				Poll::Fallback(boxed) => {
+					let (value, error) = *boxed;
+					upstream_error.get_or_insert(error);
+					value
+				}
+				Poll::Pending => return Poll::Pending,
+				// Like `Status`, an error after a partial result waits for the final inputs before it is reported
+				Poll::Error(error) => return if partial { Poll::Pending } else { Poll::Error(error) },
+			};
+
+			for mut generated_row in generated_content.into_iter() {
+				let local_transform: DAffine2 = generated_row.attribute_cloned_or_default(ATTR_TRANSFORM);
+				*generated_row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = offset * local_transform;
+
+				result_list.push(generated_row);
+			}
+		}
+	}
+
+	if partial {
+		Poll::Partial(result_list)
+	} else if exceeds_limit {
+		let message = format!("The view needs {visible_tile_count:.0} tiles but at most {MAX_TILE_COUNT} are drawn. Zoom in or increase the spacing.");
+		let error = NodeError::new(message).with_upstream(upstream_error.into_iter().collect());
+		Poll::Fallback(Box::new((result_list, error)))
+	} else if let Some(error) = upstream_error {
+		Poll::Fallback(Box::new((result_list, error)))
+	} else {
+		Poll::Final(result_list)
+	}
 }
 
 #[node_macro::node(category("Graphic"), icon("NodeRepeatRadial"))]
@@ -389,6 +506,90 @@ mod test {
 		for (index, (manipulator_groups, _)) in vector.stroke_manipulator_groups(paths).enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
 		}
+	}
+
+	#[test]
+	fn tile_covers_viewport() {
+		let footprint = Footprint {
+			transform: DAffine2::from_translation(DVec2::new(50., 0.)),
+			resolution: glam::UVec2::new(250, 100),
+			..Default::default()
+		};
+		let context = OwnedContextImpl::default().with_footprint(footprint).into_context();
+		let content = vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY));
+
+		let Poll::Final(tiled) = super::tile(context, &ValueNode(content), Item::new_from_element(DVec2::splat(100.))) else {
+			panic!("Expected a final result");
+		};
+
+		let offsets: Vec<DVec2> = (0..tiled.len()).map(|index| tiled.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index).translation).collect();
+		let expected: Vec<DVec2> = (-1..2).flat_map(|y| (-2..3).map(move |x| DVec2::new(x as f64, y as f64) * 100.)).collect();
+		assert_eq!(offsets, expected);
+	}
+
+	#[test]
+	fn tile_falls_back_to_centered_window_above_limit() {
+		let footprint = Footprint {
+			transform: DAffine2::IDENTITY,
+			resolution: glam::UVec2::new(1000, 500),
+			..Default::default()
+		};
+		let context = OwnedContextImpl::default().with_footprint(footprint).into_context();
+		let content = vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY));
+
+		let Poll::Fallback(boxed) = super::tile(context, &ValueNode(content), Item::new_from_element(DVec2::ONE)) else {
+			panic!("Expected a fallback result");
+		};
+		let (tiled, _) = *boxed;
+		assert!(tiled.len() as f64 <= MAX_TILE_COUNT);
+		assert!(tiled.len() as f64 > MAX_TILE_COUNT * 0.9);
+
+		let center_offsets = (0..tiled.len()).map(|index| tiled.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index).translation);
+		let mean_offset = center_offsets.fold(DVec2::ZERO, |sum, offset| sum + offset) / tiled.len() as f64;
+		assert!(
+			mean_offset.abs_diff_eq(DVec2::new(499.5, 249.5), 1.),
+			"Expected the window to be centered, found mean offset {mean_offset}"
+		);
+	}
+
+	fn tile_count(footprint: Footprint, spacing: DVec2) -> usize {
+		let context = OwnedContextImpl::default().with_footprint(footprint).into_context();
+		let content = vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY));
+
+		match super::tile(context, &ValueNode(content), Item::new_from_element(spacing)) {
+			Poll::Final(tiled) => tiled.len(),
+			Poll::Fallback(boxed) => boxed.0.len(),
+			_ => panic!("Expected a final or fallback result"),
+		}
+	}
+
+	#[test]
+	fn tile_window_stays_within_limit_for_uneven_cell_counts() {
+		let footprint = Footprint {
+			transform: DAffine2::IDENTITY,
+			resolution: glam::UVec2::new(1_000_000, 3),
+			..Default::default()
+		};
+
+		assert!(tile_count(footprint, DVec2::ONE) as f64 <= MAX_TILE_COUNT);
+	}
+
+	#[test]
+	fn tile_survives_extreme_spacing() {
+		let footprint = Footprint {
+			transform: DAffine2::IDENTITY,
+			resolution: glam::UVec2::new(1000, 1000),
+			..Default::default()
+		};
+
+		assert!(tile_count(footprint, DVec2::splat(1e-17)) as f64 <= MAX_TILE_COUNT);
+	}
+
+	#[test]
+	fn tile_draws_fixed_area_for_degenerate_footprint() {
+		let expected = (DEGENERATE_VIEWPORT_CELL_COUNT * DEGENERATE_VIEWPORT_CELL_COUNT) as usize;
+
+		assert_eq!(tile_count(Footprint::BOUNDLESS, DVec2::splat(100.)), expected);
 	}
 
 	#[test]
