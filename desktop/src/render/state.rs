@@ -20,6 +20,7 @@ pub(crate) struct RenderState {
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
 	surface_outdated: bool,
+	presented_frames: u64,
 }
 
 impl RenderState {
@@ -165,6 +166,7 @@ impl RenderState {
 			ui_texture: None,
 			bind_group: None,
 			surface_outdated: true,
+			presented_frames: 0,
 		}
 	}
 
@@ -207,6 +209,15 @@ impl RenderState {
 		self.config.present_mode = present_mode.unwrap_or(self.surface.get_capabilities(&context.adapter).present_modes[0]);
 		self.surface.configure(&context.device, &self.config);
 		self.surface_outdated = true;
+	}
+
+	/// Presents a frame on the next render even if nothing changed.
+	pub(crate) fn request_present(&mut self) {
+		self.surface_outdated = true;
+	}
+
+	pub(crate) fn presented_frames(&self) -> u64 {
+		self.presented_frames
 	}
 
 	pub(crate) fn render(&mut self, window: &Window) -> Result<(), RenderError> {
@@ -282,6 +293,7 @@ impl RenderState {
 		surface_texture.queue.submit(std::iter::once(encoder.finish()));
 		window.pre_present_notify();
 		surface_texture.present();
+		self.presented_frames += 1;
 
 		if suboptimal {
 			self.surface.configure(&self.executor.context().device, &self.config);
