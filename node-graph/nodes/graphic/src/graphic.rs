@@ -342,7 +342,7 @@ pub enum SortError {
 }
 
 /// Reorders a list's items from smallest to largest, either by each item's own value or by a parallel list of sortable values in the *Sort Order* input. The sort is stable, so items with the same sort order retain their relative positions.
-#[node_macro::node(category("Data: List"), icon("NodeSort"))]
+#[node_macro::node(category("Data: List"), icon("NodeSort"), footprint_invariant)]
 fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to reorder.
