@@ -26,6 +26,8 @@ pub struct EffectMap {
 	pub result: String,
 	/// Maps the filter's user space into the document.
 	pub user_to_document: DAffine2,
+	/// Maps the user space the `content` is drawn in into the document, which differs from the filter's where the filter measures in its effects' space.
+	pub content_to_document: DAffine2,
 	/// The filter's region in its user space, which the map covers.
 	pub bounds: [DVec2; 2],
 }
@@ -103,7 +105,7 @@ impl EffectMap {
 		};
 
 		scene.capture_next_effects(self.capture);
-		self.content.render_to_vello(scene, self.user_to_document, &render_params);
+		self.content.render_to_vello(scene, self.content_to_document, &render_params);
 	}
 }
 

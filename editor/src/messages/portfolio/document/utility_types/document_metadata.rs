@@ -353,11 +353,7 @@ impl DocumentMetadata {
 	/// layer's vector data is recorded, so the others count through the click-target-based bounds, without their strokes.
 	pub fn bounding_box_document_with_stroke_and_effects(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
 		let stroked = self.layer_vector_data.get(&layer).and_then(|item| {
-			let stroke = self
-				.layer_appearance_attributes
-				.get(&layer)
-				.and_then(|appearance| appearance.first_coverage_of(graphene_std::Cover::Stroke))
-				.map(graphene_std::Coverage::stroke_params);
+			let stroke = self.layer_appearance_attributes.get(&layer).and_then(|appearance| appearance.first_stroke_params());
 			let paths = paths_from_item_attributes(item.as_ref()).unwrap_or_else(|| no_paths());
 			item.element().stroke_inclusive_bounding_box_with_transform(paths, self.transform_to_document(layer), stroke.as_ref())
 		});

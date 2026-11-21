@@ -1,8 +1,9 @@
 use crate::appearance::{Appearance, Cover, Coverage};
+use crate::effects::Effects;
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_APPEARANCE, ATTR_PAINT, Item, ItemAttributeValues, List, NodeIdPath};
+use core_types::list::{ATTR_APPEARANCE, ATTR_EFFECTS, ATTR_PAINT, Item, ItemAttributeValues, List, NodeIdPath};
 use core_types::math::quad::Quad;
 use core_types::none;
 use core_types::ops::FromAnchorPosition;
@@ -292,8 +293,19 @@ pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 	graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
 }
 
-/// Bake the provided transform into the per-item transforms of the appearance's paint graphics.
-pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DAffine2) {
+/// Moves the transforms an item's coverages and effects were stamped at onto its geometry, which its `baked` transform went into, so they keep measuring in the same space.
+pub fn rebase_stamped_transforms(attributes: &mut ItemAttributeValues, baked: DAffine2) {
+	if let Some(appearance) = attributes.get_mut::<Appearance>(ATTR_APPEARANCE) {
+		appearance.rebase_stamped_transforms(baked);
+	}
+	if let Some(effects) = attributes.get_mut::<Effects>(ATTR_EFFECTS) {
+		effects.rebase_stamped_transforms(baked);
+	}
+}
+
+/// Moves the provided transform, which went into an item's geometry, into what its attributes place: the per-item transforms of the appearance's
+/// paint graphics, and the transforms its coverages and effects were stamped at (see [`rebase_stamped_transforms`]).
+pub fn bake_transform_into_attributes(attributes: &mut ItemAttributeValues, transform: DAffine2) {
 	fn bake_item_transform<T>(item: &mut Item<T>, transform: DAffine2) {
 		let baked = transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 		item.set_attribute(ATTR_TRANSFORM, baked);
@@ -325,6 +337,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 		}
 	}
 
+	rebase_stamped_transforms(attributes, transform);
 	if let Some(appearance) = attributes.get_mut::<Appearance>(ATTR_APPEARANCE)
 		&& let Some(paints) = appearance.0.iter_attribute_values_mut::<Graphic>(ATTR_PAINT)
 	{

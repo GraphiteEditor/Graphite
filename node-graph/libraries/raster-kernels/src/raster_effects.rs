@@ -7,8 +7,9 @@ use core_types::list::{ATTR_EFFECTS, Item};
 use core_types::transfer_curve::TransferCurve;
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::effects::{EffectOperation, Effects, GlowFill, GlowTechnique, grow_and_tent, precise_falloff, shadow_offset, shape_strength, spans_along_axes};
+use graphic_types::effects::{EffectOperation, Effects, GlowFill, GlowTechnique, effect_space, grow_and_tent, precise_falloff, shadow_offset, shape_strength, spans_along_axes};
 use raster_types::{CPU, Image, Raster};
+use std::ops::Range;
 
 /// The most pixels an image may grow to with the margin its effects cast into, beyond which the margin is cut short.
 const MAX_PIXELS_WITH_MARGIN: f64 = (1 << 24) as f64;
@@ -43,13 +44,16 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 	}
 	let size = DVec2::new(width as f64, height as f64);
 
-	// Document lengths become pixels along each of the image's axes, and offsets map through the inverse of its pixel placement
-	let pixels_to_document = transform.matrix2 * DMat2::from_diagonal(size.recip());
-	let document_to_pixels = pixels_to_document.inverse();
-	let pixels_per_length = spans_along_axes(document_to_pixels);
+	// Each effect's lengths become pixels along each of the image's axes, and its offsets map from its effect space through the inverse of the image's pixel placement
+	let document_to_pixels = (transform.matrix2 * DMat2::from_diagonal(size.recip())).inverse();
+	let runs: Vec<(DMat2, Range<usize>)> = (effects.runs().into_iter())
+		.map(|(stamped_transform, rows)| (document_to_pixels * effect_space(transform, stamped_transform).matrix2, rows))
+		.collect();
 
 	// A margin around the image to hold the blur and shadows cast past its edges, cut short evenly for an image that would grow too large
-	let mut margin = (effects.reach() * pixels_per_length).ceil();
+	let run_reach = |rows: &Range<usize>| effects.operations_in(rows.clone()).map(|operation| operation.painted_reach()).sum::<f64>();
+	let reach_in_pixels: DVec2 = runs.iter().map(|(effect_to_pixels, rows)| run_reach(rows) * spans_along_axes(*effect_to_pixels)).sum();
+	let mut margin = reach_in_pixels.ceil();
 	if (size + 2. * margin).element_product() > MAX_PIXELS_WITH_MARGIN {
 		let reach_in_pixels = margin.max_element();
 		margin = (margin * margin_fraction_that_fits(size, margin)).floor();
@@ -75,7 +79,20 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 	// The shadows and glows stacked beneath the content
 	let mut beneath: Option<Plane<[f32; 4]>> = None;
 
-	for effect in effects.operations() {
+	// Each run after the first takes the result of those before it as its content at full strength, like the renderers' nested runs
+	let mut run_fill = fill;
+	let operations = (runs.iter().enumerate())
+		.flat_map(|(run_index, (effect_to_pixels, rows))| (effects.operations_in(rows.clone()).enumerate()).map(move |(index, operation)| (operation, *effect_to_pixels, run_index > 0 && index == 0)));
+	for (effect, effect_to_pixels, starts_later_run) in operations {
+		if starts_later_run {
+			full = match (filled.take(), beneath.take()) {
+				(filled, Some(beneath)) => composite_beneath(filled.as_ref().unwrap_or(&full), &beneath),
+				(Some(filled), None) => filled,
+				(None, None) => full,
+			};
+			run_fill = 1.;
+		}
+		let pixels_per_length = spans_along_axes(effect_to_pixels);
 		match effect {
 			EffectOperation::Blur { radius, box_blur, gamma } => {
 				let radius = radius * pixels_per_length;
@@ -105,10 +122,10 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				contour,
 				knockout,
 			} => {
-				let offset = document_to_pixels * shadow_offset(angle, distance);
+				let offset = effect_to_pixels * shadow_offset(angle, distance);
 				let silhouette = full.map(|[_, _, _, alpha]| alpha).shifted(offset.x, offset.y);
 				let strength = cast(silhouette, size, spread, GlowTechnique::Softer, 100., &contour, pixels_per_length);
-				beneath = Some(accumulate(beneath, &strength, color, knockout, &full, fill));
+				beneath = Some(accumulate(beneath, &strength, color, knockout, &full, run_fill));
 			}
 			EffectOperation::OuterGlow {
 				color,
@@ -121,7 +138,7 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				let Some(paint) = GlowFill::of(&color) else { continue };
 				let raw = cast_strength(full.map(|[_, _, _, alpha]| alpha), size, spread, technique, pixels_per_length);
 				let strength = shaped(raw.clone(), range, &contour);
-				beneath = Some(stack_beneath(beneath, glow_tint(&paint, &strength, &raw, true), true, &full, fill));
+				beneath = Some(stack_beneath(beneath, glow_tint(&paint, &strength, &raw, true), true, &full, run_fill));
 			}
 			EffectOperation::InnerShadow {
 				color,
@@ -132,7 +149,7 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				contour,
 			} => {
 				// Cast from the area outside the content, which the margin and anything moved in from past it belong to
-				let offset = document_to_pixels * shadow_offset(angle, distance);
+				let offset = effect_to_pixels * shadow_offset(angle, distance);
 				let outside = full.map(|[_, _, _, alpha]| alpha).shifted(offset.x, offset.y).map(|alpha| 1. - alpha);
 				let strength = cast(outside, size, choke, GlowTechnique::Softer, 100., &contour, pixels_per_length);
 				filled = filled.map(|filled| composite_within(&filled, &strength, &full, color));
@@ -334,18 +351,19 @@ mod tests {
 
 	#[test]
 	fn an_inner_shadow_of_only_choke_shades_an_opaque_raster() {
+		use graphic_types::{Effect, stamp_effect};
+
 		let raster = Raster::new_cpu(Image::new(8, 8, Color::WHITE));
-		let item = Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(8.))).with_attribute(
-			ATTR_EFFECTS,
-			Effects::from_operations([EffectOperation::InnerShadow {
-				color: Color::BLACK,
-				angle: 0.,
-				distance: 0.,
-				choke: 100.,
-				size: 2.,
-				contour: TransferCurve::default(),
-			}]),
-		);
+		let mut item = Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(8.)));
+		let inner_shadow = EffectOperation::InnerShadow {
+			color: Color::BLACK,
+			angle: 0.,
+			distance: 0.,
+			choke: 100.,
+			size: 2.,
+			contour: TransferCurve::default(),
+		};
+		stamp_effect(&mut item, Effect::new(&inner_shadow));
 
 		let evaluated = evaluate_raster_effects(item);
 		let raster = evaluated.element();

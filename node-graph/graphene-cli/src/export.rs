@@ -7,7 +7,6 @@ use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::{no_paths, paths_from_item_attributes};
-use graphene_std::{Cover, Coverage};
 use graphene_std::{NodeError, Poll};
 use image::ImageFormat;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -133,7 +132,7 @@ async fn artwork_bounds(executor: &DynamicExecutor, runtime: &AsyncRuntime, spaw
 		// Metadata only records the first item of a layer, so the other items count through their click targets, without their strokes.
 		let stroked = metadata.vector_data.get(layer).and_then(|item| {
 			let appearance = metadata.appearance_attributes.get(layer);
-			let stroke = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params);
+			let stroke = appearance.and_then(|appearance| appearance.first_stroke_params());
 			let paths = paths_from_item_attributes(item.as_ref()).unwrap_or_else(|| no_paths());
 			item.element().stroke_inclusive_bounding_box_with_transform(paths, transform, stroke.as_ref())
 		});
