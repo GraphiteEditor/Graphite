@@ -220,7 +220,7 @@ fn decompose_skew(_: impl Ctx, transform: Item<DAffine2>) -> Item<f64> {
 }
 
 /// Rotates every item of the content about its origin by its own angle, selected from along a chosen range.
-#[node_macro::node(category("Transform"), icon("NodeVaryRotations"), version(2))]
+#[node_macro::node(category("Transform"), icon("NodeVaryRotations"), version(2), footprint_invariant)]
 fn vary_rotations<T: Send>(
 	_: impl Ctx,
 	/// The content with items to rotate individually.
@@ -274,7 +274,7 @@ fn vary_rotations<T: Send>(
 }
 
 /// Scales every item of the content about its origin by its own factor, selected from along a chosen range.
-#[node_macro::node(category("Transform"), icon("NodeVaryScales"))]
+#[node_macro::node(category("Transform"), icon("NodeVaryScales"), footprint_invariant)]
 fn vary_scales<T: Send>(
 	_: impl Ctx,
 	/// The content with items to scale individually.

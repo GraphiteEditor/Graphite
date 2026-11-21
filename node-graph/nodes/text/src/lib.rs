@@ -941,7 +941,7 @@ fn string_split(
 /// Joins a list of strings together with a separator between each pair. This is the inverse of the **String Split** node.
 ///
 /// For example, joining `["a", "b", "c"]` with separator ", " produces "a, b, c".
-#[node_macro::node(category("String"), icon("NodeStringJoin"))]
+#[node_macro::node(category("String"), icon("NodeStringJoin"), footprint_invariant)]
 fn string_join(
 	_: impl Ctx,
 	/// The list of strings to join together.

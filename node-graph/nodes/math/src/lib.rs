@@ -366,7 +366,7 @@ fn operator_reducer(operator: &str) -> Result<Reducer, MathExpressionError> {
 /// Reduces all the items to a single value by folding an operator like `+` or `*` across them, or by passing them all to a function like `max` or `mean`.
 ///
 /// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, and `count` counts.
-#[node_macro::node(category("Math"), icon("NodeMathAggregate"))]
+#[node_macro::node(category("Math"), icon("NodeMathAggregate"), footprint_invariant)]
 fn math_aggregate<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items reduced to one value.
@@ -416,7 +416,7 @@ fn math_aggregate<T: ExpressionValue, U: ExpressionValue>(
 /// Scans along the items, giving each one the result of folding an operator like `+` over it and every item before it, such as a running total, or of a function like `max`, such as the highest value so far.
 ///
 /// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` composes in order, which turns a list of steps into where each step ends up.
-#[node_macro::node(category("Math"), icon("NodeMathRunning"))]
+#[node_macro::node(category("Math"), icon("NodeMathRunning"), footprint_invariant)]
 fn math_running<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items scanned along, each giving one result.
@@ -1532,13 +1532,13 @@ fn least_common_multiple(
 }
 
 /// Adds together all the numbers in the input list, producing their total.
-#[node_macro::node(category("Math: Arithmetic"), icon("NodeSum"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeSum"), footprint_invariant)]
 fn sum(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	Item::new_from_element(values.iter_element_values().sum())
 }
 
 /// Averages all the numbers in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"), icon("NodeAverage"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeAverage"), footprint_invariant)]
 fn average(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	let count = values.len();
 	let average = if count == 0 { 0. } else { values.iter_element_values().sum::<f64>() / count as f64 };
@@ -1547,13 +1547,13 @@ fn average(_: impl Ctx, values: List<f64>) -> Item<f64> {
 }
 
 /// Gives the smallest number in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"), icon("NodeMinimum"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeMinimum"), footprint_invariant)]
 fn minimum(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	Item::new_from_element(values.iter_element_values().copied().reduce(f64::min).unwrap_or_default())
 }
 
 /// Gives the largest number in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"), icon("NodeMaximum"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeMaximum"), footprint_invariant)]
 fn maximum(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	Item::new_from_element(values.iter_element_values().copied().reduce(f64::max).unwrap_or_default())
 }
