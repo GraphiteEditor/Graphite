@@ -2043,7 +2043,7 @@ fn path_is_closed(
 	Item::new_from_element(closed)
 }
 
-#[node_macro::node(category("Vector: Point"), icon("NodeMapPoints"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeMapPoints"), path(graphene_core::vector), version(2))]
 fn map_points<V: MapVectorItems + Send>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectIndex,
 	#[implementations(Graphic, Vector)] content: Item<V>,

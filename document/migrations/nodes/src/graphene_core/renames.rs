@@ -6,3 +6,5 @@ use migration_core::rename;
 rename!("graphene_core::ops::PassthroughNode"@1 => @2);
 // The removed Monitor node passes its one input on, as a Passthrough does
 rename!("graphene_core::memo::MonitorNode"@1 => "graphene_core::ops::PassthroughNode"@2);
+// Version 2 only adds `InjectIndex` to the context bounds, so stored nodes keep their layout
+rename!("graphene_core::vector::MapPointsNode"@1 => @2);

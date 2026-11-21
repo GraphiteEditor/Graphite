@@ -4,6 +4,9 @@
 mod blending_nodes;
 mod graphene_core;
 mod graphene_std;
+mod graphic_nodes;
 mod math_nodes;
 mod raster_nodes;
+mod repeat_nodes;
+mod text_nodes;
 mod vector_nodes;

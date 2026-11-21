@@ -963,7 +963,7 @@ fn string_join(
 }
 
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
-#[node_macro::node(category("String"), icon("NodeStringMap"))]
+#[node_macro::node(category("String"), icon("NodeStringMap"), version(2))]
 fn string_map(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + InjectIndex,
 	strings: List<String>,
