@@ -3,6 +3,9 @@ use wgpu::{Backends, Device, Features};
 use wgpu_sync::Surface;
 use wgpu_sync::{Adapter, Instance, Queue};
 
+/// Features the renderer makes use of where the GPU has them, besides any a builder asks for, to render content that effects go on to process into 16-bit unorm textures.
+const RENDERER_OPTIONAL_FEATURES: Features = Features::TEXTURE_FORMAT_16BIT_NORM.union(Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
+
 #[derive(Debug, Clone)]
 pub struct Context {
 	pub device: Device,
@@ -65,7 +68,7 @@ impl ContextBuilder {
 		}
 
 		for adapter in adapters {
-			if let Some((device, queue)) = self.request_device(&adapter).await {
+			if let Some((device, queue)) = self.request_device(&adapter, adapter.features()).await {
 				return Some(Context { device, queue, adapter, instance });
 			}
 		}
@@ -79,6 +82,12 @@ impl ContextBuilder {
 #[cfg(target_family = "wasm")]
 impl ContextBuilder {
 	pub async fn build_with_surface(self, target: impl Into<wgpu::SurfaceTarget<'static>>) -> Option<(Context, Surface)> {
+		let target = target.into();
+		let canvas = match &target {
+			wgpu::SurfaceTarget::Canvas(canvas) => Some(canvas.clone()),
+			_ => None,
+		};
+
 		let instance = self.build_instance();
 		let surface = instance.create_surface(target).ok()?;
 		let request_adapter_options = wgpu::RequestAdapterOptions {
@@ -88,10 +97,35 @@ impl ContextBuilder {
 			apply_limit_buckets: false,
 		};
 		let adapter = instance.request_adapter(&request_adapter_options).await.ok()?;
-		let (device, queue) = self.request_device(&adapter).await?;
+
+		// WebGL2 offers the 16-bit unorm formats wherever `EXT_texture_norm16` is supported, but they only work once it's enabled
+		let mut available_features = adapter.features();
+		if !canvas.is_some_and(|canvas| enable_texture_norm16(&canvas)) {
+			available_features.remove(Features::TEXTURE_FORMAT_16BIT_NORM);
+		}
+		let (device, queue) = self.request_device(&adapter, available_features).await?;
 
 		Some((Context { device, queue, adapter, instance }, surface))
 	}
+}
+
+/// Enables `EXT_texture_norm16` on the WebGL2 context wgpu made for the `canvas`, returning whether it did.
+/// Firefox 159 to 161 offer the extension but can't filter its formats, which then read as black, so it's left off there.
+#[cfg(target_family = "wasm")]
+fn enable_texture_norm16(canvas: &web_sys::HtmlCanvasElement) -> bool {
+	use web_sys::wasm_bindgen::JsCast;
+
+	let firefox_version = web_sys::window()
+		.and_then(|window| window.navigator().user_agent().ok())
+		.and_then(|user_agent| user_agent.split("Firefox/").nth(1)?.split('.').next()?.parse::<u32>().ok());
+	if firefox_version.is_some_and(|version| (159..=161).contains(&version)) {
+		return false;
+	}
+
+	// Asking the canvas for its context again returns the one wgpu made
+	let Ok(Some(context)) = canvas.get_context("webgl2") else { return false };
+	let Ok(context) = context.dyn_into::<web_sys::WebGl2RenderingContext>() else { return false };
+	context.get_extension("EXT_texture_norm16").is_ok_and(|extension| extension.is_some())
 }
 impl ContextBuilder {
 	fn build_instance(&self) -> Instance {
@@ -100,10 +134,12 @@ impl ContextBuilder {
 			..wgpu::InstanceDescriptor::new_without_display_handle()
 		}))
 	}
-	async fn request_device(&self, adapter: &Adapter) -> Option<(Device, Queue)> {
+	/// Requests a device with the builder's features, plus whichever optional ones are among the `available_features`.
+	async fn request_device(&self, adapter: &Adapter, available_features: Features) -> Option<(Device, Queue)> {
+		let optional_features = self.optional_features | RENDERER_OPTIONAL_FEATURES;
 		let device_descriptor = wgpu::DeviceDescriptor {
 			label: None,
-			required_features: self.features | (self.optional_features & adapter.features()),
+			required_features: self.features | (optional_features & available_features),
 			required_limits: adapter.limits(),
 			memory_hints: Default::default(),
 			trace: wgpu::Trace::Off,
