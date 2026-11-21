@@ -17,6 +17,26 @@ use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, p
 use graphene_std::vector::{HandleExt, PointId, SegmentId, VectorGeometry, VectorModificationType};
 use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, ParamCurveDeriv, PathSeg, Shape};
 
+/// Names the open interaction after what a tool did to `count` layers, such as "Moved 2 Layers".
+pub fn name_layer_action(verb: &str, count: usize) -> DocumentMessage {
+	let action = match count {
+		0 => verb.to_string(),
+		1 => format!("{verb} a Layer"),
+		count => format!("{verb} {count} Layers"),
+	};
+	DocumentMessage::NameInteraction { action }
+}
+
+/// Names the open interaction after what a tool did to `count` nodes, as layers when `layers` are all of them.
+pub fn name_node_action(verb: &str, count: usize, layers: usize) -> DocumentMessage {
+	let action = match (layers == count, count) {
+		(true, _) => return name_layer_action(verb, count),
+		(false, 1) => format!("{verb} a Node"),
+		(false, count) => format!("{verb} {count} Nodes"),
+	};
+	DocumentMessage::NameInteraction { action }
+}
+
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	closest_point(document, goal, tolerance, layers, |_| false)

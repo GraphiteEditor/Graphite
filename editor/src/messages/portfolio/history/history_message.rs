@@ -11,6 +11,7 @@ pub enum HistoryMessage {
 	RemoveStep { id: String },
 	BringBack { id: String },
 	Follow { id: Option<String> },
+	RetirePending,
 	Rename { id: String, label: String },
 	Tag { id: String, tag: String, on: bool },
 }

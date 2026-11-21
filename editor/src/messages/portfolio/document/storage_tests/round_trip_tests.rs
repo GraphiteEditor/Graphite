@@ -1070,7 +1070,7 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 }
 
 #[tokio::test]
-async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
+async fn undoing_a_hot_step_alone_enters_it_into_history_first() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let byte_store = mount_in_memory_storage(&mut editor);
@@ -1088,27 +1088,23 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	editor.handle_message(DocumentMessage::Undo).await;
 	assert_eq!(editor.active_document().network_interface.document_network(), &before_edit, "undo restores the pre-edit network");
 	let storage = editor.active_document().storage().unwrap();
-	assert!(storage.session().hot_log().is_empty(), "the step was taken back, not retired: {:?}", storage.session().hot_log());
-	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
+	assert!(storage.session().hot_log().is_empty(), "the step left the hot log: {:?}", storage.session().hot_log());
+	let history_after = storage.session().history().count();
+	assert!(history_after > history_base, "the step entered history, so the History panel keeps it as undone");
+	assert!(storage.can_redo(), "the undone step waits for redo");
 	editor.active_document_mut().commit_storage_snapshot(&byte_store);
-	// The step held for redo keeps its declaration bytes from collection
-	let storage = editor.active_document().storage().unwrap();
-	assert!(
-		!editor.active_document().resource_gc_roots().is_subset(&storage.all_referenced_resource_hashes()),
-		"the retracted step names its declaration resource"
-	);
 
 	editor.handle_message(DocumentMessage::Redo).await;
 	assert_eq!(editor.active_document().network_interface.document_network(), &after_edit, "redo restores the edit");
 	let storage = editor.active_document().storage().unwrap();
-	assert!(!storage.session().hot_log().is_empty(), "the redone step is staged afresh");
-	assert_eq!(storage.session().history().count(), history_base);
+	assert!(storage.session().hot_log().is_empty(), "redo moves the head forward rather than staging again");
+	assert_eq!(storage.session().history().count(), history_after);
 	editor.active_document_mut().commit_storage_snapshot(&byte_store);
 }
 
-/// Draws three ellipses, undoes all of them, redoes them and one more, then undoes once. `retire` retires each
-/// drawing first, so the steps undo through the cursor rather than by retraction.
-async fn redone_steps_undo_one_at_a_time(retire: bool) {
+/// Draws three ellipses, undoes all of them, redoes them and one more, then undoes once.
+#[tokio::test]
+async fn redone_steps_undo_one_at_a_time() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let byte_store = mount_in_memory_storage(&mut editor);
@@ -1116,9 +1112,6 @@ async fn redone_steps_undo_one_at_a_time(retire: bool) {
 
 	for offset in [0., 200., 400.] {
 		editor.draw_ellipse(offset, 0., offset + 100., 100.).await;
-		if retire {
-			editor.active_document_mut().retire_storage_interaction();
-		}
 	}
 	let layer_count = |editor: &EditorTestUtils| editor.active_document().metadata().all_layers().count();
 	assert_eq!(layer_count(&editor), 3);
@@ -1135,14 +1128,4 @@ async fn redone_steps_undo_one_at_a_time(retire: bool) {
 	editor.handle_message(DocumentMessage::Undo).await;
 	assert_eq!(layer_count(&editor), 2, "undo takes back only the last redone ellipse");
 	assert_cursor_matches_runtime(editor.active_document(), "after undoing a redone step");
-}
-
-#[tokio::test]
-async fn redone_hot_steps_undo_one_at_a_time() {
-	redone_steps_undo_one_at_a_time(false).await;
-}
-
-#[tokio::test]
-async fn redone_retired_steps_undo_one_at_a_time() {
-	redone_steps_undo_one_at_a_time(true).await;
 }

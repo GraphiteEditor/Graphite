@@ -8,6 +8,7 @@ use crate::{
 };
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 
 /// A live editing session over a `Document`. Owns the document plus runtime collaboration
@@ -24,6 +25,8 @@ pub struct Session {
 	/// What the ops this peer took back named. A retirement racing the take-back may still name them, and this peer may
 	/// hold the only copy, so they stay garbage collection roots for the life of the session.
 	taken_back_resources: HashSet<ResourceHash>,
+	/// The name of this peer's open interaction, for its closing marker to carry.
+	action: Option<String>,
 }
 
 impl Session {
@@ -47,6 +50,7 @@ impl Session {
 			remote_tips: HashMap::new(),
 			runtime_base: None,
 			taken_back_resources: HashSet::new(),
+			action: None,
 		}
 	}
 
@@ -343,6 +347,7 @@ impl Session {
 			remote_tips: HashMap::new(),
 			runtime_base: None,
 			taken_back_resources: HashSet::new(),
+			action: None,
 		}
 	}
 
@@ -393,6 +398,10 @@ impl Session {
 			return Ok(None);
 		}
 		self.runtime_base = None;
+		// The name belongs to the open interaction being taken back
+		if closed_before == own.len() {
+			self.action = None;
+		}
 		let (touched, taken) = self.document.retract_hot_ops(&ids);
 		self.taken_back_resources.extend(taken.iter().filter_map(|hot_op| hot_op.op.resource_hash()));
 		let ops = taken.into_iter().map(|hot_op| hot_op.op).filter(|op| !matches!(op, RegistryDelta::Meta)).collect();
@@ -649,6 +658,7 @@ impl Session {
 	/// Closes this peer's open interaction with a flagged [`RegistryDelta::Meta`] op. Returns the staged ops, a
 	/// re-registration possibly before the marker; empty when nothing is open.
 	pub fn end_interaction(&mut self) -> Result<Vec<HotOp>, CrdtError> {
+		let action = self.action.take();
 		let peer = self.document.peer;
 		let open = self
 			.document
@@ -662,7 +672,20 @@ impl Session {
 		}
 		let mut closing = Attributes::new();
 		closing.set(crate::attr::delta::INTERACTION_END, Value::Bool(true), TimeStamp::ORIGIN);
+		if let Some(action) = action {
+			closing.set(crate::attr::delta::ACTION, Value::Str(action), TimeStamp::ORIGIN);
+		}
 		self.stage_ops_with([(RegistryDelta::Meta, closing)], ApplyMode::Strict)
+	}
+
+	/// Names this peer's open interaction, replacing an earlier name. Closing it takes the name along.
+	pub fn name_interaction(&mut self, action: &str) {
+		self.action = Some(action.to_string());
+	}
+
+	/// The name this peer's open interaction will close with.
+	pub fn pending_action(&self) -> Option<&str> {
+		self.action.as_deref()
 	}
 
 	/// Every author's closed interactions in the hot log, the earliest closed first.
@@ -861,9 +884,14 @@ impl Session {
 	/// Retire one closed interaction, coarsened, marking its last delta as the interaction's end. Every op is retired,
 	/// the ones coarsening drops included. Returns the new revs.
 	pub fn retire_interaction(&mut self, interaction: &ClosedInteraction) -> Result<Vec<Rev>, CrdtError> {
+		let marker = interaction.ops.last().and_then(|&id| self.document.hot_log.iter().find(|hot_op| hot_op.id() == id));
+		let action = marker.and_then(|hot_op| hot_op.attributes.get(crate::attr::delta::ACTION)).cloned();
 		let revs = self.retire_hot_ops_with(&interaction.ops, true)?;
 		if let Some(&last) = revs.last() {
 			self.mark_interaction_end(last);
+			if let Some(action) = action {
+				self.document.history.annotate(last, crate::attr::delta::ACTION, action.value, action.timestamp);
+			}
 		}
 		Ok(revs)
 	}
@@ -1479,15 +1507,16 @@ fn references_of(op: &RegistryDelta) -> Vec<u64> {
 /// Coarsens one interaction's ops. A field write that a later write in it supersedes has no effect on the fold and
 /// is dropped, unless it refers to something the later write does not. A whole-list input write supersedes every
 /// earlier input write on its node. Structural ops stay.
-fn coarsen(mut ops: Vec<HotOp>) -> Vec<HotOp> {
+pub fn coarsen<T: Borrow<HotOp>>(mut ops: Vec<T>) -> Vec<T> {
 	// The author's order. The hot log holds arrival order, which a re-announcement after a lapsed link scrambles.
-	ops.sort_by_key(|hot_op| hot_op.timestamp);
+	ops.sort_by_key(|hot_op| hot_op.borrow().timestamp);
 	let mut keep = vec![true; ops.len()];
 	let mut latest: HashMap<FieldKey, usize> = HashMap::new();
 	for (index, hot_op) in ops.iter().enumerate() {
-		let Some(field) = field_of(&hot_op.op) else { continue };
-		let references = references_of(&hot_op.op);
-		let supersedes = |earlier: &HotOp| references_of(&earlier.op).iter().all(|reference| references.contains(reference));
+		let op = &hot_op.borrow().op;
+		let Some(field) = field_of(op) else { continue };
+		let references = references_of(op);
+		let supersedes = |earlier: &T| references_of(&earlier.borrow().op).iter().all(|reference| references.contains(reference));
 
 		if let FieldKey::NodeInputs(id) = field {
 			latest.retain(|key, &mut earlier| {

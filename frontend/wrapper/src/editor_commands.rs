@@ -291,6 +291,11 @@ mod editor_commands {
 		HistoryMessage::Follow { id }.into()
 	}
 
+	/// Put the steps not yet in history into it, when editing alone
+	fn retire_pending_history() -> Message {
+		HistoryMessage::RetirePending.into()
+	}
+
 	/// Name an interaction. An empty label removes the name
 	fn rename_history_interaction(id: String, label: String) -> Message {
 		HistoryMessage::Rename { id, label }.into()

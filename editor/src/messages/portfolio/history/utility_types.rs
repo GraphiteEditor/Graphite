@@ -19,8 +19,8 @@ pub struct HistoryPanelState {
 	pub progress: Vec<HistoryProgressRow>,
 	pub more: bool,
 	pub following: Option<String>,
-	/// In a session, a head move affects everyone.
-	pub session: bool,
+	/// Whether others are connected.
+	pub collaborating: bool,
 }
 
 /// One interaction, a run of deltas that undo takes back together.
@@ -39,7 +39,7 @@ pub struct HistoryRow {
 	pub color: String,
 	/// Milliseconds since the Unix epoch, if the retirer recorded it.
 	pub time: Option<f64>,
-	pub deltas: usize,
+	pub deltas: u32,
 	/// Branches off the shown line, each by its tip.
 	pub branches: Vec<HistoryBranch>,
 	pub undone: bool,
@@ -63,7 +63,7 @@ pub struct HistoryDeltaRow {
 	pub id: String,
 	pub label: String,
 	pub author: String,
-	pub color: String,
+	pub mine: bool,
 	pub time: Option<f64>,
 }
 
@@ -76,7 +76,7 @@ pub struct HistoryProgressRow {
 	pub anonymous: bool,
 	pub mine: bool,
 	pub color: String,
-	pub ops: usize,
+	pub ops: u32,
 	/// Still being made, not closed and waiting.
 	pub open: bool,
 }

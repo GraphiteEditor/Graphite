@@ -131,6 +131,10 @@ pub enum DocumentMessage {
 	PasteNodes {
 		nodes: Vec<(NodeId, NodeTemplate)>,
 	},
+	/// Names the open interaction for the History panel, such as after the transaction a tool starts.
+	NameInteraction {
+		action: String,
+	},
 	MoveSelectedLayersToGroup {
 		parent: LayerNodeIdentifier,
 	},
