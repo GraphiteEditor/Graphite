@@ -479,7 +479,8 @@ impl NodeGraphExecutor {
 			time: Default::default(),
 			pointer: DVec2::ZERO,
 			export_format,
-			render_mode: document.render_mode,
+			// The viewport's render mode is only a way of viewing the artwork, which exports show as it is
+			render_mode: graphene_std::vector::style::RenderMode::Normal,
 			for_export: true,
 			for_eyedropper: false,
 		};
@@ -642,8 +643,12 @@ impl NodeGraphExecutor {
 							document.network_interface.update_click_targets(HashMap::new(), HashSet::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
-							if let Some(message) = message {
+							if let Some(message) = &message {
 								log::error!("Node graph evaluation failed:\n{message}");
+							}
+
+							if execution_context.export_config.is_some() {
+								responses.add(export_failure_dialog(message));
 							}
 							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
 							break;
@@ -769,9 +774,15 @@ impl NodeGraphExecutor {
 		for response in results {
 			match response {
 				NodeGraphUpdate::ExecutionResponse(execution_response) => {
-					if self.document_of_execution(execution_response.execution_id) == Some(document_id) {
+					let execution_context = self.execution_context(execution_response.execution_id);
+
+					if execution_context.is_some_and(|context| context.document_id == document_id) {
 						document.layers_in_view.forget_thumbnails(&execution_response.dropped_thumbnails, responses);
 					}
+					if matches!(execution_response.result, ExecutionResult::Uncompiled) && execution_context.is_some_and(|context| context.export_config.is_some()) {
+						responses.add(export_failure_dialog(None));
+					}
+
 					all_dropped_thumbnails.extend(execution_response.dropped_thumbnails);
 				}
 				NodeGraphUpdate::Thumbnails {
@@ -797,13 +808,13 @@ impl NodeGraphExecutor {
 		}
 	}
 
-	/// The document an execution was submitted for, while it's still queued or pending.
-	fn document_of_execution(&self, execution_id: u64) -> Option<DocumentId> {
+	/// What an execution was submitted for, while it's still queued or pending.
+	fn execution_context(&self, execution_id: u64) -> Option<&ExecutionContext> {
 		self.futures
 			.iter()
 			.chain(&self.pending)
 			.find(|(queued_execution_id, _)| *queued_execution_id == execution_id)
-			.map(|(_, execution_context)| execution_context.document_id)
+			.map(|(_, execution_context)| execution_context)
 	}
 
 	// TODO: Eventually remove this document upgrade code
@@ -1213,6 +1224,14 @@ fn viewport_canvas_placeholder(canvas_id: u64, resolution: DVec2) -> String {
 		r#"<foreignObject width="{}" height="{}"><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject>"#,
 		resolution.x, resolution.y, canvas_id,
 	)
+}
+
+/// Says why an export saved nothing, given the evaluation's error, or else the graph's failure to compile.
+fn export_failure_dialog(evaluation_error: Option<String>) -> DialogMessage {
+	DialogMessage::DisplayDialogError {
+		title: "Unable to export document".to_string(),
+		description: evaluation_error.unwrap_or_else(|| "The node graph has errors that prevent it from rendering.".to_string()),
+	}
 }
 
 fn path_content_observations(network_interface: &NodeNetworkInterface) -> impl Iterator<Item = (ObservationKey, Observation)> {

@@ -740,14 +740,14 @@ mod tests {
 	}
 
 	/// Sends a network update and a request to export it, as the editor does for an export.
-	fn send_export(editor: &mut EditorTestUtils) {
+	fn send_export(editor: &mut EditorTestUtils, file_type: FileType) {
 		let portfolio = editor.portfolio_message_handler_mut();
 		let document_id = portfolio.active_document_id.unwrap();
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
 		let document = documents.get_mut(&document_id).unwrap();
 		let export_config = ExportConfig {
 			name: "export".to_string(),
-			file_type: FileType::Svg,
+			file_type,
 			scale_factor: 1.,
 			bounds: ExportBounds::AllArtwork,
 			..Default::default()
@@ -1062,10 +1062,50 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn a_raster_export_shows_the_artwork_whatever_the_render_mode() {
+		use crate::test_utils::test_prelude::{Color, Image};
+
+		for render_mode in [RenderMode::Normal, RenderMode::Outline, RenderMode::SvgPreview] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			editor.handle_message(DocumentMessage::SetRenderMode { render_mode }).await;
+			editor.draw_rect(0., 0., 100., 100.).await;
+
+			send_export(&mut editor, FileType::Png);
+			editor.runtime.update();
+			editor.runtime.run().await;
+
+			let png = editor.dispatch(Message::Wake).into_iter().find_map(|message| match message {
+				FrontendMessage::TriggerSaveFile { content, .. } => Some(content),
+				_ => None,
+			});
+			let Some(png) = png else { panic!("the export in {render_mode:?} should save a PNG") };
+
+			let image = Image::from_encoded(&png).expect("the export should be a valid PNG");
+			let center = image.data[(image.height / 2 * image.width + image.width / 2) as usize];
+			assert_eq!(center, Color::WHITE, "the export in {render_mode:?} should show the rectangle's fill");
+		}
+	}
+
+	#[tokio::test]
+	async fn exporting_a_graph_that_fails_to_compile_says_it_failed() {
+		let mut editor = editor().await;
+		break_compile(&mut editor);
+
+		send_export(&mut editor, FileType::Png);
+		editor.runtime.update();
+		editor.runtime.run().await;
+
+		let messages = editor.dispatch(Message::Wake);
+		let shows_dialog = messages.iter().any(|message| matches!(message, FrontendMessage::DisplayDialog { .. }));
+		assert!(shows_dialog, "the export should show why it saved nothing");
+	}
+
+	#[tokio::test]
 	async fn an_export_goes_ahead_of_what_was_sent_after_it() {
 		let mut editor = editor().await;
 		let last = last_request(&editor);
-		send_export(&mut editor);
+		send_export(&mut editor, FileType::Svg);
 		send_update(&mut editor);
 
 		editor.runtime.update();
@@ -1089,7 +1129,7 @@ mod tests {
 		editor.draw_rect(0., 0., 512., 512.).await;
 		vectorize_layer(&mut editor);
 
-		send_export(&mut editor);
+		send_export(&mut editor, FileType::Svg);
 		editor.runtime.update();
 		editor.runtime.run().await;
 		assert!(editor.runtime.pending_export.is_some(), "the export took a single evaluation");
