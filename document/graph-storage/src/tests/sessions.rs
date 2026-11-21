@@ -913,6 +913,126 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	assert_eq!(guest.retired_registry(), host.retired_registry());
 }
 
+/// Dropping a peer's first step keeps the registration it carried while a later step of that peer is minted again, so
+/// that step still names the person who made it.
+#[test]
+fn dropping_a_peers_first_step_keeps_the_registration_its_later_steps_need() {
+	fn retire_guest_step(guest: &mut Session, host: &mut Session, key: &str) -> Rev {
+		let hot = guest.stage_ops([set_attribute(key, 1)]).expect("stage");
+		for hot_op in &hot {
+			host.replay_hot_op(hot_op.clone()).expect("the guest's ops reach the host");
+		}
+		let ids: Vec<HotOpId> = hot.iter().map(HotOp::id).collect();
+		let closing = *host.retire_hot_ops(&ids).expect("retire").last().expect("the guest's step");
+		host.mark_interaction_end(closing);
+		let missing: Vec<Delta> = host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect();
+		guest.merge(missing).expect("merge");
+		guest.discard_hot_ops(&ids);
+		closing
+	}
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(set_attribute("base", 0)).expect("base");
+	let base = host.head_rev().expect("rev");
+	host.mark_interaction_end(base);
+	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+
+	let first = retire_guest_step(&mut guest, &mut host, "first");
+	retire_guest_step(&mut guest, &mut host, "second");
+	assert_eq!(host.user_of(PeerId(2)), Some(UserId(2)));
+
+	host.drop_interaction(first).expect("drop");
+	assert_eq!(host.user_of(PeerId(2)), Some(UserId(2)), "the later step still names the guest's person");
+}
+
+/// Removing a step repairs the steps after it without changing which output of a node they take.
+#[test]
+fn removing_a_step_keeps_the_output_a_later_step_takes() {
+	let (taken, unrelated) = (NodeId(1), NodeId(2));
+	let node = || Node::new(NetworkId(5), Implementation::ProtoNode(ResourceId::new()), 1);
+
+	let mut session = Session::with_peer(PeerId(1));
+	step(&mut session, add_network(5));
+	step(&mut session, RegistryDelta::AddNode { id: taken, node: node() });
+	let dropped = step(&mut session, RegistryDelta::AddNode { id: unrelated, node: node() });
+	let second_output = NodeInput::Node { id: taken, index: 1 };
+	let export = RegistryDelta::SetNetworkExport {
+		id: NetworkId(5),
+		index: 0,
+		export: Some(second_output.clone()),
+	};
+	step(&mut session, export);
+
+	session.drop_interaction(dropped).expect("drop");
+	let exports = &session.retired_registry().networks[&NetworkId(5)].exports;
+	assert_eq!(exports[0].target, Some(second_output));
+}
+
+/// Bringing back a step that set what a chain rests on keeps its value, rather than the one the line had before.
+#[test]
+fn bringing_back_a_step_keeps_the_value_it_gave_a_chain_bottom() {
+	let (layer, unrelated) = (NodeId(1), NodeId(2));
+	let value = |text: &str| NodeInput::Value {
+		value: Value::from(serde_json::json!(text)),
+		exposed: false,
+	};
+	let node = || Node::new(NetworkId(5), Implementation::ProtoNode(ResourceId::new()), 1);
+
+	let mut session = Session::with_peer(PeerId(1));
+	step(&mut session, add_network(5));
+	step(&mut session, RegistryDelta::AddNode { id: layer, node: node() });
+	let export = RegistryDelta::SetNetworkExport {
+		id: NetworkId(5),
+		index: 0,
+		export: Some(NodeInput::Node { id: layer, index: 0 }),
+	};
+	let exported = step(&mut session, export);
+	let set_bottom = RegistryDelta::ChangeNodeInput {
+		id: layer,
+		index: 0,
+		new_input: value("set by the step"),
+	};
+	let changed = step(&mut session, set_bottom);
+	session.move_head_to(exported).expect("go back to before the change");
+	step(&mut session, RegistryDelta::AddNode { id: unrelated, node: node() });
+
+	session.restore_interaction(changed).expect("bring the change back");
+	assert_eq!(session.retired_registry().node_instances[&layer].inputs()[0].input, value("set by the step"));
+}
+
+/// Bringing back the deletion of a node without inputs, wired since into a node the deletion predates, gives that input
+/// back its value from before, as there is nothing to reconnect it to.
+#[test]
+fn deleting_a_node_without_inputs_gives_the_input_it_fed_its_earlier_value() {
+	let (source, consumer) = (NodeId(1), NodeId(2));
+	let source_node = Node::new(NetworkId(5), Implementation::ProtoNode(ResourceId::new()), 0);
+	let consumer_node = Node::new(NetworkId(5), Implementation::ProtoNode(ResourceId::new()), 2);
+	let earlier_value = consumer_node.inputs()[1].input.clone();
+
+	let mut session = Session::with_peer(PeerId(1));
+	step(&mut session, add_network(5));
+	let added = step(
+		&mut session,
+		RegistryDelta::AddNode {
+			id: source,
+			node: source_node.clone(),
+		},
+	);
+	let deleted = step(&mut session, RegistryDelta::RemoveNode { id: source, snapshot: source_node });
+	session.move_head_to(added).expect("go back to before the deletion");
+	step(&mut session, RegistryDelta::AddNode { id: consumer, node: consumer_node });
+	let wire = RegistryDelta::ChangeNodeInput {
+		id: consumer,
+		index: 1,
+		new_input: NodeInput::Node { id: source, index: 0 },
+	};
+	step(&mut session, wire);
+
+	session.restore_interaction(deleted).expect("bring the deletion back");
+	let registry = session.retired_registry();
+	assert!(!registry.node_instances.contains_key(&source));
+	assert_eq!(registry.node_instances[&consumer].inputs()[1].input, earlier_value);
+}
+
 /// Undo of a retired step names the person's latest step, not the device's. A fresh copy of the document under a new
 /// peer id still undoes what its user did from the old one, and nobody else's.
 #[test]
