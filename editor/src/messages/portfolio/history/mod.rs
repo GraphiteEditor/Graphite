@@ -1,3 +1,4 @@
+mod changes;
 mod history_message;
 mod history_message_handler;
 pub mod utility_types;
