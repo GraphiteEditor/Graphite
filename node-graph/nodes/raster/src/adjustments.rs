@@ -1465,7 +1465,7 @@ mod tests {
 	fn an_adjustment_after_an_effect_applies_to_its_result() {
 		use core_types::ATTR_TRANSFORM;
 		use glam::DAffine2;
-		use graphic_types::{EffectOperation, Effects};
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
 
 		// A red shadow cast beside a white square by light from its left, which desaturating after the shadow turns gray
 		let shadow = EffectOperation::DropShadow {
@@ -1477,9 +1477,8 @@ mod tests {
 			contour: Default::default(),
 			knockout: true,
 		};
-		let square = Item::new_from_element(Raster::new_cpu(Image::new(4, 4, Color::WHITE)))
-			.with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(4.)))
-			.with_attribute(core_types::list::ATTR_EFFECTS, Effects::from_operations([shadow]));
+		let mut square = Item::new_from_element(Raster::new_cpu(Image::new(4, 4, Color::WHITE))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(4.)));
+		stamp_effect(&mut square, Effect::new(&shadow));
 
 		let desaturated = desaturate((), square, DesaturateMethod::default().into());
 

@@ -16,9 +16,9 @@ use core_types::{
 use core_types::{Interrupt, NodeError};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
-use graphic_types::graphic::{bake_paint_transforms, is_paint_present};
+use graphic_types::graphic::{bake_transform_into_attributes, is_paint_present};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, stamp_coverage};
+use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, stamp_coverage, stamped_transform};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{RngExt, SeedableRng};
@@ -380,11 +380,14 @@ fn vary_cover_colors<T: VectorListIterMut>(
 			let color_paint = Graphic::ColorList(List::new_from_element(color));
 
 			match cover {
-				Cover::Fill => vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
-					if !appearance.set_paint_of(Cover::Fill, color_paint.clone()) {
-						appearance.replace_or_insert(Coverage::new_fill(), color_paint.clone(), CoverPlacement::Below);
-					}
-				}),
+				Cover::Fill => {
+					let transform = stamped_transform(vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, index));
+					vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
+						if !appearance.set_paint_of(Cover::Fill, color_paint.clone()) {
+							appearance.replace_or_insert(Coverage::new_fill(), color_paint.clone(), transform, CoverPlacement::Below);
+						}
+					})
+				}
 				// The stroke recolor is gated on an existing stroke coverage, since restyling never adds a stroke
 				Cover::Stroke => {
 					if vector_list
@@ -552,13 +555,7 @@ where
 	// The wire envelope is dropped for the same reason as in `fill` above
 	let paint = paint.into_element();
 
-	// The coverage records the stroke's authoring space, so the item transform is composed in. Its translation
-	// cancels out in every consumer, so it is cleared to let an otherwise-identity capture elide.
-	let mut coverage_stroke = stroke;
-	coverage_stroke.transform *= content.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
-	coverage_stroke.transform.translation = DVec2::ZERO;
-
-	stamp_coverage(&mut content, Coverage::new_stroke(&coverage_stroke), paint, CoverPlacement::Above);
+	stamp_coverage(&mut content, Coverage::new_stroke(&stroke), paint, CoverPlacement::Above);
 	content
 }
 
@@ -1157,6 +1154,7 @@ fn box_warp<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Ve
 			// Reset the transform since we've applied it directly to the points
 			*row.element_mut() = result;
 			row.set_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY);
+			graphic_types::graphic::rebase_stamped_transforms(row.attributes_mut(), transform);
 		}
 		row
 	}))
@@ -1904,7 +1902,7 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 			let (vector, attributes) = row.into_parts();
 
 			let appearance = attributes.get::<Appearance>(ATTR_APPEARANCE).cloned().unwrap_or_default();
-			let Some(stroke) = appearance.first_coverage_of(Cover::Stroke).map(Coverage::stroke_params).filter(|stroke| stroke.weight != 0.) else {
+			let Some(stroke) = appearance.first_stroke_params().filter(|stroke| stroke.weight != 0.) else {
 				return vec![Item::from_parts(vector, attributes)];
 			};
 			// List order is paint order: a stroke coverage before the first fill coverage paints below it
@@ -2105,7 +2103,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 		attributes.insert_cloned_from(&source_attributes, ATTR_APPEARANCE);
 		// Adopt the last input item's layer (if any) so the editor can also bucket clicks under a contributing child layer
 		attributes.insert_cloned_from(&source_attributes, ATTR_EDITOR_LAYER_PATH);
-		bake_paint_transforms(&mut attributes, source_transform);
+		bake_transform_into_attributes(&mut attributes, source_transform);
 	}
 	attributes.set_paths(output_paths);
 
@@ -3056,13 +3054,21 @@ fn morph(
 			let (source_index, target_index) = (a.first_index_of(cover), b.first_index_of(cover));
 
 			// An unmatched stroke steps out at the midpoint, matching the stroke geometry, while an unmatched fill persists and fades
-			let coverage = match (source_index.and_then(|index| a.cover_at(index)), target_index.and_then(|index| b.cover_at(index))) {
-				(Some(source), Some(target)) if cover == Cover::Stroke => Coverage::new_stroke(&source.stroke_params().lerp(&target.stroke_params(), time)),
-				(Some(source), Some(target)) => (if time < 0.5 { source } else { target }).clone(),
+			let (source_transform, target_transform) = (source_index.map(|index| a.transform_at(index)), target_index.map(|index| b.transform_at(index)));
+			let (coverage, transform) = match (source_index.and_then(|index| a.cover_at(index)), target_index.and_then(|index| b.cover_at(index))) {
+				(Some(_), Some(_)) if cover == Cover::Stroke => {
+					let (Some(source), Some(target)) = (source_index.and_then(|index| a.stroke_params_at(index)), target_index.and_then(|index| b.stroke_params_at(index))) else {
+						continue;
+					};
+					let stroke = source.lerp(&target, time);
+					(Coverage::new_stroke(&stroke), stroke.transform)
+				}
+				(Some(source), Some(_)) if time < 0.5 => (source.clone(), source_transform.unwrap_or_default()),
+				(Some(_), Some(target)) => (target.clone(), target_transform.unwrap_or_default()),
 				(Some(_), None) if cover == Cover::Stroke && time >= 0.5 => continue,
 				(None, Some(_)) if cover == Cover::Stroke && time < 0.5 => continue,
-				(Some(source), None) => source.clone(),
-				(None, Some(target)) => target.clone(),
+				(Some(source), None) => (source.clone(), source_transform.unwrap_or_default()),
+				(None, Some(target)) => (target.clone(), target_transform.unwrap_or_default()),
 				(None, None) => continue,
 			};
 
@@ -3074,7 +3080,7 @@ fn morph(
 				.map(Item::into_element)
 				.unwrap_or_default();
 
-			result.replace_or_insert(coverage, paint, CoverPlacement::Above);
+			result.replace_or_insert(coverage, paint, transform, CoverPlacement::Above);
 		}
 
 		Some(result)
@@ -4736,8 +4742,13 @@ mod test {
 		// The two endpoints list their covers in opposite paint orders, which pairing by position would cross
 		let appearance = |fill: Color, stroke: Color, stroke_placement| {
 			let mut appearance = Appearance::default();
-			appearance.replace_or_insert(Coverage::new_fill(), Graphic::from(List::new_from_element(fill)), CoverPlacement::Above);
-			appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), Graphic::from(List::new_from_element(stroke)), stroke_placement);
+			appearance.replace_or_insert(Coverage::new_fill(), Graphic::from(List::new_from_element(fill)), DAffine2::IDENTITY, CoverPlacement::Above);
+			appearance.replace_or_insert(
+				Coverage::new_stroke(&Stroke::new(4.)),
+				Graphic::from(List::new_from_element(stroke)),
+				DAffine2::IDENTITY,
+				stroke_placement,
+			);
 			appearance
 		};
 
@@ -5279,7 +5290,12 @@ mod test {
 	fn vary_stroke_colors_recolors_only_existing_strokes() {
 		let rect = || vector_item_from_bezpath(Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY));
 		let mut stroked = Appearance::default();
-		stroked.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), Graphic::from(List::new_from_element(Color::BLACK)), CoverPlacement::Above);
+		stroked.replace_or_insert(
+			Coverage::new_stroke(&Stroke::new(4.)),
+			Graphic::from(List::new_from_element(Color::BLACK)),
+			DAffine2::IDENTITY,
+			CoverPlacement::Above,
+		);
 		let content: List<Vector> = [rect().with_attribute(ATTR_APPEARANCE, stroked), rect()].into_iter().collect();
 
 		let styled = super::vary_stroke_colors((), content, item(Gradient::from(vec![Color::WHITE])), item(false), item(false), item(0), item(0)).unwrap();

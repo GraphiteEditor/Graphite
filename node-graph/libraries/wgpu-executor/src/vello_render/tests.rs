@@ -276,11 +276,18 @@ fn degenerate_strokes_render() {
 
 /// Renders an opaque white square from (`min`, `min`) to (`max`, `max`) through `effects` with `fill`.
 fn render_square_with_effects(effects: Vec<graphic_types::EffectOperation>, fill: f32, min: f64, max: f64, size: UVec2) -> Option<Vec<[u8; 4]>> {
+	render_square_with_effects_in(effects, DAffine2::IDENTITY, fill, min, max, size)
+}
+
+/// Like [`render_square_with_effects`], carrying out the effects in an `effect_space` placed in the document.
+fn render_square_with_effects_in(effects: Vec<graphic_types::EffectOperation>, effect_space: DAffine2, fill: f32, min: f64, max: f64, size: UVec2) -> Option<Vec<[u8; 4]>> {
 	let square = Rect::new(min, min, max, max);
 	let effects = graphic_types::Effects::from_operations(effects);
 
 	render(size, |scene| {
-		scene.draw_effects(&effects, fill, Some(square), &mut |scene| scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square));
+		scene.draw_effects(&effects, fill, Some(square), effect_space, &mut |scene| {
+			scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
+		});
 	})
 }
 
@@ -330,6 +337,42 @@ fn gaussian_blur_follows_the_normal_distribution() {
 		}
 		assert!(worst < 0.03, "σ {sigma} strays from the normal distribution by {worst}");
 	}
+}
+
+#[test]
+fn blurs_stretch_with_an_effect_space_scaled_unevenly() {
+	use graphic_types::EffectOperation;
+
+	// Three times as wide as it is tall, the effect space renders in a texture of its own, so the blur of 4 spreads 12 pixels across and 4 down
+	let size = UVec2::new(512, 512);
+	let blur = EffectOperation::Blur {
+		radius: 4.,
+		box_blur: false,
+		gamma: false,
+	};
+	let Some(pixels) = render_square_with_effects_in(vec![blur], DAffine2::from_scale(glam::DVec2::new(3., 1.)), 1., 100., 400., size) else {
+		return;
+	};
+
+	let stray = |sigma: f64, coverage: &dyn Fn(u32) -> u8| (40..160).map(|at| (normal_cdf((at as f64 + 0.5 - 100.) / sigma) - coverage(at) as f64 / 255.).abs()).fold(0., f64::max);
+	let across = stray(12., &|x| pixel(&pixels, size, x, 250)[3]);
+	let down = stray(4., &|y| pixel(&pixels, size, 250, y)[3]);
+	assert!(across < 0.04 && down < 0.04, "the blur strays from σ 12 across by {across} and σ 4 down by {down}");
+}
+
+#[test]
+fn shadows_turn_with_their_effect_space() {
+	use core_types::Color as GraphicColor;
+
+	// A shadow cast to the right of the content in an effect space turned a quarter clockwise falls below it in the document
+	let size = UVec2::new(256, 256);
+	let shadow = drop_shadow(GraphicColor::BLACK, glam::DVec2::new(30., 0.), 0., 0.);
+	let Some(pixels) = render_square_with_effects_in(vec![shadow], DAffine2::from_angle(std::f64::consts::FRAC_PI_2), 1., 50., 150., size) else {
+		return;
+	};
+
+	assert!(pixel(&pixels, size, 100, 165)[3] > 200, "the shadow should fall below the square");
+	assert_eq!(pixel(&pixels, size, 165, 100)[3], 0, "the shadow shouldn't fall to its right");
 }
 
 #[test]
@@ -423,8 +466,10 @@ fn nested_effects_groups_render_inside_out() {
 		gamma: false,
 	}]);
 	let draw = |scene: &mut VelloSceneBuilder| {
-		scene.draw_effects(&shadow, 1., Some(square.inflate(12., 12.)), &mut |scene| {
-			scene.draw_effects(&blur, 1., Some(square), &mut |scene| scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square));
+		scene.draw_effects(&shadow, 1., Some(square.inflate(12., 12.)), DAffine2::IDENTITY, &mut |scene| {
+			scene.draw_effects(&blur, 1., Some(square), DAffine2::IDENTITY, &mut |scene| {
+				scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
+			});
 		});
 	};
 
@@ -439,13 +484,13 @@ fn nested_effects_groups_render_inside_out() {
 #[test]
 fn cpu_evaluated_effects_match_the_gpu_passes() {
 	use core_types::Color as GraphicColor;
-	use core_types::list::{ATTR_EFFECTS, Item};
+	use core_types::list::Item;
 	use core_types::transfer_curve::TransferCurve;
 	use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM};
 	use glam::DVec2;
 	use graphic_types::raster_types::{Image, Raster};
 	use graphic_types::vector_types::gradient::{Gradient, GradientStop};
-	use graphic_types::{EffectOperation, Effects, GlowTechnique, Graphic};
+	use graphic_types::{Effect, EffectOperation, GlowTechnique, Graphic, stamp_effect};
 	use raster_kernels::evaluate_raster_effects;
 
 	let size = UVec2::new(160, 160);
@@ -510,10 +555,10 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 					image.data[(y * size.x + x) as usize] = GraphicColor::WHITE;
 				}
 			}
-			let item = Item::new_from_element(Raster::new_cpu(image))
+			let mut item = Item::new_from_element(Raster::new_cpu(image))
 				.with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(size.as_dvec2()))
-				.with_attribute(ATTR_EFFECTS, Effects::from_operations(effects.clone()))
 				.with_attribute(ATTR_OPACITY_FILL, fill as f64);
+			effects.iter().for_each(|operation| stamp_effect(&mut item, Effect::new(operation)));
 			let evaluated = evaluate_raster_effects(item);
 
 			// Reads the evaluated image at the center of each render pixel through its grown placement

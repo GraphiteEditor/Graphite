@@ -3,14 +3,17 @@
 //! Each renderer decodes the rows into [`EffectOperation`]s and carries them out its own way, at the resolution of each render.
 
 use crate::Graphic;
+use core_types::ATTR_TRANSFORM;
 use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_EFFECTS, ATTR_OPACITY, ATTR_OPACITY_FILL, Item, List};
 use core_types::transfer_curve::TransferCurve;
 use dyn_any::DynAny;
-use glam::{DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
+use std::borrow::Cow;
 use std::fmt::Debug;
+use std::ops::Range;
 use vector_types::gradient::GradientEvaluator;
 use vector_types::{Gradient, GradientSettings};
 
@@ -55,7 +58,7 @@ pub enum GlowTechnique {
 /// One of the coverages an effect is drawn from, which a render can output in place of the effects' result, so an SVG can embed it as a map of what its filters can't work out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EffectCapture {
-	/// The effect's place in its item's list.
+	/// The effect's place in its item's list, or in its run of that list once a renderer splits the list into runs.
 	pub index: usize,
 	/// Which of the effect's coverages, for an effect drawn from more than one.
 	pub plane: usize,
@@ -122,11 +125,11 @@ impl Effect {
 pub struct Effects(pub List<Effect>);
 
 impl Effects {
-	/// Creates the list of rows carrying out the given operations in order.
+	/// Creates the list of rows carrying out the given operations in order, stamped on untransformed content.
 	pub fn from_operations(operations: impl IntoIterator<Item = EffectOperation>) -> Self {
 		let mut effects = Self::default();
 		for operation in operations {
-			effects.0.push(Item::new_from_element(Effect::new(&operation)));
+			effects.0.push(Item::new_from_element(Effect::new(&operation)).with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY));
 		}
 		effects
 	}
@@ -146,9 +149,67 @@ impl Effects {
 		self.operations().all(|operation| operation.changes_nothing())
 	}
 
-	/// How far past the content the effects together can paint, in document pixels.
+	/// The effects of the given range of rows decoded into operations, in order.
+	pub fn operations_in(&self, rows: Range<usize>) -> impl Iterator<Item = EffectOperation> + '_ {
+		self.effects().skip(rows.start).take(rows.len()).map(Effect::operation)
+	}
+
+	/// How far past the content the effects together can paint, in the effect space of a run of them.
 	pub fn reach(&self) -> f64 {
-		self.operations().filter(|operation| !operation.changes_nothing()).map(|operation| operation.reach()).sum()
+		self.operations().map(|operation| operation.painted_reach()).sum()
+	}
+
+	/// Splits the rows into runs stamped in the same space, in order, each with the transform its effects were stamped at.
+	/// A transform applied between two effects starts a new run, which renders around the result of those before it.
+	/// Effects that change nothing join the run they're in, and a run of only those takes the space of the next effect.
+	pub fn runs(&self) -> Vec<(DAffine2, Range<usize>)> {
+		let mut runs: Vec<(DAffine2, Range<usize>)> = Vec::new();
+		let mut run_changes_something = false;
+		for (index, effect) in self.effects().enumerate() {
+			let stamped_transform: DAffine2 = self.0.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let changes_something = !effect.operation().changes_nothing();
+
+			if let Some((transform, rows)) = runs.last_mut()
+				&& (!changes_something || !run_changes_something || same_linear_part(transform.matrix2, stamped_transform.matrix2))
+			{
+				if changes_something && !run_changes_something {
+					*transform = stamped_transform;
+				}
+				rows.end = index + 1;
+				run_changes_something |= changes_something;
+			} else {
+				runs.push((stamped_transform, index..index + 1));
+				run_changes_something = changes_something;
+			}
+		}
+		runs
+	}
+
+	/// Moves the transforms the effects were stamped at onto content whose `baked` transform went into its geometry.
+	pub fn rebase_stamped_transforms(&mut self, baked: DAffine2) {
+		if let Some(transforms) = self.0.iter_attribute_values_mut::<DAffine2>(ATTR_TRANSFORM) {
+			transforms.for_each(|transform| *transform = rebased_stamped_transform(*transform, baked));
+		}
+	}
+
+	/// The effects of a run of rows, borrowed when the run is every row.
+	pub fn run(&self, rows: Range<usize>) -> Cow<'_, Effects> {
+		match rows == (0..self.len()) {
+			true => Cow::Borrowed(self),
+			false => Cow::Owned(Effects(rows.filter_map(|index| self.0.clone_item(index)).collect())),
+		}
+	}
+
+	/// How far past the content the effects together can paint along each axis of the space `content_transform` places the content in.
+	pub fn reach_along_axes(&self, content_transform: DAffine2) -> DVec2 {
+		self.reach_along_axes_by(content_transform, EffectOperation::painted_reach)
+	}
+
+	/// Like [`Self::reach_along_axes`], measuring how far each effect reaches in its effect space by `reach`.
+	pub fn reach_along_axes_by(&self, content_transform: DAffine2, reach: impl Fn(&EffectOperation) -> f64) -> DVec2 {
+		(self.runs().into_iter())
+			.map(|(stamped_transform, rows)| self.operations_in(rows).map(|operation| reach(&operation)).sum::<f64>() * spans_along_axes(effect_space(content_transform, stamped_transform).matrix2))
+			.sum()
 	}
 
 	pub fn len(&self) -> usize {
@@ -160,9 +221,15 @@ impl Effects {
 	}
 }
 
-/// The most that a length in the document spans along each axis of a space, given the linear map from the document into that space.
-pub fn spans_along_axes(document_to_space: DMat2) -> DVec2 {
-	DVec2::new(document_to_space.row(0).length(), document_to_space.row(1).length())
+/// The most that a length in one space spans along each axis of another, given the linear map between them.
+pub fn spans_along_axes(linear_map: DMat2) -> DVec2 {
+	DVec2::new(linear_map.row(0).length(), linear_map.row(1).length())
+}
+
+/// Whether two linear maps agree to within rounding, as two transforms meant to be the same do after a turn and its undoing.
+fn same_linear_part(first: DMat2, second: DMat2) -> bool {
+	let scale = first.x_axis.abs().max_element().max(first.y_axis.abs().max_element());
+	first.abs_diff_eq(second, 1e-9 * scale)
 }
 
 /// For PSD interop, an outer glow filled with a gradient fades out once its strength before range and contour falls below this.
@@ -232,12 +299,43 @@ impl GlowFill {
 	}
 }
 
-/// Appends an effect to the item's list, after those already applied to it.
+/// Appends an effect to the item's list, after those already applied to it, recording the item's transform at that point.
+/// Like a stroke's transform, it sets the space the effect's lengths and angles are measured in, so transforms applied later carry and scale the effect.
 pub fn stamp_effect<T>(item: &mut Item<T>, effect: Effect) {
-	item.attribute_mut_or_insert_default::<Effects>(ATTR_EFFECTS).0.push(Item::new_from_element(effect));
+	let transform = stamped_transform(item.attribute_cloned_or_default(ATTR_TRANSFORM));
+	item.attribute_mut_or_insert_default::<Effects>(ATTR_EFFECTS)
+		.0
+		.push(Item::new_from_element(effect).with_attribute(ATTR_TRANSFORM, transform));
 }
 
-/// An effect's parameters decoded from its row, the form that renderers carry it out from. Lengths are in document pixels.
+/// The part of a content transform a coverage or effect records, its linear part, since the content's position cancels out wherever it's used.
+pub fn stamped_transform(content_transform: DAffine2) -> DAffine2 {
+	DAffine2::from_mat2(content_transform.matrix2)
+}
+
+/// The space effects stamped at `stamped_transform` are carried out in, placed by the content's current `content_transform`.
+/// Its origin is the content's, and its lengths are as viewed when stamped, carried and scaled by any transform applied since.
+pub fn effect_space(content_transform: DAffine2, stamped_transform: DAffine2) -> DAffine2 {
+	let stamped_linear = stamped_transform.matrix2;
+
+	// Content left as it was stamped measures exactly as viewed, which the product with the inverse only approximates
+	let since_stamped = if content_transform.matrix2 == stamped_linear || !stamped_linear.determinant().is_normal() {
+		DMat2::IDENTITY
+	} else {
+		content_transform.matrix2 * stamped_linear.inverse()
+	};
+	DAffine2::from_mat2_translation(since_stamped, content_transform.translation)
+}
+
+/// The transform a coverage or effect was stamped at, moved onto content whose `baked` transform went into its geometry, so it keeps measuring in the same space.
+pub fn rebased_stamped_transform(stamped_transform: DAffine2, baked: DAffine2) -> DAffine2 {
+	match baked.matrix2.determinant().is_normal() {
+		true => DAffine2::from_mat2(stamped_transform.matrix2 * baked.matrix2.inverse()),
+		false => stamped_transform,
+	}
+}
+
+/// An effect's parameters decoded from its row, the form that renderers carry it out from. Lengths are in its [`effect_space`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum EffectOperation {
 	Blur {
@@ -306,7 +404,12 @@ impl EffectOperation {
 		}
 	}
 
-	/// How far past the content this operation can paint, or reads from, in document pixels.
+	/// How far past the content this operation paints, which is nowhere for an operation that changes nothing.
+	pub fn painted_reach(&self) -> f64 {
+		if self.changes_nothing() { 0. } else { self.reach() }
+	}
+
+	/// How far past the content this operation can paint, or reads from, in its effect space.
 	pub fn reach(&self) -> f64 {
 		match self {
 			// A Gaussian is negligible past three standard deviations
@@ -557,5 +660,46 @@ mod tests {
 	fn only_effects_that_show_change_something() {
 		assert!(Effects::from_operations([EffectOperation::default_for(EffectKind::Blur)]).change_nothing());
 		assert!(!Effects::from_operations([EffectOperation::default_for(EffectKind::DropShadow)]).change_nothing());
+	}
+
+	#[test]
+	fn effects_on_content_left_as_stamped_measure_exactly_as_viewed() {
+		// An image's pixel scale times its inverse rounds away from the identity, which would otherwise set up an effect space of its own
+		let content = DAffine2::from_scale_angle_translation(DVec2::new(4000., 3000.), 10_f64.to_radians(), DVec2::new(250., 100.));
+		let space = effect_space(content, stamped_transform(content));
+		assert_eq!(space.matrix2, DMat2::IDENTITY);
+		assert_eq!(space.translation, content.translation);
+
+		// A transform applied since stamping carries the space along
+		let scaled = DAffine2::from_scale(DVec2::splat(0.5)) * content;
+		let space = effect_space(scaled, stamped_transform(content));
+		assert!(space.matrix2.abs_diff_eq(DMat2::from_diagonal(DVec2::splat(0.5)), 1e-12));
+	}
+
+	#[test]
+	fn runs_join_effects_stamped_rounding_apart_and_those_changing_nothing() {
+		let blur = |radius: f64| EffectOperation::Blur {
+			radius,
+			box_blur: false,
+			gamma: false,
+		};
+		let mut item = Item::new_from_element(());
+		let mut stamp_at = |transform: DAffine2, operation: EffectOperation| {
+			item.set_attribute(ATTR_TRANSFORM, transform);
+			stamp_effect(&mut item, Effect::new(&operation));
+		};
+
+		// A turn and its undoing land back where they started only to within rounding, and a blur of no radius changes nothing wherever it's stamped
+		let turned_back = DAffine2::from_angle(30_f64.to_radians()) * DAffine2::from_angle(-30_f64.to_radians());
+		stamp_at(DAffine2::IDENTITY, blur(2.));
+		stamp_at(turned_back, blur(3.));
+		stamp_at(DAffine2::from_scale(DVec2::splat(2.)), blur(0.));
+		stamp_at(DAffine2::from_scale(DVec2::splat(2.)), blur(4.));
+
+		let Some(effects) = item.attribute::<Effects>(ATTR_EFFECTS) else {
+			panic!("stamping should add the effects attribute");
+		};
+		let runs: Vec<_> = effects.runs().into_iter().map(|(_, rows)| rows).collect();
+		assert_eq!(runs, vec![0..3, 3..4]);
 	}
 }

@@ -1,11 +1,11 @@
 use core_types::list::ATTR_PATHS;
-use core_types::list::{ATTR_APPEARANCE, Item, List, NodeIdPath};
+use core_types::list::{ATTR_APPEARANCE, ATTR_EFFECTS, Item, List, NodeIdPath};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Ctx};
 use glam::DAffine2;
-use graphic_types::Appearance;
-use graphic_types::graphic::bake_paint_transforms;
+use graphic_types::graphic::bake_transform_into_attributes;
 use graphic_types::vector_types::vector::algorithms::weld::WeldExt;
 use graphic_types::vector_types::vector::{Path, SetVectorPaths, no_paths, paths_from_list_row_attributes, set_paths_at};
+use graphic_types::{Appearance, Effects};
 use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
@@ -56,13 +56,16 @@ fn boolean_operation(
 		let result_vector = result_vector_list.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
 
-		// The geometry is baked into identity space, so a copied stroke authoring space would be stale
+		// The geometry is baked into identity space, so the coverages and effects move onto it to keep measuring in the same space
 		if let Some(appearance) = result_vector_list.attribute::<Appearance>(ATTR_APPEARANCE, 0) {
 			let mut appearance = appearance.clone();
-			for coverage in appearance.0.iter_element_values_mut() {
-				coverage.0.remove_attribute::<DAffine2>(ATTR_TRANSFORM);
-			}
+			appearance.rebase_stamped_transforms(transform);
 			result_vector_list.set_attribute(ATTR_APPEARANCE, 0, appearance);
+		}
+		if let Some(effects) = result_vector_list.attribute::<Effects>(ATTR_EFFECTS, 0) {
+			let mut effects = effects.clone();
+			effects.rebase_stamped_transforms(transform);
+			result_vector_list.set_attribute(ATTR_EFFECTS, 0, effects);
 		}
 
 		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
@@ -162,7 +165,7 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		// The result weaves its own paths rather than inheriting the operand's
 		attributes.remove::<List<Path>>(ATTR_PATHS);
 
-		bake_paint_transforms(&mut attributes, copy_from_transform);
+		bake_transform_into_attributes(&mut attributes, copy_from_transform);
 
 		Item::from_parts(Vector::default(), attributes)
 	} else {

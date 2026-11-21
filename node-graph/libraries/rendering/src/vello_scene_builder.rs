@@ -1,7 +1,7 @@
-use glam::{DMat2, UVec2};
-use graphic_types::Effects;
+use glam::{DAffine2, DMat2, DVec2, UVec2};
 use graphic_types::effects::EffectCapture;
 use graphic_types::raster_types::{CPU, Raster, Texture};
+use graphic_types::{EffectOperation, Effects};
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape, Stroke};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -40,7 +40,7 @@ pub trait EffectsRenderer: Send {
 	fn renders_effects(&self) -> bool;
 
 	/// Renders the content `draw` draws, placed by `view`, into a premultiplied texture of `size`, returning a texture of the same size with `effects` carried out on it.
-	/// `lengths_to_pixels` maps the effects' lengths onto the texture's pixels, and `fill` fades the content but not the shadows and glows cast from it.
+	/// `effect_to_pixels` places the effects' space on the texture's pixels, and `fill` fades the content but not the shadows and glows cast from it.
 	/// With a `capture`, the texture instead holds that effect's coverage, as black with it in alpha.
 	#[allow(clippy::too_many_arguments)]
 	fn render_effects(
@@ -49,7 +49,7 @@ pub trait EffectsRenderer: Send {
 		view: Affine,
 		effects: &Effects,
 		fill: f32,
-		lengths_to_pixels: DMat2,
+		effect_to_pixels: DAffine2,
 		capture: Option<EffectCapture>,
 		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
 	) -> wgpu::Texture;
@@ -121,6 +121,11 @@ impl<'a> VelloSceneBuilder<'a> {
 	/// Has the next effects group drawn output the coverage `capture` names in place of its result, leaving the groups drawn within it as they are.
 	pub fn capture_next_effects(&mut self, capture: EffectCapture) {
 		self.effect_capture = Some(capture);
+	}
+
+	/// The coverage the next effects group drawn was to output, which it then won't.
+	pub fn take_effect_capture(&mut self) -> Option<EffectCapture> {
+		self.effect_capture.take()
 	}
 
 	pub fn width(&self) -> u16 {
@@ -258,25 +263,40 @@ impl<'a> VelloSceneBuilder<'a> {
 		self.draw_image_source(source, sampler, transform * texture_to_image, texture_size);
 	}
 
-	/// Draws the content `draw` draws with `effects` carried out on it, given the area it covers in the space of the drawn content, or `None` if unbounded.
+	/// Draws the content `draw` draws with `effects` carried out on it in their `effect_space` (placed in the drawn content's space), given the area it covers in that space, or `None` if unbounded.
 	/// `fill` fades the content but not the shadows and glows cast from it. Rendering a split scene calls `draw` again for each part.
-	pub fn draw_effects(&mut self, effects: &Effects, fill: f32, bounds: Option<Rect>, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) {
+	pub fn draw_effects(&mut self, effects: &Effects, fill: f32, bounds: Option<Rect>, effect_space: DAffine2, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) {
 		let capture = self.effect_capture.take();
-		if !self.effects_renderer.as_ref().is_some_and(|renderer| renderer.renders_effects()) {
+		let effect_to_device = DAffine2::from_cols_array(&self.view.as_coeffs()) * effect_space;
+		if !self.effects_renderer.as_ref().is_some_and(|renderer| renderer.renders_effects()) || !effect_to_device.matrix2.determinant().is_normal() {
 			self.push_viewport_layer(peniko::Mix::Normal, fill);
 			draw(self);
 			self.pop_layer();
 			return;
 		}
 
-		let [a, b, c, d, _, _] = self.view.as_coeffs();
-		let lengths_to_device = DMat2::from_cols_array(&[a, b, c, d]);
-		let reach = effects.reach() * lengths_to_device.determinant().abs().sqrt();
+		// The texture follows the viewport's axes if the effect space only turns and evenly scales, or else its own axes, scaled evenly to keep every direction's detail.
+		// A box blur, which isn't round, turns with its space only along that space's axes.
+		let has_box_blur = effects
+			.operations()
+			.any(|operation| matches!(operation, EffectOperation::Blur { box_blur: true, .. }) && !operation.changes_nothing());
+		let follows_viewport = is_similarity(effect_to_device.matrix2) && (!has_box_blur || is_axis_aligned(effect_to_device.matrix2));
+		let (frame_to_device, lengths_to_frame) = match follows_viewport {
+			true => (DAffine2::IDENTITY, effect_to_device.matrix2),
+			false => {
+				let density = largest_stretch(effect_to_device.matrix2);
+				(effect_to_device * DAffine2::from_scale(DVec2::splat(1. / density)), DMat2::from_diagonal(DVec2::splat(density)))
+			}
+		};
+		let device_to_frame = frame_to_device.inverse();
+		let document_to_frame = Affine::new(device_to_frame.to_cols_array()) * self.view;
+		let reach = effects.reach() * lengths_to_frame.determinant().abs().sqrt();
 
-		// The content reaching into the viewport, rounded out to whole pixels
+		// The content reaching into the viewport, rounded out to whole pixels of the frame
 		let viewport = Rect::new(0., 0., self.width() as f64, self.height() as f64);
-		let content_bounds = bounds.map_or(viewport, |bounds| self.view.transform_rect_bbox(bounds));
-		let region = content_bounds.inflate(reach, reach).intersect(viewport.inflate(reach, reach)).expand();
+		let viewport_in_frame = Affine::new(device_to_frame.to_cols_array()).transform_rect_bbox(viewport);
+		let content_bounds = bounds.map_or(viewport_in_frame, |bounds| document_to_frame.transform_rect_bbox(bounds));
+		let region = content_bounds.inflate(reach, reach).intersect(viewport_in_frame.inflate(reach, reach)).expand();
 		if !(region.width() > 0. && region.height() > 0.) {
 			return;
 		}
@@ -290,14 +310,16 @@ impl<'a> VelloSceneBuilder<'a> {
 		let size = UVec2::new(size_along(region.width()), size_along(region.height()));
 		let origin = region.origin().to_vec2();
 
-		let content_view = Affine::scale(resolution) * Affine::translate(-origin) * self.view;
+		let content_view = Affine::scale(resolution) * Affine::translate(-origin) * document_to_frame;
+		let effect_to_pixels = DAffine2::from_cols_array(&content_view.as_coeffs()) * effect_space;
 		let Some(renderer) = self.effects_renderer.as_deref_mut() else { return };
-		let result = renderer.render_effects(size, content_view, effects, fill, lengths_to_device * resolution, capture, draw);
+		let result = renderer.render_effects(size, content_view, effects, fill, effect_to_pixels, capture, draw);
 
 		// Draw the result where the content was
 		self.images.push(SceneImage::Rendered(result));
 		let id = TextureId(self.images.len() as u64 - 1);
-		self.scene.set_transform(Affine::translate(origin) * Affine::scale(1. / resolution));
+		self.scene
+			.set_transform(Affine::new(frame_to_device.to_cols_array()) * Affine::translate(origin) * Affine::scale(1. / resolution));
 		self.scene.set_paint(PaintType::Image(Image {
 			image: ImageSource::external_texture(id, TextureRegion::Full, true),
 			sampler: peniko::ImageSampler::new(),
@@ -422,6 +444,26 @@ fn finite_path(path: &BezPath) -> Cow<'_, BezPath> {
 	}
 
 	Cow::Owned(result)
+}
+
+/// Whether the linear map only turns, flips, and evenly scales, so it keeps circles round.
+fn is_similarity(linear: DMat2) -> bool {
+	let (x_axis, y_axis) = (linear.x_axis, linear.y_axis);
+	let tolerance = 1e-9 * x_axis.length_squared().max(y_axis.length_squared());
+	(x_axis.length_squared() - y_axis.length_squared()).abs() <= tolerance && x_axis.dot(y_axis).abs() <= tolerance
+}
+
+/// Whether the linear map keeps the axes along the axes, at most swapping or flipping them.
+fn is_axis_aligned(linear: DMat2) -> bool {
+	let tolerance = 1e-9 * linear.x_axis.abs().max_element().max(linear.y_axis.abs().max_element());
+	(linear.x_axis.y.abs() <= tolerance && linear.y_axis.x.abs() <= tolerance) || (linear.x_axis.x.abs() <= tolerance && linear.y_axis.y.abs() <= tolerance)
+}
+
+/// The most the linear map stretches any length, its largest singular value.
+fn largest_stretch(linear: DMat2) -> f64 {
+	let sum_of_squares = linear.x_axis.length_squared() + linear.y_axis.length_squared();
+	let determinant = linear.determinant();
+	((sum_of_squares + (sum_of_squares * sum_of_squares - 4. * determinant * determinant).max(0.).sqrt()) / 2.).sqrt()
 }
 
 /// The size of the texture an image is drawn from, downscaled by a whole factor until both sides fit within `max_texture_size`.

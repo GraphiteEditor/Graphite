@@ -59,6 +59,7 @@ fn bake_transform<T: BakeTransform + Send + 'static>(_ctx: impl Ctx, #[implement
 	let mut content = content;
 	if let Some(transform) = content.remove_attribute::<DAffine2>(ATTR_TRANSFORM) {
 		content.element_mut().bake_transform(&transform);
+		graphic_types::graphic::rebase_stamped_transforms(content.attributes_mut(), transform);
 	}
 
 	content

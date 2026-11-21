@@ -1,5 +1,5 @@
 use crate::vello_effects::{EffectPasses, EffectTextures};
-use glam::{DMat2, UVec2};
+use glam::{DAffine2, UVec2};
 use graphic_types::Effects;
 use graphic_types::effects::EffectCapture;
 use raster_types::WeakCPU;
@@ -319,7 +319,7 @@ impl EffectsRenderer for RenderContext<'_> {
 		view: Affine,
 		effects: &Effects,
 		fill: f32,
-		lengths_to_pixels: DMat2,
+		effect_to_pixels: DAffine2,
 		capture: Option<EffectCapture>,
 		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
 	) -> wgpu::Texture {
@@ -328,7 +328,7 @@ impl EffectsRenderer for RenderContext<'_> {
 
 		let effect_textures = &mut self.canvas.effect_textures;
 		let queue = self.queue.lock();
-		let result = (self.renderer.effect_passes).apply(self.device, &queue, effect_textures, &content_texture, effects, fill, lengths_to_pixels, capture);
+		let result = (self.renderer.effect_passes).apply(self.device, &queue, effect_textures, &content_texture, effects, fill, effect_to_pixels.matrix2, capture);
 		effect_textures.release(content_texture);
 
 		result
