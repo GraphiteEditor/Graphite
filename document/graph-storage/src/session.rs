@@ -589,6 +589,11 @@ impl Session {
 			});
 		}
 		let base = moved.copies.first().map_or(moved.head, |copy| copy.parent);
+		// Copies are minted again on the line being left, so they start from one of its steps
+		let copies_off_the_line = !moved.copies.is_empty() && base.is_some_and(|base| !self.document.history.ancestors(moved.from).contains(&base));
+		if copies_off_the_line {
+			return Err(CrdtError::MalformedHeadMove);
+		}
 		let touched = self.touched_between_lines(base)?;
 		let mut tip = base;
 		for copy in &moved.copies {

@@ -79,7 +79,9 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 				match place(gdd.session(), rev) {
 					Some(Place::Undone(steps)) => (0..steps).for_each(|_| responses.add(DocumentMessage::Redo)),
 					Some(Place::Line(0)) => {}
-					Some(Place::Line(_)) | None => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::MoveHead }),
+					Some(Place::Line(_)) => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::MoveHead }),
+					None if gdd.session().delta(rev).is_some() => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::MoveHead }),
+					None => log::warn!("The History panel went back to a step not in history"),
 				}
 			}
 			HistoryMessage::RemoveStep { id } => {

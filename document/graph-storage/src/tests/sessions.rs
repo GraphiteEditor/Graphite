@@ -1207,7 +1207,14 @@ fn a_malformed_head_move_changes_nothing() {
 	let copy = |counter, parent| Delta::new(parent, PeerId(1), crate::TimeStamp { counter, peer: PeerId(1) }, set_attribute("c", counter as u32), Vec::new());
 	let off_first = copy(50, Some(first));
 	let off_base_again = copy(51, Some(first));
+	let off_the_line = copy(52, Some(off_first.id));
 	for moved in [
+		// The copies start from a step not on the line being left.
+		crate::HeadMove {
+			from: Some(second),
+			head: Some(off_the_line.id),
+			copies: vec![off_the_line.clone()],
+		},
 		// The copies end somewhere other than the move's head.
 		crate::HeadMove {
 			from: Some(second),

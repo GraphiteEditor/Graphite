@@ -504,12 +504,11 @@ impl<L: Layout> Gdd<L> {
 
 		let (moved, touched) = self.session.drop_interaction(rev)?;
 		self.remote_changes.touched.extend(touched);
+		#[cfg(feature = "network")]
+		self.publish_head_move(&moved);
 		self.persist_rewritten_line()?;
 		#[cfg(feature = "network")]
 		if let Some(replica) = &mut self.network {
-			if let Some(head) = moved.head {
-				self.session.publish_up_to(head);
-			}
 			replica.broadcast_head_move(moved)?;
 		}
 		#[cfg(not(feature = "network"))]
@@ -523,18 +522,26 @@ impl<L: Layout> Gdd<L> {
 		if self.retires_locally() {
 			let (moved, touched) = self.session.move_head_to(rev)?;
 			self.remote_changes.touched.extend(touched);
+			self.publish_head_move(&moved);
 			self.persist_registry_snapshot()?;
 			self.persist_session_state()?;
 			if let Some(replica) = &mut self.network {
-				if let Some(head) = moved.head {
-					self.session.publish_up_to(head);
-				}
 				replica.broadcast_head_move(moved)?;
 			}
 		} else if let Some(replica) = &mut self.network {
 			replica.request_move(rev)?;
 		}
 		Ok(())
+	}
+
+	/// Counts a head move the room is about to be sent as published, so the session state persisted with it keeps the frontier.
+	#[cfg(feature = "network")]
+	fn publish_head_move(&mut self, moved: &document_graph_storage::HeadMove) {
+		if self.network.is_some()
+			&& let Some(head) = moved.head
+		{
+			self.session.publish_up_to(head);
+		}
 	}
 
 	/// Redo a dropped step as a copy on top of the line. A non-retiring peer asks the retirer.
