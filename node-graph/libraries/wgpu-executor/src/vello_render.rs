@@ -14,8 +14,12 @@ use vello_gpu::{
 };
 use wgpu_sync::Queue;
 
-/// The format of the textures Vello GPU renders into, of the image textures it samples, and of the textures handed back.
+/// The format of the textures Vello GPU renders the canvas into, of the image textures it samples, and of the textures handed back.
 const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+/// Formats for content processed further, by effects or by blending from a layer, of which the first the GPU supports is used so steep changes don't bring out 8-bit banding.
+/// 16-bit unorm comes first for holding every 8-bit level exactly, unlike half floats.
+const PRECISE_FORMATS: &[wgpu::TextureFormat] = &[wgpu::TextureFormat::Rgba16Unorm, wgpu::TextureFormat::Rgba16Float];
 
 /// How many renders a GPU texture's premultiplied copy survives without being drawn before it is freed.
 const UNUSED_IMAGE_RENDER_LIMIT: u64 = 60;
@@ -33,6 +37,8 @@ pub(crate) struct VelloRenderer {
 	gpu: Mutex<(Renderer, Resources)>,
 	alpha_conversion: AlphaConversion,
 	effect_passes: EffectPasses,
+	/// The format of content rendered for its effects and of the layers Vello GPU draws in, one of [`PRECISE_FORMATS`] or else [`TEXTURE_FORMAT`].
+	precise_format: wgpu::TextureFormat,
 }
 
 /// A stream of frames rendered through the shared Vello renderer, such as the document or the overlays, keeping what its frames reuse.
@@ -69,18 +75,38 @@ impl VelloRenderer {
 			height: 1,
 		};
 
-		let settings = RenderSettings::default().with_memory_settings(MemorySettings {
-			layers_config: LayersConfig {
-				max_texture_size: SizeU16::new(MAX_LAYER_RENDER_SIZE as u16),
+		// Rendering into, blending, sampling with filtering, and copying are what the format needs, which the device allows beyond
+		// the guarantees for the format only with adapter-specific format features enabled
+		let device_features = device.features();
+		let usages = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST;
+		let precise_format = (PRECISE_FORMATS.iter().copied())
+			.find(|format| {
+				let format_features = match device_features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES) {
+					true => adapter.get_texture_format_features(*format),
+					false => format.guaranteed_format_features(device_features),
+				};
+				device_features.contains(format.required_features())
+					&& format_features.allowed_usages.contains(usages)
+					&& format_features.flags.contains(wgpu::TextureFormatFeatureFlags::BLENDABLE | wgpu::TextureFormatFeatureFlags::FILTERABLE)
+			})
+			.unwrap_or(TEXTURE_FORMAT);
+
+		let settings = RenderSettings::default()
+			.with_memory_settings(MemorySettings {
+				layers_config: LayersConfig {
+					max_texture_size: SizeU16::new(MAX_LAYER_RENDER_SIZE as u16),
+					..Default::default()
+				},
 				..Default::default()
-			},
-			..Default::default()
-		});
+			})
+			.with_additional_target_formats([precise_format])
+			.with_layer_format(precise_format);
 
 		Self {
 			gpu: Mutex::new(Renderer::new_with(device, &render_target_config, settings)),
 			alpha_conversion: AlphaConversion::new(device),
 			effect_passes: EffectPasses::new(device, adapter),
+			precise_format,
 		}
 	}
 
@@ -173,6 +199,7 @@ impl RenderContext<'_> {
 				device,
 				"vello_gpu_split_target",
 				half_size,
+				target.format(),
 				wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
 			);
 			let half_view = Affine::translate((-(offset.x as f64), -(offset.y as f64))) * view;
@@ -264,6 +291,7 @@ impl RenderContext<'_> {
 					device,
 					"vello_gpu_premultiplied_target",
 					size,
+					TEXTURE_FORMAT,
 					wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
 				);
 				let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -323,7 +351,7 @@ impl EffectsRenderer for RenderContext<'_> {
 		capture: Option<EffectCapture>,
 		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
 	) -> wgpu::Texture {
-		let content_texture = self.canvas.effect_textures.acquire(self.device, size, TEXTURE_FORMAT);
+		let content_texture = self.canvas.effect_textures.acquire(self.device, size, self.renderer.precise_format);
 		self.render_area(draw, view, size, &content_texture, TargetAlpha::Premultiplied);
 
 		let effect_textures = &mut self.canvas.effect_textures;
@@ -404,6 +432,7 @@ impl ImageTextures {
 					device,
 					"vello_gpu_premultiplied_image",
 					UVec2::new(texture.width(), texture.height()),
+					TEXTURE_FORMAT,
 					wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
 				),
 			};
@@ -588,7 +617,7 @@ fn clear_texture(encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
 	});
 }
 
-fn create_texture(device: &wgpu::Device, label: &str, size: UVec2, usage: wgpu::TextureUsages) -> wgpu::Texture {
+fn create_texture(device: &wgpu::Device, label: &str, size: UVec2, format: wgpu::TextureFormat, usage: wgpu::TextureUsages) -> wgpu::Texture {
 	device.create_texture(&wgpu::TextureDescriptor {
 		label: Some(label),
 		size: wgpu::Extent3d {
@@ -599,7 +628,7 @@ fn create_texture(device: &wgpu::Device, label: &str, size: UVec2, usage: wgpu::
 		mip_level_count: 1,
 		sample_count: 1,
 		dimension: wgpu::TextureDimension::D2,
-		format: TEXTURE_FORMAT,
+		format,
 		usage,
 		view_formats: &[],
 	})

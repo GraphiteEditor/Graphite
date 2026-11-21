@@ -196,6 +196,7 @@ web-sys = { version = "=0.3.106", features = [
 	"IdleRequestOptions",
 	"ImageData",
 	"Navigator",
+	"WebGl2RenderingContext",
 	"Gpu",
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
@@ -311,6 +312,6 @@ debug = true
 [patch.crates-io]
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
 # TODO: Remove these once the fork's fixes are upstreamed and released
-vello_gpu = { git = "https://github.com/Keavon/vello.git", rev = "4df331db2a02cb0f1cef4a0190dbbb2a00f4b075" }
-vello_common = { git = "https://github.com/Keavon/vello.git", rev = "4df331db2a02cb0f1cef4a0190dbbb2a00f4b075" }
-vello_gpu_shaders = { git = "https://github.com/Keavon/vello.git", rev = "4df331db2a02cb0f1cef4a0190dbbb2a00f4b075" }
+vello_gpu = { git = "https://github.com/Keavon/vello.git", rev = "9d032e642c1480c92e45889524db69a7b6a3dc07" }
+vello_common = { git = "https://github.com/Keavon/vello.git", rev = "9d032e642c1480c92e45889524db69a7b6a3dc07" }
+vello_gpu_shaders = { git = "https://github.com/Keavon/vello.git", rev = "9d032e642c1480c92e45889524db69a7b6a3dc07" }
