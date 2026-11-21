@@ -73,7 +73,7 @@ pub struct NodeRuntime {
 	#[cfg(all(target_family = "wasm", feature = "wasm"))]
 	wasm_canvas_cache: CanvasSurfaceHandle,
 	/// The viewport's latest artwork.
-	viewport_artwork: Option<Texture>,
+	viewport_artwork: Option<ViewportArtwork>,
 	/// The layers from the render of the viewport's latest artwork.
 	rendered_layers: RenderedLayers,
 	/// The latest overlays, rendered again over each new artwork.
@@ -83,6 +83,14 @@ pub struct NodeRuntime {
 	overlays_canvas: VelloCanvas,
 	/// The latest rendered overlays.
 	overlays_texture: Option<Texture>,
+}
+
+/// What the viewport shows beneath its overlays.
+enum ViewportArtwork {
+	/// Rendered by Vello, with the overlays drawn over it.
+	Texture(Texture),
+	/// An SVG the frontend draws, with the overlays shown alone above it.
+	Svg,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -335,10 +343,13 @@ impl NodeRuntime {
 		let mut result = self.evaluate(request)?;
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 
+		#[cfg(all(target_family = "wasm", feature = "wasm"))]
+		let resolution = request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale;
+
 		let texture = if let Some(RenderOutput { data, metadata }) = result.render_output()
 			&& let RenderOutputType::Texture(texture) = data
 		{
-			self.viewport_artwork = Some(texture.clone());
+			self.viewport_artwork = Some(ViewportArtwork::Texture(texture.clone()));
 			let path_contents = path_contents(&observations);
 			self.rendered_layers = RenderedLayers::new(metadata, &path_contents, self.old_graph.as_ref());
 			self.overlays_stale = true;
@@ -348,8 +359,33 @@ impl NodeRuntime {
 			{
 				*data = RenderOutputType::CanvasFrame {
 					canvas_id: self.wasm_canvas_cache.id(),
-					resolution: request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale,
+					resolution,
 				};
+			}
+
+			frame
+		} else if request.render_config.export_format == ExportFormat::Raster
+			&& let Some(RenderOutput {
+				data: RenderOutputType::Svg { .. },
+				metadata,
+			}) = result.render_output()
+		{
+			// The viewport was rendered as SVG in place of the requested raster, so the frontend draws it beneath the overlays
+			self.viewport_artwork = Some(ViewportArtwork::Svg);
+			let path_contents = path_contents(&observations);
+			self.rendered_layers = RenderedLayers::new(metadata, &path_contents, self.old_graph.as_ref());
+			self.overlays_stale = true;
+			let frame = self.composite_viewport_frame();
+
+			#[cfg(all(target_family = "wasm", feature = "wasm"))]
+			if self.editor_api.application_io.as_ref().is_some_and(|application_io| application_io.gpu_executor().is_some())
+				&& let Some(RenderOutput {
+					data: RenderOutputType::Svg { svg, .. },
+					..
+				}) = result.render_output()
+			{
+				let end = svg.rfind("</svg>").unwrap_or(svg.len());
+				svg.insert_str(end, &viewport_canvas_placeholder(self.wasm_canvas_cache.id(), resolution));
 			}
 
 			frame
@@ -362,13 +398,10 @@ impl NodeRuntime {
 		texture
 	}
 
-	/// Draws the latest overlays over the viewport's artwork, presenting the frame on web.
+	/// Draws the latest overlays over the viewport's artwork, or alone above SVG artwork, presenting the frame on web.
 	fn composite_viewport_frame(&mut self) -> Option<Texture> {
-		let artwork = self.viewport_artwork.clone()?;
-		let Some(executor) = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
-			log::error!("The GPU executor should be available once the viewport has artwork");
-			return None;
-		};
+		let artwork = self.viewport_artwork.as_ref()?;
+		let executor = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor())?;
 
 		if std::mem::take(&mut self.overlays_stale)
 			&& let Some(overlays) = &self.overlays
@@ -379,8 +412,8 @@ impl NodeRuntime {
 				.ok();
 		}
 
-		let frame = match &self.overlays_texture {
-			Some(overlays) => {
+		let frame = match (artwork, &self.overlays_texture) {
+			(ViewportArtwork::Texture(artwork), Some(overlays)) => {
 				let (width, height) = (artwork.width(), artwork.height());
 				let max_texture_size = executor.context().device.limits().max_texture_dimension_2d;
 				let overlays_to_artwork = kurbo::Affine::scale_non_uniform(width as f64 / overlays.width() as f64, height as f64 / overlays.height() as f64);
@@ -392,9 +425,11 @@ impl NodeRuntime {
 				executor
 					.render_vello_scene_on_canvas(&mut self.overlays_canvas, scene)
 					.inspect_err(|error| log::error!("Failed to draw the overlays over the artwork: {error:?}"))
-					.unwrap_or(artwork)
+					.unwrap_or_else(|_| artwork.clone())
 			}
-			None => artwork,
+			(ViewportArtwork::Texture(artwork), None) => artwork.clone(),
+			(ViewportArtwork::Svg, Some(overlays)) => overlays.clone(),
+			(ViewportArtwork::Svg, None) => return None,
 		};
 
 		#[cfg(all(target_family = "wasm", feature = "wasm"))]

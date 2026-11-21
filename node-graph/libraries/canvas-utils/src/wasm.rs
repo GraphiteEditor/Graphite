@@ -56,6 +56,17 @@ impl Canvas for CanvasHandle {
 #[cfg(feature = "wgpu")]
 const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
+/// Writes each pixel's color multiplied by its alpha, whatever the surface held before.
+#[cfg(feature = "wgpu")]
+const PREMULTIPLY_ALPHA: wgpu::BlendState = wgpu::BlendState {
+	color: wgpu::BlendComponent {
+		src_factor: wgpu::BlendFactor::SrcAlpha,
+		dst_factor: wgpu::BlendFactor::Zero,
+		operation: wgpu::BlendOperation::Add,
+	},
+	alpha: wgpu::BlendComponent::REPLACE,
+};
+
 /// The viewport canvas the WebGL2 device was created from, and its surface.
 #[cfg(feature = "wgpu")]
 static DEVICE_CANVAS: OnceLock<(CanvasHandle, Arc<WgpuSurface>)> = OnceLock::new();
@@ -103,6 +114,8 @@ impl CanvasSurfaceHandle {
 #[cfg(feature = "wgpu")]
 impl Canvas for CanvasSurfaceHandle {
 	fn id(&mut self) -> CanvasId {
+		// Binds to the device's canvas, even before anything is presented to it
+		self.surface();
 		self.canvas.id()
 	}
 	fn context(&mut self) -> CanvasRenderingContext2d {
@@ -151,7 +164,9 @@ impl CanvasSurface for CanvasSurfaceHandle {
 		};
 
 		// Draw the texture onto the surface, since WebGL2 surfaces can't be copied into
-		let blitter = self.blitter.get_or_insert_with(|| wgpu::util::TextureBlitter::new(&context.device, SURFACE_FORMAT));
+		let blitter = self
+			.blitter
+			.get_or_insert_with(|| wgpu::util::TextureBlitterBuilder::new(&context.device, SURFACE_FORMAT).blend_state(PREMULTIPLY_ALPHA).build());
 		let source_view = source_texture.create_view(&wgpu::TextureViewDescriptor::default());
 		let target_view = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
 		blitter.copy(&context.device, &mut encoder, &source_view, &target_view);

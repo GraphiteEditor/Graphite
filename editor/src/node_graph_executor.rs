@@ -1041,10 +1041,7 @@ impl NodeGraphExecutor {
 			}
 			#[cfg(target_family = "wasm")]
 			RenderOutputType::CanvasFrame { canvas_id, resolution } => {
-				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
-					resolution.x, resolution.y, canvas_id,
-				);
+				let svg = format!("<svg>{}</svg>", viewport_canvas_placeholder(canvas_id, resolution));
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			RenderOutputType::Texture { .. } => {}
@@ -1212,6 +1209,15 @@ fn measure_fill_geometry(data: &Arc<dyn Any + Send + Sync>) -> Option<(DAffine2,
 		return Some((bounding_box_affine, DAffine2::IDENTITY));
 	}
 	None
+}
+
+/// The SVG element the frontend replaces with the viewport canvas, covering the viewport at its logical `resolution`.
+#[cfg(target_family = "wasm")]
+fn viewport_canvas_placeholder(canvas_id: u64, resolution: DVec2) -> String {
+	format!(
+		r#"<foreignObject width="{}" height="{}"><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject>"#,
+		resolution.x, resolution.y, canvas_id,
+	)
 }
 
 fn path_content_observations(network_interface: &NodeNetworkInterface) -> impl Iterator<Item = (ObservationKey, Observation)> {
