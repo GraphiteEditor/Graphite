@@ -158,11 +158,13 @@ impl SvgReadbackSlot {
 			executor.resolve_deferred_svg_images(&mut svg, &mut finished_image_data, deferred_images).await;
 			(svg, finished_image_data)
 		};
-		let slot = self.clone();
+		// Held weakly, the slot is dropped along with the render node, which cancels the readback
+		let slot = Arc::downgrade(&self.0);
 		runtime.spawn(
 			source,
 			Box::pin(async move {
 				if let Ok(finished) = Abortable::new(readback, registration).await
+					&& let Some(slot) = slot.upgrade().map(SvgReadbackSlot)
 					&& let Some(readback) = slot.lock().as_mut().filter(|readback| readback.key == key)
 				{
 					readback.finished = Some(finished);
@@ -427,5 +429,22 @@ mod tests {
 		// The second view's readback was cancelled in turn by the first view replacing it
 		futures::executor::block_on(spawned.next().unwrap());
 		assert!(matches!(poll(64), Poll::Partial(_)), "the second view should be read back anew too");
+	}
+
+	#[test]
+	fn a_readback_underway_is_cancelled_once_its_slot_is_dropped() {
+		let Some(executor) = futures::executor::block_on(WgpuExecutor::new()) else { return };
+		let tasks = Arc::new(HeldTasks::default());
+		let runtime = AsyncRuntime::new(tasks.clone());
+		let slot = SvgReadbackSlot::default();
+
+		let render = slot.poll(deferred_svg(), view(32), || Some(executor.clone()), &runtime.handle(), SourceId(1));
+		assert!(matches!(render, Poll::Partial(_)));
+		let readback = slot.lock().as_ref().unwrap().task.clone();
+
+		// A render node that's removed drops its slot while the task reading back for it is still to run
+		drop(slot);
+		assert!(readback.is_aborted(), "the task shouldn't keep the readback of a removed render node going");
+		tasks.take().into_iter().for_each(futures::executor::block_on);
 	}
 }
