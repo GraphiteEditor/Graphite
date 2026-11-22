@@ -253,7 +253,7 @@ impl NodeNetworkInterface {
 	/// The dimmed connectors a subgraph shows for adding an import (or else export), as the index each one adds with its center. One fills the primary's place
 	/// while it's empty, and one sits an extra grid cell below the last row so it isn't mistaken for an unnamed one.
 	pub fn empty_import_export_connectors(&self, is_import: bool, network_path: &[NodeId]) -> Vec<(usize, DVec2)> {
-		if network_path.is_empty() {
+		if network_path.is_empty() || self.is_read_only(network_path) {
 			return Vec::new();
 		}
 		let Some((import_position, export_position)) = self.import_export_position(network_path) else {

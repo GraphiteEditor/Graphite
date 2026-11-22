@@ -1,6 +1,6 @@
 use super::{
-	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata,
-	OutputConnector, Previewing, RootNode, TransactionStatus,
+	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, LayerClickTargetTypes, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation,
+	NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionStatus,
 };
 use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
@@ -1871,6 +1871,103 @@ async fn clicking_a_connected_input_leaves_it_connected_when_a_later_wire_is_dra
 	);
 }
 
+/// Enters a Merge node without making its shared contents editable, returning its path and an input wired from a node inside it.
+async fn enter_read_only_merge(editor: &mut EditorTestUtils) -> (Vec<NodeId>, InputConnector, OutputConnector) {
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.is_read_only(&path), "Merge's contents should be read-only until made editable");
+
+	let network = network_interface.nested_network(&path).expect("Merge should have contents");
+	let wired_input = network
+		.nodes
+		.iter()
+		.flat_map(|(node_id, node)| (0..node.inputs.len()).map(|input_index| InputConnector::node_at_index(*node_id, input_index)))
+		.find_map(|input_connector| {
+			let upstream = network_interface.upstream_output_connector(&input_connector, &path)?;
+			matches!(upstream, OutputConnector::Node { .. }).then_some((input_connector, upstream))
+		})
+		.expect("Merge's contents should have a wire between two of its nodes");
+
+	(path, wired_input.0, wired_input.1)
+}
+
+#[tokio::test]
+async fn dragging_a_wire_out_of_an_input_in_a_read_only_network_leaves_it_connected() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (path, wired_input, upstream) = enter_read_only_merge(&mut editor).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let input_position = network_interface.input_position(&wired_input, &path).expect("the wired input should have a position");
+	let node_graph_to_viewport = network_interface.network_metadata(&path).unwrap().persistent_metadata.navigation_metadata.node_graph_to_viewport;
+	let (from, to) = (
+		node_graph_to_viewport.transform_point2(input_position),
+		node_graph_to_viewport.transform_point2(input_position + DVec2::new(0., 480.)),
+	);
+
+	editor.move_mouse(from.x, from.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+	editor.move_mouse(to.x, to.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	assert!(
+		editor.active_document().node_graph_handler.wire_in_progress_from_connector.is_none(),
+		"no wire should be picked up in a read-only network"
+	);
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.upstream_output_connector(&wired_input, &path), Some(upstream), "the wire should stay connected");
+	assert!(network_interface.is_read_only(&path), "the drag shouldn't make the network editable");
+}
+
+#[tokio::test]
+async fn alt_dragging_a_node_in_a_read_only_network_keeps_the_node_selected_without_duplicating_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (path, wired_input, _) = enter_read_only_merge(&mut editor).await;
+	let node_id = wired_input.node_id().expect("the wired input should belong to a node");
+
+	let network_interface = &editor.active_document().network_interface;
+	let node_count = network_interface.nested_network(&path).unwrap().nodes.len();
+	let node_position = network_interface.position(&node_id, &path).expect("the node should have a position");
+	let node_bounds = network_interface.node_bounding_box(&node_id, &path).expect("the node should have bounds");
+	let node_graph_to_viewport = network_interface.network_metadata(&path).unwrap().persistent_metadata.navigation_metadata.node_graph_to_viewport;
+	let node_center = (node_bounds[0] + node_bounds[1]) / 2.;
+	let (from, to) = (
+		node_graph_to_viewport.transform_point2(node_center),
+		node_graph_to_viewport.transform_point2(node_center + DVec2::new(240., 240.)),
+	);
+
+	editor.move_mouse(from.x, from.y, ModifierKeys::ALT, MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: true,
+			right_click: false,
+		})
+		.await;
+	editor.move_mouse(to.x, to.y, ModifierKeys::ALT, MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.nested_network(&path).unwrap().nodes.len(), node_count, "nothing should be duplicated");
+	assert_eq!(network_interface.position(&node_id, &path), Some(node_position), "the node should stay put");
+	let selected_nodes = network_interface.selected_nodes_in_nested_network(&path).expect("the network should have a selection");
+	assert_eq!(selected_nodes.selected_nodes().copied().collect::<Vec<_>>(), vec![node_id], "the pressed node should stay selected");
+}
+
 /// An ordinary node with the given number of inputs, since a default template is a Passthrough, which draws as a redirect dot.
 fn plain_node(inputs: usize) -> NodeTemplate {
 	NodeTemplate {
@@ -2913,6 +3010,187 @@ async fn a_new_layer_goes_beneath_a_dot_on_the_wire_into_the_export() {
 	assert_eq!(LayerNodeIdentifier::ROOT_PARENT.children(network_interface.document_metadata()).count(), 2);
 
 	assert_invariants(&editor, "after adding a layer beneath a dot on the export's wire");
+}
+
+/// A point in node graph space on a root layer's visibility button, which sits at its right end.
+fn visibility_button_point(editor: &EditorTestUtils, layer: NodeId) -> DVec2 {
+	let network_interface = &editor.active_document().network_interface;
+	let node_graph_to_viewport = network_interface.network_metadata(&[]).unwrap().persistent_metadata.navigation_metadata.node_graph_to_viewport;
+	let [min, max] = network_interface.node_bounding_box(&layer, &[]).expect("the layer should have bounds");
+
+	(0..=(max.x - min.x + 48.) as i32)
+		.flat_map(|x| (0..=(max.y - min.y) as i32).map(move |y| min + DVec2::new(x as f64 - 24., y as f64)))
+		.find(|&point| network_interface.layer_click_target_from_click(node_graph_to_viewport.transform_point2(point), LayerClickTargetTypes::Visibility, &[]) == Some(layer))
+		.expect("the layer should have a visibility button")
+}
+
+/// Moves the pointer to a point in node graph space, as a hover or, with the left button held, a drag.
+async fn move_in_graph(editor: &mut EditorTestUtils, point: DVec2, mouse_keys: MouseKeys) {
+	let node_graph_to_viewport = editor
+		.active_document()
+		.network_interface
+		.network_metadata(&[])
+		.unwrap()
+		.persistent_metadata
+		.navigation_metadata
+		.node_graph_to_viewport;
+	let point = node_graph_to_viewport.transform_point2(point);
+
+	editor.move_mouse(point.x, point.y, ModifierKeys::empty(), mouse_keys).await;
+	if mouse_keys == MouseKeys::LEFT {
+		editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	}
+}
+
+async fn press_in_graph(editor: &mut EditorTestUtils, point: DVec2) {
+	move_in_graph(editor, point, MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+}
+
+#[tokio::test]
+async fn a_layer_visibility_button_toggles_when_released_over_it_or_dragged_off_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+	let layer = editor.get_selected_layer().await.expect("the drawn rectangle should be selected").to_node();
+	let eye = visibility_button_point(&editor, layer);
+	let is_visible = |editor: &EditorTestUtils| editor.active_document().network_interface.is_visible(&layer, &[]);
+
+	press_in_graph(&mut editor, eye).await;
+	assert!(is_visible(&editor), "pressing the button shouldn't toggle it yet");
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+	assert!(!is_visible(&editor), "releasing over the button should hide the layer");
+
+	press_in_graph(&mut editor, eye).await;
+	move_in_graph(&mut editor, eye + DVec2::new(0., 240.), MouseKeys::LEFT).await;
+	assert!(is_visible(&editor), "dragging off the button should toggle it without waiting for the release");
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+	assert!(is_visible(&editor), "releasing after dragging off the button shouldn't toggle it again");
+}
+
+#[tokio::test]
+async fn dragging_from_a_layer_visibility_button_paints_the_ones_it_crosses_that_started_the_same() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let mut layers = Vec::new();
+	for offset in [0., 200., 400.] {
+		editor.draw_rect(offset, 0., offset + 100., 100.).await;
+		layers.push(editor.get_selected_layer().await.expect("the drawn rectangle should be selected").to_node());
+	}
+	let (pressed, crossed, already_hidden) = (layers[0], layers[1], layers[2]);
+	editor
+		.handle_message(NodeGraphMessage::ToggleVisibility {
+			node_id: already_hidden,
+			network_path: Vec::new(),
+		})
+		.await;
+
+	let [pressed_eye, crossed_eye, already_hidden_eye] = [pressed, crossed, already_hidden].map(|layer| visibility_button_point(&editor, layer));
+	press_in_graph(&mut editor, pressed_eye).await;
+	move_in_graph(&mut editor, crossed_eye, MouseKeys::LEFT).await;
+	move_in_graph(&mut editor, already_hidden_eye, MouseKeys::LEFT).await;
+	move_in_graph(&mut editor, pressed_eye, MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(
+		!network_interface.is_visible(&pressed, &[]),
+		"the pressed layer should be hidden once, despite the drag returning to it"
+	);
+	assert!(!network_interface.is_visible(&crossed, &[]), "a visible layer the drag crosses should be hidden to match");
+	assert!(!network_interface.is_visible(&already_hidden, &[]), "a hidden layer the drag crosses should stay hidden");
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	let network_interface = &editor.active_document().network_interface;
+	assert!(
+		network_interface.is_visible(&pressed, &[]) && network_interface.is_visible(&crossed, &[]),
+		"one undo should show every layer the drag hid"
+	);
+	assert!(!network_interface.is_visible(&already_hidden, &[]), "the undo shouldn't reach the earlier, separate hiding");
+}
+
+#[tokio::test]
+async fn visibility_and_lock_toggles_made_in_an_open_transaction_undo_together() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let mut layers = Vec::new();
+	for offset in [0., 200.] {
+		editor.draw_rect(offset, 0., offset + 100., 100.).await;
+		layers.push(editor.get_selected_layer().await.expect("the drawn rectangle should be selected").to_node());
+	}
+
+	// As the Layers panel does while dragging across its eye and lock buttons
+	editor.handle_message(DocumentMessage::StartTransaction).await;
+	for &node_id in &layers {
+		editor.handle_message(NodeGraphMessage::ToggleVisibility { node_id, network_path: Vec::new() }).await;
+		editor.handle_message(NodeGraphMessage::ToggleLocked { node_id, network_path: Vec::new() }).await;
+	}
+	editor.handle_message(DocumentMessage::EndTransaction).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(layers.iter().all(|layer| !network_interface.is_visible(layer, &[]) && network_interface.is_locked(layer, &[])));
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	let network_interface = &editor.active_document().network_interface;
+	assert!(
+		layers.iter().all(|layer| network_interface.is_visible(layer, &[]) && !network_interface.is_locked(layer, &[])),
+		"one undo should revert every toggle made in the transaction"
+	);
+}
+
+#[tokio::test]
+async fn shift_clicking_a_selected_node_in_the_graph_ends_its_press() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let clicked = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	let other = editor.create_node_by_name_at(rectangle_definition(), 0, 10).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![clicked, other] }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let [min, max] = network_interface.node_bounding_box(&clicked, &[]).expect("the node should have bounds");
+	let other_position = network_interface.position(&other, &[]);
+	let center = (min + max) / 2.;
+
+	move_in_graph(&mut editor, center, MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: true,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+	move_in_graph(&mut editor, center + DVec2::new(240., 240.), MouseKeys::empty()).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+
+	let document = editor.active_document();
+	let selected_nodes = document.network_interface.selected_nodes_in_nested_network(&[]).expect("the network should have a selection");
+	assert_eq!(
+		selected_nodes.selected_nodes().copied().collect::<Vec<_>>(),
+		vec![other],
+		"the Shift-click should deselect the clicked node"
+	);
+	assert_eq!(
+		document.network_interface.transaction_status(),
+		TransactionStatus::Finished,
+		"the press shouldn't leave a transaction open"
+	);
+	assert_eq!(
+		document.network_interface.position(&other, &[]),
+		other_position,
+		"hovering after the release shouldn't drag the selection"
+	);
 }
 
 #[tokio::test]

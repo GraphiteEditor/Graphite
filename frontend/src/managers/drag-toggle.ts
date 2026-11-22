@@ -9,9 +9,14 @@
 // clicks still toggle as usual. When engaged, the source is clicked once (toggling it) and any sibling
 // the pointer enters whose state still matches the source's recorded starting state is also clicked.
 
-type ActiveGroupListener = (activeGroup: string | undefined) => void;
+export type DragToggleListener = {
+	// Given the group of the pressed button, and undefined once the press ends
+	activeGroupChanged?: (activeGroup: string | undefined) => void;
+	// Told when the gesture engages, before any of its clicks, and again when it ends, so its clicks can form one history step
+	engagedChanged?: (engaged: boolean) => void;
+};
 
-const listeners = new Set<ActiveGroupListener>();
+const listeners = new Set<DragToggleListener>();
 let activeGroup: string | undefined = undefined;
 let source: HTMLElement | undefined = undefined;
 let startingState: string | undefined = undefined;
@@ -19,8 +24,8 @@ let visited = new WeakSet<Element>();
 let engaged = false;
 let suppressNextClickFromSource: HTMLElement | undefined = undefined;
 
-export function createDragToggleManager(activeGroupListener?: ActiveGroupListener) {
-	if (activeGroupListener) listeners.add(activeGroupListener);
+export function createDragToggleManager(listener: DragToggleListener) {
+	listeners.add(listener);
 
 	// Install the window event listeners only when the first consumer subscribes
 	if (listeners.size === 1) {
@@ -28,19 +33,26 @@ export function createDragToggleManager(activeGroupListener?: ActiveGroupListene
 		window.addEventListener("pointerdown", onPointerDown, true);
 		window.addEventListener("pointermove", onPointerMove);
 		window.addEventListener("pointerup", onPointerUp);
+		// A press the browser cancels, or loses to another window, ends like a release
+		window.addEventListener("pointercancel", onPointerUp);
+		window.addEventListener("blur", onPointerUp);
 		// Capture phase on click suppresses the natural source-click before the button's handler runs
 		window.addEventListener("click", onClickCapture, true);
 	}
 }
 
-export function destroyDragToggleManager(activeGroupListener?: ActiveGroupListener) {
-	if (activeGroupListener) listeners.delete(activeGroupListener);
+export function destroyDragToggleManager(listener: DragToggleListener) {
+	// A consumer leaving mid-gesture still hears it end
+	if (engaged) listener.engagedChanged?.(false);
+	listeners.delete(listener);
 
 	// Uninstall the window event listeners only once the last consumer leaves
 	if (listeners.size === 0) {
 		window.removeEventListener("pointerdown", onPointerDown, true);
 		window.removeEventListener("pointermove", onPointerMove);
 		window.removeEventListener("pointerup", onPointerUp);
+		window.removeEventListener("pointercancel", onPointerUp);
+		window.removeEventListener("blur", onPointerUp);
 		window.removeEventListener("click", onClickCapture, true);
 
 		activeGroup = undefined;
@@ -54,7 +66,7 @@ export function destroyDragToggleManager(activeGroupListener?: ActiveGroupListen
 
 function notifyActiveGroupChange(group: string | undefined) {
 	activeGroup = group;
-	listeners.forEach((listener) => listener(group));
+	listeners.forEach((listener) => listener.activeGroupChanged?.(group));
 }
 
 function findMember(target: EventTarget | undefined): HTMLElement | undefined {
@@ -94,6 +106,7 @@ function onPointerMove(e: PointerEvent) {
 	if (!engaged) {
 		engaged = true;
 		visited.add(source);
+		listeners.forEach((listener) => listener.engagedChanged?.(true));
 		if ((source.getAttribute("data-drag-toggle-state") || undefined) === startingState) source.click();
 	}
 
@@ -104,11 +117,12 @@ function onPointerMove(e: PointerEvent) {
 	member.click();
 }
 
-function onPointerUp() {
+function onPointerUp(e: Event) {
 	if (!activeGroup) return;
 
-	// If a drag engaged, the source was already clicked programmatically; suppress its natural click so it isn't re-toggled
-	if (engaged && source) suppressNextClickFromSource = source;
+	// An engaged drag already clicked the source, so the click its release sends is suppressed rather than toggling it again
+	if (engaged && source && e.type === "pointerup") suppressNextClickFromSource = source;
+	const wasEngaged = engaged;
 
 	source = undefined;
 	startingState = undefined;
@@ -116,6 +130,7 @@ function onPointerUp() {
 	engaged = false;
 
 	notifyActiveGroupChange(undefined);
+	if (wasEngaged) listeners.forEach((listener) => listener.engagedChanged?.(false));
 }
 
 function onClickCapture(e: Event) {

@@ -183,6 +183,11 @@ mod editor_commands {
 		.into()
 	}
 
+	/// Opens a transaction for a gesture made of several edits, like painting across the Layers panel's eye and lock buttons, which `end_transaction` closes as one history step
+	fn start_transaction() -> Message {
+		DocumentMessage::StartTransaction.into()
+	}
+
 	/// Closes out the current transaction (drag-end / text-commit end), so emits during a slider drag collapse into one history step instead of N
 	fn end_transaction() -> Message {
 		DocumentMessage::EndTransaction.into()

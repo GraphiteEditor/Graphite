@@ -217,12 +217,12 @@ impl Layout {
 		}
 	}
 
-	/// Disables every widget, and stops every node section from being dragged to reorder it.
+	/// Disables every widget, and every node section's header buttons and reordering.
 	pub fn disable(&mut self) {
 		for widget in self.iter_mut() {
 			widget.widget.disable();
 		}
-		self.0.iter_mut().for_each(LayoutGroup::stop_dragging);
+		self.0.iter_mut().for_each(LayoutGroup::disable_sections);
 	}
 }
 
@@ -446,6 +446,8 @@ pub struct NodeSection {
 	pub pinned: bool,
 	/// Whether this section can be dragged to reorder it within its layer's chain of nodes (true for a layer chain's nodes, but not its terminal layer node).
 	pub draggable: bool,
+	/// Whether the header's visibility, delete, and pin controls are disabled, as for a node in a read-only network.
+	pub disabled: bool,
 	/// For a section showing the chain feeding one of its inputs, the wire drawn up into that input from the chain's sections within it (none when it shows no chain).
 	#[serde(rename = "chainWire")]
 	pub chain_wire: Option<SectionWire>,
@@ -528,6 +530,7 @@ impl LayoutGroup {
 			visible,
 			pinned,
 			draggable: false,
+			disabled: false,
 			chain_wire: None,
 			output_wire: None,
 			node_reference: false,
@@ -585,10 +588,11 @@ impl LayoutGroup {
 		if is_col { Self::Column(WidgetColumn { widgets }) } else { Self::Row(WidgetRow { widgets }) }
 	}
 
-	fn stop_dragging(&mut self) {
+	fn disable_sections(&mut self) {
 		if let LayoutGroup::NodeSection(section) = self {
 			section.draggable = false;
-			section.layout.0.iter_mut().for_each(LayoutGroup::stop_dragging);
+			section.disabled = true;
+			section.layout.0.iter_mut().for_each(LayoutGroup::disable_sections);
 		}
 	}
 
@@ -642,6 +646,7 @@ impl Diffable for LayoutGroup {
 					visible: current_visible,
 					pinned: current_pinned,
 					draggable: current_draggable,
+					disabled: current_disabled,
 					chain_wire: current_chain_wire,
 					output_wire: current_output_wire,
 					node_reference: current_node_reference,
@@ -658,6 +663,7 @@ impl Diffable for LayoutGroup {
 					visible: new_visible,
 					pinned: new_pinned,
 					draggable: new_draggable,
+					disabled: new_disabled,
 					chain_wire: new_chain_wire,
 					output_wire: new_output_wire,
 					node_reference: new_node_reference,
@@ -677,6 +683,7 @@ impl Diffable for LayoutGroup {
 					|| *current_visible != new_visible
 					|| *current_pinned != new_pinned
 					|| *current_draggable != new_draggable
+					|| *current_disabled != new_disabled
 					|| *current_chain_wire != new_chain_wire
 					|| *current_output_wire != new_output_wire
 					|| *current_node_reference != new_node_reference
@@ -692,6 +699,7 @@ impl Diffable for LayoutGroup {
 					*current_visible = new_visible;
 					*current_pinned = new_pinned;
 					*current_draggable = new_draggable;
+					*current_disabled = new_disabled;
 					*current_chain_wire = new_chain_wire;
 					*current_output_wire = new_output_wire;
 					*current_node_reference = new_node_reference;
@@ -709,6 +717,7 @@ impl Diffable for LayoutGroup {
 						visible: new_visible,
 						pinned: new_pinned,
 						draggable: new_draggable,
+						disabled: new_disabled,
 						chain_wire: new_chain_wire,
 						output_wire: new_output_wire,
 						node_reference: new_node_reference,

@@ -623,13 +623,15 @@
 								class="import-text"
 								data-tooltip-label={frontendOutput.name}
 								data-tooltip-description={frontendOutput.description}
-								on:dblclick={() => startEditingName({ kind: "Import", index }, frontendOutput.name)}
+								on:dblclick={() => {
+									if (!$nodeGraph.readOnly) startEditingName({ kind: "Import", index }, frontendOutput.name);
+								}}
 							>
 								{frontendOutput.name}
 							</p>
 						{/if}
 					</div>
-				{:else if $nodeGraphImportsExports.addImportExport}
+				{:else if $nodeGraphImportsExports.addImportExport && !$nodeGraph.readOnly}
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 8 8"
@@ -693,14 +695,14 @@
 								data-tooltip-label={frontendInput.name}
 								data-tooltip-description={frontendInput.description}
 								on:dblclick={() => {
-									if ($nodeGraphImportsExports?.addImportExport) startEditingName({ kind: "Export", index }, frontendInput.name);
+									if ($nodeGraphImportsExports?.addImportExport && !$nodeGraph.readOnly) startEditingName({ kind: "Export", index }, frontendInput.name);
 								}}
 							>
 								{frontendInput.name}
 							</p>
 						{/if}
 					</div>
-				{:else if $nodeGraphImportsExports.addImportExport}
+				{:else if $nodeGraphImportsExports.addImportExport && !$nodeGraph.readOnly}
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 8 8"
@@ -719,7 +721,7 @@
 			{/each}
 
 			<!-- Connectors for adding an import or export, an extra grid cell below the last so they aren't mistaken for unnamed ones -->
-			{#if $nodeGraphImportsExports.addImportExport}
+			{#if $nodeGraphImportsExports.addImportExport && !$nodeGraph.readOnly}
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					viewBox="0 0 8 8"
@@ -916,8 +918,9 @@
 							size={24}
 							icon="PadlockLocked"
 							hoverIcon="PadlockUnlocked"
+							disabled={$nodeGraph.readOnly}
 							action={() => {
-								/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+								/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerUp */
 							}}
 							tooltipLabel="Unlock"
 						/>
@@ -928,8 +931,9 @@
 						size={24}
 						icon={node.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={node.visible ? "EyeHide" : "EyeShow"}
+						disabled={$nodeGraph.readOnly}
 						action={() => {
-							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerUp */
 						}}
 						tooltipLabel={node.visible ? "Hide" : "Show"}
 					/>

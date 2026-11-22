@@ -1180,6 +1180,7 @@ pub struct LayerClickTargets {
 	pub name_click_target: Option<ClickTarget>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayerClickTargetTypes {
 	Visibility,
 	Lock,

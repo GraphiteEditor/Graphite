@@ -441,6 +441,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 			}
 			DocumentMessage::CreateEmptyFolder => {
+				if !self.selection_network_path.is_empty() {
+					log::error!("Creating an empty folder is only supported for the Document Network");
+					return;
+				}
+
 				let selected_nodes = self.network_interface.selected_nodes();
 				let id = NodeId::new();
 
