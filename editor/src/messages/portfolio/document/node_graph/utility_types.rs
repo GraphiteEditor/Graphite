@@ -236,6 +236,18 @@ pub enum Direction {
 	Right,
 }
 
+impl Direction {
+	/// The one grid cell step in this direction.
+	pub fn offset(self) -> IVec2 {
+		match self {
+			Direction::Up => IVec2::NEG_Y,
+			Direction::Down => IVec2::Y,
+			Direction::Left => IVec2::NEG_X,
+			Direction::Right => IVec2::X,
+		}
+	}
+}
+
 /// Another peer's pointer over the node graph, in viewport pixels.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

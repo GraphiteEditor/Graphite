@@ -397,11 +397,11 @@ async fn dragging_a_node_carries_its_upstream_unless_it_is_kept_in_place() {
 	network_interface.create_wire(&OutputConnector::primary_output(source), &InputConnector::primary_input(node), &[]);
 	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![reader]);
 
-	network_interface.shift_selected_nodes(Direction::Down, false, &[]);
+	network_interface.shift_selected_nodes(Direction::Down.offset(), false, &[]);
 	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(10, 11)), "The node read by the dragged one should follow it");
 	assert_eq!(network_interface.position(&source, &[]), Some(IVec2::new(0, 11)), "Everything upstream should follow too");
 
-	network_interface.shift_selected_nodes(Direction::Down, true, &[]);
+	network_interface.shift_selected_nodes(Direction::Down.offset(), true, &[]);
 	assert_eq!(network_interface.position(&reader, &[]), Some(IVec2::new(20, 12)));
 	assert_eq!(
 		network_interface.position(&node, &[]),
@@ -428,7 +428,7 @@ async fn moving_a_chain_node_out_of_its_chain_carries_its_upstream() {
 	let [far_before, source_before, outside_before] = [far, source, outside].map(|node_id| network_interface.position(&node_id, &[]).expect("every node has a position"));
 
 	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![near]);
-	network_interface.shift_selected_nodes(Direction::Down, false, &[]);
+	network_interface.shift_selected_nodes(Direction::Down.offset(), false, &[]);
 
 	assert!(!network_interface.is_chain(&far, &[]), "The chain upstream of a node moved out of it should leave the chain too");
 	for (node_id, before) in [(far, far_before), (source, source_before), (outside, outside_before)] {
@@ -452,8 +452,8 @@ async fn moving_a_chain_node_out_while_keeping_its_upstream_leaves_the_upstream_
 	let [far_before, source_before] = [far, source].map(|node_id| network_interface.position(&node_id, &[]).expect("every node has a position"));
 
 	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![near]);
-	network_interface.shift_selected_nodes(Direction::Down, true, &[]);
-	network_interface.shift_selected_nodes(Direction::Down, true, &[]);
+	network_interface.shift_selected_nodes(Direction::Down.offset(), true, &[]);
+	network_interface.shift_selected_nodes(Direction::Down.offset(), true, &[]);
 
 	assert_eq!(
 		network_interface.position(&far, &[]),
@@ -462,8 +462,8 @@ async fn moving_a_chain_node_out_while_keeping_its_upstream_leaves_the_upstream_
 	);
 	assert_eq!(network_interface.position(&source, &[]), Some(source_before));
 
-	network_interface.shift_selected_nodes(Direction::Up, true, &[]);
-	network_interface.shift_selected_nodes(Direction::Up, true, &[]);
+	network_interface.shift_selected_nodes(Direction::Up.offset(), true, &[]);
+	network_interface.shift_selected_nodes(Direction::Up.offset(), true, &[]);
 	assert!(
 		network_interface.is_chain(&near, &[]) && network_interface.is_chain(&far, &[]),
 		"Moving the node back should restore the whole chain"
@@ -483,7 +483,7 @@ async fn the_end_of_a_chain_moves_off_it_one_cell_at_a_time() {
 	let source_before = network_interface.position(&source, &[]).expect("every node has a position");
 
 	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![source]);
-	network_interface.shift_selected_nodes(Direction::Left, false, &[]);
+	network_interface.shift_selected_nodes(Direction::Left.offset(), false, &[]);
 
 	assert_eq!(
 		network_interface.position(&source, &[]),
@@ -1109,12 +1109,12 @@ async fn moving_a_closed_up_layer_up_closes_up_the_stack_above_it_and_then_moves
 
 	// The second layer moves up in place of the third, which it carries, until it closes up under the first
 	for rows in 1..=2 {
-		network_interface.shift_selected_nodes(Direction::Up, false, &[]);
+		network_interface.shift_selected_nodes(Direction::Up.offset(), false, &[]);
 		assert_eq!(positions(network_interface), [first_start, moved_up(rows, second_start), moved_up(rows, third_start)]);
 	}
 
 	// Then the whole stack moves up from its top
-	network_interface.shift_selected_nodes(Direction::Up, false, &[]);
+	network_interface.shift_selected_nodes(Direction::Up.offset(), false, &[]);
 	assert_eq!(positions(network_interface), [moved_up(1, first_start), moved_up(3, second_start), moved_up(3, third_start)]);
 
 	assert_invariants(&editor, "after closing up a stack by moving its bottom layer up");

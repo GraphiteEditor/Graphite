@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, NodeInspectorContext, resolve_document_node_type, resolve_network_node_type};
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeEvaluationError, NodeGraphErrorDiagnostic};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType, NodeEvaluationError, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
@@ -31,7 +31,6 @@ use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezp
 use graphene_std::*;
 use kurbo::{DEFAULT_ACCURACY, Shape};
 use renderer::Quad;
-use std::cmp::Ordering;
 
 #[derive(Debug, ExtractField)]
 pub struct NodeGraphMessageContext<'a> {
@@ -2140,50 +2139,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::EndTransaction);
 			}
 			NodeGraphMessage::ShiftSelectedNodes { direction, glide } => {
+				responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
+					graph_delta: direction.offset(),
+					glide,
+				});
+			}
+			NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, glide } => {
 				// The shift can also move the nodes placed relative to them and the imports and exports, so everything it moves glides to where it lands
 				let positions_before = (glide && graph_view_overlay_open).then(|| Self::glide_positions(network_interface, selection_network_path));
 
-				network_interface.shift_selected_nodes(direction, self.keep_upstream_in_place, selection_network_path);
+				network_interface.shift_selected_nodes(graph_delta, self.keep_upstream_in_place, selection_network_path);
 
 				if let Some(positions_before) = positions_before {
 					self.begin_glide(positions_before, network_interface, selection_network_path, responses);
 					responses.add(NodeGraphMessage::SendGlide);
 				}
 
+				responses.add(NodeGraphMessage::SendWires);
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 				}
-			}
-			NodeGraphMessage::ShiftSelectedNodesByAmount { mut graph_delta, glide } => {
-				while graph_delta != IVec2::ZERO {
-					match graph_delta.x.cmp(&0) {
-						Ordering::Greater => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Right, glide });
-							graph_delta.x -= 1;
-						}
-						Ordering::Less => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Left, glide });
-							graph_delta.x += 1;
-						}
-						Ordering::Equal => {}
-					}
-
-					match graph_delta.y.cmp(&0) {
-						Ordering::Greater => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Down, glide });
-							graph_delta.y -= 1;
-						}
-						Ordering::Less => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Up, glide });
-							graph_delta.y += 1;
-						}
-						Ordering::Equal => {}
-					}
-				}
-
-				responses.add(NodeGraphMessage::SendWires);
 			}
 			NodeGraphMessage::DragSelectedNodes { offset } => {
 				let keep_upstream = self.keep_upstream_in_place;
