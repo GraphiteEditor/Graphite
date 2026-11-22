@@ -8,3 +8,6 @@ rename!("graphene_std::render_background::RenderBackgroundNode"@1 => @2);
 rename!("graphene_std::render_cache::RenderOutputCacheNode"@1 => @2);
 rename!("graphene_std::render_node::RenderNode"@1 => @2);
 rename!("graphene_std::render_pixel_preview::RenderPixelPreviewNode"@1 => @2);
+
+// Version 3 adds the scope and source ID inputs the render node spawns its readbacks with, which the compiler inserts along with the node
+rename!("graphene_std::render_node::RenderNode"@2 => @3);

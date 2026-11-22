@@ -390,7 +390,6 @@ impl NodeRuntime {
 			None
 		};
 
-		self.resolve_deferred_images(&mut result).await;
 		self.respond(request.execution_id, result, observations).await;
 		texture
 	}
@@ -451,7 +450,6 @@ impl NodeRuntime {
 			let (buffer, width, height) = self.read_back(texture.clone()).await.to_flat_u8();
 			*data = RenderOutputType::Buffer { data: buffer, width, height };
 		}
-		self.resolve_deferred_images(&mut result).await;
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 		self.respond(request.execution_id, result, observations).await;
 	}
@@ -535,32 +533,6 @@ impl NodeRuntime {
 		let mut observer = Observer::default();
 		observer.set((), Some(observation));
 		observer.evaluate(&self.executor, self.old_graph.as_ref()).remove(&())?.data
-	}
-
-	/// Puts what the GPU rendered for an SVG result into it, in place of the placeholders standing in for each:
-	/// the maps of effects' coverages its filters take, and the images of content with effects SVG filters can't carry out.
-	async fn resolve_deferred_images(&self, result: &mut ExecutionResult) {
-		let Some(RenderOutput {
-			data: RenderOutputType::Svg {
-				svg,
-				image_data,
-				effect_maps,
-				deferred_images,
-			},
-			..
-		}) = result.render_output()
-		else {
-			return;
-		};
-		if effect_maps.is_empty() && deferred_images.is_empty() {
-			return;
-		}
-		let Some(executor) = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
-			return;
-		};
-
-		executor.resolve_effect_maps(svg, std::mem::take(effect_maps)).await;
-		executor.resolve_deferred_svg_images(svg, image_data, std::mem::take(deferred_images)).await;
 	}
 
 	async fn read_back(&self, texture: Texture) -> Raster<CPU> {
@@ -1089,6 +1061,44 @@ mod tests {
 			let center = image.data[(image.height / 2 * image.width + image.width / 2) as usize];
 			assert_eq!(center, Color::WHITE, "the export in {render_mode:?} should show the rectangle's fill");
 		}
+	}
+
+	#[tokio::test]
+	async fn an_svg_export_draws_effects_svg_filters_cannot_carry_out_as_images_the_gpu_renders() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+		use graphene_std::blending_nodes::effects::drop_shadow;
+		use graphene_std::raster_nodes::adjustments::black_and_white;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		// Following a shadow, Black & White can't fold into the paints, and no SVG filter mixes the channels as it does, so the rectangle is drawn as an image the GPU renders of it
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		for node in [drop_shadow::IDENTIFIER, black_and_white::IDENTIFIER] {
+			let node_type = DefinitionIdentifier::ProtoNode(node);
+			editor.handle_message(NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type, layer }).await;
+		}
+
+		// The export waits for the render node to read the image back into the SVG
+		send_export(&mut editor, FileType::Svg);
+		let mut saved = None;
+		for _ in 0..100 {
+			editor.runtime.update();
+			editor.runtime.run().await;
+			saved = editor.dispatch(Message::Wake).into_iter().find_map(|message| match message {
+				FrontendMessage::TriggerSaveFile { content, .. } => Some(content),
+				_ => None,
+			});
+			if saved.is_some() {
+				break;
+			}
+		}
+		let Some(saved) = saved else { panic!("the export never finished") };
+
+		let svg = String::from_utf8(saved.into_vec()).expect("the export should be SVG text");
+		assert!(svg.contains("data:image/png;base64,"), "the image should be embedded: {svg}");
+		assert!(!svg.contains("deferred-image"), "the markup standing in for the image should be replaced: {svg}");
 	}
 
 	#[tokio::test]

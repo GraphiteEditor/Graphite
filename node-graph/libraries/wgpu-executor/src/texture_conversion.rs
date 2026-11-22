@@ -213,20 +213,27 @@ impl ConvertAsync<List<Raster<CPU>>, WgpuExecutor> for List<Raster<GPU>> {
 	}
 }
 
-/// Converts single GPU raster to CPU by downloading texture data
-impl ConvertAsync<Raster<CPU>, WgpuExecutor> for Raster<GPU> {
-	async fn convert(self, _: Footprint, executor: WgpuExecutor) -> Raster<CPU> {
-		let device = &executor.context().device;
-		let queue = &executor.context().queue;
+impl WgpuExecutor {
+	/// Downloads the raster's texture data, or gives the error mapping its buffer for reading failed with.
+	pub(crate) async fn read_back(&self, raster: Raster<GPU>) -> Result<Raster<CPU>, wgpu::BufferAsyncError> {
+		let device = &self.context().device;
+		let queue = &self.context().queue;
 
 		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
 			label: Some("single_texture_download_encoder"),
 		});
 
-		let converter = RasterGpuToRasterCpuConverter::new(&executor, &mut encoder, self);
+		let converter = RasterGpuToRasterCpuConverter::new(self, &mut encoder, raster);
 
 		queue.submit([encoder.finish()]);
 
-		converter.convert(device).await.expect("Failed to download texture data")
+		converter.convert(device).await
+	}
+}
+
+/// Converts single GPU raster to CPU by downloading texture data
+impl ConvertAsync<Raster<CPU>, WgpuExecutor> for Raster<GPU> {
+	async fn convert(self, _: Footprint, executor: WgpuExecutor) -> Raster<CPU> {
+		executor.read_back(self).await.expect("Failed to download texture data")
 	}
 }

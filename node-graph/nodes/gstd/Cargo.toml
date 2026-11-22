@@ -63,6 +63,7 @@ vectorize-nodes = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }
+futures = { workspace = true }
 glam = { workspace = true }
 node-macro = { workspace = true }
 reqwest = { workspace = true }

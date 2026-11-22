@@ -2653,6 +2653,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
+ "futures",
  "glam",
  "graph-craft",
  "graphene-application-io",

@@ -51,8 +51,6 @@ fn render_background(
 		RenderOutputType::Svg {
 			svg: foreground_svg,
 			image_data: foreground_images,
-			effect_maps,
-			deferred_images,
 		} => {
 			let mut render = SvgRender::new();
 
@@ -116,12 +114,7 @@ fn render_background(
 			let svg = format!("{}{}", background.svg, foreground_svg);
 			let image_data = foreground_images;
 
-			RenderOutputType::Svg {
-				svg,
-				image_data,
-				effect_maps,
-				deferred_images,
-			}
+			RenderOutputType::Svg { svg, image_data }
 		}
 		_ => unreachable!("Render background node received unsupported render output type"),
 	};
