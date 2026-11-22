@@ -408,16 +408,11 @@ impl NodeGraphExecutor {
 			..Default::default()
 		};
 
-		// TODO: On desktop, SVG Preview mode cannot work with the Eyedropper tool until <https://github.com/GraphiteEditor/Graphite/issues/3796> is implemented.
-		// TODO: So for now, we fall back to the Eyedropper using Normal mode (Vello) rendering, which looks similar enough to SVG Preview.
-		#[cfg(not(target_family = "wasm"))]
+		// SVG Preview's artwork is drawn by the browser, so the Eyedropper samples a Vello render, which looks nearly the same
 		let render_mode = match document.render_mode {
 			graphene_std::vector::style::RenderMode::SvgPreview => graphene_std::vector::style::RenderMode::Normal,
 			other => other,
 		};
-		// On web, SVG Preview is handled by the frontend's SVG rasterization path instead, producing the correct result, so we keep it enabled.
-		#[cfg(target_family = "wasm")]
-		let render_mode = document.render_mode;
 
 		let render_config = RenderConfig {
 			viewport,
@@ -447,7 +442,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph for export
-	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
+	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
 		let previewed = document.network_interface.previewed_nodes();
 		let resources = document.resources.registry.clone();
@@ -484,11 +479,11 @@ impl NodeGraphExecutor {
 			time: Default::default(),
 			pointer: DVec2::ZERO,
 			export_format,
-			render_mode: document.render_mode,
+			// The viewport's render mode is only a way of viewing the artwork, which exports show as it is
+			render_mode: graphene_std::vector::style::RenderMode::Normal,
 			for_export: true,
 			for_eyedropper: false,
 		};
-		export_config.size = resolution;
 
 		// Execute the node graph
 		self.sender
@@ -647,8 +642,12 @@ impl NodeGraphExecutor {
 							document.network_interface.update_click_targets(HashMap::new(), HashSet::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
-							if let Some(message) = message {
+							if let Some(message) = &message {
 								log::error!("Node graph evaluation failed:\n{message}");
+							}
+
+							if execution_context.export_config.is_some() {
+								responses.add(export_failure_dialog(message));
 							}
 							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
 							break;
@@ -774,9 +773,15 @@ impl NodeGraphExecutor {
 		for response in results {
 			match response {
 				NodeGraphUpdate::ExecutionResponse(execution_response) => {
-					if self.document_of_execution(execution_response.execution_id) == Some(document_id) {
+					let execution_context = self.execution_context(execution_response.execution_id);
+
+					if execution_context.is_some_and(|context| context.document_id == document_id) {
 						document.layers_in_view.forget_thumbnails(&execution_response.dropped_thumbnails, responses);
 					}
+					if matches!(execution_response.result, ExecutionResult::Uncompiled) && execution_context.is_some_and(|context| context.export_config.is_some()) {
+						responses.add(export_failure_dialog(None));
+					}
+
 					all_dropped_thumbnails.extend(execution_response.dropped_thumbnails);
 				}
 				NodeGraphUpdate::Thumbnails {
@@ -802,13 +807,13 @@ impl NodeGraphExecutor {
 		}
 	}
 
-	/// The document an execution was submitted for, while it's still queued or pending.
-	fn document_of_execution(&self, execution_id: u64) -> Option<DocumentId> {
+	/// What an execution was submitted for, while it's still queued or pending.
+	fn execution_context(&self, execution_id: u64) -> Option<&ExecutionContext> {
 		self.futures
 			.iter()
 			.chain(&self.pending)
 			.find(|(queued_execution_id, _)| *queued_execution_id == execution_id)
-			.map(|(_, execution_context)| execution_context.document_id)
+			.map(|(_, execution_context)| execution_context)
 	}
 
 	// TODO: Eventually remove this document upgrade code
@@ -1041,10 +1046,7 @@ impl NodeGraphExecutor {
 			}
 			#[cfg(target_family = "wasm")]
 			RenderOutputType::CanvasFrame { canvas_id, resolution } => {
-				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
-					resolution.x, resolution.y, canvas_id,
-				);
+				let svg = format!("<svg>{}</svg>", viewport_canvas_placeholder(canvas_id, resolution));
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			RenderOutputType::Texture { .. } => {}
@@ -1095,7 +1097,6 @@ impl NodeGraphExecutor {
 		let ExportConfig {
 			file_type,
 			name,
-			size,
 			artboard_name,
 			artboard_count,
 			..
@@ -1113,18 +1114,13 @@ impl NodeGraphExecutor {
 			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Svg { svg, .. },
 				..
-			}) => {
-				if file_type == FileType::Svg {
-					responses.add(FrontendMessage::TriggerSaveFile {
-						name,
-						folder,
-						filters,
-						content: svg.into_bytes().into(),
-					});
-				} else {
-					let size = size.as_dvec2().into();
-					responses.add(FrontendMessage::TriggerExportImage { svg, name, file_type, size });
-				}
+			}) if file_type == FileType::Svg => {
+				responses.add(FrontendMessage::TriggerSaveFile {
+					name,
+					folder,
+					filters,
+					content: svg.into_bytes().into(),
+				});
 			}
 			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Buffer { data, width, height },
@@ -1132,15 +1128,18 @@ impl NodeGraphExecutor {
 			}) if file_type != FileType::Svg => {
 				let content = match file_type.encode(width, height, data) {
 					Ok(content) => content.into(),
-					Err(e) => {
-						log::error!("Failed to encode image: {e}");
+					Err(description) => {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unable to export document".to_string(),
+							description,
+						});
 						return;
 					}
 				};
 				responses.add(FrontendMessage::TriggerSaveFile { name, folder, filters, content });
 			}
 			_ => {
-				log::error!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})");
+				log::error!("Incorrect render type for exporting to {file_type:?}: {node_graph_output}");
 			}
 		}
 	}
@@ -1212,6 +1211,23 @@ fn measure_fill_geometry(data: &Arc<dyn Any + Send + Sync>) -> Option<(DAffine2,
 		return Some((bounding_box_affine, DAffine2::IDENTITY));
 	}
 	None
+}
+
+/// The SVG element the frontend replaces with the viewport canvas, covering the viewport at its logical `resolution`.
+#[cfg(target_family = "wasm")]
+fn viewport_canvas_placeholder(canvas_id: u64, resolution: DVec2) -> String {
+	format!(
+		r#"<foreignObject width="{}" height="{}"><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject>"#,
+		resolution.x, resolution.y, canvas_id,
+	)
+}
+
+/// Says why an export saved nothing, given the evaluation's error, or else the graph's failure to compile.
+fn export_failure_dialog(evaluation_error: Option<String>) -> DialogMessage {
+	DialogMessage::DisplayDialogError {
+		title: "Unable to export document".to_string(),
+		description: evaluation_error.unwrap_or_else(|| "The node graph has errors that prevent it from rendering.".to_string()),
+	}
 }
 
 fn path_content_observations(network_interface: &NodeNetworkInterface) -> impl Iterator<Item = (ObservationKey, Observation)> {

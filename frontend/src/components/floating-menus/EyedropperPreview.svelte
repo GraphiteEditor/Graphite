@@ -1,15 +1,12 @@
-<script lang="ts" context="module">
+<script lang="ts">
+	import { onMount } from "svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+
 	// Should be equal to the width and height of the zoom preview canvas in the CSS
 	const ZOOM_WINDOW_DIMENSIONS_EXPANDED = 110;
 	// Should be equal to the width and height of the `.pixel-outline` div in the CSS, and should be evenly divisible into the number above
 	const UPSCALE_FACTOR = 10;
-
-	export const ZOOM_WINDOW_DIMENSIONS = ZOOM_WINDOW_DIMENSIONS_EXPANDED / UPSCALE_FACTOR;
-</script>
-
-<script lang="ts">
-	import { onMount } from "svelte";
-	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	const ZOOM_WINDOW_DIMENSIONS = ZOOM_WINDOW_DIMENSIONS_EXPANDED / UPSCALE_FACTOR;
 
 	let temporaryCanvas: HTMLCanvasElement | undefined;
 	let zoomPreviewCanvas: HTMLCanvasElement | undefined;

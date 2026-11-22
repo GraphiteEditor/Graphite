@@ -139,17 +139,13 @@ impl Thumbnails {
 			return;
 		}
 
-		if !self.render_with_vello(&contents, editor_api, responses).await {
-			for (layer, content) in &contents {
-				self.render_svg(*layer, content, responses).await;
-			}
-		}
+		self.render_with_vello(&contents, editor_api, responses).await;
 	}
 
-	/// Renders the thumbnails into atlases with Vello and shows them, giving false if Vello is unavailable.
-	async fn render_with_vello(&mut self, contents: &HashMap<NodeId, ThumbnailContent>, editor_api: &PlatformEditorApi, responses: &mut VecDeque<FrontendMessage>) -> bool {
+	/// Renders the thumbnails into atlases with Vello and shows them.
+	async fn render_with_vello(&mut self, contents: &HashMap<NodeId, ThumbnailContent>, editor_api: &PlatformEditorApi, responses: &mut VecDeque<FrontendMessage>) {
 		let Some(executor) = editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
-			return false;
+			return;
 		};
 
 		let mut layers = contents.keys().copied().collect::<Vec<_>>();
@@ -166,14 +162,13 @@ impl Thumbnails {
 				Ok(texture) => texture,
 				Err(error) => {
 					log::error!("Failed to render the thumbnails of layers {layers:?}: {error}");
-					return false;
+					self.stale.extend(layers.iter().copied());
+					continue;
 				}
 			};
 
 			self.show_atlas(&layout, texture, executor, responses).await;
 		}
-
-		true
 	}
 
 	/// Reads the atlas back and draws each cell into the canvases the layer's rows show.
@@ -213,61 +208,6 @@ impl Thumbnails {
 				pixels: atlas::encode_transparent_runs(&layout.cell_pixels(&pixels, index)).into(),
 			});
 		}
-	}
-
-	async fn render_svg(&mut self, layer: NodeId, content: &ThumbnailContent, responses: &mut VecDeque<FrontendMessage>) {
-		let bounds = content.bounds(false);
-		let footprint = Footprint {
-			transform: DAffine2::from_translation(bounds[0]),
-			resolution: (bounds[1] - bounds[0]).abs().as_uvec2(),
-			quality: RenderQuality::Full,
-		};
-		let render_params = RenderParams {
-			footprint,
-			thumbnail: true,
-			..Default::default()
-		};
-		let mut render = SvgRender::new();
-		content.graphic().render_svg(&mut render, &render_params);
-		render.format_svg(bounds[0], bounds[1]);
-
-		self.show_svg(layer, render.svg.to_svg_string(), responses).await;
-	}
-
-	/// Draws the SVG into the canvases the layer's rows show, so the browser rasterizes it once rather than keeping it in the page.
-	#[cfg(all(target_family = "wasm", feature = "wasm"))]
-	async fn show_svg(&mut self, layer: NodeId, svg: String, responses: &mut VecDeque<FrontendMessage>) {
-		use base64::Engine;
-
-		let size = cell_size(self.scale);
-
-		// An SVG drawn as an image needs an intrinsic size, which the thumbnail's only gives as a view box
-		let svg = svg.replacen("<svg ", &format!("<svg width=\"{}\" height=\"{}\" ", size.x, size.y), 1);
-		let mut url = String::from("data:image/svg+xml;base64,");
-		base64::engine::general_purpose::STANDARD.encode_string(svg, &mut url);
-
-		let Ok(image) = web_sys::HtmlImageElement::new() else { return };
-		image.set_src(&url);
-		if let Err(error) = wasm_bindgen_futures::JsFuture::from(image.decode()).await {
-			log::error!("Failed to decode the thumbnail of layer {layer:?}: {error:?}");
-			return;
-		}
-
-		let canvases = self.canvases(layer);
-		for canvas in [&mut canvases.layers_panel, &mut canvases.node_graph] {
-			canvas.set_resolution(size);
-			let context = canvas.context();
-			context.clear_rect(0., 0., size.x as f64, size.y as f64);
-			let _ = context.draw_image_with_html_image_element_and_dw_and_dh(&image, 0., 0., size.x as f64, size.y as f64);
-		}
-
-		responses.push_back(canvases.update_message(layer));
-	}
-
-	#[cfg(not(all(target_family = "wasm", feature = "wasm")))]
-	async fn show_svg(&mut self, layer: NodeId, svg: String, responses: &mut VecDeque<FrontendMessage>) {
-		self.sent.insert(layer);
-		responses.push_back(FrontendMessage::UpdateNodeThumbnail { id: layer, value: svg });
 	}
 
 	#[cfg(all(target_family = "wasm", feature = "wasm"))]
@@ -336,7 +276,7 @@ impl ThumbnailContent {
 		}
 	}
 
-	/// The area the content covers once rendered, counting the effects drawn through maps and images only if they're `maps_resolved`, which an SVG without a GPU leaves out.
+	/// The area the content covers once rendered, counting the effects drawn through maps and images only if they're `maps_resolved`, which the clipboard's SVG leaves out.
 	fn content_bounds(&self, maps_resolved: bool) -> RenderBoundingBox {
 		match self {
 			// Text-aware bounds, which the `BoundingBox` trait can't give `Graphic::TextList` content, with the effects' reach
@@ -348,8 +288,8 @@ impl ThumbnailContent {
 	}
 
 	/// The area the thumbnail shows, centered on the content at the thumbnail's aspect ratio.
-	fn bounds(&self, maps_resolved: bool) -> [DVec2; 2] {
-		let bounds = match self.content_bounds(maps_resolved) {
+	fn bounds(&self) -> [DVec2; 2] {
+		let bounds = match self.content_bounds(true) {
 			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
 			_ => [DVec2::ZERO, DVec2::ONE],
 		};

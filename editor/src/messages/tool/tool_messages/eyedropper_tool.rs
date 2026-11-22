@@ -2,7 +2,6 @@ use super::tool_prelude::*;
 use crate::messages::frontend::utility_types::EyedropperPreviewImage;
 use crate::messages::tool::utility_types::DocumentToolData;
 use graphene_std::color::SRGBA8;
-use graphene_std::vector::style::RenderMode;
 
 #[derive(Default, ExtractField)]
 pub struct EyedropperTool {
@@ -57,7 +56,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Eyed
 		if let ToolMessage::Eyedropper(EyedropperToolMessage::PreviewImage { data, width, height }) = message {
 			let image = EyedropperPreviewImage { data: data.into(), width, height };
 
-			update_cursor_preview_common(responses, Some(image), context.input, context.global_tool_data, self.data.color_choice);
+			show_cursor_preview(responses, image, context.input, context.global_tool_data, self.data.color_choice.take());
 
 			if !self.data.preview {
 				disable_cursor_preview(responses, &mut self.data);
@@ -107,6 +106,7 @@ pub enum PrimarySecondary {
 #[derive(Clone, Debug, Default)]
 struct EyedropperToolData {
 	preview: bool,
+	/// The color a released sample sets once the next preview render arrives, which a later press can't clear.
 	color_choice: Option<PrimarySecondary>,
 }
 
@@ -115,20 +115,13 @@ impl Fsm for EyedropperToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionMessageContext {
-			document,
-			global_tool_data,
-			input,
-			viewport,
-			..
-		} = tool_action_data;
-		let render_mode = document.render_mode;
+		let ToolActionMessageContext { input, viewport, .. } = tool_action_data;
 
 		let ToolMessage::Eyedropper(event) = event else { return self };
 		match (self, event) {
 			// Ready -> Sampling
 			(EyedropperToolFsmState::Ready, mouse_down) if matches!(mouse_down, EyedropperToolMessage::SamplePrimaryColorBegin | EyedropperToolMessage::SampleSecondaryColorBegin) => {
-				update_cursor_preview(responses, tool_data, input, global_tool_data, None, render_mode);
+				request_cursor_preview(responses, tool_data);
 
 				if mouse_down == EyedropperToolMessage::SamplePrimaryColorBegin {
 					EyedropperToolFsmState::SamplingPrimary
@@ -140,7 +133,7 @@ impl Fsm for EyedropperToolFsmState {
 			(EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::PointerMove) => {
 				let mouse_position = viewport.logical(input.mouse.position);
 				if viewport.is_in_bounds(mouse_position + viewport.offset()) {
-					update_cursor_preview(responses, tool_data, input, global_tool_data, None, render_mode);
+					request_cursor_preview(responses, tool_data);
 				} else {
 					disable_cursor_preview(responses, tool_data);
 				}
@@ -157,7 +150,8 @@ impl Fsm for EyedropperToolFsmState {
 
 				let mouse_position = viewport.logical(input.mouse.position);
 				if viewport.is_in_bounds(mouse_position + viewport.offset()) {
-					update_cursor_preview(responses, tool_data, input, global_tool_data, Some(set_color_choice), render_mode);
+					tool_data.color_choice = Some(set_color_choice);
+					request_cursor_preview(responses, tool_data);
 				}
 				disable_cursor_preview(responses, tool_data);
 
@@ -209,40 +203,22 @@ fn disable_cursor_preview(responses: &mut VecDeque<Message>, tool_data: &mut Eye
 	});
 }
 
-fn update_cursor_preview(
-	responses: &mut VecDeque<Message>,
-	tool_data: &mut EyedropperToolData,
-	input: &InputPreprocessorMessageHandler,
-	global_tool_data: &DocumentToolData,
-	set_color_choice: Option<PrimarySecondary>,
-	render_mode: RenderMode,
-) {
+fn request_cursor_preview(responses: &mut VecDeque<Message>, tool_data: &mut EyedropperToolData) {
 	tool_data.preview = true;
-	tool_data.color_choice = set_color_choice;
 
-	// On web, SVG Preview mode uses the frontend's SVG rasterization to sample pixels directly
-	#[cfg(target_family = "wasm")]
-	if render_mode == RenderMode::SvgPreview {
-		update_cursor_preview_common(responses, None, input, global_tool_data, set_color_choice);
-		return;
-	}
-
-	let _ = (&input, &global_tool_data, &render_mode);
-
-	// For Vello-rendered modes (Normal, Outline, and Pixel Preview), submit a backend render request
-	// which will return a zoomed-in pixel preview image via the EyedropperToolMessage::PreviewImage path
+	// The Vello render of the area under the cursor returns as `EyedropperToolMessage::PreviewImage`
 	responses.add(PortfolioMessage::SubmitEyedropperPreviewRender);
 }
 
-fn update_cursor_preview_common(
+fn show_cursor_preview(
 	responses: &mut VecDeque<Message>,
-	image: Option<EyedropperPreviewImage>,
+	image: EyedropperPreviewImage,
 	input: &InputPreprocessorMessageHandler,
 	global_tool_data: &DocumentToolData,
 	set_color_choice: Option<PrimarySecondary>,
 ) {
 	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
-		image,
+		image: Some(image),
 		mouse_position: Some(input.mouse.position.into()),
 		primary_color: SRGBA8::from(global_tool_data.primary_color).to_css_hex(),
 		secondary_color: SRGBA8::from(global_tool_data.secondary_color).to_css_hex(),
@@ -252,6 +228,7 @@ fn update_cursor_preview_common(
 
 #[cfg(test)]
 mod test_eyedropper {
+	use super::PrimarySecondary;
 	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	pub use crate::test_utils::test_prelude::*;
 
@@ -285,5 +262,49 @@ mod test_eyedropper {
 				"releasing with Shift {press:?} at the press and {release:?} at the release should end the sample"
 			);
 		}
+	}
+
+	#[tokio::test]
+	async fn pressing_again_before_the_sample_renders_keeps_its_color() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.set_viewport_size(DVec2::ZERO, DVec2::splat(100.)).await;
+		editor.select_tool(ToolType::Eyedropper).await;
+
+		let pointer = |mouse_keys| EditorPointerState {
+			editor_position: (50., 50.).into(),
+			mouse_keys,
+			..Default::default()
+		};
+		let modifier_keys = ModifierKeys::empty();
+
+		// Dispatched without running the runtime in between, so the second press comes before the first sample's render
+		editor.dispatch(InputPreprocessorMessage::PointerDown {
+			editor_mouse_state: pointer(MouseKeys::LEFT),
+			modifier_keys,
+		});
+		editor.dispatch(InputPreprocessorMessage::PointerUp {
+			editor_mouse_state: pointer(MouseKeys::empty()),
+			modifier_keys,
+		});
+		editor.dispatch(InputPreprocessorMessage::PointerDown {
+			editor_mouse_state: pointer(MouseKeys::LEFT),
+			modifier_keys,
+		});
+
+		editor.runtime.update();
+		editor.runtime.run().await;
+		let messages = editor.dispatch(Message::Wake);
+
+		let sets_primary_color = messages.iter().any(|message| {
+			matches!(
+				message,
+				FrontendMessage::UpdateEyedropperSamplingState {
+					set_color_choice: Some(PrimarySecondary::Primary),
+					..
+				}
+			)
+		});
+		assert!(sets_primary_color, "the first sample's color was lost to the second press");
 	}
 }

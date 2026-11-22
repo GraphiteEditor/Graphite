@@ -3,7 +3,6 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, RenderedLayers};
 use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
 use crate::task::{Spawn, Spawner, Task};
-use glam::UVec2;
 use graph_craft::application_io::resource::{Resource, ResourceRegistry};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
@@ -73,7 +72,7 @@ pub struct NodeRuntime {
 	#[cfg(all(target_family = "wasm", feature = "wasm"))]
 	wasm_canvas_cache: CanvasSurfaceHandle,
 	/// The viewport's latest artwork.
-	viewport_artwork: Option<Texture>,
+	viewport_artwork: Option<ViewportArtwork>,
 	/// The layers from the render of the viewport's latest artwork.
 	rendered_layers: RenderedLayers,
 	/// The latest overlays, rendered again over each new artwork.
@@ -83,6 +82,14 @@ pub struct NodeRuntime {
 	overlays_canvas: VelloCanvas,
 	/// The latest rendered overlays.
 	overlays_texture: Option<Texture>,
+}
+
+/// What the viewport shows beneath its overlays.
+enum ViewportArtwork {
+	/// Rendered by Vello, with the overlays drawn over it.
+	Texture(Texture),
+	/// An SVG the frontend draws, with the overlays shown alone above it.
+	Svg,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -155,7 +162,6 @@ pub struct ExportConfig {
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
-	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
 }
@@ -335,10 +341,13 @@ impl NodeRuntime {
 		let mut result = self.evaluate(request)?;
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 
+		#[cfg(all(target_family = "wasm", feature = "wasm"))]
+		let resolution = request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale;
+
 		let texture = if let Some(RenderOutput { data, metadata }) = result.render_output()
 			&& let RenderOutputType::Texture(texture) = data
 		{
-			self.viewport_artwork = Some(texture.clone());
+			self.viewport_artwork = Some(ViewportArtwork::Texture(texture.clone()));
 			let path_contents = path_contents(&observations);
 			self.rendered_layers = RenderedLayers::new(metadata, &path_contents, self.old_graph.as_ref());
 			self.overlays_stale = true;
@@ -348,8 +357,32 @@ impl NodeRuntime {
 			{
 				*data = RenderOutputType::CanvasFrame {
 					canvas_id: self.wasm_canvas_cache.id(),
-					resolution: request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale,
+					resolution,
 				};
+			}
+
+			frame
+		} else if request.render_config.export_format == ExportFormat::Raster
+			&& let Some(RenderOutput {
+				data: RenderOutputType::Svg { .. },
+				metadata,
+			}) = result.render_output()
+		{
+			// The viewport was rendered as SVG in place of the requested raster, so the frontend draws it beneath the overlays
+			self.viewport_artwork = Some(ViewportArtwork::Svg);
+			let path_contents = path_contents(&observations);
+			self.rendered_layers = RenderedLayers::new(metadata, &path_contents, self.old_graph.as_ref());
+			self.overlays_stale = true;
+			let frame = self.composite_viewport_frame();
+
+			#[cfg(all(target_family = "wasm", feature = "wasm"))]
+			if let Some(RenderOutput {
+				data: RenderOutputType::Svg { svg, .. },
+				..
+			}) = result.render_output()
+			{
+				let end = svg.rfind("</svg>").unwrap_or(svg.len());
+				svg.insert_str(end, &viewport_canvas_placeholder(self.wasm_canvas_cache.id(), resolution));
 			}
 
 			frame
@@ -362,13 +395,10 @@ impl NodeRuntime {
 		texture
 	}
 
-	/// Draws the latest overlays over the viewport's artwork, presenting the frame on web.
+	/// Draws the latest overlays over the viewport's artwork, or alone above SVG artwork, presenting the frame on web.
 	fn composite_viewport_frame(&mut self) -> Option<Texture> {
-		let artwork = self.viewport_artwork.clone()?;
-		let Some(executor) = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
-			log::error!("The GPU executor should be available once the viewport has artwork");
-			return None;
-		};
+		let artwork = self.viewport_artwork.as_ref()?;
+		let executor = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor())?;
 
 		if std::mem::take(&mut self.overlays_stale)
 			&& let Some(overlays) = &self.overlays
@@ -379,8 +409,8 @@ impl NodeRuntime {
 				.ok();
 		}
 
-		let frame = match &self.overlays_texture {
-			Some(overlays) => {
+		let frame = match (artwork, &self.overlays_texture) {
+			(ViewportArtwork::Texture(artwork), Some(overlays)) => {
 				let (width, height) = (artwork.width(), artwork.height());
 				let max_texture_size = executor.context().device.limits().max_texture_dimension_2d;
 				let overlays_to_artwork = kurbo::Affine::scale_non_uniform(width as f64 / overlays.width() as f64, height as f64 / overlays.height() as f64);
@@ -392,9 +422,11 @@ impl NodeRuntime {
 				executor
 					.render_vello_scene_on_canvas(&mut self.overlays_canvas, scene)
 					.inspect_err(|error| log::error!("Failed to draw the overlays over the artwork: {error:?}"))
-					.unwrap_or(artwork)
+					.unwrap_or_else(|_| artwork.clone())
 			}
-			None => artwork,
+			(ViewportArtwork::Texture(artwork), None) => artwork.clone(),
+			(ViewportArtwork::Svg, Some(overlays)) => overlays.clone(),
+			(ViewportArtwork::Svg, None) => return None,
 		};
 
 		#[cfg(all(target_family = "wasm", feature = "wasm"))]
@@ -449,8 +481,8 @@ impl NodeRuntime {
 
 		let ExecutionRequest { execution_id, mut render_config } = request;
 
-		// Render via the SVG pipeline even though raster was requested if SVG Preview render mode is active or there's no GPU
-		if render_config.export_format == ExportFormat::Raster && (render_config.render_mode == RenderMode::SvgPreview || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none()) {
+		// Render via the SVG pipeline even though raster was requested if SVG Preview render mode is active
+		if render_config.export_format == ExportFormat::Raster && render_config.render_mode == RenderMode::SvgPreview {
 			render_config.export_format = ExportFormat::Svg;
 		}
 
@@ -671,7 +703,7 @@ mod tests {
 	use crate::messages::frontend::utility_types::RenderStatus;
 	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 	use crate::test_utils::EditorTestUtils;
-	use glam::DVec2;
+	use glam::{DVec2, UVec2};
 	use graph_craft::document::DocumentNode;
 	use graphene_std::SourceId;
 	use graphene_std::runtime::Runtime;
@@ -705,14 +737,14 @@ mod tests {
 	}
 
 	/// Sends a network update and a request to export it, as the editor does for an export.
-	fn send_export(editor: &mut EditorTestUtils) {
+	fn send_export(editor: &mut EditorTestUtils, file_type: FileType) {
 		let portfolio = editor.portfolio_message_handler_mut();
 		let document_id = portfolio.active_document_id.unwrap();
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
 		let document = documents.get_mut(&document_id).unwrap();
 		let export_config = ExportConfig {
 			name: "export".to_string(),
-			file_type: FileType::Svg,
+			file_type,
 			scale_factor: 1.,
 			bounds: ExportBounds::AllArtwork,
 			..Default::default()
@@ -1027,10 +1059,50 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn a_raster_export_shows_the_artwork_whatever_the_render_mode() {
+		use crate::test_utils::test_prelude::{Color, Image};
+
+		for render_mode in [RenderMode::Normal, RenderMode::Outline, RenderMode::SvgPreview] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			editor.handle_message(DocumentMessage::SetRenderMode { render_mode }).await;
+			editor.draw_rect(0., 0., 100., 100.).await;
+
+			send_export(&mut editor, FileType::Png);
+			editor.runtime.update();
+			editor.runtime.run().await;
+
+			let png = editor.dispatch(Message::Wake).into_iter().find_map(|message| match message {
+				FrontendMessage::TriggerSaveFile { content, .. } => Some(content),
+				_ => None,
+			});
+			let Some(png) = png else { panic!("the export in {render_mode:?} should save a PNG") };
+
+			let image = Image::from_encoded(&png).expect("the export should be a valid PNG");
+			let center = image.data[(image.height / 2 * image.width + image.width / 2) as usize];
+			assert_eq!(center, Color::WHITE, "the export in {render_mode:?} should show the rectangle's fill");
+		}
+	}
+
+	#[tokio::test]
+	async fn exporting_a_graph_that_fails_to_compile_says_it_failed() {
+		let mut editor = editor().await;
+		break_compile(&mut editor);
+
+		send_export(&mut editor, FileType::Png);
+		editor.runtime.update();
+		editor.runtime.run().await;
+
+		let messages = editor.dispatch(Message::Wake);
+		let shows_dialog = messages.iter().any(|message| matches!(message, FrontendMessage::DisplayDialog { .. }));
+		assert!(shows_dialog, "the export should show why it saved nothing");
+	}
+
+	#[tokio::test]
 	async fn an_export_goes_ahead_of_what_was_sent_after_it() {
 		let mut editor = editor().await;
 		let last = last_request(&editor);
-		send_export(&mut editor);
+		send_export(&mut editor, FileType::Svg);
 		send_update(&mut editor);
 
 		editor.runtime.update();
@@ -1054,7 +1126,7 @@ mod tests {
 		editor.draw_rect(0., 0., 512., 512.).await;
 		vectorize_layer(&mut editor);
 
-		send_export(&mut editor);
+		send_export(&mut editor, FileType::Svg);
 		editor.runtime.update();
 		editor.runtime.run().await;
 		assert!(editor.runtime.pending_export.is_some(), "the export took a single evaluation");

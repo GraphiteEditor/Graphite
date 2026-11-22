@@ -1,7 +1,7 @@
 use super::IconName;
 use super::utility_types::{MouseCursorIcon, PersistedState, RenderStatus};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FileDialogOptions, FileFilter, FileType, RasterizedImage};
+use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FileDialogOptions, FileFilter, RasterizedImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::math_expression::MathExpressionCompletions;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -105,13 +105,6 @@ pub enum FrontendMessage {
 		folder: Option<PathBuf>,
 		filters: Vec<FileFilter>,
 		content: serde_bytes::ByteBuf,
-	},
-	TriggerExportImage {
-		svg: String,
-		name: String,
-		#[serde(rename = "fileType")]
-		file_type: FileType,
-		size: (f64, f64),
 	},
 	TriggerFetchAndOpenDocument {
 		name: String,
@@ -339,10 +332,6 @@ pub enum FrontendMessage {
 	UpdateNodeGraphTransform {
 		translation: (f64, f64),
 		scale: f64,
-	},
-	UpdateNodeThumbnail {
-		id: NodeId,
-		value: String,
 	},
 	ClearNodeThumbnails {
 		ids: Vec<NodeId>,

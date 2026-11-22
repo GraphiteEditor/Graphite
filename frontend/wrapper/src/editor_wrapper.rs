@@ -57,10 +57,17 @@ impl EditorWrapper {
 #[wasm_bindgen]
 impl EditorWrapper {
 	#[cfg(all(not(feature = "native"), target_family = "wasm"))]
-	pub async fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
+	pub async fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> Result<EditorWrapper, JsError> {
 		use editor::builder::{Builder, EditorBuilder, RuntimeBuilder};
-		use graph_craft::application_io::PlatformApplicationIo;
 		use graph_craft::application_io::resource::*;
+		use graph_craft::application_io::{ApplicationIo, PlatformApplicationIo};
+
+		let application_io = PlatformApplicationIo::new().await;
+		if application_io.gpu_executor().is_none() {
+			return Err(JsError::new(
+				"Graphite renders with WebGL 2, which this browser couldn't provide. Make sure hardware acceleration is turned on in the browser's settings. Updating the browser or graphics driver, or switching to a different browser, may also help.",
+			));
+		}
 
 		let host = match platform.as_str() {
 			"Linux" => Host::Linux,
@@ -80,7 +87,6 @@ impl EditorWrapper {
 			}
 		};
 
-		let application_io = PlatformApplicationIo::new().await;
 		let document_store = std::sync::Arc::new(editor::document_store::OpfsStore::new("documents"));
 		let (editor, runtime) = Builder::new()
 			.with_editor(
@@ -104,7 +110,7 @@ impl EditorWrapper {
 		}
 		*crate::NODE_RUNTIME.lock() = Some(runtime);
 
-		Self::initialize_wrapper(frontend_message_handler_callback)
+		Ok(Self::initialize_wrapper(frontend_message_handler_callback))
 	}
 	#[cfg(feature = "native")]
 	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {

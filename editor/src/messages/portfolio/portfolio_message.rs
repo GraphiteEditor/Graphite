@@ -162,13 +162,6 @@ pub enum PortfolioMessage {
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
 		context: OverlayContext,
 	},
-	SaveRasterizedExport {
-		name: String,
-		file_type: FileType,
-		width: u32,
-		height: u32,
-		data: Vec<u8>,
-	},
 	SubmitActiveGraphRender,
 	SubmitGraphRender {
 		document_id: DocumentId,

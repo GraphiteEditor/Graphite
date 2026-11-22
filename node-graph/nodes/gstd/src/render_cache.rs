@@ -371,6 +371,13 @@ fn render_output_cache(
 
 	// Outputs too large for one texture (in practice, large exports) are assembled on the CPU, which only works in native builds
 	if physical_resolution.x > max_texture_size || physical_resolution.y > max_texture_size {
+		if cfg!(target_family = "wasm") {
+			return Poll::error(format!(
+				"At {}×{} pixels, this render exceeds the {max_texture_size} pixel width and height limit of the browser's GPU. Try a smaller size, or use the desktop app.",
+				physical_resolution.x, physical_resolution.y
+			));
+		}
+
 		let output = render_regions_to_buffer(
 			&viewport_bounds_device,
 			|ctx| data.eval(&ctx),

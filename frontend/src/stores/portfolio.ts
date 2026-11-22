@@ -4,7 +4,6 @@ import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { acceptStringFromFilters, downloadFile, upload } from "/src/utility-functions/files";
 import { createLayout } from "/src/utility-functions/layout-state.svelte";
-import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 import { deepEqual, patchLayout } from "/src/utility-functions/widgets";
 import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -105,21 +104,6 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		downloadFile(data.name, data.content);
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerExportImage", async (data) => {
-		const { svg, name, fileType, size } = data;
-
-		// Rasterize the SVG and hand its pixels back to the editor for encoding
-		try {
-			const canvas = await rasterizeSVGCanvas(svg, size[0], size[1]);
-			const pixels = canvas.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height);
-			if (!pixels) return;
-
-			editor.saveRasterizedExport(name, fileType, pixels.width, pixels.height, new Uint8Array(pixels.data.buffer));
-		} catch {
-			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
-		}
-	});
-
 	subscriptions.subscribeFrontendMessage("UpdateWorkspacePanelLayout", (data) => {
 		update((state) => {
 			state.panelLayout = data.panelLayout;
@@ -207,7 +191,6 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerBrowse");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
-	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	subscriptions.unsubscribeLayoutUpdate("Inspector");

@@ -72,7 +72,7 @@ pub fn draw_atlas(scene: &mut VelloSceneBuilder, layout: &ThumbnailAtlasLayout, 
 		let Some(content) = contents.get(layer) else { continue };
 
 		let origin = layout.cell_origin(index).as_dvec2();
-		let [min, max] = content.bounds(true);
+		let [min, max] = content.bounds();
 		let transform = DAffine2::from_translation(origin) * DAffine2::from_scale(cell_size / (max - min)) * DAffine2::from_translation(-min);
 
 		// The clip also limits content filling the whole scene, like a background, to the cell
