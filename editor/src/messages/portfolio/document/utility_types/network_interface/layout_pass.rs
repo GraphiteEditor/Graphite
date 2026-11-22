@@ -83,6 +83,20 @@ struct DragOrigin {
 	drag: Drag,
 }
 
+impl DragOrigin {
+	fn new(node_ids: Vec<NodeId>, indices: HashMap<NodeId, u32>, start: Graph, start_layout: Layout, dragged: &[NodeId], keep_upstream: bool, revision: u64) -> Self {
+		let dragged = dragged.iter().filter_map(|node_id| indices.get(node_id).copied()).collect();
+		Self {
+			revision,
+			keep_upstream,
+			drag: Drag::with_layout(start.clone(), start_layout, dragged, keep_upstream, layout),
+			node_ids,
+			indices,
+			start,
+		}
+	}
+}
+
 impl NodeNetworkInterface {
 	/// Reads the layout of the network at `network_path`, laying it out again first if anything was written since.
 	pub(crate) fn with_layout<R>(&self, network_path: &[NodeId], read: impl FnOnce(&NetworkLayout) -> R) -> Option<R> {
@@ -114,10 +128,13 @@ impl NodeNetworkInterface {
 	/// Draws the selected nodes `offset` grid cells from where they were drawn when the drag started, without storing anything until it finishes.
 	/// With `keep_upstream`, each node only carried along by them stays where it is drawn.
 	pub fn drag_selected_nodes(&mut self, offset: IVec2, keep_upstream: bool, network_path: &[NodeId]) {
-		let selected_nodes = self
+		let selected_nodes: Vec<NodeId> = self
 			.selected_nodes_in_nested_network(network_path)
 			.map(|selected_nodes| selected_nodes.selected_nodes().copied().collect())
 			.unwrap_or_default();
+
+		let starting = self.network_metadata(network_path).is_some_and(|network_metadata| network_metadata.transient_metadata.drag.is_none());
+		let origin = starting.then(|| self.drag_origin_from_cached_layout(&selected_nodes, keep_upstream, network_path)).flatten();
 
 		let Some(transient) = self.network_transient_mut(network_path) else { return };
 		match &mut transient.drag {
@@ -128,7 +145,7 @@ impl NodeNetworkInterface {
 					dragged: selected_nodes,
 					offset,
 					keep_upstream,
-					origin: RefCell::new(None),
+					origin: RefCell::new(origin),
 				})
 			}
 		}
@@ -184,17 +201,20 @@ impl NodeNetworkInterface {
 		let mut origin = drag.origin.borrow_mut();
 		if origin.as_ref().is_none_or(|origin| (origin.revision, origin.keep_upstream) != (revision, drag.keep_upstream)) {
 			let (node_ids, indices, start) = self.layout_graph(network_path)?;
-			let dragged = drag.dragged.iter().filter_map(|node_id| indices.get(node_id).copied()).collect();
-			*origin = Some(DragOrigin {
-				revision,
-				keep_upstream: drag.keep_upstream,
-				drag: Drag::new(&start, dragged, drag.keep_upstream, layout),
-				node_ids,
-				indices,
-				start,
-			});
+			let start_layout = layout(&start);
+			*origin = Some(DragOrigin::new(node_ids, indices, start, start_layout, &drag.dragged, drag.keep_upstream, revision));
 		}
 		origin.as_mut().map(read)
+	}
+
+	/// Where a drag starting now moves the nodes from, taken from the layout cached for the network as stored if it is current.
+	fn drag_origin_from_cached_layout(&self, dragged: &[NodeId], keep_upstream: bool, network_path: &[NodeId]) -> Option<DragOrigin> {
+		let revision = store::revision();
+		let cache = &self.network_metadata(network_path)?.transient_metadata.layout;
+		let cached = cache.with_loaded(|cached| (cached.revision == revision).then(|| cached.clone())).flatten()?;
+
+		let NetworkLayout { node_ids, indices, graph, layout, .. } = cached;
+		Some(DragOrigin::new(node_ids, indices, graph, layout, dragged, keep_upstream, revision))
 	}
 
 	fn store_placement(&mut self, node_id: &NodeId, placement: Placement, network_path: &[NodeId]) {

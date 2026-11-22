@@ -25,7 +25,13 @@ pub struct Drag {
 
 impl Drag {
 	pub fn new(start: &Graph, dragged: Vec<u32>, keep_upstream: bool, lay_out: fn(&Graph) -> Layout) -> Self {
-		let mut mover = Mover::new(start.clone(), lay_out);
+		Self::with_layout(start.clone(), lay_out(start), dragged, keep_upstream, lay_out)
+	}
+
+	/// Starts dragging from `start` as `lay_out` already laid it out in `start_layout`, which saves laying it out again.
+	pub fn with_layout(start: Graph, start_layout: Layout, dragged: Vec<u32>, keep_upstream: bool, lay_out: fn(&Graph) -> Layout) -> Self {
+		let mut mover = Mover::new(start, lay_out);
+		mover.layout = Some(start_layout);
 		mover.hold(&dragged);
 		Self {
 			dragged,
