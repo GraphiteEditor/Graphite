@@ -9,6 +9,7 @@ use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
 use graphic_types::{Artboard, Effects, Vector};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
+use raster_kernels::adjustments::PreparedAdjustment;
 use raster_kernels::value_effects;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
@@ -1156,10 +1157,11 @@ fn colors_to_gradient(_: impl Ctx, colors: List<Graphic>) -> Item<Gradient> {
 fn gradient_to_colors(_: impl Ctx, gradient: Item<Gradient>) -> List<Color> {
 	// The adjustments the gradient carries change each stop's color
 	let adjustments = gradient.attribute::<Effects>(ATTR_EFFECTS).map(value_effects::adjustments).unwrap_or_default();
+	let adjustments: Vec<PreparedAdjustment> = adjustments.iter().map(PreparedAdjustment::new).collect();
 
 	let mut colors = gradient.into_element().into_color_list();
 	for color in colors.iter_element_values_mut() {
-		*color = value_effects::adjusted_color(*color, &adjustments);
+		*color = adjustments.iter().fold(*color, |color, adjustment| adjustment.adjust(color));
 	}
 	colors
 }

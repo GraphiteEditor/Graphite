@@ -2,7 +2,7 @@ use core_types::list::Item;
 use core_types::transfer_curve::TransferCurve;
 use core_types::{Color, Ctx};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Effect, EffectOperation, GlowTechnique, Graphic, Vector, stamp_effect};
+use graphic_types::{Effect, EffectOperation, GlowTechnique, Graphic, Vector, paint_with_envelope_effects, stamp_effect};
 use raster_kernels::{evaluate_color_effects, evaluate_gradient_effects};
 use vector_types::Gradient;
 
@@ -144,9 +144,11 @@ fn inner_shadow<T>(
 
 /// A glow's color or gradient paint with its own effects carried out.
 fn glow_paint(paint: Item<Graphic>) -> Graphic {
-	match paint.into_element() {
+	match paint_with_envelope_effects(paint) {
 		Graphic::Color(color) => Graphic::Color(evaluate_color_effects(color)),
 		Graphic::Gradient(gradient) => Graphic::Gradient(evaluate_gradient_effects(gradient)),
+		Graphic::ColorList(colors) => Graphic::ColorList(colors.into_iter().map(evaluate_color_effects).collect()),
+		Graphic::GradientList(gradients) => Graphic::GradientList(gradients.into_iter().map(evaluate_gradient_effects).collect()),
 		paint => paint,
 	}
 }

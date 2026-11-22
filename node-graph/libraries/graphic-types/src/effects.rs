@@ -361,6 +361,36 @@ pub fn stamp_effect<T>(item: &mut Item<T>, effect: Effect) {
 		.push(Item::new_from_element(effect).with_attribute(ATTR_TRANSFORM, transform));
 }
 
+/// The graphic a paint input's wire carries, without the attributes of its envelope but for the effects stamped on it, such as an adjustment applied to the paint as a graphic.
+/// Colors and gradients (each row of a list of them) take those effects after their own, staying solid or gradient paints, no paint stays none, and other paints nest as a group carrying them.
+pub fn paint_with_envelope_effects(paint: Item<Graphic>) -> Graphic {
+	let effects = paint.attribute::<Effects>(ATTR_EFFECTS).filter(|effects| !effects.is_empty()).cloned();
+	let paint = paint.into_element();
+	let Some(effects) = effects else { return paint };
+
+	let append_to_rows = |rows: std::slice::IterMut<'_, Effects>| rows.for_each(|row| row.0.extend(effects.0.clone()));
+	match paint {
+		Graphic::None(_) | Graphic::NoneList(_) => paint,
+		Graphic::Color(mut item) => {
+			item.attribute_mut_or_insert_default::<Effects>(ATTR_EFFECTS).0.extend(effects.0);
+			Graphic::Color(item)
+		}
+		Graphic::Gradient(mut item) => {
+			item.attribute_mut_or_insert_default::<Effects>(ATTR_EFFECTS).0.extend(effects.0);
+			Graphic::Gradient(item)
+		}
+		Graphic::ColorList(mut list) => {
+			append_to_rows(list.iter_attribute_values_mut_or_default::<Effects>(ATTR_EFFECTS));
+			Graphic::ColorList(list)
+		}
+		Graphic::GradientList(mut list) => {
+			append_to_rows(list.iter_attribute_values_mut_or_default::<Effects>(ATTR_EFFECTS));
+			Graphic::GradientList(list)
+		}
+		paint => Graphic::Graphic(Box::new(Item::new_from_element(paint).with_attribute(ATTR_EFFECTS, effects))),
+	}
+}
+
 /// The part of a content transform a coverage or effect records, its linear part, since the content's position cancels out wherever it's used.
 pub fn stamped_transform(content_transform: DAffine2) -> DAffine2 {
 	DAffine2::from_mat2(content_transform.matrix2)
@@ -851,5 +881,43 @@ mod tests {
 		let row = Effect::new(&levels);
 		assert_eq!(row.0.attribute::<f64>("blue_midtones"), Some(&1.5));
 		assert_eq!(row.operation(), levels);
+	}
+
+	#[test]
+	fn paints_keep_the_effects_stamped_on_their_wire_envelope() {
+		let invert = Effect::new(&EffectOperation::Adjustment(Adjustment::Invert));
+		let desaturate = Effect::new(&EffectOperation::Adjustment(Adjustment::Desaturate { method: Default::default() }));
+		let operations = |item_effects: Option<&Effects>| item_effects.map(|effects| effects.operations().collect::<Vec<_>>()).unwrap_or_default();
+
+		// A color keeps its own effects first, then takes the envelope's
+		let mut color = Item::new_from_element(Color::RED);
+		stamp_effect(&mut color, desaturate.clone());
+		let mut envelope = Item::new_from_element(Graphic::Color(color));
+		stamp_effect(&mut envelope, invert.clone());
+		let Graphic::Color(color) = paint_with_envelope_effects(envelope) else {
+			panic!("the color paint should stay a color")
+		};
+		assert_eq!(operations(color.attribute::<Effects>(ATTR_EFFECTS)), [desaturate.operation(), invert.operation()]);
+
+		// Each row of a list of colors takes them, and other paints nest as a group carrying them
+		let mut envelope = Item::new_from_element(Graphic::ColorList(List::new_from_element(Color::RED)));
+		stamp_effect(&mut envelope, invert.clone());
+		let Graphic::ColorList(list) = paint_with_envelope_effects(envelope) else {
+			panic!("the list of colors should stay a list of colors")
+		};
+		assert_eq!(operations(list.clone_item(0).as_ref().and_then(|row| row.attribute::<Effects>(ATTR_EFFECTS))), [invert.operation()]);
+		let mut envelope = Item::new_from_element(Graphic::VectorList(List::new_from_element(crate::Vector::default())));
+		stamp_effect(&mut envelope, invert.clone());
+		let Graphic::Graphic(group) = paint_with_envelope_effects(envelope) else {
+			panic!("the vector paint should nest as a group")
+		};
+		assert_eq!(operations(group.attribute::<Effects>(ATTR_EFFECTS)), [invert.operation()]);
+
+		// Without effects, the paint is the element alone, and no paint stays none
+		let envelope = Item::new_from_element(Graphic::Color(Item::new_from_element(Color::RED)));
+		assert!(matches!(paint_with_envelope_effects(envelope), Graphic::Color(color) if color.attribute::<Effects>(ATTR_EFFECTS).is_none()));
+		let mut envelope = Item::new_from_element(Graphic::default());
+		stamp_effect(&mut envelope, invert);
+		assert!(matches!(paint_with_envelope_effects(envelope), Graphic::None(_)));
 	}
 }
