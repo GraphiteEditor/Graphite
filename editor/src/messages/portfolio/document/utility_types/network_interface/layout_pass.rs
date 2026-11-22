@@ -266,7 +266,8 @@ impl NodeNetworkInterface {
 	fn lay_out(&self, network_path: &[NodeId], revision: u64) -> Option<NetworkLayout> {
 		let (node_ids, indices, graph, layout) = match &self.network_metadata(network_path)?.transient_metadata.drag {
 			Some(drag) => self.with_drag_origin(drag, network_path, revision, |origin| {
-				let (graph, layout) = origin.drag.moved(drag.offset);
+				let (graph, mut layout) = origin.drag.moved(drag.offset);
+				layout.show_snapped_chains(&graph);
 				(origin.node_ids.clone(), origin.indices.clone(), graph, layout)
 			})?,
 			None => {

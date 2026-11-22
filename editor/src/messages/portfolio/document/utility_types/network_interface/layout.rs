@@ -244,10 +244,7 @@ impl NodeNetworkInterface {
 				let downstream_position = self.position(&downstream_id, network_path);
 				let upstream_node_position = self.position(&upstream_node, network_path);
 				if let (Some(input_connector_position), Some(new_upstream_node_position)) = (downstream_position, upstream_node_position) {
-					if input_connector_position.y == new_upstream_node_position.y
-						&& new_upstream_node_position.x >= input_connector_position.x - 9
-						&& new_upstream_node_position.x <= input_connector_position.x
-					{
+					if graph_layout::snaps_into_chain(new_upstream_node_position, input_connector_position) {
 						set_position_to_chain.push(upstream_node);
 					} else {
 						break;

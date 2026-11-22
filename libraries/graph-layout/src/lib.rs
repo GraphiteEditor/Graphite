@@ -240,11 +240,8 @@ fn lay_out(graph: &Graph, elongating: Elongating) -> Layout {
 			[output, input]
 		})
 		.collect();
-	let chain_layers = chain_layers(graph, &inputs, &readers, &positions);
-	let mut chain_lengths = vec![0; node_count];
-	for layer in chain_layers.iter().flatten() {
-		chain_lengths[*layer as usize] += 1;
-	}
+	let chain_layers = chain_layers(graph, &inputs, &readers, &positions, sits_in_chain);
+	let chain_lengths = chain_lengths(&chain_layers);
 
 	Layout {
 		positions,
@@ -257,6 +254,27 @@ fn lay_out(graph: &Graph, elongating: Elongating) -> Layout {
 		chain_lengths,
 		cyclic: forest.cyclic,
 	}
+}
+
+impl Layout {
+	/// Draws each node in the chain it joins once a drag releases it, rather than only in the chain it already sits in.
+	pub fn show_snapped_chains(&mut self, graph: &Graph) {
+		let node_count = graph.nodes.len();
+		let readers = GroupedByNode::grouped(node_count, &graph.wires, |wire| wire.source);
+		let inputs = GroupedByNode::grouped(node_count, &graph.wires, |wire| wire.target);
+
+		self.chain_layers = chain_layers(graph, &inputs, &readers, &self.positions, snaps_into_chain);
+		self.chain_lengths = chain_lengths(&self.chain_layers);
+	}
+}
+
+fn sits_in_chain(position: IVec2, reader_position: IVec2) -> bool {
+	position == reader_position - IVec2::new(CHAIN_WIDTH, 0)
+}
+
+/// Whether a node drawn at `position` joins the chain of the node reading it at `reader_position` once a drag releases it.
+pub fn snaps_into_chain(position: IVec2, reader_position: IVec2) -> bool {
+	position.y == reader_position.y && (reader_position.x - CHAIN_WIDTH - 2..=reader_position.x).contains(&position.x)
 }
 
 /// The graph as a forest giving each node to its highest reader as stored.
@@ -522,8 +540,8 @@ fn chain_links(graph: &Graph, forest: &Forest) -> Vec<bool> {
 }
 
 /// Walks back from each layer through the chain input of each node in turn, while the node it reaches is chainable,
-/// is read only by that node through its primary output, and sits one chain width to its left.
-fn chain_layers(graph: &Graph, inputs: &GroupedByNode, readers: &GroupedByNode, positions: &[IVec2]) -> Vec<Option<u32>> {
+/// is read only by that node through its primary output, and is `beside` it.
+fn chain_layers(graph: &Graph, inputs: &GroupedByNode, readers: &GroupedByNode, positions: &[IVec2], beside: impl Fn(IVec2, IVec2) -> bool) -> Vec<Option<u32>> {
 	let mut chain_layers = vec![None; graph.nodes.len()];
 
 	for layer in (0..graph.nodes.len()).filter(|node| graph.nodes[*node].is_layer) {
@@ -536,8 +554,7 @@ fn chain_layers(graph: &Graph, inputs: &GroupedByNode, readers: &GroupedByNode, 
 
 			let source = wire.source as usize;
 			let primary_readers = readers.of(source).iter().filter(|wire| graph.wires[**wire as usize].output == 0).count();
-			let beside = positions[source] == positions[reader] - IVec2::new(CHAIN_WIDTH, 0);
-			let joins = graph.nodes[source].chainable && !graph.nodes[source].is_layer && wire.output == 0 && primary_readers == 1 && beside;
+			let joins = graph.nodes[source].chainable && !graph.nodes[source].is_layer && wire.output == 0 && primary_readers == 1 && beside(positions[source], positions[reader]);
 			if !joins || chain_layers[source].is_some() {
 				break;
 			}
@@ -548,6 +565,14 @@ fn chain_layers(graph: &Graph, inputs: &GroupedByNode, readers: &GroupedByNode, 
 	}
 
 	chain_layers
+}
+
+fn chain_lengths(chain_layers: &[Option<u32>]) -> Vec<u32> {
+	let mut chain_lengths = vec![0; chain_layers.len()];
+	for layer in chain_layers.iter().flatten() {
+		chain_lengths[*layer as usize] += 1;
+	}
+	chain_lengths
 }
 
 fn input_port(node: &Node, position: IVec2, input: u32) -> IVec2 {
@@ -630,6 +655,25 @@ mod tests {
 		let layout = layout(&graph);
 
 		assert_eq!(layout.chain_layers, vec![None, Some(0), Some(0), None]);
+	}
+
+	#[test]
+	fn a_node_dropped_near_a_layer_shows_in_the_chain_it_snaps_into() {
+		let graph = Graph {
+			nodes: vec![
+				node(Placement::Absolute(IVec2::new(30, 10)), true),
+				node(Placement::Absolute(IVec2::new(30 - CHAIN_WIDTH - 1, 10)), false),
+				node(Placement::Absolute(IVec2::new(0, 0)), false),
+			],
+			wires: vec![wire(1, 0, 1), wire(2, 1, 0)],
+		};
+
+		let mut layout = layout(&graph);
+		assert_eq!(layout.chain_layers, vec![None, None, None]);
+
+		layout.show_snapped_chains(&graph);
+		assert_eq!(layout.chain_layers, vec![None, Some(0), None]);
+		assert_eq!(layout.chain_lengths, vec![1, 0, 0]);
 	}
 
 	#[test]
@@ -1041,7 +1085,7 @@ mod phase_timing {
 				times[4] += start.elapsed();
 
 				let start = Instant::now();
-				std::hint::black_box(chain_layers(&graph, &inputs, &readers, &positions));
+				std::hint::black_box(chain_layers(&graph, &inputs, &readers, &positions, sits_in_chain));
 				times[5] += start.elapsed();
 
 				let start = Instant::now();
