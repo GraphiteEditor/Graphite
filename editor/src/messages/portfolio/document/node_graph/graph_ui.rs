@@ -377,17 +377,80 @@ impl<'a> Facts<'a> {
 		if moved.is_empty() && gliding.is_empty() {
 			return;
 		}
-		self.put_wires_meeting(moved, gliding, scene, wire_style);
+		self.reroute_wires_meeting(moved, gliding, scene, wire_style);
 	}
 
+	/// Moving nodes changes only where they and their wires are drawn, so the rows already drawn are placed again rather than built anew.
 	fn update_moved(&self, scene: &mut GraphUiSceneEdit, nodes: Vec<NodeId>, wire_style: GraphWireStyle) {
 		let (network_interface, network_path) = (self.network_interface, self.network_path);
 		let downstream_layers = nodes.iter().filter_map(|node| network_interface.downstream_layer_for_chain_node(node, network_path));
 		let rows: BTreeSet<NodeId> = nodes.iter().copied().chain(downstream_layers).collect();
-		self.put_node_rows(rows, scene);
+		self.place_node_rows(rows, scene);
 		scene.errors.replace_all(self.errors());
 		let changed = self.replace_network_connectors(scene);
-		self.put_wires_meeting(nodes, changed, scene, wire_style);
+		self.reroute_wires_meeting(nodes, changed, scene, wire_style);
+	}
+
+	/// Places each node's row where the layout now draws it, along with the chain a layer is drawn with, which comes from where its upstream sits.
+	fn place_node_rows(&self, nodes: impl IntoIterator<Item = NodeId>, scene: &mut GraphUiSceneEdit) {
+		let (network_interface, network_path) = (self.network_interface, self.network_path);
+		for node in nodes {
+			let Some(cell) = network_interface.position(&node, network_path) else { continue };
+
+			if let Some(card) = scene.cards.get(&node) {
+				if card.cell != cell {
+					scene.cards.update(&node, |card| card.cell = cell);
+				}
+			} else if let Some(layer) = scene.layers.get(&node) {
+				let chain_width = network_interface.chain_width(&node, network_path);
+				let has_left_input_wire = network_interface.has_left_input_wire(&node, network_path);
+				if (layer.cell, layer.chain_width, layer.has_left_input_wire) != (cell, chain_width, has_left_input_wire) {
+					scene.layers.update(&node, |layer| {
+						layer.cell = cell;
+						layer.chain_width = chain_width;
+						layer.has_left_input_wire = has_left_input_wire;
+					});
+				}
+			} else if let Some(dot) = scene.dots.get(&node) {
+				if dot.cell != cell {
+					scene.dots.update(&node, |dot| dot.cell = cell);
+				}
+			} else {
+				self.put_node_rows([node], scene);
+			}
+		}
+	}
+
+	/// Routes the wires meeting the nodes and imports or exports again, keeping what each carries from its row already drawn.
+	fn reroute_wires_meeting(
+		&self,
+		nodes: impl IntoIterator<Item = NodeId>,
+		network_connectors: impl IntoIterator<Item = (NetworkConnectorKind, usize)>,
+		scene: &mut GraphUiSceneEdit,
+		wire_style: GraphWireStyle,
+	) {
+		let (network_interface, network_path) = (self.network_interface, self.network_path);
+		for input in self.inputs_meeting(nodes, network_connectors) {
+			let key = wire_key(input);
+			if scene.wires.get(&key).is_none() {
+				if let Some(wire) = self.wire(input, wire_style) {
+					scene.wires.put(wire);
+				}
+				continue;
+			}
+
+			if let Some(routed) = network_interface.gliding_vector_wire_from_input(&input, wire_style, &self.glide, network_path) {
+				reroute(scene, key, routed);
+			}
+		}
+
+		if scene.wires.get(&WireKey::Preview).is_none() {
+			if let Some(preview) = self.preview_wire(wire_style) {
+				scene.wires.put(preview);
+			}
+		} else if let Some((_, path, center_line, thick)) = network_interface.vector_wire_to_preview(wire_style, &self.glide, network_path) {
+			reroute(scene, WireKey::Preview, (path, center_line, thick));
+		}
 	}
 
 	fn put_node_rows(&self, nodes: impl IntoIterator<Item = NodeId>, scene: &mut GraphUiSceneEdit) {
@@ -559,6 +622,18 @@ fn error_badges(errors: Vec<(NodeId, String)>, network_interface: &NodeNetworkIn
 			})
 		})
 		.collect()
+}
+
+/// Replaces the path of the wire drawn under `key`, if it changed.
+fn reroute(scene: &mut GraphUiSceneEdit, key: WireKey, (path, center_line, thick): (BezPath, BezPath, bool)) {
+	let unchanged = scene.wires.get(&key).is_some_and(|wire| wire.path == path && wire.center_line == center_line && wire.thick == thick);
+	if !unchanged {
+		scene.wires.update(&key, |wire| {
+			wire.path = path;
+			wire.center_line = center_line;
+			wire.thick = thick;
+		});
+	}
 }
 
 fn glide_rows<Row: Keyed<Key = NodeId>>(rows: &mut ReplicatedMapEdit<Row>, glide: &GlideOffsets, drawn: fn(&Row) -> DVec2, field: fn(&mut Row) -> &mut DVec2) -> Vec<NodeId> {
