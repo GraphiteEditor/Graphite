@@ -8,6 +8,7 @@
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import { createDragToggleManager, destroyDragToggleManager } from "/src/managers/drag-toggle";
+	import type { DragToggleListener } from "/src/managers/drag-toggle";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
 	import { layersPanelControlBarLeftLayout, layersPanelBottomBarLeftLayout, layersPanelBottomBarRightLayout, retainLayerDetails } from "/src/stores/portfolio";
 	import type { PortfolioStore } from "/src/stores/portfolio";
@@ -329,9 +330,13 @@
 		editor.setLayersPanelHoveredLayer(id);
 	}
 
-	function dragToggleListener(group: string | undefined) {
-		activeDragToggleGroup = group;
-	}
+	const dragToggleListener: DragToggleListener = {
+		activeGroupChanged: (group) => {
+			activeDragToggleGroup = group;
+		},
+		// Everything one drag paints is one history step
+		engagedChanged: (engaged) => (engaged ? editor.startTransaction() : editor.endTransaction()),
+	};
 
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
 		editor.toggleNodeVisibilityLayerPanel(id);
