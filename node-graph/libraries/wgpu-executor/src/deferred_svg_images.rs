@@ -1,6 +1,7 @@
 use crate::WgpuExecutor;
+use core_types::ops::ConvertAsync;
 use core_types::transform::Footprint;
-use raster_types::{Raster, Texture};
+use raster_types::{CPU, Raster, Texture};
 use rendering::CanvasImage;
 use rendering::deferred_image::{DeferredImage, DeferredImagePlacement, EffectMap, EffectMapPlacement, MAX_DEFERRED_IMAGE_PIXELS, substitute_deferred_image, substitute_effect_map};
 
@@ -26,13 +27,10 @@ impl WgpuExecutor {
 	}
 
 	/// Reads back the maps of effects' coverages, putting each in `svg` in place of its placeholder.
-	/// Maps that fail to read back keep their placeholders.
 	pub async fn resolve_effect_maps(&self, svg: &mut String, maps: Vec<(EffectMapPlacement, Texture)>) {
 		for (placement, texture) in maps {
-			match self.read_back(Raster::new_gpu(texture)).await {
-				Ok(map) => substitute_effect_map(svg, &placement, &map),
-				Err(error) => log::error!("Failed to read back a map of an effect's coverage for an SVG filter: {error}"),
-			}
+			let map: Raster<CPU> = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, self.clone()).await;
+			substitute_effect_map(svg, &placement, &map);
 		}
 	}
 
@@ -57,13 +55,10 @@ impl WgpuExecutor {
 	}
 
 	/// Reads back the images of deferred content, putting each in `svg` in place of the markup standing in for its content.
-	/// Content with an image that fails to read back keeps its markup.
 	pub async fn resolve_deferred_svg_images(&self, svg: &mut String, image_data: &mut Vec<(u64, CanvasImage)>, images: Vec<(DeferredImagePlacement, Texture)>) {
 		for (placement, texture) in images {
-			match self.read_back(Raster::new_gpu(texture)).await {
-				Ok(image) => substitute_deferred_image(svg, image_data, &placement, &image),
-				Err(error) => log::error!("Failed to read back an image of content with effects SVG can't express: {error}"),
-			}
+			let image: Raster<CPU> = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, self.clone()).await;
+			substitute_deferred_image(svg, image_data, &placement, &image);
 		}
 	}
 }
