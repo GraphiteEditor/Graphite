@@ -1,7 +1,8 @@
+use criterion::BatchSize;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use glam::DVec2;
 use glam::IVec2;
-use graph_layout::{GRID_SIZE, Graph, Node, Placement, Wire, layout, target_at};
+use graph_layout::{Drag, GRID_SIZE, Graph, Node, Placement, Wire, layout, target_at};
 use std::hint::black_box;
 
 const SIZES: [usize; 3] = [1_000, 10_000, 100_000];
@@ -162,5 +163,31 @@ fn bench_click_targets(criterion: &mut Criterion) {
 	group.finish();
 }
 
-criterion_group!(benches, bench_layout, bench_hit_test, bench_click_targets);
+/// Drags the bottom layer of a stack up, where each row it moves carries the stack above it, as one pointer move of a drag
+/// that has already come 40 rows: one row further, back to a row it passed, and sideways from where it is.
+fn bench_drag(criterion: &mut Criterion) {
+	let mut group = criterion.benchmark_group("drag_pointer_move");
+	for size in [1_000, 10_000] {
+		let graph = stacked_layers(size);
+		let bottom_layer = graph.nodes.iter().rposition(|node| node.is_layer).unwrap_or_default() as u32;
+		let mut warm = Drag::new(&graph, vec![bottom_layer], false, layout);
+		warm.moved(IVec2::new(0, -40));
+
+		for (name, offset) in [("one_row_further", IVec2::new(0, -41)), ("back", IVec2::new(0, -20)), ("sideways", IVec2::new(5, -40))] {
+			group.bench_function(BenchmarkId::new(name, size), |bencher| {
+				bencher.iter_batched(
+					|| warm.clone(),
+					|mut drag| {
+						let moved = drag.moved(black_box(offset));
+						(drag, moved)
+					},
+					BatchSize::LargeInput,
+				)
+			});
+		}
+	}
+	group.finish();
+}
+
+criterion_group!(benches, bench_layout, bench_hit_test, bench_click_targets, bench_drag);
 criterion_main!(benches);

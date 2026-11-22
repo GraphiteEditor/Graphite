@@ -1121,6 +1121,51 @@ async fn moving_a_closed_up_layer_up_closes_up_the_stack_above_it_and_then_moves
 }
 
 #[tokio::test]
+async fn the_layers_a_drag_carries_up_return_as_it_comes_back_down() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+
+	let first = editor.create_node_by_name_at(merge_definition(), 0, 30).await;
+	let second = editor.create_node_by_name_at(merge_definition(), 0, 40).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let artboard_layer = LayerNodeIdentifier::new(artboard, network_interface);
+	for (insert_index, layer) in [first, second].into_iter().enumerate() {
+		network_interface.set_to_node_or_layer(&layer, &[], true);
+		network_interface.move_layer_to_stack(LayerNodeIdentifier::new(layer, network_interface), artboard_layer, insert_index, &[]);
+	}
+	network_interface.shift_node(&first, IVec2::new(0, 2), &[]);
+
+	let positions = |network_interface: &NodeNetworkInterface| [first, second].map(|layer| network_interface.position(&layer, &[]).expect("every layer is drawn"));
+	let [first_start, second_start] = positions(network_interface);
+	assert_eq!(second_start.y - first_start.y, STACK_VERTICAL_GAP, "fixture is wrong");
+
+	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![second]);
+	let moved = |rows: i32, position: IVec2| position + IVec2::new(0, rows);
+
+	network_interface.drag_selected_nodes(IVec2::new(0, -2), false, &[]);
+	assert_eq!(positions(network_interface), [moved(-2, first_start), moved(-2, second_start)], "The layer above should be carried up");
+
+	network_interface.drag_selected_nodes(IVec2::new(0, -1), false, &[]);
+	assert_eq!(positions(network_interface), [moved(-1, first_start), moved(-1, second_start)], "The layer above should come back down");
+
+	network_interface.drag_selected_nodes(IVec2::new(0, 1), false, &[]);
+	assert_eq!(positions(network_interface), [first_start, moved(1, second_start)], "The layer above should be back where it started");
+
+	network_interface.finish_drag(&[]);
+	assert_eq!(
+		positions(network_interface),
+		[first_start, moved(1, second_start)],
+		"Finishing the drag should store where it was drawn"
+	);
+
+	assert_invariants(&editor, "after dragging a layer up into the one above and back down");
+}
+
+#[tokio::test]
 async fn a_stack_closes_up_over_a_deleted_layer_and_a_nudge_moves_the_rest_one_row() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
@@ -1155,7 +1200,6 @@ async fn a_stack_closes_up_over_a_deleted_layer_and_a_nudge_moves_the_rest_one_r
 	editor
 		.handle_message(NodeGraphMessage::ShiftSelectedNodes {
 			direction: Direction::Down,
-			dragging: false,
 			glide: false,
 		})
 		.await;

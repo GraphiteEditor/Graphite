@@ -686,7 +686,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if self.node_graph_handler.drag_start.is_some() {
 					responses.add(DocumentMessage::AbortTransaction);
 					self.node_graph_handler.drag_start = None;
-					self.network_interface.release_held_nodes(&self.selection_network_path);
+					self.network_interface.cancel_drag(&self.selection_network_path);
 					self.node_graph_handler.select_if_not_dragged = None;
 					self.node_graph_handler.nodes_added_in_drag = false;
 					self.node_graph_handler.stop_gliding(&self.network_interface, responses);

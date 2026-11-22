@@ -492,15 +492,9 @@ impl NodeNetworkInterface {
 				IVec2 { x: 0, .. } => node_id,
 				_ => self.stack_top(node_id, network_path),
 			};
-			if !shifted.insert(moved_node_id) {
-				continue;
+			if shifted.insert(moved_node_id) {
+				self.shift_node(&moved_node_id, shift, network_path);
 			}
-
-			// A layer moved up in place of the dragged one is held along with it, so it keeps where the drag puts it
-			if moved_node_id != node_id && self.holds_nodes(network_path) {
-				self.hold_nodes([moved_node_id].into(), network_path);
-			}
-			self.shift_node(&moved_node_id, shift, network_path);
 		}
 	}
 

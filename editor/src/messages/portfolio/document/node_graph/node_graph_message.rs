@@ -256,14 +256,16 @@ pub enum NodeGraphMessage {
 	/// With `glide`, whatever the shift moves glides to where it lands, rather than jumping there.
 	ShiftSelectedNodes {
 		direction: Direction,
-		dragging: bool,
 		glide: bool,
 	},
 	/// With `glide`, whatever the shift moves glides to where it lands, rather than jumping there.
 	ShiftSelectedNodesByAmount {
 		graph_delta: IVec2,
-		dragging: bool,
 		glide: bool,
+	},
+	/// Draws the dragged nodes `offset` grid cells from where the drag started, stored once the drag finishes.
+	DragSelectedNodes {
+		offset: IVec2,
 	},
 	TogglePreview {
 		node_id: NodeId,
@@ -417,6 +419,7 @@ impl NodeGraphMessage {
 			| Self::NudgeSelectedNodes { .. }
 			| Self::ShiftSelectedNodes { .. }
 			| Self::ShiftSelectedNodesByAmount { .. }
+			| Self::DragSelectedNodes { .. }
 			| Self::ToggleSelectedAsLayersOrNodes
 			| Self::ToggleSelectedLocked
 			| Self::ToggleSelectedIsPinned

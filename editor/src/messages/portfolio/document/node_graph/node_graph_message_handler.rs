@@ -800,7 +800,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Shift the nodes back to the origin
 				responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 					graph_delta: -center_of_selected_nodes_grid_space - IVec2::new(2, 2),
-					dragging: false,
 					glide: false,
 				});
 
@@ -947,7 +946,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// Abort dragging a node
 					if self.drag_start.is_some() {
 						self.drag_start = None;
-						network_interface.release_held_nodes(selection_network_path);
+						network_interface.cancel_drag(selection_network_path);
 						self.select_if_not_dragged = None;
 						self.nodes_added_in_drag = false;
 						self.clear_wire_insertion_preview(responses);
@@ -1256,8 +1255,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let drag_start = DragStart {
 							start_x: node_graph_point.x,
 							start_y: node_graph_point.y,
-							round_x: 0,
-							round_y: 0,
+							stored: IVec2::ZERO,
 						};
 
 						self.drag_start = Some((drag_start, false));
@@ -1426,7 +1424,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
 							responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 								graph_delta: IVec2::new(-2, -2),
-								dragging: false,
 								glide: false,
 							});
 							self.preview_on_mouse_up = None;
@@ -1436,22 +1433,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					self.keep_upstream_in_place = ipp.keyboard.get(Key::Control as usize);
 
-					let mut graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
-					let previous_round_x = drag_start.round_x;
-					let previous_round_y = drag_start.round_y;
+					let reached = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
+					let offset = reached - drag_start.stored;
+					let previous_offset = network_interface.drag_preview(selection_network_path).0;
 
-					drag_start.round_x = graph_delta.x;
-					drag_start.round_y = graph_delta.y;
-
-					graph_delta.x -= previous_round_x;
-					graph_delta.y -= previous_round_y;
-
-					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
-						graph_delta,
-						dragging: true,
-						glide: true,
-					});
-					if graph_delta != IVec2::ZERO {
+					responses.add(NodeGraphMessage::DragSelectedNodes { offset });
+					if offset != previous_offset {
 						self.node_has_moved_in_drag = true;
 
 						// Queued after the shift so it reads where the node has come to rest
@@ -1621,6 +1608,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// End of dragging a node
 				else if let Some((drag_start, _)) = &self.drag_start {
 					self.keep_upstream_in_place = false;
+					network_interface.finish_drag(selection_network_path);
 
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerUp");
@@ -1689,7 +1677,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				self.drag_start = None;
-				network_interface.release_held_nodes(selection_network_path);
+				network_interface.finish_drag(selection_network_path);
 				self.begin_dragging = false;
 				self.nodes_added_in_drag = false;
 				self.clear_wire_insertion_preview(responses);
@@ -1776,10 +1764,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Collect the distance to move the shaken nodes after the undo
 				let graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
 
-				if !self.nodes_added_in_drag {
-					// Keep the incremental rounding baseline in sync with the total shift reapplied below
-					drag_start.round_x = graph_delta.x;
-					drag_start.round_y = graph_delta.y;
+				if self.nodes_added_in_drag {
+					drag_start.stored += network_interface.drag_preview(selection_network_path).0;
+					network_interface.finish_drag(selection_network_path);
+				} else {
+					// The shift reapplied below stores the nodes where the drag has come
+					network_interface.cancel_drag(selection_network_path);
+					drag_start.stored = graph_delta;
 
 					// Undo to the state of the graph before shaking (skipped when the drag added its nodes, which the undo would remove)
 					responses.add(DocumentMessage::AbortTransaction);
@@ -1880,11 +1871,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// }
 				}
 				if !self.nodes_added_in_drag {
-					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
-						graph_delta,
-						dragging: false,
-						glide: false,
-					});
+					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, glide: false });
 				}
 				// A dot left with nothing to carry, like one fed by a shaken generator, goes along with its wire
 				responses.add(NodeGraphMessage::RemoveOrphanedDots);
@@ -2149,21 +2136,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::NudgeSelectedNodes { direction } => {
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::ShiftSelectedNodes {
-					direction,
-					dragging: false,
-					glide: true,
-				});
+				responses.add(NodeGraphMessage::ShiftSelectedNodes { direction, glide: true });
 				responses.add(DocumentMessage::EndTransaction);
 			}
-			NodeGraphMessage::ShiftSelectedNodes { direction, dragging, glide } => {
+			NodeGraphMessage::ShiftSelectedNodes { direction, glide } => {
 				// The shift can also move the nodes placed relative to them and the imports and exports, so everything it moves glides to where it lands
 				let positions_before = (glide && graph_view_overlay_open).then(|| Self::glide_positions(network_interface, selection_network_path));
 
-				if dragging && let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) {
-					let dragged_nodes = selected_nodes.selected_nodes().copied().collect();
-					network_interface.hold_nodes(dragged_nodes, selection_network_path);
-				}
 				network_interface.shift_selected_nodes(direction, self.keep_upstream_in_place, selection_network_path);
 
 				if let Some(positions_before) = positions_before {
@@ -2172,31 +2151,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				if graph_view_overlay_open {
-					if !dragging {
-						responses.add(NodeGraphMessage::SendGraph);
-					}
+					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 				}
 			}
-			NodeGraphMessage::ShiftSelectedNodesByAmount { mut graph_delta, dragging, glide } => {
-				let moved = graph_delta != IVec2::ZERO;
+			NodeGraphMessage::ShiftSelectedNodesByAmount { mut graph_delta, glide } => {
 				while graph_delta != IVec2::ZERO {
 					match graph_delta.x.cmp(&0) {
 						Ordering::Greater => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Right,
-								dragging,
-								glide,
-							});
+							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Right, glide });
 							graph_delta.x -= 1;
 						}
 						Ordering::Less => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Left,
-								dragging,
-								glide,
-							});
+							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Left, glide });
 							graph_delta.x += 1;
 						}
 						Ordering::Equal => {}
@@ -2204,19 +2172,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					match graph_delta.y.cmp(&0) {
 						Ordering::Greater => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Down,
-								dragging,
-								glide,
-							});
+							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Down, glide });
 							graph_delta.y -= 1;
 						}
 						Ordering::Less => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Up,
-								dragging,
-								glide,
-							});
+							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Up, glide });
 							graph_delta.y += 1;
 						}
 						Ordering::Equal => {}
@@ -2224,8 +2184,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				responses.add(NodeGraphMessage::SendWires);
-				if dragging && moved {
+			}
+			NodeGraphMessage::DragSelectedNodes { offset } => {
+				let keep_upstream = self.keep_upstream_in_place;
+				if network_interface.drag_preview(selection_network_path) == (offset, keep_upstream) {
+					return;
+				}
+
+				let positions_before = graph_view_overlay_open.then(|| Self::glide_positions(network_interface, selection_network_path));
+				network_interface.drag_selected_nodes(offset, keep_upstream, selection_network_path);
+
+				if let Some(positions_before) = positions_before {
+					self.begin_glide(positions_before, network_interface, selection_network_path, responses);
+					responses.add(NodeGraphMessage::SendGlide);
+				}
+
+				responses.add(NodeGraphMessage::SendWires);
+				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendNodePositions);
+					responses.add(DocumentMessage::RenderRulers);
+					responses.add(DocumentMessage::RenderScrollbars);
 				}
 			}
 			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
@@ -2742,8 +2720,7 @@ impl NodeGraphMessageHandler {
 		let drag_start = DragStart {
 			start_x: start.x,
 			start_y: start.y,
-			round_x: moved.x,
-			round_y: moved.y,
+			stored: moved,
 		};
 		self.drag_start = Some((drag_start, moved != IVec2::ZERO));
 		self.drag_start_chain_nodes = Vec::new();

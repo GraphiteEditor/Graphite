@@ -1,5 +1,5 @@
 use super::*;
-use graph_layout::{Graph, Layout, Node, Placement, Wire, layout, layout_as_stored, reach};
+use graph_layout::{Drag, Graph, Layout, Node, Placement, Wire, layout, layout_as_stored, reach};
 
 /// Where each node of a network is drawn and which layer's chain it is drawn in, as of one revision of the interface.
 #[derive(Debug, Clone)]
@@ -63,6 +63,43 @@ impl NetworkLayout {
 	}
 }
 
+/// The selected nodes being dragged, drawn moved from the network as stored when the drag started.
+#[derive(Debug, Clone)]
+pub struct DragPreview {
+	node_ids: Vec<NodeId>,
+	indices: HashMap<NodeId, u32>,
+	start: Graph,
+	dragged: Vec<u32>,
+	keep_upstream: bool,
+	drag: Drag,
+	offset: IVec2,
+	moved: Graph,
+	layout: Layout,
+}
+
+impl DragPreview {
+	fn new(node_ids: Vec<NodeId>, indices: HashMap<NodeId, u32>, start: Graph, dragged: Vec<u32>, keep_upstream: bool, lay_out: fn(&Graph) -> Layout) -> Self {
+		let mut drag = Drag::new(&start, dragged.clone(), keep_upstream, lay_out);
+		let (moved, layout) = drag.moved(IVec2::ZERO);
+		Self {
+			node_ids,
+			indices,
+			start,
+			dragged,
+			keep_upstream,
+			drag,
+			offset: IVec2::ZERO,
+			moved,
+			layout,
+		}
+	}
+
+	fn move_to(&mut self, offset: IVec2) {
+		self.offset = offset;
+		(self.moved, self.layout) = self.drag.moved(offset);
+	}
+}
+
 impl NodeNetworkInterface {
 	pub fn set_collision_avoidance(&mut self, collision_avoidance: bool) {
 		self.collision_avoidance = collision_avoidance;
@@ -89,69 +126,126 @@ impl NodeNetworkInterface {
 		.unwrap_or_default()
 	}
 
-	/// Also holds `node_ids` where the user moves them, so the layout draws their connections as stored until they are released.
-	/// Each node starting to be held, and each node it owns, is first stored where it is drawn, so holding moves nothing.
-	pub fn hold_nodes(&mut self, node_ids: HashSet<NodeId>, network_path: &[NodeId]) {
+	/// How far the selected nodes are drawn dragged from where the drag started, and whether the nodes they carry along stay in place.
+	pub(crate) fn drag_preview(&self, network_path: &[NodeId]) -> (IVec2, bool) {
+		self.network_metadata(network_path)
+			.and_then(|network_metadata| network_metadata.transient_metadata.drag.as_ref())
+			.map_or((IVec2::ZERO, false), |drag| (drag.offset, drag.keep_upstream))
+	}
+
+	/// Draws the selected nodes `offset` grid cells from where they were drawn when the drag started, without storing anything until it finishes.
+	/// With `keep_upstream`, each node only carried along by them stays where it is drawn.
+	pub fn drag_selected_nodes(&mut self, offset: IVec2, keep_upstream: bool, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata(network_path) else { return };
-		let held_nodes = &network_metadata.transient_metadata.held_nodes;
-		let newly_held: Vec<NodeId> = node_ids.difference(held_nodes).copied().collect();
-		if newly_held.is_empty() {
+		if network_metadata.transient_metadata.drag.as_ref().map(|drag| (drag.offset, drag.keep_upstream)) == Some((offset, keep_upstream)) {
 			return;
 		}
 
-		let owned_by_newly_held: Vec<NodeId> = self
-			.with_layout(network_path, |layout| {
-				layout
-					.node_ids
-					.iter()
-					.filter(|node_id| layout.owner(node_id).is_some_and(|owner| newly_held.contains(&owner)))
-					.copied()
-					.collect()
-			})
-			.unwrap_or_default();
-		let drawn_before = self.positions(newly_held.iter().chain(&owned_by_newly_held).copied(), network_path);
+		let lay_out = self.lay_out_function();
+		let mut drag = match self.network_transient_mut(network_path).and_then(|transient| transient.drag.take()) {
+			Some(drag) if drag.keep_upstream == keep_upstream => drag,
+			Some(drag) => DragPreview::new(drag.node_ids, drag.indices, drag.start, drag.dragged, keep_upstream, lay_out),
+			None => {
+				let Some(drag) = self.start_drag(keep_upstream, lay_out, network_path) else { return };
+				drag
+			}
+		};
+		drag.move_to(offset);
 
 		let Some(transient) = self.network_transient_mut(network_path) else { return };
-		transient.held_nodes.extend(newly_held);
+		transient.drag = Some(drag);
 		transient.layout.unload();
+		self.invalidate_positions(network_path);
+	}
 
-		// Each owner comes before the nodes it owns, so it is in place before they are stored from it
-		for (node_id, position) in drawn_before {
-			if self.position(&node_id, network_path) != Some(position) {
-				self.place_at(&node_id, position, network_path);
+	fn start_drag(&self, keep_upstream: bool, lay_out: fn(&Graph) -> Layout, network_path: &[NodeId]) -> Option<DragPreview> {
+		let selected_nodes = self.selected_nodes_in_nested_network(network_path)?;
+		let (node_ids, indices, start) = self.layout_graph(network_path)?;
+		let dragged = selected_nodes.selected_nodes().filter_map(|node_id| indices.get(node_id).copied()).collect();
+		Some(DragPreview::new(node_ids, indices, start, dragged, keep_upstream, lay_out))
+	}
+
+	/// Stores where the drag has moved each node.
+	pub fn finish_drag(&mut self, network_path: &[NodeId]) {
+		let Some(drag) = self.end_drag(network_path) else { return };
+		for (index, (before, after)) in drag.start.nodes.iter().zip(&drag.moved.nodes).enumerate() {
+			if before.placement != after.placement {
+				self.store_placement(&drag.node_ids[index], after.placement, network_path);
 			}
 		}
 	}
 
-	pub fn release_held_nodes(&mut self, network_path: &[NodeId]) {
-		let Some(transient) = self.network_transient_mut(network_path) else { return };
-		if !transient.held_nodes.is_empty() {
-			transient.held_nodes.clear();
-			transient.layout.unload();
+	/// Draws the nodes where they are stored again, as they were before the drag.
+	pub fn cancel_drag(&mut self, network_path: &[NodeId]) {
+		self.end_drag(network_path);
+	}
+
+	fn end_drag(&mut self, network_path: &[NodeId]) -> Option<DragPreview> {
+		let transient = self.network_transient_mut(network_path)?;
+		let drag = transient.drag.take()?;
+		transient.layout.unload();
+		self.invalidate_positions(network_path);
+		Some(drag)
+	}
+
+	fn store_placement(&mut self, node_id: &NodeId, placement: Placement, network_path: &[NodeId]) {
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node_metadata for node {node_id}");
+			return;
+		};
+		let node_type = match (node.is_layer(), placement) {
+			(true, Placement::Absolute(position)) => NodeTypePersistentMetadata::layer(position),
+			(true, Placement::Relative(offset)) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::Relative(offset),
+			}),
+			(true, Placement::Stack(gap)) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::stacked(gap),
+			}),
+			(false, Placement::Absolute(position)) => NodeTypePersistentMetadata::node(position),
+			(false, Placement::Relative(offset)) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(offset))),
+			(false, Placement::Chain) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Chain)),
+			(true, Placement::Chain) | (false, Placement::Stack(_)) => {
+				log::error!("Node {node_id} cannot be stored as {placement:?}");
+				return;
+			}
+		};
+		if node.set_node_type(node_type) {
+			self.transaction_modified();
+			self.invalidate_positions(network_path);
 		}
 	}
 
-	/// Whether the user is moving any nodes in the network.
-	pub(crate) fn holds_nodes(&self, network_path: &[NodeId]) -> bool {
-		self.network_metadata(network_path)
-			.is_some_and(|network_metadata| !network_metadata.transient_metadata.held_nodes.is_empty())
+	fn lay_out_function(&self) -> fn(&Graph) -> Layout {
+		if self.collision_avoidance { layout } else { layout_as_stored }
 	}
 
 	fn lay_out(&self, network_path: &[NodeId], revision: u64) -> Option<NetworkLayout> {
+		let (node_ids, indices, graph, layout) = match &self.network_metadata(network_path)?.transient_metadata.drag {
+			Some(drag) => (drag.node_ids.clone(), drag.indices.clone(), drag.moved.clone(), drag.layout.clone()),
+			None => {
+				let (node_ids, indices, graph) = self.layout_graph(network_path)?;
+				let layout = self.lay_out_function()(&graph);
+				(node_ids, indices, graph, layout)
+			}
+		};
+
+		Some(NetworkLayout {
+			revision,
+			collision_avoidance: self.collision_avoidance,
+			layout,
+			graph,
+			node_ids,
+			indices,
+		})
+	}
+
+	/// The network as the layout pass reads it, with the ID of each node and the index of each ID.
+	fn layout_graph(&self, network_path: &[NodeId]) -> Option<(Vec<NodeId>, HashMap<NodeId, u32>, Graph)> {
 		let network = self.nested_network(network_path)?;
 		let node_ids: Vec<NodeId> = network.nodes.keys().copied().collect();
 		let indices: HashMap<NodeId, u32> = node_ids.iter().enumerate().map(|(index, node_id)| (*node_id, index as u32)).collect();
 
-		let held_nodes = &self.network_metadata(network_path)?.transient_metadata.held_nodes;
-		let nodes = node_ids
-			.iter()
-			.map(|node_id| {
-				Some(Node {
-					held: held_nodes.contains(node_id),
-					..self.layout_node(node_id, network_path)?
-				})
-			})
-			.collect::<Option<Vec<_>>>()?;
+		let nodes = node_ids.iter().map(|node_id| self.layout_node(node_id, network_path)).collect::<Option<Vec<_>>>()?;
 		let wires = node_ids
 			.iter()
 			.enumerate()
@@ -169,16 +263,7 @@ impl NodeNetworkInterface {
 			})
 			.collect();
 
-		let graph = Graph { nodes, wires };
-		let layout = if self.collision_avoidance { layout(&graph) } else { layout_as_stored(&graph) };
-		Some(NetworkLayout {
-			revision,
-			collision_avoidance: self.collision_avoidance,
-			layout,
-			graph,
-			node_ids,
-			indices,
-		})
+		Some((node_ids, indices, Graph { nodes, wires }))
 	}
 
 	/// The node as the layout pass reads it, sized in grid cells but without the name width, which only exact click targets need.

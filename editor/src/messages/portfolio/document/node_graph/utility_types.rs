@@ -1,3 +1,4 @@
+use glam::IVec2;
 use graph_craft::document::NodeId;
 use graphene_std::{Type, simplify_identifier_name};
 
@@ -127,8 +128,9 @@ pub struct FrontendNodeType {
 pub struct DragStart {
 	pub start_x: f64,
 	pub start_y: f64,
-	pub round_x: i32,
-	pub round_y: i32,
+	/// How many grid cells the drag had come when the nodes were last stored where it put them.
+	#[cfg_attr(feature = "wasm", tsify(type = "[number, number]"))]
+	pub stored: IVec2,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

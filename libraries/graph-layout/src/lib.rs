@@ -2,9 +2,11 @@
 
 mod click_targets;
 mod contour;
+mod drag;
 
 pub use click_targets::{ClickTarget, GRID_SIZE, Part, node_parts, reach, target_at};
 use contour::{Bounds, ColumnPool, Contour};
+pub use drag::{Drag, dragged};
 use glam::IVec2;
 
 /// How many grid cells a chain steps left for each node.
