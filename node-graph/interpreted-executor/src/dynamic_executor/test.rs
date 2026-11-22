@@ -1176,3 +1176,30 @@ fn a_network_node_resolves_to_the_proto_node_its_export_is_wired_to() {
 	assert_eq!(tree.output_node(&document_network, &[NodeId(6)]), Some(NodeId(2)));
 	assert_eq!(tree.output_node(&document_network, &[NodeId(8)]), None);
 }
+
+fn source_network(node: u64) -> ProtoNetwork {
+	ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(node),
+		nodes: vec![value_node(node, TaggedValue::SourceId(SourceId(node)))],
+	}
+}
+
+#[test]
+fn update_without_freeing_keeps_the_nodes_the_network_leaves_out() {
+	let mut executor = DynamicExecutor::new(source_network(0)).unwrap();
+
+	executor.update_without_freeing(source_network(1)).unwrap();
+	executor.update_without_freeing(source_network(1)).unwrap();
+	assert!(executor.tree().get(NodeId(0)).is_some());
+}
+
+#[test]
+fn a_source_is_listed_for_as_long_as_its_node_lives() {
+	let mut executor = DynamicExecutor::new(source_network(0)).unwrap();
+
+	for _ in 0..3 {
+		executor.update(source_network(1)).unwrap();
+		assert_eq!(executor.sources().any(|source| *source == SourceId(0)), executor.tree().get(NodeId(0)).is_some());
+	}
+}
