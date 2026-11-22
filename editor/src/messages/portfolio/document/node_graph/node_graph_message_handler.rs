@@ -3529,6 +3529,7 @@ impl NodeGraphMessageHandler {
 				.tooltip_label("New Layer")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::CreateEmptyFolder))
 				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+				.disabled(!breadcrumb_network_path.is_empty())
 				.widget_instance(),
 			IconButton::new("Trash", 24)
 				.tooltip_label("Delete Selected")
