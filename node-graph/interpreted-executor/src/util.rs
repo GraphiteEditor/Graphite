@@ -1,6 +1,6 @@
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeInput, NodeNetwork};
 use graph_craft::generic;
 use graph_craft::{concrete, item};
 use graphene_std::Context;
@@ -42,7 +42,12 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::scope(graphene_std::platform_application_io::wgpu_executor::IDENTIFIER)],
+					inputs: vec![
+						NodeInput::node(NodeId(0), 0),
+						NodeInput::scope(graphene_std::platform_application_io::wgpu_executor::IDENTIFIER),
+						NodeInput::scope("runtime"),
+						NodeInput::Reflection(DocumentNodeMetadata::SourceId),
+					],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
 					compile_metadata: Some(graphene_std::NodeCompileMetadata {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,

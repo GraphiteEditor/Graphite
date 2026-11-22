@@ -189,16 +189,7 @@ pub(crate) async fn render_frame(
 	// Execute the graph and extract its output
 	match execute_until_settled(executor, runtime, spawner, render_config).await? {
 		TaggedValue::RenderOutput(output) => match output.data {
-			RenderOutputType::Svg {
-				mut svg,
-				mut image_data,
-				effect_maps,
-				deferred_images,
-			} => {
-				wgpu_executor.resolve_effect_maps(&mut svg, effect_maps).await;
-				wgpu_executor.resolve_deferred_svg_images(&mut svg, &mut image_data, deferred_images).await;
-				Ok(RenderedFrame::Svg(svg))
-			}
+			RenderOutputType::Svg { svg, .. } => Ok(RenderedFrame::Svg(svg)),
 			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
 				let gpu_raster = Raster::<GPU>::new_gpu(texture);

@@ -1,7 +1,9 @@
+mod svg_readback;
+
 use core_types::list::{Item, List};
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
-use core_types::{Color, Context, Ctx, ExtractFootprint, Interrupt, NodeError, OwnedContextImpl, WasmNotSend};
+use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs, Poll, RuntimeHandle, SourceId};
+use core_types::{Color, Context, Ctx, ExtractFootprint, Interrupt, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
@@ -9,6 +11,7 @@ use graphic_types::{Artboard, Graphic, Vector};
 use rendering::vello_scene_builder::VelloSceneBuilder;
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
+use svg_readback::SvgReadbackSlot;
 use vector_types::Gradient;
 use wgpu_executor::WgpuExecutor;
 
@@ -70,12 +73,15 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 	Ok(Item::new_from_element(intermediate))
 }
 
-#[node_macro::node(category(""), version(2))]
+#[node_macro::node(category(""), version(3))]
 fn render(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
 	data: Item<RenderIntermediate>,
 	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: impl Node<Context<'static>, Output = Item<WgpuExecutor>>,
-) -> Result<Item<RenderOutput>, Interrupt> {
+	#[scope("runtime")] runtime: Item<RuntimeHandle>,
+	#[source_id] source: Item<SourceId>,
+	#[data] svg_readback: SvgReadbackSlot,
+) -> Poll<Item<RenderOutput>> {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -99,27 +105,23 @@ fn render(
 			let output = SvgRenderOutput::from(render);
 			assert!(output.svg_defs.is_empty());
 
-			// Without a GPU, the filters' maps and the images of content with effects SVG filters can't carry out keep their placeholders, which leave those effects out
-			let (effect_maps, deferred_images) = match output.effect_maps.is_empty() && output.deferred_images.is_empty() {
-				true => (Vec::new(), Vec::new()),
-				false => match executor.eval(Context::default()) {
-					Ok(executor) => (
-						executor.element().render_effect_maps(&output.effect_maps, *footprint),
-						executor.element().render_deferred_svg_images(&output.deferred_images, *footprint),
-					),
-					Err(_) => (Vec::new(), Vec::new()),
-				},
-			};
-
-			RenderOutputType::Svg {
-				svg: output.svg,
-				image_data: output.image_data.into_iter().collect(),
-				effect_maps,
-				deferred_images,
-			}
+			let executor = executor.eval(&Context::default()).value().map(Item::into_element);
+			svg_readback.poll(output, *footprint, executor, runtime.element(), *source.element())
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
-			let executor = executor.eval(Context::default())?.into_element();
+			// The latest SVG render isn't needed anymore, and a finished one holds a whole SVG export
+			svg_readback.clear();
+
+			let (executor, executor_partial, executor_error) = match executor.eval(&Context::default()) {
+				Poll::Final(executor) => (executor.into_element(), false, None),
+				Poll::Partial(executor) => (executor.into_element(), true, None),
+				Poll::Fallback(boxed) => {
+					let (executor, error) = *boxed;
+					(executor.into_element(), false, Some(error))
+				}
+				Poll::Pending => return Poll::Pending,
+				Poll::Error(error) => return Poll::Error(error),
+			};
 
 			let mut draw = |scene: &mut VelloSceneBuilder| data.render_to_vello(scene, Default::default(), &render_params);
 			let texture = match executor.render_vello(footprint.resolution, footprint.transform, &mut draw) {
@@ -128,15 +130,24 @@ fn render(
 				Err(error) => {
 					log::error!("Failed to render Vello scene: {error}");
 					let limit = glam::UVec2::splat(executor.context().device.limits().max_texture_dimension_2d);
-					executor.render_vello(footprint.resolution.min(limit), footprint.transform, &mut |_| {}).map_err(NodeError::new)?
+					match executor.render_vello(footprint.resolution.min(limit), footprint.transform, &mut |_| {}) {
+						Ok(texture) => texture,
+						Err(error) => return Poll::error(error),
+					}
 				}
 			};
-			RenderOutputType::Texture(texture)
+
+			let texture = RenderOutputType::Texture(texture);
+			match (executor_partial, executor_error) {
+				(true, _) => Poll::Partial(texture),
+				(false, Some(error)) => Poll::Fallback(Box::new((texture, error))),
+				(false, None) => Poll::Final(texture),
+			}
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 
-	Ok(Item::new_from_element(RenderOutput { data, metadata }))
+	data.map(|data| Item::new_from_element(RenderOutput { data, metadata }))
 }
 
 #[node_macro::node(category(""))]
