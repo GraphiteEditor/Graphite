@@ -918,8 +918,9 @@
 							size={24}
 							icon="PadlockLocked"
 							hoverIcon="PadlockUnlocked"
+							disabled={$nodeGraph.readOnly}
 							action={() => {
-								/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+								/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerUp */
 							}}
 							tooltipLabel="Unlock"
 						/>
@@ -930,8 +931,9 @@
 						size={24}
 						icon={node.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={node.visible ? "EyeHide" : "EyeShow"}
+						disabled={$nodeGraph.readOnly}
 						action={() => {
-							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerUp */
 						}}
 						tooltipLabel={node.visible ? "Hide" : "Show"}
 					/>

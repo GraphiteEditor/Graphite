@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, TransactionCheckpoint,
+	self, FlowType, GlideOffsets, ImportOrExport, InputConnector, LayerClickTargetTypes, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, TransactionCheckpoint, TransactionStatus,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
@@ -95,6 +95,8 @@ pub struct NodeGraphMessageHandler {
 	initial_disconnecting: bool,
 	/// Node to select on pointer up if multiple nodes are selected and they were not dragged.
 	pub select_if_not_dragged: Option<NodeId>,
+	/// The press on a layer's visibility or lock button, until it's released.
+	layer_button_press: Option<LayerButtonPress>,
 	/// The output end of the dragged wire in node graph coordinates, which follows the pointer when the wire is dragged backward.
 	pub wire_in_progress_from_connector: Option<DVec2>,
 	/// The input end of the dragged wire in node graph coordinates, which follows the pointer when the wire is dragged forward.
@@ -975,6 +977,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if self.dot_drag_out.take().is_some() {
 						return;
 					}
+					// Abort pressing a layer's visibility or lock button, undoing any it already painted
+					if let Some(press) = self.layer_button_press.take() {
+						if press.painted.is_some() {
+							responses.add(DocumentMessage::AbortTransaction);
+						}
+						return;
+					}
 					// Abort a box selection
 					if self.box_selection_start.is_some() {
 						self.box_selection_start = None;
@@ -1096,6 +1105,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Every press starts out having moved no node and dragging no dot, wherever it lands
 				self.node_has_moved_in_drag = false;
 				self.dot_drag_out = None;
+				self.layer_button_press = None;
 
 				// Whether this is the second press of a double-click, known as it lands rather than once the double-click arrives after its release
 				let press_time = ipp.pointer_down_time();
@@ -1161,22 +1171,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect())
 					.unwrap_or_default();
 
-				// Toggle visibility of clicked node and return
-				if let Some(clicked_visibility) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Visibility, selection_network_path) {
-					responses.add(NodeGraphMessage::ToggleVisibility {
-						node_id: clicked_visibility,
-						network_path: selection_network_path.to_vec(),
+				if !read_only {
+					self.layer_button_press = [LayerClickTargetTypes::Visibility, LayerClickTargetTypes::Lock].into_iter().find_map(|button| {
+						let layer = network_interface.layer_click_target_from_click(click, button, selection_network_path)?;
+						Some(LayerButtonPress {
+							button,
+							layer,
+							started_on: Self::layer_button_is_on(button, &layer, network_interface, selection_network_path),
+							painted: None,
+						})
 					});
-					return;
-				}
-
-				// Toggle lock of clicked node and return
-				if let Some(clicked_lock) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Lock, selection_network_path) {
-					responses.add(NodeGraphMessage::ToggleLocked {
-						node_id: clicked_lock,
-						network_path: selection_network_path.to_vec(),
-					});
-					return;
+					if self.layer_button_press.is_some() {
+						return;
+					}
 				}
 
 				// Alt-click sets the clicked node as previewed
@@ -1362,7 +1369,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.inverse()
 					.transform_point2(viewport_location);
 
-				if let Some((source, press_point)) = self.dot_drag_out {
+				if self.layer_button_press.is_some() {
+					self.paint_layer_buttons(viewport_location, network_interface, selection_network_path, responses);
+				} else if let Some((source, press_point)) = self.dot_drag_out {
 					// The dot appears once the grid point nearest the pointer differs from where the press began, and is dragged on from there
 					let moved = ((point - press_point) / GRID_SIZE as f64).round().as_ivec2();
 					if moved != IVec2::ZERO {
@@ -1513,6 +1522,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					log::error!("Selection network path does not match breadcrumb network path in PointerUp");
 					return;
 				}
+
+				// A pressed layer button not already toggled by dragging off it toggles as a click
+				if self.layer_button_press.is_some() {
+					self.paint_layer_buttons(ipp.mouse.position, network_interface, selection_network_path, responses);
+					if let Some(press) = self.layer_button_press.take() {
+						match press.painted {
+							Some(_) => responses.add(DocumentMessage::EndTransaction),
+							None => Self::toggle_layer_button(press.button, press.layer, selection_network_path, responses),
+						}
+					}
+					return;
+				}
+
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 					log::error!("Could not get selected nodes in PointerUp");
 					return;
@@ -2395,7 +2417,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::ToggleLocked { node_id, network_path } => {
 				let locked = !network_interface.is_locked(&node_id, &network_path);
 
-				responses.add(DocumentMessage::AddTransaction);
+				// A toggle made while a transaction is open, like each one a painting drag makes, joins it rather than adding its own history step
+				if network_interface.transaction_status() == TransactionStatus::Finished {
+					responses.add(DocumentMessage::AddTransaction);
+				}
 				responses.add(NodeGraphMessage::SetLocked {
 					node_id,
 					network_path: network_path.clone(),
@@ -2454,7 +2479,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::ToggleVisibility { node_id, network_path } => {
 				let visible = !network_interface.is_visible(&node_id, &network_path);
 
-				responses.add(DocumentMessage::AddTransaction);
+				// Joins an open transaction, as `ToggleLocked` does
+				if network_interface.transaction_status() == TransactionStatus::Finished {
+					responses.add(DocumentMessage::AddTransaction);
+				}
 				responses.add(NodeGraphMessage::SetVisibility {
 					node_id,
 					network_path: network_path.clone(),
@@ -2793,6 +2821,50 @@ impl NodeGraphMessageHandler {
 			.x_axis
 			.x;
 		network_interface.wire_input_from_point(point, 6. / zoom.max(f64::EPSILON), wire_style, network_path)
+	}
+
+	/// Whether a layer's visibility or lock button is on, as in visible or locked.
+	fn layer_button_is_on(button: LayerClickTargetTypes, layer: &NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> bool {
+		match button {
+			LayerClickTargetTypes::Visibility => network_interface.is_visible(layer, network_path),
+			LayerClickTargetTypes::Lock => network_interface.is_locked(layer, network_path),
+			LayerClickTargetTypes::Grip | LayerClickTargetTypes::Name => false,
+		}
+	}
+
+	fn toggle_layer_button(button: LayerClickTargetTypes, layer: NodeId, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let network_path = network_path.to_vec();
+		match button {
+			LayerClickTargetTypes::Visibility => responses.add(NodeGraphMessage::ToggleVisibility { node_id: layer, network_path }),
+			LayerClickTargetTypes::Lock => responses.add(NodeGraphMessage::ToggleLocked { node_id: layer, network_path }),
+			LayerClickTargetTypes::Grip | LayerClickTargetTypes::Name => {}
+		}
+	}
+
+	/// Toggles the pressed layer button once the pointer leaves it, then paints the same button of each layer the pointer goes on to cross.
+	fn paint_layer_buttons(&mut self, viewport_location: DVec2, network_interface: &NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let Some(press) = &mut self.layer_button_press else { return };
+		let hovered_layer = network_interface.layer_click_target_from_click(viewport_location, press.button, network_path);
+
+		if press.painted.is_none() {
+			if hovered_layer == Some(press.layer) {
+				return;
+			}
+			press.painted = Some(HashSet::from([press.layer]));
+
+			// Every toggle the drag paints joins one history step, ended on release
+			responses.add(DocumentMessage::StartTransaction);
+			Self::toggle_layer_button(press.button, press.layer, network_path, responses);
+		}
+
+		if let Some(layer) = hovered_layer
+			&& let Some(painted) = &mut press.painted
+			&& !painted.contains(&layer)
+			&& Self::layer_button_is_on(press.button, &layer, network_interface, network_path) == press.started_on
+		{
+			painted.insert(layer);
+			Self::toggle_layer_button(press.button, layer, network_path, responses);
+		}
 	}
 
 	/// Selects the redirect dot being inserted under the pointer and drags it along, as a drag begun at `start` (in node graph space) that has already come `moved` grid cells.
@@ -4120,6 +4192,7 @@ impl Default for NodeGraphMessageHandler {
 			disconnecting: None,
 			initial_disconnecting: false,
 			select_if_not_dragged: None,
+			layer_button_press: None,
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
 			wire_in_progress_type: FrontendGraphDataType::General,
@@ -4162,6 +4235,7 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.box_selection_start == other.box_selection_start
 			&& self.initial_disconnecting == other.initial_disconnecting
 			&& self.select_if_not_dragged == other.select_if_not_dragged
+			&& self.layer_button_press == other.layer_button_press
 			&& self.wire_in_progress_from_connector == other.wire_in_progress_from_connector
 			&& self.wire_in_progress_to_connector == other.wire_in_progress_to_connector
 			&& self.wire_in_progress_from_new_import == other.wire_in_progress_from_new_import
@@ -4191,6 +4265,19 @@ impl LeftPress {
 		let soon_after = (0. ..=DOUBLE_CLICK_MILLISECONDS as f64).contains(&(time - self.time));
 		self.is_click && !self.is_double && soon_after && self.position.distance(position) <= DOUBLE_CLICK_ALLOWED_TRAVEL
 	}
+}
+
+/// A press on a layer's visibility or lock button. Released over it, the press toggles it as a click.
+/// Dragged off it, the press toggles it and goes on to paint the same buttons of the layers it crosses, as in the Layers panel.
+#[derive(Debug, Clone, PartialEq)]
+struct LayerButtonPress {
+	button: LayerClickTargetTypes,
+	/// The layer with the pressed button.
+	layer: NodeId,
+	/// Whether the pressed button started out on. Painting toggles only the crossed buttons in that same state.
+	started_on: bool,
+	/// The layers painted so far, once the drag has left the pressed button.
+	painted: Option<HashSet<NodeId>>,
 }
 
 /// The connector a redirect dot is dragged out of, and so the wires the dot takes over.
