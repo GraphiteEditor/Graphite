@@ -59,6 +59,8 @@ pub struct NodeGraphMessageHandler {
 	// TODO: Remove network and move to NodeNetworkInterface
 	pub network: Vec<NodeId>,
 	has_selection: bool,
+	/// Whether the selected network is read-only, so the hints leave out its edits.
+	in_read_only_network: bool,
 	widgets: [LayoutGroup; 2],
 	/// Used to add a transaction for the first node move when dragging.
 	begin_dragging: bool,
@@ -162,6 +164,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			viewport,
 		} = context;
 
+		self.in_read_only_network = network_interface.is_read_only(selection_network_path);
 		if message
 			.edited_network(selection_network_path, breadcrumb_network_path)
 			.is_some_and(|edited_network| network_interface.is_read_only(edited_network))
@@ -501,7 +504,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				};
 
 				// Double-clicking a redirect dot dissolves it, so the wires it bent run straight from what fed it
-				if network_interface.is_redirect_dot(&node_id, selection_network_path) {
+				if !network_interface.is_read_only(selection_network_path) && network_interface.is_redirect_dot(&node_id, selection_network_path) {
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![node_id],
@@ -946,6 +949,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let clicked_input = network_interface.input_port_from_click(click, selection_network_path);
 				let clicked_output = network_interface.output_port_from_click(click, selection_network_path);
 				let network_metadata = network_interface.network_metadata(selection_network_path).unwrap();
+
+				// A read-only network can't be edited, so a press there only selects and opens no menu
+				let read_only = network_interface.is_read_only(selection_network_path);
+
 				// Create the add node menu on right click, then exit
 				if right_click {
 					// Pressing another button ends a run of clicks
@@ -986,6 +993,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// Abort reordering an import or export
 					if self.is_reordering_import_export() {
 						self.abort_import_export_reorder(responses);
+						return;
+					}
+					if read_only {
 						return;
 					}
 
@@ -1108,7 +1118,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					});
 				}
 
-				if let Some(dragged_name) = network_interface.import_export_name_from_point(node_graph_point, selection_network_path) {
+				if !read_only && let Some(dragged_name) = network_interface.import_export_name_from_point(node_graph_point, selection_network_path) {
 					responses.add(DocumentMessage::StartTransaction);
 					match dragged_name {
 						ImportOrExport::Import(import_index) => self.reordering_import = Some(import_index),
@@ -1170,19 +1180,25 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				// Alt-click sets the clicked node as previewed
-				if alt_click && let Some(clicked_node) = clicked_id {
+				if alt_click
+					&& !read_only
+					&& let Some(clicked_node) = clicked_id
+				{
 					self.preview_on_mouse_up = Some(clicked_node);
 				}
 
 				// The second press of a double-click on a connector with wires drags a redirect dot out of it, once the pointer moves far enough to place the dot
-				if is_double_press && let Some(source) = Self::dot_drag_out_source(clicked_input, clicked_output, network_interface, selection_network_path) {
+				if is_double_press
+					&& !read_only
+					&& let Some(source) = Self::dot_drag_out_source(clicked_input, clicked_output, network_interface, selection_network_path)
+				{
 					self.dot_drag_out = Some((source, node_graph_point));
 					self.double_click_used_by_press = true;
 					return;
 				}
 
 				// Begin moving an existing wire, or drag a new one backward out of an empty input toward an output
-				if let Some(clicked_input) = &clicked_input {
+				if !read_only && let Some(clicked_input) = &clicked_input {
 					responses.add(DocumentMessage::StartTransaction);
 					Self::keep_pressed_connector_lit(network_interface.input_position(clicked_input, breadcrumb_network_path), responses);
 
@@ -1213,7 +1229,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				// Begin creating a new wire
-				if let Some(clicked_output) = clicked_output {
+				if !read_only && let Some(clicked_output) = clicked_output {
 					responses.add(DocumentMessage::StartTransaction);
 					self.initial_disconnecting = false;
 
@@ -1248,7 +1264,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						};
 					}
 					// Replace selection with a non-selected node
-					else if !updated_selected.contains(&clicked_id) {
+					else if !updated_selected.contains(&clicked_id) || read_only {
 						modified_selected = true;
 						updated_selected = vec![clicked_id];
 					}
@@ -1258,7 +1274,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 
 					// If this node is selected (whether from before or just now), prepare it for dragging
-					if updated_selected.contains(&clicked_id) {
+					if !read_only && updated_selected.contains(&clicked_id) {
 						let drag_start = DragStart {
 							start_x: node_graph_point.x,
 							start_y: node_graph_point.y,
@@ -1297,7 +1313,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				// The second press of a double-click on a wire splits it with a redirect dot, which the press goes on to drag
-				if is_double_press && let Some(input_connector) = Self::wire_at_point(node_graph_point, network_interface, preferences.graph_wire_style, selection_network_path) {
+				if is_double_press
+					&& !read_only
+					&& let Some(input_connector) = Self::wire_at_point(node_graph_point, network_interface, preferences.graph_wire_style, selection_network_path)
+				{
 					let dot = NodeId::new();
 					let center = (node_graph_point / GRID_SIZE as f64).round().as_ivec2();
 
@@ -2327,6 +2346,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::SetImportExportDescriptionImpl { description, index } => network_interface.set_import_export_description(description, index, breadcrumb_network_path),
 			NodeGraphMessage::TogglePreview { node_id } => {
+				// Every instance of a read-only network would preview the node, so only ending a preview is allowed there
+				if network_interface.is_read_only(selection_network_path) && !network_interface.previewing(selection_network_path).previews(node_id) {
+					return;
+				}
+
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::TogglePreviewImpl { node_id });
 				responses.add(NodeGraphMessage::UpdateActionButtons);
@@ -2474,7 +2498,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.transform_point2(viewport_location);
 
 				// Moving nodes or drawing a selection box can't grab a connector, so none is shown hovered meanwhile
-				let can_grab_connector = graph_view_overlay_open && self.drag_start.is_none() && self.box_selection_start.is_none();
+				let can_grab_connector = graph_view_overlay_open && self.drag_start.is_none() && self.box_selection_start.is_none() && !network_interface.is_read_only(breadcrumb_network_path);
 				let in_viewport = viewport.is_in_bounds(viewport.logical(viewport_location) + viewport.offset());
 				let hovered_connector = (can_grab_connector && in_viewport)
 					.then(|| Self::connector_under_pointer(viewport_location, point, network_interface, breadcrumb_network_path))
@@ -3343,6 +3367,7 @@ impl NodeGraphMessageHandler {
 		};
 
 		let has_selection = selected_nodes.has_selected_nodes();
+		let read_only = network_interface.is_read_only(breadcrumb_network_path);
 		let selection_includes_layers = network_interface.selected_nodes().selected_layers(network_interface.document_metadata()).count() > 0;
 		let selection_all_locked = network_interface.selected_nodes().selected_unlocked_layers(network_interface).count() == 0;
 		let selection_all_visible = selected_nodes.selected_nodes().all(|node_id| network_interface.is_visible(node_id, breadcrumb_network_path));
@@ -3358,14 +3383,14 @@ impl NodeGraphMessageHandler {
 				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
 				.tooltip_shortcut(action_shortcut!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
-				.disabled(!has_selection)
+				.disabled(!has_selection || read_only)
 				.widget_instance(),
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
 				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
 				.tooltip_shortcut(action_shortcut!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
-				.disabled(!has_selection || !selection_includes_layers)
+				.disabled(!has_selection || !selection_includes_layers || read_only)
 				.widget_instance(),
 			//
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -3414,6 +3439,7 @@ impl NodeGraphMessageHandler {
 						.widget_instance();
 					Layout(vec![LayoutGroup::row(vec![node_chooser])])
 				})
+				.disabled(read_only)
 				.widget_instance(),
 			//
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -3425,7 +3451,7 @@ impl NodeGraphMessageHandler {
 					let group_folder_type = GroupFolderType::Layer;
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
-				.disabled(!has_selection)
+				.disabled(!has_selection || read_only)
 				.widget_instance(),
 			IconButton::new("NewLayer", 24)
 				.tooltip_label("New Layer")
@@ -3436,7 +3462,7 @@ impl NodeGraphMessageHandler {
 				.tooltip_label("Delete Selected")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
-				.disabled(!has_selection)
+				.disabled(!has_selection || read_only)
 				.widget_instance(),
 		];
 
@@ -3463,7 +3489,7 @@ impl NodeGraphMessageHandler {
 				.iter()
 				.any(|export| matches!(export, NodeInput::Node { node_id: export_node_id, .. } if *export_node_id == node_id));
 			let has_outputs = network_interface.number_of_outputs(&node_id, breadcrumb_network_path) > 0;
-			if selection_is_not_already_the_output && no_other_selections && has_outputs {
+			if selection_is_not_already_the_output && no_other_selections && has_outputs && !read_only {
 				let button = TextButton::new("Preview")
 					.icon("FrameAll")
 					.tooltip_label("Preview")
@@ -4033,8 +4059,11 @@ impl NodeGraphMessageHandler {
 		}
 
 		// Default hints for all other states
-		let mut hint_data = HintData(vec![
-			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Add Node")]),
+		let mut hint_data = HintData(Vec::new());
+		if !self.in_read_only_network {
+			hint_data.0.push(HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Add Node")]));
+		}
+		hint_data.0.extend([
 			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Node"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
 			HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
@@ -4043,7 +4072,7 @@ impl NodeGraphMessageHandler {
 				HintInfo::keys([Key::Control], "Exclude Layers").prepend_plus(),
 			]),
 		]);
-		if self.has_selection {
+		if self.has_selection && !self.in_read_only_network {
 			hint_data.0.extend([
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 				HintGroup(vec![
@@ -4056,11 +4085,14 @@ impl NodeGraphMessageHandler {
 				]),
 			]);
 		}
-		hint_data.0.extend([
-			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Enter Node Subgraph")]),
-			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Preview Node Output")]),
-			HintGroup(vec![HintInfo::mouse(MouseMotion::MmbDrag, "Pan Graph"), HintInfo::keys([Key::Alt], "Pan Artwork").prepend_plus()]),
-		]);
+		hint_data.0.push(HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Enter Node Subgraph")]));
+		if !self.in_read_only_network {
+			hint_data.0.push(HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Preview Node Output")]));
+		}
+		hint_data.0.push(HintGroup(vec![
+			HintInfo::mouse(MouseMotion::MmbDrag, "Pan Graph"),
+			HintInfo::keys([Key::Alt], "Pan Artwork").prepend_plus(),
+		]));
 		hint_data.send_layout(responses);
 	}
 }
@@ -4070,6 +4102,7 @@ impl Default for NodeGraphMessageHandler {
 		Self {
 			network: Vec::new(),
 			has_selection: false,
+			in_read_only_network: false,
 			widgets: [LayoutGroup::row(Vec::new()), LayoutGroup::row(Vec::new())],
 			drag_start: None,
 			begin_dragging: false,
@@ -4117,6 +4150,7 @@ impl PartialEq for NodeGraphMessageHandler {
 	fn eq(&self, other: &Self) -> bool {
 		self.network == other.network
 			&& self.has_selection == other.has_selection
+			&& self.in_read_only_network == other.in_read_only_network
 			&& self.widgets == other.widgets
 			&& self.drag_start == other.drag_start
 			&& self.begin_dragging == other.begin_dragging

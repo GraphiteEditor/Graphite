@@ -1871,6 +1871,103 @@ async fn clicking_a_connected_input_leaves_it_connected_when_a_later_wire_is_dra
 	);
 }
 
+/// Enters a Merge node without making its shared contents editable, returning its path and an input wired from a node inside it.
+async fn enter_read_only_merge(editor: &mut EditorTestUtils) -> (Vec<NodeId>, InputConnector, OutputConnector) {
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.is_read_only(&path), "Merge's contents should be read-only until made editable");
+
+	let network = network_interface.nested_network(&path).expect("Merge should have contents");
+	let wired_input = network
+		.nodes
+		.iter()
+		.flat_map(|(node_id, node)| (0..node.inputs.len()).map(|input_index| InputConnector::node_at_index(*node_id, input_index)))
+		.find_map(|input_connector| {
+			let upstream = network_interface.upstream_output_connector(&input_connector, &path)?;
+			matches!(upstream, OutputConnector::Node { .. }).then_some((input_connector, upstream))
+		})
+		.expect("Merge's contents should have a wire between two of its nodes");
+
+	(path, wired_input.0, wired_input.1)
+}
+
+#[tokio::test]
+async fn dragging_a_wire_out_of_an_input_in_a_read_only_network_leaves_it_connected() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (path, wired_input, upstream) = enter_read_only_merge(&mut editor).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let input_position = network_interface.input_position(&wired_input, &path).expect("the wired input should have a position");
+	let node_graph_to_viewport = network_interface.network_metadata(&path).unwrap().persistent_metadata.navigation_metadata.node_graph_to_viewport;
+	let (from, to) = (
+		node_graph_to_viewport.transform_point2(input_position),
+		node_graph_to_viewport.transform_point2(input_position + DVec2::new(0., 480.)),
+	);
+
+	editor.move_mouse(from.x, from.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+	editor.move_mouse(to.x, to.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	assert!(
+		editor.active_document().node_graph_handler.wire_in_progress_from_connector.is_none(),
+		"no wire should be picked up in a read-only network"
+	);
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.upstream_output_connector(&wired_input, &path), Some(upstream), "the wire should stay connected");
+	assert!(network_interface.is_read_only(&path), "the drag shouldn't make the network editable");
+}
+
+#[tokio::test]
+async fn alt_dragging_a_node_in_a_read_only_network_keeps_the_node_selected_without_duplicating_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (path, wired_input, _) = enter_read_only_merge(&mut editor).await;
+	let node_id = wired_input.node_id().expect("the wired input should belong to a node");
+
+	let network_interface = &editor.active_document().network_interface;
+	let node_count = network_interface.nested_network(&path).unwrap().nodes.len();
+	let node_position = network_interface.position(&node_id, &path).expect("the node should have a position");
+	let node_bounds = network_interface.node_bounding_box(&node_id, &path).expect("the node should have bounds");
+	let node_graph_to_viewport = network_interface.network_metadata(&path).unwrap().persistent_metadata.navigation_metadata.node_graph_to_viewport;
+	let node_center = (node_bounds[0] + node_bounds[1]) / 2.;
+	let (from, to) = (
+		node_graph_to_viewport.transform_point2(node_center),
+		node_graph_to_viewport.transform_point2(node_center + DVec2::new(240., 240.)),
+	);
+
+	editor.move_mouse(from.x, from.y, ModifierKeys::ALT, MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: true,
+			right_click: false,
+		})
+		.await;
+	editor.move_mouse(to.x, to.y, ModifierKeys::ALT, MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.nested_network(&path).unwrap().nodes.len(), node_count, "nothing should be duplicated");
+	assert_eq!(network_interface.position(&node_id, &path), Some(node_position), "the node should stay put");
+	let selected_nodes = network_interface.selected_nodes_in_nested_network(&path).expect("the network should have a selection");
+	assert_eq!(selected_nodes.selected_nodes().copied().collect::<Vec<_>>(), vec![node_id], "the pressed node should stay selected");
+}
+
 /// An ordinary node with the given number of inputs, since a default template is a Passthrough, which draws as a redirect dot.
 fn plain_node(inputs: usize) -> NodeTemplate {
 	NodeTemplate {
