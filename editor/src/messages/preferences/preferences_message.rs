@@ -24,9 +24,6 @@ pub enum PreferencesMessage {
 	GraphWireStyle {
 		style: GraphWireStyle,
 	},
-	NodeGraphCollisionAvoidance {
-		enabled: bool,
-	},
 	ViewportZoomWheelRate {
 		rate: f64,
 	},

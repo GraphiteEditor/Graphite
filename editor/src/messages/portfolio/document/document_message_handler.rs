@@ -284,8 +284,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			fonts,
 		} = context;
 
-		self.network_interface.set_collision_avoidance(preferences.node_graph_collision_avoidance);
-
 		match message {
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {

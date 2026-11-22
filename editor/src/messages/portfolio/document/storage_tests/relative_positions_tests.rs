@@ -117,7 +117,6 @@ fn count_the_nodes_fitting_moves_in_each_demo() {
 fn a_dragged_layer_moves_one_row_per_step_through_content_it_would_otherwise_clear() {
 	let mut document = open_demo("changing-seasons.graphite");
 	let interface = &mut document.network_interface;
-	interface.set_collision_avoidance(true);
 	let node_ids: Vec<NodeId> = interface.document_network().nodes.keys().copied().collect();
 	let Some(solid_backdrop) = node_ids.into_iter().find(|node_id| interface.display_name(node_id, &[]) == "Solid Backdrop") else {
 		panic!("changing-seasons has a Solid Backdrop layer");

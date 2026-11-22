@@ -1,12 +1,11 @@
 use super::*;
-use graph_layout::{Drag, Graph, Layout, Node, Placement, Wire, layout, layout_as_stored, reach};
+use graph_layout::{Drag, Graph, Layout, Node, Placement, Wire, layout, reach};
 use std::cell::RefCell;
 
 /// Where each node of a network is drawn and which layer's chain it is drawn in, as of one revision of the interface.
 #[derive(Debug, Clone)]
 pub struct NetworkLayout {
 	revision: u64,
-	collision_avoidance: bool,
 	node_ids: Vec<NodeId>,
 	indices: HashMap<NodeId, u32>,
 	graph: Graph,
@@ -77,7 +76,6 @@ pub struct DragPreview {
 #[derive(Debug, Clone)]
 struct DragOrigin {
 	revision: u64,
-	collision_avoidance: bool,
 	keep_upstream: bool,
 	node_ids: Vec<NodeId>,
 	indices: HashMap<NodeId, u32>,
@@ -86,16 +84,11 @@ struct DragOrigin {
 }
 
 impl NodeNetworkInterface {
-	pub fn set_collision_avoidance(&mut self, collision_avoidance: bool) {
-		self.collision_avoidance = collision_avoidance;
-	}
-
-	/// Reads the layout of the network at `network_path`, laying it out again first if anything was written or collision avoidance was toggled since.
+	/// Reads the layout of the network at `network_path`, laying it out again first if anything was written since.
 	pub(crate) fn with_layout<R>(&self, network_path: &[NodeId], read: impl FnOnce(&NetworkLayout) -> R) -> Option<R> {
 		let cache = &self.network_metadata(network_path)?.transient_metadata.layout;
 		let revision = store::revision();
-		let outdated = |layout: &NetworkLayout| layout.revision != revision || layout.collision_avoidance != self.collision_avoidance;
-		if cache.with_loaded(outdated) == Some(true) {
+		if cache.with_loaded(|layout| layout.revision != revision) == Some(true) {
 			cache.unload();
 		}
 
@@ -189,15 +182,13 @@ impl NodeNetworkInterface {
 	/// Reads where the drag moves the nodes from, starting over from the network as stored if anything was written or changed how it is dragged since.
 	fn with_drag_origin<R>(&self, drag: &DragPreview, network_path: &[NodeId], revision: u64, read: impl FnOnce(&mut DragOrigin) -> R) -> Option<R> {
 		let mut origin = drag.origin.borrow_mut();
-		let current = (revision, self.collision_avoidance, drag.keep_upstream);
-		if origin.as_ref().is_none_or(|origin| (origin.revision, origin.collision_avoidance, origin.keep_upstream) != current) {
+		if origin.as_ref().is_none_or(|origin| (origin.revision, origin.keep_upstream) != (revision, drag.keep_upstream)) {
 			let (node_ids, indices, start) = self.layout_graph(network_path)?;
 			let dragged = drag.dragged.iter().filter_map(|node_id| indices.get(node_id).copied()).collect();
 			*origin = Some(DragOrigin {
 				revision,
-				collision_avoidance: self.collision_avoidance,
 				keep_upstream: drag.keep_upstream,
-				drag: Drag::new(&start, dragged, drag.keep_upstream, self.lay_out_function()),
+				drag: Drag::new(&start, dragged, drag.keep_upstream, layout),
 				node_ids,
 				indices,
 				start,
@@ -233,10 +224,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	fn lay_out_function(&self) -> fn(&Graph) -> Layout {
-		if self.collision_avoidance { layout } else { layout_as_stored }
-	}
-
 	fn lay_out(&self, network_path: &[NodeId], revision: u64) -> Option<NetworkLayout> {
 		let (node_ids, indices, graph, layout) = match &self.network_metadata(network_path)?.transient_metadata.drag {
 			Some(drag) => self.with_drag_origin(drag, network_path, revision, |origin| {
@@ -245,14 +232,13 @@ impl NodeNetworkInterface {
 			})?,
 			None => {
 				let (node_ids, indices, graph) = self.layout_graph(network_path)?;
-				let layout = self.lay_out_function()(&graph);
+				let layout = layout(&graph);
 				(node_ids, indices, graph, layout)
 			}
 		};
 
 		Some(NetworkLayout {
 			revision,
-			collision_avoidance: self.collision_avoidance,
 			layout,
 			graph,
 			node_ids,
