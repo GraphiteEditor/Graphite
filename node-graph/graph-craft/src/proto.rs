@@ -384,16 +384,6 @@ impl ProtoNetwork {
 		nullification_node_id
 	}
 
-	pub fn source_ids(&self) -> impl Iterator<Item = &SourceId> {
-		self.nodes.iter().filter_map(|(_, node)| match &node.construction_args {
-			ConstructionArgs::Value(value) => match &**value {
-				TaggedValue::SourceId(source) => Some(source),
-				_ => None,
-			},
-			_ => None,
-		})
-	}
-
 	fn find_context_dependencies(&mut self, id: NodeId, analyzed: &mut FxHashMap<NodeId, (ContextModification, Option<NodeId>)>) -> (ContextModification, Option<NodeId>) {
 		if let Some(result) = analyzed.get(&id) {
 			return result.clone();
@@ -1177,7 +1167,6 @@ mod test {
 		network.insert_context_nullification_nodes().unwrap();
 
 		assert!(nullification_filters(&network).is_empty());
-		assert_eq!(network.source_ids().copied().collect::<Vec<_>>(), vec![SourceId(1), SourceId(1)]);
 	}
 
 	fn find_node<'a>(network: &'a ProtoNetwork, name: &str) -> (NodeId, &'a ProtoNode) {

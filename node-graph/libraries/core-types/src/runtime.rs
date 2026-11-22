@@ -72,12 +72,9 @@ impl AsyncRuntime {
 		}))
 	}
 
-	pub fn update_sources(&self, live: &[SourceId]) {
+	pub fn update_sources<'a>(&self, live: impl IntoIterator<Item = &'a SourceId>) {
 		let mut generations = self.0.generations.lock().unwrap_or_else(PoisonError::into_inner);
-		generations.retain(|source, _| live.contains(source));
-		for source in live {
-			generations.entry(*source).or_insert(0);
-		}
+		*generations = live.into_iter().map(|source| (*source, generations.get(source).copied().unwrap_or(0))).collect();
 	}
 
 	pub fn snapshot(&self) -> Generations {

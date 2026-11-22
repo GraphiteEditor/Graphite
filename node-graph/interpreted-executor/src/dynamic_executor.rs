@@ -19,9 +19,8 @@ pub struct DynamicExecutor {
 	tree: BorrowTree,
 	/// Stores the types of the proto nodes.
 	typing_context: TypingContext,
-	// This allows us to keep the nodes around for one more frame which is used for introspection
+	// Kept for one more update, so a node that comes back is reused
 	orphaned_nodes: HashSet<NodeId>,
-	sources: Vec<SourceId>,
 }
 
 impl Default for DynamicExecutor {
@@ -31,7 +30,6 @@ impl Default for DynamicExecutor {
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
 			orphaned_nodes: HashSet::new(),
-			sources: Vec::new(),
 		}
 	}
 }
@@ -55,7 +53,6 @@ impl DynamicExecutor {
 		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 		typing_context.update(&proto_network)?;
 		let output = proto_network.output;
-		let sources = proto_network.source_ids().copied().collect();
 		let tree = BorrowTree::new(proto_network, &typing_context)?;
 
 		Ok(Self {
@@ -63,12 +60,11 @@ impl DynamicExecutor {
 			output,
 			typing_context,
 			orphaned_nodes: HashSet::new(),
-			sources,
 		})
 	}
 
-	pub fn sources(&self) -> &[SourceId] {
-		&self.sources
+	pub fn sources(&self) -> impl Iterator<Item = &SourceId> {
+		self.tree.sources.iter().map(|(_, source)| source)
 	}
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
@@ -96,7 +92,6 @@ impl DynamicExecutor {
 			(ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }, e)
 		})?;
 
-		self.sources = proto_network.source_ids().copied().collect();
 		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
 		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
 		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
@@ -111,6 +106,13 @@ impl DynamicExecutor {
 		}
 		let add = self.document_node_types(add.into_iter()).collect();
 		Ok(ResolvedDocumentNodeTypesDelta { add, remove })
+	}
+
+	pub fn update_without_freeing(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
+		let orphaned_nodes = std::mem::take(&mut self.orphaned_nodes);
+		let result = self.update(proto_network);
+		self.orphaned_nodes = orphaned_nodes;
+		result
 	}
 
 	pub fn input_type(&self) -> Option<Type> {
@@ -270,6 +272,8 @@ pub struct BorrowTree {
 	source_map: HashMap<Path, (NodeId, NodeTypes)>,
 	/// The context features each node's output depends on.
 	context_features: HashMap<NodeId, core_types::ContextFeatures>,
+	/// The async source of each node that holds one.
+	sources: Vec<(NodeId, SourceId)>,
 }
 
 impl BorrowTree {
@@ -436,6 +440,7 @@ impl BorrowTree {
 	/// - Returns `None` if the node is not found in the `nodes` HashMap.
 	pub fn free_node(&mut self, id: NodeId) -> Option<Path> {
 		self.context_features.remove(&id);
+		self.sources.retain(|(node, _)| *node != id);
 		let (_, path, _) = self.nodes.remove(&id)?;
 		if self.source_map.get(&path)?.0 == id {
 			self.source_map.remove(&path);
@@ -510,6 +515,9 @@ impl BorrowTree {
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
+				if let TaggedValue::SourceId(source) = &**value {
+					self.sources.push((id, *source));
+				}
 				let upcasted = UpcastNode::new(value.to_owned());
 				let node = ObservedNode::new(Box::new(upcasted) as TypeErasedBox<'_>);
 				self.store_node(node, id, path.into(), Box::default());
