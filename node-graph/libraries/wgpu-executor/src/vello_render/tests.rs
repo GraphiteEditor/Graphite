@@ -2354,20 +2354,130 @@ fn every_noise_setting_renders_on_the_gpu_like_on_the_cpu() {
 }
 
 #[test]
-fn the_mandelbrot_set_renders_on_the_gpu_like_on_the_cpu() {
-	use graphic_types::generator::GeneratorPattern;
+fn every_mandelbrot_setting_renders_on_the_gpu_like_on_the_cpu() {
+	use core_types::choice_type::ChoiceTypeStatic;
+	use graphic_types::generator::*;
 
-	// Its whole unit square across the pixels compared, where the GPU's 32-bit floats may escape a few points on the set's edge at another iteration
-	let Some((mismatched, _)) = drawing_differences(&GeneratorPattern::Mandelbrot, 64., glam::DVec2::ZERO) else {
-		return;
+	fn every<T: ChoiceTypeStatic + 'static>() -> impl Iterator<Item = T> {
+		T::list().iter().flat_map(|section| section.iter().map(|(variant, _)| *variant))
+	}
+
+	let GeneratorPattern::Mandelbrot(defaults) = GeneratorPattern::decode(Generator::Mandelbrot, &|_| None) else {
+		unreachable!()
 	};
-	assert!(mismatched <= 40, "{mismatched} pixels differ from the CPU's samples");
 
-	// Pixels a billionth of a unit across, too fine for 32-bit floats, on the edge of the set's second largest bulb
-	let Some((_, worst)) = drawing_differences(&GeneratorPattern::Mandelbrot, 2_f64.powi(30), glam::DVec2::new(0.25, 0.5)) else {
+	// A power-of-two scale, so the tiles' pixels line up with the pixels compared at the power-of-two zooms below
+	let scale = 1024.;
+
+	// Each fractal, interior, and exterior, and every other setting away from its default
+	let base = || MandelbrotSettings { scale, ..defaults.clone() };
+	let variations = (every::<MandelbrotFractal>().map(|fractal| MandelbrotSettings { fractal, ..base() }))
+		.chain(every::<MandelbrotExterior>().map(|exterior| MandelbrotSettings { exterior, ..base() }))
+		.chain(every::<MandelbrotInterior>().map(|interior| MandelbrotSettings { interior, ..base() }))
+		.chain([50., 100.].map(|mandelbrot_to_julia| MandelbrotSettings { mandelbrot_to_julia, ..base() }))
+		.chain([3., 2.5].map(|power| MandelbrotSettings { power, ..base() }))
+		.chain([32, 1000].map(|iterations| MandelbrotSettings { iterations, ..base() }))
+		.chain([MandelbrotSettings {
+			mandelbrot_to_julia: 100.,
+			julia_slice: glam::DVec2::new(0.285, 0.01),
+			..base()
+		}])
+		.chain([0., 50.].map(|mandelbrot_to_julia| MandelbrotSettings {
+			mandelbrot_slice: glam::DVec2::new(0.3, -0.2),
+			mandelbrot_to_julia,
+			..base()
+		}))
+		.chain([MandelbrotExterior::Tendrils, MandelbrotExterior::Rays].map(|exterior| MandelbrotSettings { exterior, frequency: 2, ..base() }));
+
+	// The plane from -2 to 2 across the pixels compared, where 32-bit rounding, and the CPU and each GPU tile following reference orbits of their own, may tip points
+	// on the set's ragged edge into escaping at another iteration
+	for settings in variations {
+		let Some((mismatched, _)) = drawing_differences(&GeneratorPattern::Mandelbrot(settings.clone()), 64. / (4. * scale), glam::DVec2::splat(-2. * scale)) else {
+			return;
+		};
+		assert!(mismatched <= 120, "{mismatched} pixels differ from the CPU's samples with {settings:?}");
+	}
+
+	// Pixels 2^-28 of a unit of the plane across, too fine for 32-bit floats without a reference orbit, on the edge of the set's second largest bulb
+	let Some((_, worst)) = drawing_differences(&GeneratorPattern::Mandelbrot(base()), 2_f64.powi(28) / scale, glam::DVec2::new(-1.25 * scale, 0.)) else {
 		return;
 	};
 	assert!(worst <= 2, "deep zooms differ from the CPU's samples by up to {worst} levels");
+}
+
+/// Renders the tile of `pattern`, `pixels` across with its top left corner at `corner` of its space and pixels `texel` units across, into straight-alpha RGBA8 pixels, or `None` without a GPU.
+fn generator_tile_pixels(pattern: &graphic_types::generator::GeneratorPattern, corner: glam::DVec2, texel: f64, pixels: u32) -> Option<Vec<[u8; 4]>> {
+	let executor = executor()?;
+	let device = &executor.context().device;
+	let _turn = take_turn();
+
+	let texture = device.create_texture(&wgpu::TextureDescriptor {
+		label: Some("generator_tile_test"),
+		size: wgpu::Extent3d {
+			width: pixels,
+			height: pixels,
+			depth_or_array_layers: 1,
+		},
+		mip_level_count: 1,
+		sample_count: 1,
+		dimension: wgpu::TextureDimension::D2,
+		format: crate::vello_render::TEXTURE_FORMAT,
+		usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+		view_formats: &[],
+	});
+
+	let queue = executor.context().queue.lock();
+	let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("generator_tile_test") });
+	(executor.inner.vello_renderer.generator_passes).render_tile(device, &queue, &mut encoder, &texture, pattern, corner, texel);
+	queue.submit([encoder.finish()]);
+	drop(queue);
+
+	let bytes = executor.read_texture_pixels(&texture).expect("Failed to read back the tile");
+	Some(bytes.as_chunks::<4>().0.to_vec())
+}
+
+#[test]
+fn deep_mandelbrot_tiles_follow_their_reference_orbits_like_the_cpu() {
+	use graphic_types::generator::*;
+	use raster_kernels::mandelbrot::MandelbrotSetup;
+
+	let GeneratorPattern::Mandelbrot(defaults) = GeneratorPattern::decode(Generator::Mandelbrot, &|_| None) else {
+		unreachable!()
+	};
+
+	// Pixels 2^-32 of a unit of the plane across, on the edges of the sets with powers of 2 and 2.5 at 256 iterations, and across the seam of the Tricorn's with a power of 2.5
+	// on the negative real axis. Rounding, especially by Direct3D's transcendental functions, may tip a few points on the edges into escaping at another iteration.
+	let views = [
+		(MandelbrotFractal::ClassicMandelbrot, 2., glam::DVec2::new(0.139_355_853_002_853_52, 0.613_550_669_256_420_2)),
+		(MandelbrotFractal::ClassicMandelbrot, 2.5, glam::DVec2::new(0.172_648_565_655_390_94, 0.688_459_272_724_629_5)),
+		(MandelbrotFractal::Tricorn, 2.5, glam::DVec2::new(-0.863_244_635_611_779_1, 0.)),
+	];
+	for (fractal, power, center) in views {
+		let settings = MandelbrotSettings {
+			fractal,
+			power,
+			scale: 1.,
+			..defaults.clone()
+		};
+		let (pixels, texel) = (64, 2_f64.powi(-32));
+		let corner = center - texel * (pixels / 2) as f64;
+		let Some(drawn) = generator_tile_pixels(&GeneratorPattern::Mandelbrot(settings.clone()), corner, texel, pixels) else {
+			return;
+		};
+
+		// The CPU follows the same reference orbit as the tile
+		let setup = MandelbrotSetup::new(&settings);
+		let reference = setup.reference_orbit([corner, corner + texel * pixels as f64], texel).filter(|reference| reference.values.len() >= 2);
+		assert!(reference.is_some(), "{fractal:?} with a power of {power} has no reference orbit");
+		let mismatched = (0..pixels * pixels)
+			.filter(|index| {
+				let point = corner + (glam::DVec2::new((index % pixels) as f64, (index / pixels) as f64) + 0.5) * texel;
+				let sampled = (setup.sample(point, reference.as_ref(), false).clamp(0., 1.) * 255.).round() as u8;
+				drawn[*index as usize][0].abs_diff(sampled) > 2
+			})
+			.count();
+		assert!(mismatched <= 128, "{mismatched} pixels differ from the CPU's samples for {fractal:?} with a power of {power}");
+	}
 }
 
 #[test]
@@ -2392,4 +2502,42 @@ fn generator_tiles_are_reused_across_a_pan() {
 	executor.render_vello_scene_on_canvas(&mut canvas, draw(-100.)).unwrap();
 	let panned = tiles(&canvas) - first;
 	assert!(panned < first, "panning renders only the tiles newly in view, not all {first} again (rendered {panned})");
+}
+
+#[test]
+fn new_generator_tiles_take_over_the_textures_of_freed_ones() {
+	use graphic_types::generator::{GeneratorPattern, NoiseSettings};
+
+	let Some(executor) = executor() else { return };
+	let _turn = take_turn();
+	let max_texture_size = executor.context().device.limits().max_texture_dimension_2d;
+	let tile_textures = |canvas: &crate::VelloCanvas| -> Vec<wgpu::Texture> {
+		(canvas.images.textures.iter())
+			.filter(|(key, _)| matches!(key, super::ImageKey::GeneratorTile(_)))
+			.map(|(_, image_texture)| image_texture.texture.clone())
+			.collect()
+	};
+
+	let mut canvas = crate::VelloCanvas::default();
+	let draw = |canvas: &mut crate::VelloCanvas, seed: i64| {
+		let mut scene = VelloSceneBuilder::new(512, 512, Affine::IDENTITY, max_texture_size);
+		scene.draw_generator(&GeneratorPattern::Noise(NoiseSettings { seed, ..noise_settings() }), Affine::scale(2.));
+		executor.render_vello_scene_on_canvas(canvas, scene).unwrap();
+	};
+
+	// The first pattern's tiles, freed once another is drawn for long enough
+	draw(&mut canvas, 1);
+	let freed = tile_textures(&canvas);
+	for _ in 0..super::UNUSED_IMAGE_RENDER_LIMIT {
+		draw(&mut canvas, 2);
+	}
+
+	// The textures in use since the first pattern was freed are the second's and the third's, which takes over the first's
+	let second = tile_textures(&canvas);
+	draw(&mut canvas, 3);
+	let third: Vec<_> = tile_textures(&canvas).into_iter().filter(|texture| !second.contains(texture)).collect();
+	assert!(
+		third.len() == freed.len() && third.iter().all(|texture| freed.contains(texture)),
+		"the third pattern's tiles render into the textures of the first's"
+	);
 }

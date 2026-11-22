@@ -12,6 +12,7 @@ use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graph_craft::{Type, concrete, item, list};
 use graphene_std::Color;
+use graphene_std::NodeParameter;
 use graphene_std::ParameterRef;
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::extract_xy::XY;
@@ -1898,6 +1899,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		if let Some(size) = clipped_size {
 			fill_square_with_pattern(document, node_id, network_path, *size);
 		}
+		if *reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER) {
+			move_mandelbrot_to_old_origin(document, node_id, network_path);
+		}
 	}
 
 	// Parameters that historically accepted fractional numbers are now integers (the polygon and star "Sides", the index,
@@ -2026,6 +2030,46 @@ fn fill_square_with_pattern(document: &mut DocumentMessageHandler, pattern_node_
 		for (node_id, offset) in offsets {
 			document.network_interface.set_absolute_position(&node_id, position + offset, network_path);
 		}
+	}
+
+	Some(())
+}
+
+/// Keeps an old Mandelbrot's look now that the complex plane's origin is its pattern's, with a third of a unit's scale and a Transform moving the pattern back to where
+/// the old unit square, which spanned the plane from -2 to 1, put that origin.
+fn move_mandelbrot_to_old_origin(document: &mut DocumentMessageHandler, mandelbrot_node_id: &NodeId, network_path: &[NodeId]) -> Option<()> {
+	let downstream_consumers: Vec<InputConnector> = document
+		.network_interface
+		.outward_wires(network_path)
+		.and_then(|wires| wires.get(&OutputConnector::node(*mandelbrot_node_id, 0)))
+		.cloned()
+		.unwrap_or_default();
+	let transform_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER))?.default_node_template();
+
+	let origin_transform_id = NodeId::new();
+	document.network_interface.insert_node(origin_transform_id, transform_template, network_path);
+	document.network_interface.set_input(
+		&InputConnector::node_at_index(*mandelbrot_node_id, graphene_std::raster_nodes::std_nodes::mandelbrot::ScaleInput::INDEX),
+		NodeInput::value(TaggedValue::Number(1. / 3.), false),
+		network_path,
+	);
+	document.network_interface.set_input(
+		&InputConnector::node_at_index(origin_transform_id, 1),
+		NodeInput::value(TaggedValue::DVec2(DVec2::new(2. / 3., 0.5)), false),
+		network_path,
+	);
+
+	document
+		.network_interface
+		.set_input(&InputConnector::node_at_index(origin_transform_id, 0), NodeInput::node(*mandelbrot_node_id, 0), network_path);
+	for consumer in &downstream_consumers {
+		document.network_interface.set_input(consumer, NodeInput::node(origin_transform_id, 0), network_path);
+	}
+
+	// The Transform takes the pattern's place, and the pattern moves before it
+	if let Some(position) = document.network_interface.position(mandelbrot_node_id, network_path) {
+		document.network_interface.set_absolute_position(&origin_transform_id, position, network_path);
+		document.network_interface.set_absolute_position(mandelbrot_node_id, position + IVec2::new(-7, 0), network_path);
 	}
 
 	Some(())
@@ -6213,13 +6257,24 @@ mod tests {
 
 			let paint = upstream(fill, 1).expect("the fill should paint with the moved pattern");
 			assert_eq!(value(paint, 1), Some(TaggedValue::DVec2(DVec2::splat(-size / 2.))));
-			assert_eq!(upstream(paint, 0), Some(pattern));
+
+			// The Mandelbrot is also moved back to where its old unit square put the complex plane's origin
+			let mut read = upstream(paint, 0).expect("the paint should read the pattern");
+			if pattern == mandelbrot {
+				assert_eq!(value(read, 1), Some(TaggedValue::DVec2(DVec2::new(2. / 3., 0.5))));
+				read = upstream(read, 0).expect("the origin transform should read the pattern");
+			}
+			assert_eq!(read, pattern);
 		}
 
-		// The noise settings shift down past the removed Clip toggle, and the Mandelbrot gains its primary input
+		// Noise settings shift past the removed Clip toggle, and Mandelbrot gains its primary input and settings, its scale a third of a unit like its old unit square's
 		assert_eq!(interface.document_node(&noise, &[]).unwrap().inputs.len(), 15);
 		assert_eq!(value(noise, 1), Some(TaggedValue::Integer(7)));
-		assert_eq!(interface.document_node(&mandelbrot, &[]).unwrap().inputs.len(), 1);
+		assert_eq!(interface.document_node(&mandelbrot, &[]).unwrap().inputs.len(), 11);
+		assert_eq!(
+			value(mandelbrot, graphene_std::raster_nodes::std_nodes::mandelbrot::ScaleInput::INDEX),
+			Some(TaggedValue::Number(1. / 3.))
+		);
 	}
 
 	// The demo draws its patterns through layers and adjustments, which must all take the generators the patterns now are

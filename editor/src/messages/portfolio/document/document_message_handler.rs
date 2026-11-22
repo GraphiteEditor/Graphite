@@ -4814,6 +4814,50 @@ mod document_message_handler_tests {
 	}
 
 	#[tokio::test]
+	async fn zooming_to_100_percent_reaches_it_with_only_a_tiny_shape_in_the_document() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.set_viewport_size(DVec2::ZERO, DVec2::new(800., 600.)).await;
+
+		// A shape about a millionth of a unit across, drawn while zoomed far in
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 10_000_000. }).await;
+		editor.draw_ellipse(100., 100., 110., 110.).await;
+		assert!(editor.active_document().network_interface.document_bounds_document_space(true).is_some());
+
+		editor.handle_message(DocumentMessage::ZoomCanvasTo100Percent).await;
+		assert_eq!(editor.active_document().document_ptz.zoom(), 1.);
+	}
+
+	#[tokio::test]
+	async fn wheeling_in_at_the_deepest_zoom_leaves_the_view_in_place() {
+		use crate::consts::VIEWPORT_ZOOM_SCALE_MAX;
+		use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, ScrollDelta};
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.set_viewport_size(DVec2::ZERO, DVec2::new(800., 600.)).await;
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: VIEWPORT_ZOOM_SCALE_MAX }).await;
+		let pan = editor.active_document().document_ptz.pan;
+
+		// Ctrl+wheel zooming in, which heads toward the pointer away from the viewport's center
+		let editor_mouse_state = EditorPointerState {
+			editor_position: DVec2::new(100., 100.),
+			scroll_delta: ScrollDelta { x: 0., y: -100., z: 0. },
+			..Default::default()
+		};
+		editor
+			.input(InputPreprocessorMessage::WheelScroll {
+				editor_mouse_state,
+				modifier_keys: ModifierKeys::CONTROL,
+			})
+			.await;
+
+		let ptz = editor.active_document().document_ptz;
+		assert_eq!(ptz.zoom(), VIEWPORT_ZOOM_SCALE_MAX);
+		assert_eq!(ptz.pan, pan);
+	}
+
+	#[tokio::test]
 	async fn deleting_the_bottom_layer_leaves_the_layer_above_it_the_empty_stack_value() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;

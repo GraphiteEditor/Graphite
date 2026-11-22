@@ -423,6 +423,8 @@ struct AdjustedTexture {
 #[derive(Default)]
 struct ImageTextures {
 	textures: HashMap<ImageKey, ImageTexture>,
+	/// The textures of the generator tiles the last render freed, for its next render's new tiles to take over, as when changing a generator's settings replaces every tile.
+	spare_generator_tiles: Vec<wgpu::Texture>,
 	render_count: u64,
 }
 
@@ -462,18 +464,11 @@ impl ImageTextures {
 					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
 				}
 				SceneImage::GeneratorTile { pattern, tile } => {
-					// Rendered on the GPU, or on the CPU where 32-bit floats can't place its pixels
+					let texture = (self.spare_generator_tiles.pop()).unwrap_or_else(|| GeneratorPasses::tile_texture(device, GeneratorTile::SAMPLES));
 					let (corner, texel) = tile.corner_and_texel();
-					match renderer.generator_passes.render_tile(device, encoder, pattern, corner, texel, GeneratorTile::SAMPLES) {
-						Some(texture) => {
-							renderer.effect_passes.record_mipmaps(device, encoder, &texture);
-							texture
-						}
-						None => {
-							let (pixels, width, height) = tile.render(pattern).ok()?.to_flat_u8();
-							upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
-						}
-					}
+					renderer.generator_passes.render_tile(device, queue, encoder, &texture, pattern, corner, texel);
+					renderer.effect_passes.record_mipmaps(device, encoder, &texture);
+					texture
 				}
 				SceneImage::Rendered(_) => return None,
 				SceneImage::Texture(texture) => create_texture(
@@ -590,12 +585,19 @@ impl ImageTextures {
 		let render_count = self.render_count;
 		let in_use = |last_used: u64| render_count - last_used < UNUSED_IMAGE_RENDER_LIMIT;
 
-		self.textures.retain(|key, image_texture| match key {
+		let kept = |key: &ImageKey, image_texture: &ImageTexture| match key {
 			// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
 			ImageKey::Blob(_) => image_texture.last_used == render_count,
 			ImageKey::Raster(_) => image_texture.last_used == render_count || (in_use(image_texture.last_used) && image_texture.raster.as_ref().is_some_and(WeakCPU::is_alive)),
 			ImageKey::Texture(_) | ImageKey::GeneratorTile(_) => in_use(image_texture.last_used),
-		});
+		};
+
+		// Spares this render didn't take over are freed, and the tiles it freed become the next render's spares
+		self.spare_generator_tiles.clear();
+		let unused = self.textures.extract_if(|key, image_texture| !kept(key, image_texture));
+		let unused_tiles = unused.filter(|(key, _)| matches!(key, ImageKey::GeneratorTile(_))).map(|(_, image_texture)| image_texture.texture);
+		self.spare_generator_tiles.extend(unused_tiles);
+
 		self.textures.values_mut().for_each(|image_texture| {
 			image_texture.adjusted.retain(|copy| in_use(copy.last_used));
 			if image_texture.adjusted.is_empty() {
@@ -611,8 +613,8 @@ impl ImageTextures {
 		if tile_ages.len() > MAX_CACHED_GENERATOR_TILES {
 			let excess = tile_ages.len() - MAX_CACHED_GENERATOR_TILES;
 			let (_, &mut oldest_kept, _) = tile_ages.select_nth_unstable(excess);
-			self.textures
-				.retain(|key, image_texture| !matches!(key, ImageKey::GeneratorTile(_)) || image_texture.last_used >= oldest_kept);
+			let least_recent = (self.textures).extract_if(|key, image_texture| matches!(key, ImageKey::GeneratorTile(_)) && image_texture.last_used < oldest_kept);
+			self.spare_generator_tiles.extend(least_recent.map(|(_, image_texture)| image_texture.texture));
 		}
 	}
 }

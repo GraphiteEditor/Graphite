@@ -211,22 +211,36 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				}
 			}
 			NavigationMessage::CanvasZoomDecrease { center_on_mouse } => {
+				let document_bounds = if !graph_view_overlay_open {
+					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
+					network_interface.document_bounds_viewport_space(true)
+				} else {
+					network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
+				};
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					return;
 				};
 
 				let new_scale = zoom_levels().take_while(|&scale| scale < ptz.zoom()).last().unwrap_or(ptz.zoom());
+				let new_scale = (new_scale * Self::clamp_zoom(new_scale, document_bounds, old_zoom, viewport)).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				if center_on_mouse {
 					responses.add(self.center_zoom(viewport.size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
 			NavigationMessage::CanvasZoomIncrease { center_on_mouse } => {
+				let document_bounds = if !graph_view_overlay_open {
+					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
+					network_interface.document_bounds_viewport_space(true)
+				} else {
+					network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
+				};
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					return;
 				};
 
 				let new_scale = zoom_levels().find(|&scale| scale > ptz.zoom()).unwrap_or(ptz.zoom());
+				let new_scale = (new_scale * Self::clamp_zoom(new_scale, document_bounds, old_zoom, viewport)).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				if center_on_mouse {
 					responses.add(self.center_zoom(viewport.size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
@@ -250,25 +264,18 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				zoom_factor *= Self::clamp_zoom(ptz.zoom() * zoom_factor, document_bounds, old_zoom, viewport);
 
-				responses.add(self.center_zoom(viewport.size().into(), zoom_factor, ipp.mouse.position));
-				responses.add(NavigationMessage::CanvasZoomSet {
-					zoom_factor: ptz.zoom() * zoom_factor,
-				});
+				// Held to the zoom range before panning toward the pointer, so wheeling against a limit leaves the view in place
+				let zoom = (ptz.zoom() * zoom_factor).clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				responses.add(self.center_zoom(viewport.size().into(), zoom / ptz.zoom(), ipp.mouse.position));
+				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: zoom });
 			}
+			// Sets exactly the zoom asked for, since the steps and gestures that keep the content from shrinking out of sight do so before sending it
 			NavigationMessage::CanvasZoomSet { zoom_factor } => {
-				let document_bounds = if !graph_view_overlay_open {
-					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
-					network_interface.document_bounds_viewport_space(true)
-				} else {
-					network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
-				};
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					log::error!("Could not get mutable PTZ in CanvasZoomSet");
 					return;
 				};
-				let zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				let zoom = zoom * Self::clamp_zoom(zoom, document_bounds, old_zoom, viewport);
-				ptz.set_zoom(zoom);
+				ptz.set_zoom(zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX));
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 				} else {

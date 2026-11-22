@@ -4412,7 +4412,30 @@ fn graphic_thumbnail_bounding_box(graphic: &Graphic, item_transform: DAffine2) -
 			graphic_thumbnail_bounding_box(item.element(), inner_transform)
 		}
 		Graphic::GraphicList(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
+		Graphic::Generator(item) => generator_thumbnail_bounding_box(ItemRef::Item(item), item_transform),
+		Graphic::GeneratorList(list) => {
+			(0..list.len())
+				.map(|index| generator_thumbnail_bounding_box(ItemRef::ListItem(list, index), item_transform))
+				.fold(RenderBoundingBox::None, |combined, bounds| match (combined, bounds) {
+					(RenderBoundingBox::Rectangle(a), RenderBoundingBox::Rectangle(b)) => RenderBoundingBox::Rectangle(Quad::combine_bounds(a, b)),
+					(RenderBoundingBox::Rectangle(bounds), _) | (_, RenderBoundingBox::Rectangle(bounds)) => RenderBoundingBox::Rectangle(bounds),
+					(RenderBoundingBox::Infinite, _) | (_, RenderBoundingBox::Infinite) => RenderBoundingBox::Infinite,
+					_ => RenderBoundingBox::None,
+				})
+		}
 		other => other.thumbnail_bounding_box(item_transform, true),
+	}
+}
+
+/// A generator item's thumbnail bounds, framing the part of its pattern worth showing, like a fractal's body, or the whole plane for a pattern alike across it.
+fn generator_thumbnail_bounding_box(item: ItemRef<'_, Generator>, transform: DAffine2) -> RenderBoundingBox {
+	let Some(&generator) = item.element() else { return RenderBoundingBox::None };
+	let item_transform = transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+
+	let pattern = GeneratorPattern::decode(generator, &|key| item.attribute_any(key));
+	match raster_kernels::generators::thumbnail_area(&pattern) {
+		Some(area) if item_transform.matrix2.determinant() != 0. => RenderBoundingBox::Rectangle((item_transform * Quad::from_box(area)).bounding_box()),
+		_ => generator.thumbnail_bounding_box(item_transform, true),
 	}
 }
 

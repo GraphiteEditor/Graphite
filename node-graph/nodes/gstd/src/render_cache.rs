@@ -4,7 +4,7 @@ use core_types::list::Item;
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, Generations, NodeError, OwnedContextImpl, Poll};
-use glam::{DAffine2, DVec2, IVec2, UVec2};
+use glam::{DAffine2, DVec2, I64Vec2, UVec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::{HashMap, HashSet};
@@ -17,10 +17,11 @@ pub const TILE_SIZE: u32 = 256;
 pub const MAX_CACHE_MEMORY_BYTES: usize = 512 * 1024 * 1024;
 const BYTES_PER_PIXEL: usize = 4;
 
+/// A tile in the grid laid out in device pixels from the document's origin, which deep zoom puts too far away to count in 32 bits.
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct TileCoord {
-	pub x: i32,
-	pub y: i32,
+	pub x: i64,
+	pub y: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -126,10 +127,10 @@ pub struct CacheQuery {
 
 fn bounds_to_tiles(bounds: &AxisAlignedBbox) -> Vec<TileCoord> {
 	let tile_size = TILE_SIZE as f64;
-	let tile_start_x = (bounds.start.x / tile_size).floor() as i32;
-	let tile_start_y = (bounds.start.y / tile_size).floor() as i32;
-	let tile_end_x = (bounds.end.x / tile_size).ceil() as i32;
-	let tile_end_y = (bounds.end.y / tile_size).ceil() as i32;
+	let tile_start_x = (bounds.start.x / tile_size).floor() as i64;
+	let tile_start_y = (bounds.start.y / tile_size).floor() as i64;
+	let tile_end_x = (bounds.end.x / tile_size).ceil() as i64;
+	let tile_end_y = (bounds.end.y / tile_size).ceil() as i64;
 
 	let mut tiles = Vec::new();
 	for y in tile_start_y..tile_end_y {
@@ -227,7 +228,7 @@ fn tile_rectangles(tiles: &[TileCoord]) -> Vec<RenderRegion> {
 	sorted.dedup();
 
 	// Each row's runs of adjacent tiles, as their row and first and last columns
-	let mut runs: Vec<(i32, i32, i32)> = Vec::new();
+	let mut runs: Vec<(i64, i64, i64)> = Vec::new();
 	for tile in sorted {
 		match runs.last_mut() {
 			Some((row, _, last)) if *row == tile.y && *last + 1 == tile.x => *last = tile.x,
@@ -236,7 +237,7 @@ fn tile_rectangles(tiles: &[TileCoord]) -> Vec<RenderRegion> {
 	}
 
 	// The top and bottom rows of the rectangle each run of columns extends, which closes once a row lacks that run
-	let mut open: HashMap<(i32, i32), (i32, i32)> = HashMap::new();
+	let mut open: HashMap<(i64, i64), (i64, i64)> = HashMap::new();
 	let mut rectangles = Vec::new();
 	for (row, first, last) in runs {
 		match open.get_mut(&(first, last)) {
@@ -463,11 +464,11 @@ fn render_missing_region<F>(
 where
 	F: Fn(Context<'static>) -> Poll<Item<RenderOutput>>,
 {
-	let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
-	let max_tile = region.tiles.iter().fold(IVec2::new(i32::MIN, i32::MIN), |acc, t| acc.max(IVec2::new(t.x, t.y)));
+	let min_tile = region.tiles.iter().fold(I64Vec2::MAX, |acc, t| acc.min(I64Vec2::new(t.x, t.y)));
+	let max_tile = region.tiles.iter().fold(I64Vec2::MIN, |acc, t| acc.max(I64Vec2::new(t.x, t.y)));
 
-	let tile_count = (max_tile - min_tile) + IVec2::ONE;
-	let region_pixel_size = (tile_count * TILE_SIZE as i32).as_uvec2();
+	let tile_count = (max_tile - min_tile) + I64Vec2::ONE;
+	let region_pixel_size = (tile_count * TILE_SIZE as i64).as_uvec2();
 
 	let tile_global_offset = min_tile.as_dvec2() * TILE_SIZE as f64 + *viewport_origin_offset;
 	let region_transform = DAffine2::from_translation(-tile_global_offset) * *viewport_transform;
@@ -567,30 +568,29 @@ struct RegionPlacement {
 }
 
 fn region_placement(region: &CachedRegion, device_origin_offset: &DVec2, output_resolution: UVec2) -> Option<RegionPlacement> {
-	let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
+	let min_tile = region.tiles.iter().fold(I64Vec2::MAX, |acc, t| acc.min(I64Vec2::new(t.x, t.y)));
 
 	// Convert global tile position to physical pixel offset in the output texture
-	let offset_pixels = min_tile * TILE_SIZE as i32 + device_origin_offset.round().as_ivec2();
+	let offset_pixels = min_tile * TILE_SIZE as i64 + device_origin_offset.round().as_i64vec2();
 
-	let (source_x, destination_x, width) = if offset_pixels.x >= 0 {
-		(0, offset_pixels.x as u32, region.size.x.min(output_resolution.x.saturating_sub(offset_pixels.x as u32)))
-	} else {
-		let skip = (-offset_pixels.x) as u32;
-		(skip, 0, region.size.x.saturating_sub(skip).min(output_resolution.x))
-	};
-
-	let (source_y, destination_y, height) = if offset_pixels.y >= 0 {
-		(0, offset_pixels.y as u32, region.size.y.min(output_resolution.y.saturating_sub(offset_pixels.y as u32)))
-	} else {
-		let skip = (-offset_pixels.y) as u32;
-		(skip, 0, region.size.y.saturating_sub(skip).min(output_resolution.y))
-	};
+	let (source_x, destination_x, width) = span_placement(offset_pixels.x, region.size.x, output_resolution.x);
+	let (source_y, destination_y, height) = span_placement(offset_pixels.y, region.size.y, output_resolution.y);
 
 	(width > 0 && height > 0).then_some(RegionPlacement {
 		source: UVec2::new(source_x, source_y),
 		destination: UVec2::new(destination_x, destination_y),
 		size: UVec2::new(width, height),
 	})
+}
+
+/// Along one axis, where the part of a region starting `offset` pixels into the output lands: its start within the region, its start within the output, and its length.
+fn span_placement(offset: i64, region_length: u32, output_length: u32) -> (u32, u32, u32) {
+	let (region_length, output_length) = (region_length as i64, output_length as i64);
+
+	let start = offset.clamp(0, output_length);
+	let end = (offset + region_length).clamp(start, output_length);
+
+	((start - offset).clamp(0, region_length) as u32, start as u32, (end - start) as u32)
 }
 
 /// Renders an output too large for one texture into RGBA8 pixels on the CPU, rendering one region at a time and copying it in, so only one region's texture is in use at a time.
@@ -696,6 +696,35 @@ mod tests {
 		for region in &regions {
 			let size = tiles_bounds(&region.tiles).size() / TILE_SIZE as f64;
 			assert_eq!(region.tiles.len(), (size.x * size.y) as usize);
+		}
+	}
+
+	#[test]
+	fn regions_far_from_the_document_origin_fill_the_output() {
+		let resolution = UVec2::new(1000, 800);
+
+		// The document's origin billions, then trillions, of pixels from the view, as deep zoom places it
+		for device_origin_offset in [DVec2::new(-3e9 + 0.25, 5e9), DVec2::new(1e13, -7e12 - 0.5)] {
+			let viewport_bounds = AxisAlignedBbox {
+				start: -device_origin_offset,
+				end: resolution.as_dvec2() - device_origin_offset,
+			};
+
+			// The regions' placements don't overlap, so they fill the output exactly when their areas add up to its own
+			let mut covered = 0;
+			for region in group_into_regions(&bounds_to_tiles(&viewport_bounds), 4096) {
+				let region = CachedRegion {
+					output: Poll::Pending,
+					size: tiles_bounds(&region.tiles).size().as_uvec2(),
+					tiles: region.tiles,
+					last_access: 0,
+					memory_size: 0,
+				};
+				if let Some(placement) = region_placement(&region, &device_origin_offset, resolution) {
+					covered += placement.size.x as u64 * placement.size.y as u64;
+				}
+			}
+			assert_eq!(covered, resolution.x as u64 * resolution.y as u64, "with the document's origin offset by {device_origin_offset}");
 		}
 	}
 }
