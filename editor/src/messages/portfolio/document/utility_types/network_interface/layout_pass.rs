@@ -163,23 +163,40 @@ impl NodeNetworkInterface {
 	/// Stores where the drag has moved each node.
 	pub fn finish_drag(&mut self, network_path: &[NodeId]) {
 		let Some(drag) = self.end_drag(network_path) else { return };
-		let moved_placements = self
-			.with_drag_origin(&drag, network_path, store::revision(), |origin| {
-				let (moved, _) = origin.drag.moved(drag.offset);
-				origin
-					.start
-					.nodes
-					.iter()
-					.zip(&moved.nodes)
-					.zip(&origin.node_ids)
-					.filter(|((before, after), _)| before.placement != after.placement)
-					.map(|((_, after), node_id)| (*node_id, after.placement))
-					.collect::<Vec<_>>()
-			})
-			.unwrap_or_default();
+		let finished = self.with_drag_origin(&drag, network_path, store::revision(), |origin| {
+			let (mut moved, _) = origin.drag.moved(drag.offset);
+			let moved_placements: Vec<(NodeId, Placement)> = origin
+				.start
+				.nodes
+				.iter()
+				.zip(&moved.nodes)
+				.zip(&origin.node_ids)
+				.filter(|((before, after), _)| before.placement != after.placement)
+				.map(|((_, after), node_id)| (*node_id, after.placement))
+				.collect();
 
+			for node in &mut moved.nodes {
+				node.held = false;
+			}
+			(moved_placements, std::mem::take(&mut origin.node_ids), std::mem::take(&mut origin.indices), moved)
+		});
+		let Some((moved_placements, node_ids, indices, graph)) = finished else { return };
+
+		let mut stored_all = true;
 		for (node_id, placement) in moved_placements {
-			self.store_placement(&node_id, placement, network_path);
+			stored_all &= self.store_placement(&node_id, placement, network_path);
+		}
+
+		// The network as now stored is the moved graph released, so its layout needs no reading back from the metadata
+		if stored_all && let Some(network_metadata) = self.network_metadata(network_path) {
+			let layout = layout(&graph);
+			network_metadata.transient_metadata.layout.store(NetworkLayout {
+				revision: store::revision(),
+				layout,
+				graph,
+				node_ids,
+				indices,
+			});
 		}
 	}
 
@@ -217,10 +234,11 @@ impl NodeNetworkInterface {
 		Some(DragOrigin::new(node_ids, indices, graph, layout, dragged, keep_upstream, revision))
 	}
 
-	fn store_placement(&mut self, node_id: &NodeId, placement: Placement, network_path: &[NodeId]) {
+	/// Stores `placement` as the position of the node, returning whether it could.
+	fn store_placement(&mut self, node_id: &NodeId, placement: Placement, network_path: &[NodeId]) -> bool {
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node_metadata for node {node_id}");
-			return;
+			return false;
 		};
 		let node_type = match (node.is_layer(), placement) {
 			(true, Placement::Absolute(position)) => NodeTypePersistentMetadata::layer(position),
@@ -235,13 +253,14 @@ impl NodeNetworkInterface {
 			(false, Placement::Chain) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Chain)),
 			(true, Placement::Chain) | (false, Placement::Stack(_)) => {
 				log::error!("Node {node_id} cannot be stored as {placement:?}");
-				return;
+				return false;
 			}
 		};
 		if node.set_node_type(node_type) {
 			self.transaction_modified();
 			self.invalidate_positions(network_path);
 		}
+		true
 	}
 
 	fn lay_out(&self, network_path: &[NodeId], revision: u64) -> Option<NetworkLayout> {

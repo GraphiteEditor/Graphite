@@ -160,3 +160,29 @@ fn pushing_a_layer_up_against_the_layer_above_carries_it_up() {
 		assert_eq!(positions(interface), start.map(|position| position - IVec2::new(0, rows)), "The layer above should be carried up");
 	}
 }
+
+#[test]
+fn the_layout_kept_after_a_drag_matches_the_network_as_stored() {
+	let mut document = open_demo("procedural-string-lights.graphite");
+	let interface = &mut document.network_interface;
+	let node_ids: Vec<NodeId> = interface.document_network().nodes.keys().copied().collect();
+
+	for (node_id, offset) in node_ids.iter().flat_map(|node_id| [IVec2::new(3, -5), IVec2::new(-4, 6)].map(|offset| (*node_id, offset))) {
+		interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![node_id]);
+		interface.drag_selected_nodes(offset, false, &[]);
+		interface.finish_drag(&[]);
+
+		let kept = interface.positions(node_ids.iter().copied(), &[]);
+		let Some((_, indices, graph)) = interface.layout_graph(&[]) else {
+			panic!("the root network is laid out")
+		};
+		let fresh = graph_layout::layout(&graph);
+		for (other, position) in kept {
+			assert_eq!(
+				Some(position),
+				indices.get(&other).map(|index| fresh.positions[*index as usize]),
+				"After dragging {node_id} by {offset}, node {other} should be where the stored network places it"
+			);
+		}
+	}
+}
