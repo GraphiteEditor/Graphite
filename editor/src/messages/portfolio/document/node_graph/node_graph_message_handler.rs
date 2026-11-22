@@ -1554,7 +1554,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
 					new_selected_nodes.remove(node_to_deselect);
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
-					return;
 				}
 				let point = network_metadata
 					.persistent_metadata

@@ -3148,6 +3148,52 @@ async fn visibility_and_lock_toggles_made_in_an_open_transaction_undo_together()
 }
 
 #[tokio::test]
+async fn shift_clicking_a_selected_node_in_the_graph_ends_its_press() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let clicked = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	let other = editor.create_node_by_name_at(rectangle_definition(), 0, 10).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![clicked, other] }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let [min, max] = network_interface.node_bounding_box(&clicked, &[]).expect("the node should have bounds");
+	let other_position = network_interface.position(&other, &[]);
+	let center = (min + max) / 2.;
+
+	move_in_graph(&mut editor, center, MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: true,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+	move_in_graph(&mut editor, center + DVec2::new(240., 240.), MouseKeys::empty()).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+
+	let document = editor.active_document();
+	let selected_nodes = document.network_interface.selected_nodes_in_nested_network(&[]).expect("the network should have a selection");
+	assert_eq!(
+		selected_nodes.selected_nodes().copied().collect::<Vec<_>>(),
+		vec![other],
+		"the Shift-click should deselect the clicked node"
+	);
+	assert_eq!(
+		document.network_interface.transaction_status(),
+		TransactionStatus::Finished,
+		"the press shouldn't leave a transaction open"
+	);
+	assert_eq!(
+		document.network_interface.position(&other, &[]),
+		other_position,
+		"hovering after the release shouldn't drag the selection"
+	);
+}
+
+#[tokio::test]
 async fn chain_nodes_pasted_loose_keep_the_wire_and_dot_between_them() {
 	for select_the_dot in [false, true] {
 		let mut editor = EditorTestUtils::create();
