@@ -186,8 +186,6 @@ pub struct Fitting {
 	pub coarse_steps: bool,
 	/// Never elongates a connection carrying a held node, so the nodes being dragged stay where they are moved.
 	pub keep_carriers_of_held: bool,
-	/// Fits the nodes carrying a held node before their siblings, so the others give way to what is being dragged.
-	pub held_first: bool,
 	/// Extra rows and columns kept between the upstreams of different inputs.
 	pub spacing: i32,
 }
@@ -198,7 +196,6 @@ impl Default for Fitting {
 			input_order: false,
 			coarse_steps: false,
 			keep_carriers_of_held: true,
-			held_first: false,
 			spacing: 0,
 		}
 	}
@@ -442,8 +439,7 @@ fn elongations(graph: &Graph, forest: &Forest, fitting: Fitting) -> Vec<IVec2> {
 				input
 			}
 		};
-		let held_order = |child: u32| !(fitting.held_first && carries_held[child as usize]);
-		children_from_the_top[range].sort_by_key(|child| (held_order(*child), input_order(*child), offsets[*child as usize].y, offsets[*child as usize].x));
+		children_from_the_top[range].sort_by_key(|child| (input_order(*child), offsets[*child as usize].y, offsets[*child as usize].x));
 	}
 
 	for &node in forest.order.iter().rev() {

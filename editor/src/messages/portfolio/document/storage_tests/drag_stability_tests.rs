@@ -373,8 +373,18 @@ const STABILITY_CASES: [(&str, &str); 17] = [
 ];
 
 /// The ways of fitting upstreams together that `drag_stability_score` compares.
-const FITTINGS: [NamedLayout; 7] = [
+const FITTINGS: [NamedLayout; 4] = [
 	("current", layout),
+	("carriers elongated", |graph| {
+		layout_with(
+			graph,
+			Fitting {
+				keep_carriers_of_held: false,
+				..Default::default()
+			},
+		)
+	}),
+	("spacing", |graph| layout_with(graph, Fitting { spacing: 1, ..Default::default() })),
 	("coarse", |graph| {
 		layout_with(
 			graph,
@@ -384,29 +394,7 @@ const FITTINGS: [NamedLayout; 7] = [
 			},
 		)
 	}),
-	("keep carriers", |graph| layout_with(graph, KEEP_CARRIERS)),
-	("+ held first", |graph| layout_with(graph, Fitting { held_first: true, ..KEEP_CARRIERS })),
-	("+ spacing", |graph| layout_with(graph, Fitting { spacing: 1, ..KEEP_CARRIERS })),
-	("+ first, spacing", |graph| {
-		layout_with(
-			graph,
-			Fitting {
-				held_first: true,
-				spacing: 1,
-				..KEEP_CARRIERS
-			},
-		)
-	}),
-	("+ coarse", |graph| layout_with(graph, Fitting { coarse_steps: true, ..KEEP_CARRIERS })),
 ];
-
-const KEEP_CARRIERS: Fitting = Fitting {
-	input_order: false,
-	coarse_steps: false,
-	keep_carriers_of_held: true,
-	held_first: false,
-	spacing: 0,
-};
 
 /// How unstable one drag is under one way of fitting.
 #[derive(Clone, Copy, Default)]

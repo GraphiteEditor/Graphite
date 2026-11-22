@@ -122,8 +122,23 @@ impl Mover {
 			.collect();
 		let drawn_before: Vec<(u32, IVec2)> = newly_held.iter().chain(&owned_by_newly_held).map(|node| (*node, self.position(*node))).collect();
 
+		// Holding only keeps the connections of held nodes, of the nodes they own, and of the nodes carrying them from being drawn longer
+		let carriers: Vec<u32> = newly_held
+			.iter()
+			.flat_map(|node| std::iter::successors(self.owner(*node), |carrier| self.owner(*carrier)).collect::<Vec<_>>())
+			.collect();
+		let layout = self.layout();
+		let holding_moves_something = newly_held
+			.iter()
+			.chain(&owned_by_newly_held)
+			.chain(&carriers)
+			.any(|node| layout.elongations[*node as usize] != IVec2::ZERO);
+
 		for node in &newly_held {
 			self.graph.nodes[*node as usize].held = true;
+		}
+		if !holding_moves_something {
+			return;
 		}
 		self.layout = None;
 
