@@ -129,6 +129,8 @@ pub struct DragStart {
 	pub start_y: f64,
 	pub round_x: i32,
 	pub round_y: i32,
+	#[serde(skip)]
+	pub grabbed_chain: Option<(NodeId, i32)>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

@@ -1264,6 +1264,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							start_y: node_graph_point.y,
 							round_x: 0,
 							round_y: 0,
+							grabbed_chain: network_interface
+								.position(&clicked_id, selection_network_path)
+								.filter(|_| network_interface.is_chain(&clicked_id, selection_network_path))
+								.map(|position| (clicked_id, position.x)),
 						};
 
 						self.drag_start = Some((drag_start, false));
@@ -1429,6 +1433,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						// This means a completed Alt-drag is one undo step, and aborting (right-click / Escape)
 						// rolls back both the duplication and the move with a single plain AbortTransaction.
 						if ipp.keyboard.get(Key::Alt as usize) && Self::duplicate_selected_nodes(network_interface, selection_network_path, responses) {
+							drag_start.grabbed_chain = None;
 							// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
 							responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 								graph_delta: IVec2::new(-2, -2),
@@ -2482,6 +2487,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				self.set_hovered_connector(hovered_connector, responses);
 			}
 			NodeGraphMessage::UpdateWireInsertionPreview => {
+				// The queued grid shifts have finished. Recover horizontal travel constrained by the row on the first free move.
+				if let Some((drag, _)) = &mut self.drag_start
+					&& let Some((node, start_x)) = drag.grabbed_chain
+					&& network_interface.is_absolute(&node, selection_network_path)
+					&& let Some(position) = network_interface.position(&node, selection_network_path)
+				{
+					drag.grabbed_chain = None;
+					let residual = start_x + drag.round_x - position.x;
+					if residual != 0 {
+						network_interface.shift_absolute_node_position(&node, IVec2::new(residual, 0), selection_network_path);
+						responses.add(NodeGraphMessage::SendNodePositions);
+						responses.add(NodeGraphMessage::SendWires);
+					}
+				}
+
 				// Only a drag in progress inserts anything on drop, and one that hasn't started moving yet inserts nothing
 				let target = if self.drag_start.is_some() && !self.begin_dragging {
 					Self::wire_to_insert_on(network_interface, preferences.graph_wire_style, selection_network_path).map(|(_, _, input_connector)| input_connector)
@@ -2780,6 +2800,7 @@ impl NodeGraphMessageHandler {
 			start_y: start.y,
 			round_x: moved.x,
 			round_y: moved.y,
+			grabbed_chain: None,
 		};
 		self.drag_start = Some((drag_start, moved != IVec2::ZERO));
 		self.drag_start_chain_nodes = Vec::new();
@@ -4174,5 +4195,64 @@ fn add_export_at(export_index: usize) -> NodeGraphMessage {
 		NodeGraphMessage::AddPrimaryExport
 	} else {
 		NodeGraphMessage::AddSecondaryExport
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{InputConnector, OutputConnector};
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn merge_row_grab_point() {
+		for (chained, sideways, vertical) in [(true, 3, 2), (true, -3, -2), (true, 0, 2), (false, 3, 2)] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			editor.set_viewport_size(DVec2::ZERO, DVec2::splat(4000.)).await;
+			let layer = editor.create_node_by_name_at(DefinitionIdentifier::Network("Merge".into()), 20, 10).await;
+			let node = editor
+				.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER), 15, 10)
+				.await;
+			let network = &mut editor.active_document_mut().network_interface;
+			if chained {
+				network.set_to_node_or_layer(&layer, &[], true);
+				network.create_wire(&OutputConnector::primary_output(node), &InputConnector::layer_secondary_input(layer), &[]);
+			}
+			assert_eq!(network.is_chain(&node, &[]), chained);
+			let start = network.position(&node, &[]).unwrap();
+			let bounds = network.node_bounding_box(&node, &[]).unwrap();
+			let center = (bounds[0] + bounds[1]) / 2.;
+			let transform = network.network_metadata(&[]).unwrap().persistent_metadata.navigation_metadata.node_graph_to_viewport;
+			let press = transform.transform_point2(center);
+			editor.move_mouse(press.x, press.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+			editor
+				.handle_message(NodeGraphMessage::PointerDown {
+					shift_click: false,
+					control_click: false,
+					alt_click: false,
+					right_click: false,
+				})
+				.await;
+			for (x, y) in [(sideways * 2, 0), (sideways, 0), (sideways, vertical), (sideways + 1, vertical)] {
+				let delta = IVec2::new(x, y);
+				let point = transform.transform_point2(center + delta.as_dvec2() * 24.);
+				editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+				editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+				if y != 0 {
+					assert_eq!(editor.active_document().network_interface.position(&node, &[]), Some(start + delta));
+				}
+			}
+			editor
+				.handle_message(NodeGraphMessage::PointerDown {
+					shift_click: false,
+					control_click: false,
+					alt_click: false,
+					right_click: true,
+				})
+				.await;
+			let network = &editor.active_document().network_interface;
+			assert_eq!(network.position(&node, &[]), Some(start));
+			assert_eq!(network.is_chain(&node, &[]), chained);
+		}
 	}
 }
