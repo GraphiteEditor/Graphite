@@ -1,5 +1,6 @@
 //! Lays out a node graph in one pass: every node is placed after all the nodes reading it, then its bounds, ports, and wires follow from its position.
 
+pub mod analysis;
 mod click_targets;
 mod contour;
 mod drag;
@@ -151,21 +152,69 @@ const HORIZONTAL_GAP: i32 = CHAIN_WIDTH - 5;
 /// Lays out the graph as a forest: each node goes to its highest reader as stored, each node's upstream is then fitted together
 /// below and left of it, and finally every node is placed from the left of its readers, level with its owner.
 pub fn layout(graph: &Graph) -> Layout {
-	lay_out(graph, true)
+	lay_out(graph, Elongating::Fitted(Fitting::default()))
 }
 
 /// Lays out the graph like `layout`, but draws every node where its stored offset places it, without fitting upstreams together.
 pub fn layout_as_stored(graph: &Graph) -> Layout {
-	lay_out(graph, false)
+	lay_out(graph, Elongating::None)
 }
 
-fn lay_out(graph: &Graph, fit_upstream: bool) -> Layout {
+/// Lays out the graph like `layout`, fitting upstreams together the way `fitting` says.
+pub fn layout_with(graph: &Graph, fitting: Fitting) -> Layout {
+	lay_out(graph, Elongating::Fitted(fitting))
+}
+
+/// Lays out the graph like `layout`, but draws the connection to each node's owner longer by the given elongation instead of fitting upstreams together.
+pub fn layout_with_elongations(graph: &Graph, elongations: &[IVec2]) -> Layout {
+	lay_out(graph, Elongating::Given(elongations))
+}
+
+/// Where the elongations a layout draws connections longer by come from.
+enum Elongating<'a> {
+	None,
+	Fitted(Fitting),
+	Given(&'a [IVec2]),
+}
+
+/// How upstreams are fitted together, for comparing ways that keep dragging a node from making the layout jump.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fitting {
+	/// Fits the nodes a node owns in the order of the inputs reading them instead of from the top as stored, so dragging one past another keeps their order.
+	pub input_order: bool,
+	/// Rounds each clearance up to whole rows of stacked layers and whole chain widths, so what a drag pushes moves in fewer, larger steps.
+	pub coarse_steps: bool,
+	/// Never elongates a connection carrying a held node, so the nodes being dragged stay where they are moved.
+	pub keep_carriers_of_held: bool,
+	/// Fits the nodes carrying a held node before their siblings, so the others give way to what is being dragged.
+	pub held_first: bool,
+	/// Extra rows and columns kept between the upstreams of different inputs.
+	pub spacing: i32,
+}
+
+impl Default for Fitting {
+	fn default() -> Self {
+		Self {
+			input_order: false,
+			coarse_steps: false,
+			keep_carriers_of_held: true,
+			held_first: false,
+			spacing: 0,
+		}
+	}
+}
+
+fn lay_out(graph: &Graph, elongating: Elongating) -> Layout {
 	let node_count = graph.nodes.len();
 	let readers = GroupedByNode::grouped(node_count, &graph.wires, |wire| wire.source);
 	let inputs = GroupedByNode::grouped(node_count, &graph.wires, |wire| wire.target);
 
 	let forest = Forest::grow(graph, &readers, &inputs);
-	let elongations = if fit_upstream { elongations(graph, &forest) } else { vec![IVec2::ZERO; node_count] };
+	let elongations = match elongating {
+		Elongating::None => vec![IVec2::ZERO; node_count],
+		Elongating::Fitted(fitting) => elongations(graph, &forest, fitting),
+		Elongating::Given(elongations) => (0..node_count).map(|node| elongations.get(node).copied().unwrap_or_default()).collect(),
+	};
 
 	let mut positions = vec![IVec2::ZERO; node_count];
 	let mut anchors = vec![IVec2::ZERO; node_count];
@@ -361,18 +410,40 @@ fn stored_offset(graph: &Graph, node: usize, owner: u32) -> IVec2 {
 /// outlines of those taken before it. A link in a chain is never moved, so a chain stays whole and gives way only at
 /// its end, and a waypoint stays where it is put. A node stored closer to another of its readers is left out, so it neither
 /// moves nor takes room in its owner's outline, and the connections of a held node are never drawn longer.
-fn elongations(graph: &Graph, forest: &Forest) -> Vec<IVec2> {
+fn elongations(graph: &Graph, forest: &Forest, fitting: Fitting) -> Vec<IVec2> {
 	let offsets = &forest.offsets;
 	let node_count = graph.nodes.len();
 	let mut elongations = vec![IVec2::ZERO; node_count];
 	let mut contours: Vec<Contour> = vec![Contour::default(); node_count];
 	let mut pool = ColumnPool::default();
 	let chain_links = chain_links(graph, forest);
+	let (vertical_gap, horizontal_gap) = (VERTICAL_GAP + fitting.spacing, HORIZONTAL_GAP + fitting.spacing);
+
+	// Each owner comes before the nodes it owns in `order`, so going backward reaches every carrier after the node it carries
+	let mut carries_held: Vec<bool> = graph.nodes.iter().map(|node| node.held).collect();
+	for &node in forest.order.iter().rev() {
+		if carries_held[node as usize]
+			&& let Some(owner) = forest.owners[node as usize]
+		{
+			carries_held[owner as usize] = true;
+		}
+	}
 
 	let mut children_from_the_top = forest.children.items.clone();
 	for node in 0..node_count {
 		let range = forest.children.starts[node] as usize..forest.children.starts[node + 1] as usize;
-		children_from_the_top[range].sort_by_key(|child| (offsets[*child as usize].y, offsets[*child as usize].x));
+		let input_order = |child: u32| {
+			let input = forest.owner_inputs[child as usize];
+			if !fitting.input_order {
+				0
+			} else if graph.nodes[node].is_layer && input == 0 {
+				u32::MAX
+			} else {
+				input
+			}
+		};
+		let held_order = |child: u32| !(fitting.held_first && carries_held[child as usize]);
+		children_from_the_top[range].sort_by_key(|child| (held_order(*child), input_order(*child), offsets[*child as usize].y, offsets[*child as usize].x));
 	}
 
 	for &node in forest.order.iter().rev() {
@@ -391,17 +462,24 @@ fn elongations(graph: &Graph, forest: &Forest) -> Vec<IVec2> {
 			let mut contour = std::mem::take(&mut contours[child]).moved(offsets[child]);
 			let mut elongation = IVec2::ZERO;
 
-			let held = graph.nodes[child].held || graph.nodes[node].held;
+			let held = graph.nodes[child].held || graph.nodes[node].held || (fitting.keep_carriers_of_held && carries_held[child]);
 			if !graph.nodes[child].waypoint && !chain_links[child] && !held {
 				let feeds_stack = graph.nodes[node].is_layer && forest.owner_inputs[child] == 0;
+				let coarse = |clearance: i32, unit: i32| {
+					if fitting.coarse_steps && clearance > 0 {
+						(clearance as u32).div_ceil(unit as u32) as i32 * unit
+					} else {
+						clearance
+					}
+				};
 				let own_clearance = match own {
 					None => IVec2::ZERO,
-					Some(own) if feeds_stack => IVec2::new(0, contour.clearance_below_bounds(own, VERTICAL_GAP, HORIZONTAL_GAP)),
-					Some(own) => IVec2::new(-contour.clearance_left_of_bounds(own, VERTICAL_GAP, HORIZONTAL_GAP), 0),
+					Some(own) if feeds_stack => IVec2::new(0, coarse(contour.clearance_below_bounds(own, vertical_gap, horizontal_gap), LAYER_HEIGHT + 1)),
+					Some(own) => IVec2::new(-coarse(contour.clearance_left_of_bounds(own, vertical_gap, horizontal_gap), CHAIN_WIDTH), 0),
 				};
 				contour = contour.moved(own_clearance);
 
-				let sibling_clearance = IVec2::new(0, contour.clearance_below(&placed, VERTICAL_GAP, HORIZONTAL_GAP));
+				let sibling_clearance = IVec2::new(0, coarse(contour.clearance_below(&placed, vertical_gap, horizontal_gap), LAYER_HEIGHT + 1));
 				contour = contour.moved(sibling_clearance);
 				elongation = own_clearance + sibling_clearance;
 			}
@@ -608,6 +686,17 @@ mod tests {
 
 		assert_eq!(layout.positions[4], IVec2::new(30, 13));
 		assert!(layout.elongations.iter().all(|elongation| *elongation == IVec2::ZERO));
+	}
+
+	#[test]
+	fn the_connection_carrying_a_held_node_is_not_drawn_longer() {
+		let mut graph = stack_with_tall_content(1, 0);
+		graph.nodes[5].held = true;
+		let layout = layout(&graph);
+
+		// The stacked layer carries the held chain node, so it stays where it is stored rather than clearing the tall node
+		assert_eq!(layout.elongations[4], IVec2::ZERO);
+		assert_eq!(layout.positions[5], layout.positions[4] - IVec2::new(CHAIN_WIDTH, 0));
 	}
 
 	#[test]
@@ -927,7 +1016,7 @@ mod phase_timing {
 				times[1] += start.elapsed();
 
 				let start = Instant::now();
-				let elongations = elongations(&graph, &forest);
+				let elongations = elongations(&graph, &forest, Fitting::default());
 				times[2] += start.elapsed();
 
 				let start = Instant::now();

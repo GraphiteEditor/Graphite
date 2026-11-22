@@ -4,6 +4,7 @@
 //!
 //! Shared fixtures live in [`test_support`].
 
+mod drag_stability_tests;
 mod layout_pass_tests;
 mod lifecycle_tests;
 mod metadata_tests;
