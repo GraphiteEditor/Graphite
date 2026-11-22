@@ -390,7 +390,7 @@ impl NodeRuntime {
 			None
 		};
 
-		self.resolve_effect_maps(&mut result).await;
+		self.resolve_deferred_images(&mut result).await;
 		self.respond(request.execution_id, result, observations).await;
 		texture
 	}
@@ -451,7 +451,7 @@ impl NodeRuntime {
 			let (buffer, width, height) = self.read_back(texture.clone()).await.to_flat_u8();
 			*data = RenderOutputType::Buffer { data: buffer, width, height };
 		}
-		self.resolve_effect_maps(&mut result).await;
+		self.resolve_deferred_images(&mut result).await;
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 		self.respond(request.execution_id, result, observations).await;
 	}
@@ -537,16 +537,22 @@ impl NodeRuntime {
 		observer.evaluate(&self.executor, self.old_graph.as_ref()).remove(&())?.data
 	}
 
-	/// Puts the maps of effects' coverages the GPU rendered into an SVG result, in place of the placeholders its filters hold for them.
-	async fn resolve_effect_maps(&self, result: &mut ExecutionResult) {
+	/// Puts what the GPU rendered for an SVG result into it, in place of the placeholders standing in for each:
+	/// the maps of effects' coverages its filters take, and the images of content with effects SVG filters can't carry out.
+	async fn resolve_deferred_images(&self, result: &mut ExecutionResult) {
 		let Some(RenderOutput {
-			data: RenderOutputType::Svg { svg, effect_maps, .. },
+			data: RenderOutputType::Svg {
+				svg,
+				image_data,
+				effect_maps,
+				deferred_images,
+			},
 			..
 		}) = result.render_output()
 		else {
 			return;
 		};
-		if effect_maps.is_empty() {
+		if effect_maps.is_empty() && deferred_images.is_empty() {
 			return;
 		}
 		let Some(executor) = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor()) else {
@@ -554,6 +560,7 @@ impl NodeRuntime {
 		};
 
 		executor.resolve_effect_maps(svg, std::mem::take(effect_maps)).await;
+		executor.resolve_deferred_svg_images(svg, image_data, std::mem::take(deferred_images)).await;
 	}
 
 	async fn read_back(&self, texture: Texture) -> Raster<CPU> {

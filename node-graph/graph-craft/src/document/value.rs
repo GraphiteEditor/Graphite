@@ -18,7 +18,7 @@ use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::{Gradient, GradientRamp};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
-use rendering::deferred_image::EffectMapPlacement;
+use rendering::deferred_image::{DeferredImagePlacement, EffectMapPlacement};
 use rendering::{CanvasImage, RenderMetadata};
 use std::fmt::Display;
 use std::hash::Hash;
@@ -924,6 +924,9 @@ pub enum RenderOutputType {
 		/// Maps of effects' coverages the GPU rendered for the SVG's filters, which go in place of their placeholders once read back.
 		#[serde(skip)]
 		effect_maps: Vec<(EffectMapPlacement, graphene_application_io::Texture)>,
+		/// Images the GPU rendered of content with effects SVG filters can't carry out, which go in place of the markup standing in for that content once read back.
+		#[serde(skip)]
+		deferred_images: Vec<(DeferredImagePlacement, graphene_application_io::Texture)>,
 	},
 	#[cfg(target_family = "wasm")]
 	CanvasFrame { canvas_id: u64, resolution: DVec2 },
@@ -939,10 +942,19 @@ impl CacheHash for RenderOutputType {
 				width.cache_hash(state);
 				height.cache_hash(state);
 			}
-			Self::Svg { svg, image_data, effect_maps } => {
+			Self::Svg {
+				svg,
+				image_data,
+				effect_maps,
+				deferred_images,
+			} => {
 				svg.cache_hash(state);
 				image_data.cache_hash(state);
 				for (placement, texture) in effect_maps {
+					placement.id.cache_hash(state);
+					texture.hash(state);
+				}
+				for (placement, texture) in deferred_images {
 					placement.id.cache_hash(state);
 					texture.hash(state);
 				}

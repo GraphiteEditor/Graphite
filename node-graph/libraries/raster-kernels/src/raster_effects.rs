@@ -1,15 +1,16 @@
 //! Carries out a raster's effects on the CPU at the raster's own resolution, for the nodes that read its pixels.
 //! Each step mirrors the renderer's GPU passes, working on premultiplied gamma-encoded channels as they do.
 
+use crate::adjustments::adjust_colors;
 use crate::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, Plane};
 use core_types::color::{linear_to_srgb, srgb_to_linear};
 use core_types::list::{ATTR_EFFECTS, Item};
 use core_types::transfer_curve::TransferCurve;
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DMat2, DVec2};
+use graphic_types::adjustment::Adjustment;
 use graphic_types::effects::{EffectOperation, Effects, GlowFill, GlowTechnique, effect_space, grow_and_tent, precise_falloff, shadow_offset, shape_strength, spans_along_axes};
 use raster_types::{CPU, Image, Raster};
-use std::ops::Range;
 
 /// The most pixels an image may grow to with the margin its effects cast into, beyond which the margin is cut short.
 const MAX_PIXELS_WITH_MARGIN: f64 = (1 << 24) as f64;
@@ -35,6 +36,20 @@ pub fn evaluate_raster_effects(item: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
 	item
 }
 
+/// The raster with `adjustments` carried out on its colors, even those of transparent pixels, as for the adjustments leading its effects.
+/// The result is kept with the raster's pixels, so adjusting them the same way again reuses it, ID and all.
+pub fn adjusted_raster(raster: &Raster<CPU>, adjustments: &[Adjustment]) -> Raster<CPU> {
+	let mut hasher = std::hash::DefaultHasher::new();
+	adjustments.iter().for_each(|adjustment| core_types::graphene_hash::CacheHash::cache_hash(adjustment, &mut hasher));
+	let key = std::hash::Hasher::finish(&hasher);
+
+	raster.derived(key, |raster| {
+		let mut image = raster.data().clone();
+		adjustments.iter().for_each(|adjustment| adjust_colors(adjustment, &mut image.data));
+		Raster::new_cpu(image)
+	})
+}
+
 /// The image of the effects carried out on `raster`, which `transform` places in the document, with the transform placing that larger image.
 /// `None` when there's nothing to carry out, or the image is empty or its transform can't be inverted.
 fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: f32) -> Option<(Image<Color>, DAffine2)> {
@@ -46,13 +61,41 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 
 	// Each effect's lengths become pixels along each of the image's axes, and its offsets map from its effect space through the inverse of the image's pixel placement
 	let document_to_pixels = (transform.matrix2 * DMat2::from_diagonal(size.recip())).inverse();
-	let runs: Vec<(DMat2, Range<usize>)> = (effects.runs().into_iter())
-		.map(|(stamped_transform, rows)| (document_to_pixels * effect_space(transform, stamped_transform).matrix2, rows))
+	let operations: Vec<(EffectOperation, DMat2, bool)> = (effects.runs().into_iter().enumerate())
+		.flat_map(|(run_index, (stamped_transform, rows))| {
+			let effect_to_pixels = document_to_pixels * effect_space(transform, stamped_transform).matrix2;
+			(effects.operations_in(rows).enumerate()).map(move |(index, operation)| (operation, effect_to_pixels, run_index > 0 && index == 0))
+		})
 		.collect();
 
+	// Unless a fill fades them first, leading adjustments change the image's own colors, keeping even transparent pixels' colors
+	let leading_adjustments = operations.iter().take_while(|_| fill == 1.).map_while(|(operation, ..)| match operation {
+		EffectOperation::Adjustment(adjustment) => Some(adjustment),
+		_ => None,
+	});
+	let mut colors = std::borrow::Cow::Borrowed(raster.data.as_slice());
+	let mut remaining = operations.as_slice();
+	for adjustment in leading_adjustments {
+		adjust_colors(adjustment, colors.to_mut());
+		remaining = &remaining[1..];
+	}
+	if remaining.is_empty() {
+		let data = colors.iter().map(|color| color.with_alpha(color.a() * fill)).collect();
+		return Some((
+			Image {
+				width: raster.width,
+				height: raster.height,
+				data,
+			},
+			transform,
+		));
+	}
+	let operations = remaining;
+
 	// A margin around the image to hold the blur and shadows cast past its edges, cut short evenly for an image that would grow too large
-	let run_reach = |rows: &Range<usize>| effects.operations_in(rows.clone()).map(|operation| operation.painted_reach()).sum::<f64>();
-	let reach_in_pixels: DVec2 = runs.iter().map(|(effect_to_pixels, rows)| run_reach(rows) * spans_along_axes(*effect_to_pixels)).sum();
+	let reach_in_pixels: DVec2 = (operations.iter())
+		.map(|(operation, effect_to_pixels, _)| operation.painted_reach() * spans_along_axes(*effect_to_pixels))
+		.sum();
 	let mut margin = reach_in_pixels.ceil();
 	if (size + 2. * margin).element_product() > MAX_PIXELS_WITH_MARGIN {
 		let reach_in_pixels = margin.max_element();
@@ -68,7 +111,7 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 
 	// The content at full strength, which casts every silhouette, and the content faded by the fill, which shows in the result
 	let mut full = Plane::<[f32; 4]>::new(width + 2 * margin_x, height + 2 * margin_y);
-	for (y, row) in raster.data.chunks_exact(width).enumerate() {
+	for (y, row) in colors.chunks_exact(width).enumerate() {
 		let start = (y + margin_y) * full.width + margin_x;
 		full.data[start..start + width]
 			.iter_mut()
@@ -81,9 +124,7 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 
 	// Each run after the first takes the result of those before it as its content at full strength, like the renderers' nested runs
 	let mut run_fill = fill;
-	let operations = (runs.iter().enumerate())
-		.flat_map(|(run_index, (effect_to_pixels, rows))| (effects.operations_in(rows.clone()).enumerate()).map(move |(index, operation)| (operation, *effect_to_pixels, run_index > 0 && index == 0)));
-	for (effect, effect_to_pixels, starts_later_run) in operations {
+	for &(ref operation, effect_to_pixels, starts_later_run) in operations {
 		if starts_later_run {
 			full = match (filled.take(), beneath.take()) {
 				(filled, Some(beneath)) => composite_beneath(filled.as_ref().unwrap_or(&full), &beneath),
@@ -93,19 +134,14 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 			run_fill = 1.;
 		}
 		let pixels_per_length = spans_along_axes(effect_to_pixels);
-		match effect {
+		match *operation {
 			EffectOperation::Blur { radius, box_blur, gamma } => {
 				let radius = radius * pixels_per_length;
 				if radius.max_element() < NEGLIGIBLE_LENGTH {
 					continue;
 				}
 
-				// What lies beneath blurs together with the content
-				if let Some(beneath) = beneath.take() {
-					filled = filled.map(|filled| composite_beneath(&filled, &beneath));
-					full = composite_beneath(&full, &beneath);
-				}
-
+				merge_beneath(&mut full, &mut filled, &mut beneath);
 				let kernels = match box_blur {
 					true => (BlurKernel::Box { radius: radius.x }, BlurKernel::Box { radius: radius.y }),
 					false => (BlurKernel::Gaussian { sigma: radius.x }, BlurKernel::Gaussian { sigma: radius.y }),
@@ -119,25 +155,25 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				distance,
 				spread,
 				size,
-				contour,
+				ref contour,
 				knockout,
 			} => {
 				let offset = effect_to_pixels * shadow_offset(angle, distance);
 				let silhouette = full.map(|[_, _, _, alpha]| alpha).shifted(offset.x, offset.y);
-				let strength = cast(silhouette, size, spread, GlowTechnique::Softer, 100., &contour, pixels_per_length);
+				let strength = cast(silhouette, size, spread, GlowTechnique::Softer, 100., contour, pixels_per_length);
 				beneath = Some(accumulate(beneath, &strength, color, knockout, &full, run_fill));
 			}
 			EffectOperation::OuterGlow {
-				color,
+				ref color,
 				technique,
 				spread,
 				size,
 				range,
-				contour,
+				ref contour,
 			} => {
-				let Some(paint) = GlowFill::of(&color) else { continue };
+				let Some(paint) = GlowFill::of(color) else { continue };
 				let raw = cast_strength(full.map(|[_, _, _, alpha]| alpha), size, spread, technique, pixels_per_length);
-				let strength = shaped(raw.clone(), range, &contour);
+				let strength = shaped(raw.clone(), range, contour);
 				beneath = Some(stack_beneath(beneath, glow_tint(&paint, &strength, &raw, true), true, &full, run_fill));
 			}
 			EffectOperation::InnerShadow {
@@ -146,14 +182,19 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				distance,
 				choke,
 				size,
-				contour,
+				ref contour,
 			} => {
 				// Cast from the area outside the content, which the margin and anything moved in from past it belong to
 				let offset = effect_to_pixels * shadow_offset(angle, distance);
 				let outside = full.map(|[_, _, _, alpha]| alpha).shifted(offset.x, offset.y).map(|alpha| 1. - alpha);
-				let strength = cast(outside, size, choke, GlowTechnique::Softer, 100., &contour, pixels_per_length);
+				let strength = cast(outside, size, choke, GlowTechnique::Softer, 100., contour, pixels_per_length);
 				filled = filled.map(|filled| composite_within(&filled, &strength, &full, color));
 				full = composite_within(&full, &strength, &full, color);
+			}
+			EffectOperation::Adjustment(ref adjustment) => {
+				merge_beneath(&mut full, &mut filled, &mut beneath);
+				full = adjust(&full, adjustment);
+				filled = filled.map(|filled| adjust(&filled, adjustment));
 			}
 		}
 	}
@@ -205,6 +246,28 @@ fn straight_linear_color([red, green, blue, alpha]: [f32; 4]) -> Color {
 		return Color::TRANSPARENT;
 	}
 	Color::from_gamma_srgb_channels(red / alpha, green / alpha, blue / alpha, alpha.min(1.))
+}
+
+/// Adjusts premultiplied gamma-encoded pixels by way of their straight colors, as every renderer carries out an adjustment among an item's effects.
+/// Fully transparent pixels hold no color to adjust, so they stay empty even where the adjustment would raise their alpha.
+pub fn adjust_premultiplied(pixels: &mut [[f32; 4]], adjustment: &Adjustment) {
+	let mut colors: Vec<Color> = pixels.iter().copied().map(straight_linear_color).collect();
+	adjust_colors(adjustment, &mut colors);
+
+	for (pixel, color) in pixels.iter_mut().zip(colors) {
+		*pixel = if pixel[3] > 0. { premultiplied_gamma_channels(color) } else { [0.; 4] };
+	}
+}
+
+fn adjust(plane: &Plane<[f32; 4]>, adjustment: &Adjustment) -> Plane<[f32; 4]> {
+	let mut data = plane.data.clone();
+	adjust_premultiplied(&mut data, adjustment);
+
+	Plane {
+		width: plane.width,
+		height: plane.height,
+		data,
+	}
 }
 
 /// Premultiplied channels with `transfer` applied to their straight color.
@@ -327,6 +390,14 @@ fn composite_within(image: &Plane<[f32; 4]>, coverage: &Plane<f32>, full_content
 	})
 }
 
+/// Places what lies `beneath` under the full-strength content and the faded fill, so a pixel filter after it (a blur or an adjustment) processes them together.
+fn merge_beneath(full: &mut Plane<[f32; 4]>, filled: &mut Option<Plane<[f32; 4]>>, beneath: &mut Option<Plane<[f32; 4]>>) {
+	let Some(beneath) = beneath.take() else { return };
+
+	*filled = filled.take().map(|filled| composite_beneath(&filled, &beneath));
+	*full = composite_beneath(full, &beneath);
+}
+
 /// The image with the shadows and glows `beneath` placed under it.
 fn composite_beneath(image: &Plane<[f32; 4]>, beneath: &Plane<[f32; 4]>) -> Plane<[f32; 4]> {
 	image.zip(beneath, |image, beneath| std::array::from_fn(|channel| image[channel] + beneath[channel] * (1. - image[3])))
@@ -374,5 +445,45 @@ mod tests {
 		let margin = (width - 8) / 2;
 		assert!(pixel(margin, margin + 4).r() < 0.01, "the content's edge is shaded");
 		assert!(pixel(margin + 4, margin + 4).r() > 0.99, "the content's middle is not");
+	}
+
+	#[test]
+	fn adjustments_leave_fully_transparent_pixels_empty() {
+		use graphic_types::adjustment::{CurvesSettings, LevelsRecord, LevelsSettings};
+
+		let pixels = [[0.; 4], [0.2, 0.1, 0.05, 0.5], [0.3, 0.3, 0.3, 0.]];
+		let adjusted = |run: &[Adjustment]| {
+			let mut pixels = pixels;
+			run.iter().for_each(|adjustment| adjust_premultiplied(&mut pixels, adjustment));
+			pixels
+		};
+
+		// Nothing raises the alpha of a pixel with none, be it Make Opaque or a Levels alpha output starting above zero
+		let identity = LevelsRecord {
+			shadows: 0.,
+			midtones: 1.,
+			highlights: 100.,
+			output_minimums: 0.,
+			output_maximums: 100.,
+		};
+		let raised_alpha = Adjustment::Levels(Box::new(LevelsSettings {
+			composite: identity,
+			red: identity,
+			green: identity,
+			blue: identity,
+			alpha: LevelsRecord { output_minimums: 50., ..identity },
+		}));
+		for adjustment in [Adjustment::MakeOpaque, raised_alpha] {
+			let [empty, translucent, colored_without_alpha] = adjusted(std::slice::from_ref(&adjustment));
+			assert_eq!((empty, colored_without_alpha), ([0.; 4], [0.; 4]), "{adjustment:?}");
+			assert!(translucent[3] > 0.5, "{adjustment:?}");
+		}
+
+		// A pixel an adjustment empties stays empty for those after it
+		let emptied = Adjustment::Curves(Box::new(CurvesSettings {
+			alpha: TransferCurve::new(vec![DVec2::ZERO, DVec2::new(1., 0.)]),
+			..Default::default()
+		}));
+		assert_eq!(adjusted(&[emptied, Adjustment::MakeOpaque]), [[0.; 4]; 3]);
 	}
 }

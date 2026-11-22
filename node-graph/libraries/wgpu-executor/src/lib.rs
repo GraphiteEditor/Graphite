@@ -4,6 +4,7 @@ mod deferred_svg_images;
 mod pipeline;
 mod texture_cache;
 pub mod texture_conversion;
+mod vello_adjustments;
 mod vello_effects;
 mod vello_render;
 
@@ -98,12 +99,15 @@ impl WgpuExecutor {
 		Ok(texture)
 	}
 
-	/// Reads an `Rgba8Unorm` texture's pixels back to the CPU, as tightly packed rows, waiting on the GPU.
+	/// Reads a texture's pixels back to the CPU, as tightly packed rows of the bytes its format stores, waiting on the GPU.
 	/// Fails in a browser, which hands over the pixels only once control returns to it.
 	pub fn read_texture_pixels(&self, texture: &wgpu::Texture) -> Result<Vec<u8>> {
 		let device = &self.context().device;
 		let (width, height) = (texture.width(), texture.height());
-		let row_bytes = width * 4;
+		let Some(pixel_bytes) = texture.format().block_copy_size(None) else {
+			anyhow::bail!("The texture's format can't be read back");
+		};
+		let row_bytes = width * pixel_bytes;
 		let padded_row_bytes = row_bytes.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
 		let buffer = device.create_buffer(&wgpu::BufferDescriptor {

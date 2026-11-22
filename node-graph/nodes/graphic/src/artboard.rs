@@ -51,7 +51,7 @@ fn create_artboard<T: IntoGraphicList>(
 	let normalized_location = location.min(location + dimensions);
 	let normalized_dimensions = dimensions.abs().max(DVec2::ONE);
 
-	let background = background.into_element();
+	let background = raster_kernels::evaluate_color_effects(background).into_element();
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
 	Ok(Item::new_from_element(Artboard::new(content))

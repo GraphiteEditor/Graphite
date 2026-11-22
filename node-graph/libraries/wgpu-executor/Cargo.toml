@@ -36,3 +36,11 @@ vello_gpu = { workspace = true }
 bytemuck = { workspace = true }
 half = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+# Local dependencies
+graphene-resource = { workspace = true }
+
+# Required dependencies
+# Turns on the shader translators of every backend for the tests, whichever of them the platform's own backends build with
+naga = { version = "30.0", features = ["wgsl-in", "glsl-out", "hlsl-out", "msl-out", "spv-out"] }

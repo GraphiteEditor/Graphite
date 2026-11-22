@@ -1,4 +1,7 @@
 //! Renders scenes that stress Vello GPU on the machine's GPU, skipping when none is available.
+//!
+//! wgpu's environment variables pick the backend and shader compiler they run on, so one machine can cover several. On Windows, for instance,
+//! `WGPU_BACKEND` takes `dx12`, `vulkan`, or `gl`, `WGPU_DX12_COMPILER` takes `fxc` or `dxc`, and `WGPU_DEBUG=0` builds shaders as a release build does.
 
 use crate::WgpuExecutor;
 use glam::{DAffine2, UVec2};
@@ -9,7 +12,9 @@ use vello_gpu::peniko::{self, Color, Fill};
 /// The executor every test shares, or `None` without a GPU.
 fn executor() -> Option<&'static WgpuExecutor> {
 	static EXECUTOR: std::sync::OnceLock<Option<WgpuExecutor>> = std::sync::OnceLock::new();
-	EXECUTOR.get_or_init(|| futures::executor::block_on(WgpuExecutor::new())).as_ref()
+	EXECUTOR
+		.get_or_init(|| futures::executor::block_on(crate::WgpuContext::for_tests()).and_then(WgpuExecutor::with_context))
+		.as_ref()
 }
 
 /// Held while a test uses the shared GPU, since another test's work can delay a render's readback.
@@ -458,7 +463,7 @@ fn nested_effects_groups_render_inside_out() {
 	let size = UVec2::new(128, 128);
 	let square = Rect::new(30., 30., 80., 80.);
 
-	// A hard shadow around a group whose content is itself a blurred square
+	// A hard shadow around a group with content that is itself a blurred square
 	let shadow = Effects::from_operations([drop_shadow(GraphicColor::BLACK, DVec2::new(20., 0.), 0., 0.)]);
 	let blur = Effects::from_operations([EffectOperation::Blur {
 		radius: 3.,
@@ -488,6 +493,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 	use core_types::transfer_curve::TransferCurve;
 	use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM};
 	use glam::DVec2;
+	use graphic_types::adjustment::{Adjustment, LevelsRecord, LevelsSettings};
 	use graphic_types::raster_types::{Image, Raster};
 	use graphic_types::vector_types::gradient::{Gradient, GradientStop};
 	use graphic_types::{Effect, EffectOperation, GlowTechnique, Graphic, stamp_effect};
@@ -497,6 +503,13 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 	let (min, max) = (50, 100);
 	let shadow_color = GraphicColor::from_rgbaf32_unchecked(0.1, 0.2, 0.8, 0.75);
 	let blur = |radius, box_blur, gamma| EffectOperation::Blur { radius, box_blur, gamma };
+	let identity = LevelsRecord {
+		shadows: 0.,
+		midtones: 1.,
+		highlights: 100.,
+		output_minimums: 0.,
+		output_maximums: 100.,
+	};
 
 	let gradient_glow = |color, technique, spread, size, range, contour| EffectOperation::OuterGlow {
 		color,
@@ -540,6 +553,14 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		vec![glow(GlowTechnique::Softer, 0., 6., 50., bow.clone())],
 		vec![gradient_glow(fading, GlowTechnique::Precise, 0., 14., 75., TransferCurve::default())],
 		vec![gradient_glow(opaque, GlowTechnique::Softer, 25., 12., 50., bow)],
+		// Bends alpha, so the fill must fade the content before it on both
+		vec![EffectOperation::Adjustment(Adjustment::Levels(Box::new(LevelsSettings {
+			composite: identity,
+			red: identity,
+			green: identity,
+			blue: identity,
+			alpha: LevelsRecord { midtones: 2.2, ..identity },
+		})))],
 	];
 
 	for effects in cases {
@@ -588,6 +609,1390 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 	}
 }
 
+/// Colors across the RGB cube, among them black, white, grays, and saturated and near-black colors, each opaque, with some also translucent or fully transparent.
+fn adjustment_test_colors() -> Vec<core_types::Color> {
+	const LEVELS: [f32; 12] = [0., 1. / 255., 4. / 255., 0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95, 254. / 255., 1.];
+	let count = LEVELS.len();
+
+	let mut colors = Vec::new();
+	for index in 0..count * count * count {
+		let [r, g, b] = [index / (count * count), index / count % count, index % count].map(|level| LEVELS[level]);
+		colors.push(core_types::Color::from_gamma_srgb_channels(r, g, b, 1.));
+
+		for (spacing, alpha) in [(5, 0.5), (7, 0.15), (97, 0.)] {
+			if index % spacing == 0 {
+				colors.push(core_types::Color::from_gamma_srgb_channels(r, g, b, alpha));
+			}
+		}
+	}
+	colors
+}
+
+/// What the GPU's adjustment passes carrying out `run` at `fill` leave of each of `texels`, which like the result hold premultiplied gamma-encoded channels
+/// as the half floats of the working format.
+fn gpu_adjusted_texels(run: &[graphic_types::Adjustment], texels: &[[half::f16; 4]], fill: f32) -> Option<Vec<[f32; 4]>> {
+	use graphic_types::{EffectOperation, Effects};
+	use half::f16;
+	use wgpu::util::DeviceExt;
+
+	let executor = executor()?;
+	let effect_passes = &executor.inner.vello_renderer.effect_passes;
+	if !effect_passes.renders_working_formats {
+		return None;
+	}
+	let device = &executor.context().device;
+	let _turn = take_turn();
+
+	// One texel for each pixel
+	let width = 64;
+	let height = texels.len().div_ceil(width);
+	let mut padded = texels.to_vec();
+	padded.resize(width * height, [f16::ZERO; 4]);
+	let descriptor = wgpu::TextureDescriptor {
+		label: Some("adjustment_test_colors"),
+		size: wgpu::Extent3d {
+			width: width as u32,
+			height: height as u32,
+			depth_or_array_layers: 1,
+		},
+		mip_level_count: 1,
+		sample_count: 1,
+		dimension: wgpu::TextureDimension::D2,
+		format: wgpu::TextureFormat::Rgba16Float,
+		usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+		view_formats: &[],
+	};
+
+	let queue = executor.context().queue.lock();
+	let content = device.create_texture_with_data(&queue, &descriptor, wgpu::util::TextureDataOrder::LayerMajor, bytemuck::cast_slice(&padded));
+	let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
+	let mut textures = crate::vello_effects::EffectTextures::default();
+	let adjusted = effect_passes.apply(device, &queue, &mut textures, &content, &effects, fill, glam::DMat2::IDENTITY, None);
+	drop(queue);
+
+	let bytes = executor.read_texture_pixels(&adjusted).expect("Failed to read back the adjusted colors");
+	let half_floats: Vec<f32> = bytes.as_chunks::<2>().0.iter().map(|&bytes| f16::from_le_bytes(bytes).to_f32()).collect();
+	Some(half_floats.as_chunks::<4>().0[..texels.len()].to_vec())
+}
+
+/// How far, in 8-bit levels of the straight gamma-encoded channels and alpha (scaled down for values past 1 by their size, as half floats round them),
+/// the GPU's adjustment passes carrying out `run` on `colors` at `fill` stray from the CPU's kernels, with the pixel that strays the most.
+/// The colors reach the GPU as the half floats of its working format, so the CPU adjusts them as the GPU reads them.
+fn gpu_adjustment_deviation(run: &[graphic_types::Adjustment], colors: &[core_types::Color], fill: f32) -> Option<(f32, String)> {
+	use half::f16;
+
+	// One color for each pixel, premultiplied with gamma-encoded channels as the effect passes hold them
+	let texels: Vec<[f16; 4]> = (colors.iter())
+		.map(|color| {
+			let [red, green, blue, alpha] = color.to_gamma_srgb_channels();
+			[red * alpha, green * alpha, blue * alpha, alpha].map(f16::from_f32)
+		})
+		.collect();
+	let gpu = gpu_adjusted_texels(run, &texels, fill)?;
+
+	// The texels as the adjustments read them (which a fill fades first, into half floats again), adjusted one after another as the CPU carries out effects
+	let inputs: Vec<[f32; 4]> = texels.iter().map(|texel| texel.map(|channel| f16::from_f32(channel.to_f32() * fill).to_f32())).collect();
+	let mut cpu = inputs.clone();
+	run.iter().for_each(|adjustment| raster_kernels::raster_effects::adjust_premultiplied(&mut cpu, adjustment));
+
+	let straight = |[red, green, blue, alpha]: [f32; 4]| if alpha > 0. { [red / alpha, green / alpha, blue / alpha, alpha] } else { [0.; 4] };
+	let mut worst = (0_f32, String::new());
+	for (index, (input, cpu)) in inputs.iter().zip(&cpu).enumerate() {
+		let (input, gpu, cpu) = (straight(*input), straight(gpu[index]), straight(*cpu));
+
+		// Without alpha a pixel shows no color to compare, and a NaN on only one side strays without bound
+		let channels = if gpu[3] > 0. && cpu[3] > 0. { 0..4 } else { 3..4 };
+		for channel in channels {
+			let deviation = match (gpu[channel].is_nan(), cpu[channel].is_nan()) {
+				(false, false) => (gpu[channel] - cpu[channel]).abs() * 255. / cpu[channel].abs().max(1.),
+				(true, true) => 0.,
+				_ => f32::INFINITY,
+			};
+			if deviation > worst.0 {
+				worst = (deviation, format!("{input:?} as {gpu:?} rather than {cpu:?}"));
+			}
+		}
+	}
+	Some(worst)
+}
+
+/// Checks that each named run of adjustments strays from the CPU's kernels on the GPU by at most the rounding of its half floats, printing how far each strays.
+fn assert_gpu_adjustments_match_the_cpu_kernels(runs: Vec<(impl std::fmt::Display, Vec<graphic_types::Adjustment>)>) {
+	assert_gpu_adjustments_stray_at_most(0.3, runs, &[1.]);
+}
+
+/// Checks that each named run strays from the CPU's kernels by at most `limit` levels at each of `fills`, which should be powers of two so fading by them rounds nothing.
+fn assert_gpu_adjustments_stray_at_most(limit: f32, runs: Vec<(impl std::fmt::Display, Vec<graphic_types::Adjustment>)>, fills: &[f32]) {
+	let colors = adjustment_test_colors();
+
+	let mut strays = Vec::new();
+	for (name, run) in runs {
+		for &fill in fills {
+			let Some((levels, worst_pixel)) = gpu_adjustment_deviation(&run, &colors, fill) else { return };
+			println!("{name} at a fill of {fill}: {levels:.3} levels");
+
+			if levels > limit {
+				strays.push(format!("{name} at a fill of {fill} strays from the CPU's kernels by {levels} levels, adjusting {worst_pixel}"));
+			}
+		}
+	}
+	assert!(strays.is_empty(), "{}", strays.join("\n"));
+}
+
+#[test]
+fn gpu_tone_adjustments_match_the_cpu_kernels() {
+	use core_types::transfer_curve::TransferCurve;
+	use glam::DVec2;
+	use graphic_types::adjustment::*;
+
+	let record = |shadows, midtones, highlights, output_minimums, output_maximums| LevelsRecord {
+		shadows,
+		midtones,
+		highlights,
+		output_minimums,
+		output_maximums,
+	};
+	let identity = record(0., 1., 100., 0., 100.);
+	let levels = |composite, red, green, blue, alpha| Adjustment::Levels(Box::new(LevelsSettings { composite, red, green, blue, alpha }));
+
+	let curve = |points: &[(f64, f64)]| TransferCurve::new(points.iter().map(|&(x, y)| DVec2::new(x, y)).collect());
+	let curves = |composite, red, green, blue, alpha| Adjustment::Curves(Box::new(CurvesSettings { composite, red, green, blue, alpha }));
+	let straight = TransferCurve::default;
+
+	let brightness_contrast = |brightness, contrast, use_classic| Adjustment::BrightnessContrast {
+		brightness,
+		contrast,
+		use_classic,
+		classic_pivot: 127.,
+	};
+	let exposure = |exposure, offset, gamma_correction| Adjustment::Exposure { exposure, offset, gamma_correction };
+
+	let runs = [
+		("Levels", levels(record(10., 1.4, 90., 0., 100.), identity, record(5., 0.8, 100., 0., 100.), identity, identity)),
+		(
+			"Levels with midtones at their bounds",
+			levels(record(0., 9.99, 100., 0., 100.), record(0., 0.01, 100., 0., 100.), identity, record(20., 0.1, 80., 10., 90.), identity),
+		),
+		(
+			"Levels with gammas merged into one",
+			levels(record(0., 2.5, 100., 5., 95.), record(30., 3.2, 100., 0., 100.), record(0., 0.3, 60., 0., 100.), identity, identity),
+		),
+		(
+			"Levels with inverted output and a bent alpha",
+			levels(record(40., 1., 41., 90., 10.), identity, identity, identity, record(10., 2.2, 90., 0., 80.)),
+		),
+		(
+			"Curves",
+			curves(
+				curve(&[(0., 0.), (0.25, 0.4), (0.75, 0.7), (1., 1.)]),
+				straight(),
+				curve(&[(0., 0.1), (1., 0.9)]),
+				straight(),
+				straight(),
+			),
+		),
+		(
+			"Curves with steep segments",
+			curves(
+				curve(&[(0., 0.), (0.45, 0.02), (0.5, 0.98), (1., 1.)]),
+				curve(&[(0.2, 0.9), (0.21, 0.1)]),
+				curve(&[(0.5, 0.5)]),
+				TransferCurve::new(Vec::new()),
+				curve(&[(0., 1.), (1., 0.)]),
+			),
+		),
+		("Brightness/Contrast", brightness_contrast(40., 30., false)),
+		("Brightness/Contrast darkening", brightness_contrast(-60., -40., false)),
+		("Brightness/Contrast beyond 100", brightness_contrast(150., 100., false)),
+		("Brightness/Contrast beyond -100", brightness_contrast(-150., -50., false)),
+		("Brightness/Contrast classic", brightness_contrast(50., 50., true)),
+		("Brightness/Contrast classic squeezed", brightness_contrast(-30., -100., true)),
+		("Brightness/Contrast classic at full contrast", brightness_contrast(20., 100., true)),
+		("Exposure", exposure(1.5, 0.05, 1.2)),
+		("Exposure darkening", exposure(-2., -0.1, 0.5)),
+		("Exposure at its extremes", exposure(8., 0., 9.99)),
+		("Exposure with the least gamma", exposure(0., 0.3, 0.01)),
+		("Gamma Correction", Adjustment::GammaCorrection { gamma: 2.2, inverse: false }),
+		("Gamma Correction inverse", Adjustment::GammaCorrection { gamma: 0.4, inverse: true }),
+		("Gamma Correction at its extremes", Adjustment::GammaCorrection { gamma: 0.01, inverse: false }),
+		("Posterize to 2 levels", Adjustment::Posterize { levels: 2 }),
+		("Posterize to 7 levels", Adjustment::Posterize { levels: 7 }),
+		("Posterize to 255 levels", Adjustment::Posterize { levels: 255 }),
+		(
+			"Threshold",
+			Adjustment::Threshold {
+				min_luminance: 37.3,
+				max_luminance: 88.1,
+			},
+		),
+		(
+			"Threshold across everything",
+			Adjustment::Threshold {
+				min_luminance: 0.,
+				max_luminance: 100.,
+			},
+		),
+		(
+			"Threshold of the shadows",
+			Adjustment::Threshold {
+				min_luminance: 12.3,
+				max_luminance: 47.9,
+			},
+		),
+		("Invert", Adjustment::Invert),
+		("Make Opaque", Adjustment::MakeOpaque),
+	];
+	assert_gpu_adjustments_match_the_cpu_kernels(runs.into_iter().map(|(name, adjustment)| (name, vec![adjustment])).collect());
+}
+
+#[test]
+fn gpu_color_adjustments_match_the_cpu_kernels() {
+	use core_types::Color;
+	use core_types::blending::BlendMode;
+	use graphic_types::adjustment::*;
+
+	let desaturate = |method| Adjustment::Desaturate { method };
+
+	let black_and_white = |weights: [f64; 6], use_tint| {
+		let [reds, yellows, greens, cyans, blues, magentas] = weights;
+		Adjustment::BlackAndWhite(BlackAndWhiteSettings {
+			use_tint,
+			tint: Color::from_gamma_srgb_channels(0.88, 0.83, 0.7, 1.),
+			reds,
+			yellows,
+			greens,
+			cyans,
+			blues,
+			magentas,
+		})
+	};
+
+	let sliders = |hue, saturation, lightness| HueSaturationSliders { hue, saturation, lightness };
+	let range = |sliders, [falloff_start, range_start, range_end, falloff_end]: [f64; 4]| HueRangeSettings {
+		sliders,
+		falloff_start,
+		range_start,
+		range_end,
+		falloff_end,
+	};
+	let zero = sliders(0., 0., 0.);
+	let hue_saturation = |master, colorize, ranges: [HueSaturationSliders; 6]| {
+		let [reds, yellows, greens, cyans, blues, magentas] = ranges;
+		Adjustment::HueSaturation(Box::new(HueSaturationSettings {
+			master,
+			colorize,
+			colorize_sliders: sliders(200., 60., -30.),
+			reds: range(reds, [315., 345., 15., 45.]),
+			yellows: range(yellows, [15., 45., 75., 105.]),
+			greens: range(greens, [75., 105., 135., 165.]),
+			cyans: range(cyans, [135., 165., 195., 225.]),
+			blues: range(blues, [195., 225., 255., 285.]),
+			magentas: range(magentas, [255., 285., 315., 345.]),
+		}))
+	};
+
+	let row = |red, green, blue, constant| ChannelMixerRow { red, green, blue, constant };
+	let channel_mixer = |monochrome, red, green, blue| {
+		Adjustment::ChannelMixer(Box::new(ChannelMixerSettings {
+			monochrome,
+			monochrome_mix: row(40., 40., 20., 5.),
+			red,
+			green,
+			blue,
+		}))
+	};
+
+	let inks = |cyan, magenta, yellow, black| SelectiveColorInks { cyan, magenta, yellow, black };
+	let selective_color = |mode, groups: [SelectiveColorInks; 9]| {
+		let [reds, yellows, greens, cyans, blues, magentas, whites, neutrals, blacks] = groups;
+		Adjustment::SelectiveColor(Box::new(SelectiveColorSettings {
+			mode,
+			reds,
+			yellows,
+			greens,
+			cyans,
+			blues,
+			magentas,
+			whites,
+			neutrals,
+			blacks,
+		}))
+	};
+	let some_inks = [
+		inks(-20., 15., 30., 0.),
+		inks(0., 0., 0., 0.),
+		inks(35., -10., 0., 20.),
+		inks(-40., 25., 10., -15.),
+		inks(10., 10., -30., 5.),
+		inks(0., -50., 45., 0.),
+		inks(-25., 0., 0., 30.),
+		inks(15., -15., 20., -10.),
+		inks(0., 20., -20., 40.),
+	];
+	let extreme_inks = [100., -100., 100., -100., 100., -100., 100., -100., 100.].map(|percent| inks(percent, -percent, percent, -percent));
+
+	let shifts = |cyan_red, magenta_green, yellow_blue| ColorBalanceShifts { cyan_red, magenta_green, yellow_blue };
+	let color_balance = |shadows, midtones, highlights, preserve_luminosity| {
+		Adjustment::ColorBalance(ColorBalanceSettings {
+			shadows,
+			midtones,
+			highlights,
+			preserve_luminosity,
+		})
+	};
+
+	let photo_filter = |color, density, preserve_luminosity| Adjustment::PhotoFilter { color, density, preserve_luminosity };
+	let warming = Color::from_gamma_srgb_channels(0.925, 0.541, 0., 1.);
+	let cooling = Color::from_gamma_srgb_channels(0., 0.42, 1., 1.);
+
+	let runs = [
+		("Desaturate by Rec. 709 luminance", desaturate(DesaturateMethod::LuminanceRec709)),
+		("Desaturate by Rec. 709 luma", desaturate(DesaturateMethod::LumaRec709)),
+		("Desaturate by Rec. 601 luma", desaturate(DesaturateMethod::LumaRec601)),
+		("Desaturate by OkLab lightness", desaturate(DesaturateMethod::LightnessOkLab)),
+		("Desaturate by the channels' average", desaturate(DesaturateMethod::ChannelsAverage)),
+		("Desaturate by the channels' minimum", desaturate(DesaturateMethod::ChannelsMinimum)),
+		("Desaturate by the channels' maximum", desaturate(DesaturateMethod::ChannelsMaximum)),
+		("Desaturate by HSL lightness", desaturate(DesaturateMethod::LightnessHsl)),
+		("Black & White", black_and_white([40., 60., 40., 60., 20., 80.], false)),
+		("Black & White tinted at extreme weights", black_and_white([300., -200., 150., -50., 250., -100.], true)),
+		("Hue/Saturation", hue_saturation(sliders(25., 30., 5.), false, [sliders(-15., 40., 0.), zero, zero, zero, zero, zero])),
+		(
+			"Hue/Saturation by range at extremes",
+			hue_saturation(
+				sliders(-120., -20., 0.),
+				false,
+				[zero, sliders(30., -100., 50.), sliders(0., 100., 0.), zero, sliders(60., 0., -100.), sliders(-90., 60., 100.)],
+			),
+		),
+		("Hue/Saturation fully saturating", hue_saturation(sliders(0., 100., -40.), false, [zero; 6])),
+		// A range's full lightness leaves grays, which the full saturation of another slider has no color in to raise
+		(
+			"Hue/Saturation with a range's lightness and the master's saturation at their ends",
+			hue_saturation(sliders(0., 100., 0.), false, [sliders(0., 0., -100.), zero, sliders(0., 0., 100.), zero, zero, zero]),
+		),
+		(
+			"Hue/Saturation with a range's lightness and its own saturation at their ends",
+			hue_saturation(zero, false, [sliders(0., 100., 100.), zero, zero, sliders(0., 100., -100.), zero, zero]),
+		),
+		(
+			"Hue/Saturation with the master's lightness and saturation at their ends",
+			hue_saturation(sliders(0., 100., 100.), false, [zero; 6]),
+		),
+		("Hue/Saturation fully desaturating and lightening", hue_saturation(sliders(180., -100., 100.), false, [zero; 6])),
+		("Hue/Saturation colorizing", hue_saturation(zero, true, [zero; 6])),
+		("Vibrance", Adjustment::Vibrance { vibrance: 60., saturation: 20. }),
+		("Vibrance draining", Adjustment::Vibrance { vibrance: -80., saturation: -50. }),
+		("Vibrance at its most", Adjustment::Vibrance { vibrance: 100., saturation: 100. }),
+		("Vibrance at its least", Adjustment::Vibrance { vibrance: -100., saturation: -100. }),
+		("Channel Mixer", channel_mixer(false, row(80., 20., 0., 0.), row(10., 70., 20., 0.), row(0., 30., 90., -10.))),
+		(
+			"Channel Mixer at extremes",
+			channel_mixer(false, row(200., -200., 50., 100.), row(-150., 200., -50., -100.), row(33.3, 33.3, 33.3, 0.)),
+		),
+		("Channel Mixer in monochrome", channel_mixer(true, row(100., 0., 0., 0.), row(0., 100., 0., 0.), row(0., 0., 100., 0.))),
+		("Selective Color", selective_color(RelativeAbsolute::Relative, some_inks)),
+		("Selective Color absolute", selective_color(RelativeAbsolute::Absolute, some_inks)),
+		("Selective Color at extremes", selective_color(RelativeAbsolute::Relative, extreme_inks)),
+		("Selective Color absolute at extremes", selective_color(RelativeAbsolute::Absolute, extreme_inks)),
+		("Color Balance", color_balance(shifts(30., -20., 10.), shifts(-40., 25., 60.), shifts(15., -35., -10.), true)),
+		(
+			"Color Balance without preserving luminosity",
+			color_balance(shifts(30., -20., 10.), shifts(-40., 25., 60.), shifts(15., -35., -10.), false),
+		),
+		(
+			"Color Balance at extremes",
+			color_balance(shifts(100., -100., 100.), shifts(-100., 100., -100.), shifts(100., 100., -100.), false),
+		),
+		("Photo Filter", photo_filter(warming, 25., true)),
+		("Photo Filter at full density", photo_filter(cooling, 100., false)),
+		("Photo Filter at full density preserving luminosity", photo_filter(cooling, 100., true)),
+	];
+	let mut runs: Vec<(String, Vec<Adjustment>)> = runs.into_iter().map(|(name, adjustment)| (name.to_string(), vec![adjustment])).collect();
+
+	// Every blend mode, overlaying an opaque color and a translucent one
+	for blend_mode in BlendMode::list().into_iter().flatten().chain(&[BlendMode::Erase, BlendMode::Restore, BlendMode::MultiplyAlpha]) {
+		for (color, opacity) in [(Color::from_gamma_srgb_channels(0.9, 0.45, 0.2, 1.), 70.), (Color::from_gamma_srgb_channels(0.1, 0.6, 0.85, 0.4), 100.)] {
+			let overlay = Adjustment::ColorOverlay {
+				color,
+				blend_mode: *blend_mode,
+				opacity,
+			};
+			runs.push((format!("Color Overlay with {blend_mode} at {opacity}% opacity"), vec![overlay]));
+		}
+	}
+
+	assert_gpu_adjustments_match_the_cpu_kernels(runs);
+}
+
+#[test]
+fn gpu_gradient_maps_match_the_cpu_kernels() {
+	use core_types::Color;
+	use core_types::list::{ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, Item};
+	use graphic_types::Adjustment;
+	use graphic_types::vector_types::gradient::{Gradient, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread, GradientStop};
+
+	let stop = |position, midpoint, [red, green, blue]: [f32; 3]| GradientStop {
+		position,
+		midpoint,
+		color: Color::from_gamma_srgb_channels(red, green, blue, 1.),
+	};
+	let stops = vec![stop(0., 0.3, [0.05, 0., 0.3]), stop(0.35, 0.5, [0.9, 0.2, 0.1]), stop(1., 0.75, [1., 0.95, 0.4])];
+	let gradient_map = |stops: &Vec<GradientStop>, space, interpolation, hue_direction, spread, cyclic, reverse| Adjustment::GradientMap {
+		gradient: Item::new_from_element(Gradient::new(stops.iter().copied()))
+			.with_attribute(ATTR_GRADIENT_SPACE, space)
+			.with_attribute(ATTR_GRADIENT_INTERPOLATION, interpolation)
+			.with_attribute(ATTR_GRADIENT_HUE_DIRECTION, hue_direction)
+			.with_attribute(ATTR_GRADIENT_SPREAD, spread)
+			.with_attribute(ATTR_GRADIENT_CYCLIC, cyclic),
+		reverse,
+	};
+	let spaces = [
+		GradientSpace::OkLab,
+		GradientSpace::Lab,
+		GradientSpace::OkLCh,
+		GradientSpace::LCh,
+		GradientSpace::RgbLinear,
+		GradientSpace::RgbGamma,
+		GradientSpace::Hsv,
+		GradientSpace::Hsl,
+	];
+
+	let mut runs = Vec::new();
+	for space in spaces {
+		for interpolation in [GradientInterpolation::Linear, GradientInterpolation::Smooth] {
+			let name = format!("Gradient Map {interpolation:?} in {space:?}");
+			runs.push((name, gradient_map(&stops, space, interpolation, GradientHueDirection::Shorter, GradientSpread::Pad, false, false)));
+		}
+	}
+	for hue_direction in [GradientHueDirection::Longer, GradientHueDirection::Increasing, GradientHueDirection::Decreasing] {
+		for (space, interpolation) in [(GradientSpace::OkLCh, GradientInterpolation::Linear), (GradientSpace::Hsl, GradientInterpolation::Smooth)] {
+			let name = format!("Gradient Map {interpolation:?} in {space:?} the {hue_direction:?} way");
+			runs.push((name, gradient_map(&stops, space, interpolation, hue_direction, GradientSpread::Pad, false, false)));
+		}
+	}
+
+	// Hard steps where no color's position lands exactly, which float rounding could tip either way, then stops past the ends, a single stop, and none
+	let steps = vec![stop(0.05, 0.5, [0.05, 0., 0.3]), stop(0.3721, 0.5, [0.9, 0.2, 0.1]), stop(0.9, 0.5, [1., 0.95, 0.4])];
+	let wrapping = vec![stop(0.08, 0.3, [0.05, 0., 0.3]), stop(0.35, 0.5, [0.9, 0.2, 0.1]), stop(0.83, 0.65, [1., 0.95, 0.4])];
+	let hard_edge = vec![
+		stop(0., 0.5, [0.1, 0.1, 0.1]),
+		stop(0.4137, 0.5, [0.9, 0.2, 0.1]),
+		stop(0.4137, 0.5, [0.1, 0.3, 0.9]),
+		stop(1., 0.5, [0.9, 0.9, 0.9]),
+	];
+	let outside = vec![stop(-0.2, 0.6, [0., 0.4, 0.2]), stop(0.5, 0.5, [0.7, 0.7, 0.1]), stop(1.3, 0.5, [0.2, 0., 0.9])];
+	let single = vec![stop(0.4, 0.5, [0.3, 0.6, 0.9])];
+
+	// Stops exactly where the test colors' black, grays, and white land, which each take the color of the stop they land on
+	let at_grays = vec![
+		stop(0., 0.5, [0.1, 0.1, 0.1]),
+		stop(0.2, 0.5, [0.9, 0.2, 0.1]),
+		stop(0.5, 0.5, [0.1, 0.3, 0.9]),
+		stop(0.8, 0.5, [0.2, 0.8, 0.3]),
+		stop(1., 0.5, [0.9, 0.9, 0.9]),
+	];
+
+	let linear = (GradientSpace::OkLab, GradientInterpolation::Linear, GradientHueDirection::Shorter);
+	let stepped = (GradientSpace::OkLab, GradientInterpolation::Stepped, GradientHueDirection::Shorter);
+	for (name, stops, (space, interpolation, hue_direction), spread, cyclic, reverse) in [
+		("stepped", &steps, stepped, GradientSpread::Pad, false, false),
+		("stepped and cyclic", &steps, stepped, GradientSpread::Pad, true, false),
+		("stepped at the grays", &at_grays, stepped, GradientSpread::Pad, false, false),
+		("stepped at the grays in reverse", &at_grays, stepped, GradientSpread::Pad, false, true),
+		("stepped at the grays, cyclic, and repeating", &at_grays, stepped, GradientSpread::Repeat, true, false),
+		("repeating up to white", &at_grays, linear, GradientSpread::Repeat, false, false),
+		("repeating down to black in reverse", &at_grays, linear, GradientSpread::Repeat, false, true),
+		("clear past its ends", &at_grays, linear, GradientSpread::Clear, false, false),
+		("with a hard edge", &hard_edge, linear, GradientSpread::Pad, false, false),
+		("reversed", &stops, linear, GradientSpread::Pad, false, true),
+		("cyclic and repeating", &wrapping, linear, GradientSpread::Repeat, true, false),
+		(
+			"smooth, cyclic, and repeating",
+			&stops,
+			(GradientSpace::Lab, GradientInterpolation::Smooth, GradientHueDirection::Shorter),
+			GradientSpread::Repeat,
+			true,
+			true,
+		),
+		("reflected with stops past its ends", &outside, linear, GradientSpread::Reflect, false, false),
+		(
+			"smooth with stops past its ends",
+			&outside,
+			(GradientSpace::OkLCh, GradientInterpolation::Smooth, GradientHueDirection::Shorter),
+			GradientSpread::Pad,
+			false,
+			false,
+		),
+		("of a single stop", &single, linear, GradientSpread::Pad, false, false),
+		("of no stops", &Vec::new(), linear, GradientSpread::Pad, false, false),
+	] {
+		runs.push((format!("Gradient Map {name}"), gradient_map(stops, space, interpolation, hue_direction, spread, cyclic, reverse)));
+	}
+	let mut runs: Vec<(String, Vec<Adjustment>)> = runs.into_iter().map(|(name, adjustment)| (name, vec![adjustment])).collect();
+
+	// Positions past both ends of the ramp, from a lookup table stretching every channel out of gamut, which each spread folds back its own way
+	let out_of_gamut = Adjustment::ColorLookup {
+		lut_file: graphene_resource::Resource::new(b"LUT_1D_SIZE 2\n-0.6 -0.6 -0.6\n1.7 1.7 1.7\n".to_vec()),
+	};
+	for (spread, interpolation) in [
+		(GradientSpread::Reflect, GradientInterpolation::Linear),
+		(GradientSpread::Repeat, GradientInterpolation::Smooth),
+		(GradientSpread::Clear, GradientInterpolation::Stepped),
+	] {
+		let map = gradient_map(&steps, GradientSpace::OkLab, interpolation, GradientHueDirection::Shorter, spread, false, false);
+		runs.push((format!("Gradient Map {interpolation:?} with {spread:?} out of gamut"), vec![out_of_gamut.clone(), map]));
+	}
+
+	assert_gpu_adjustments_match_the_cpu_kernels(runs);
+}
+
+/// An ICC profile of the `class` and color `space` holding one `A2B0` tag.
+fn icc_profile(class: &[u8; 4], space: &[u8; 4], tag: &[u8]) -> Vec<u8> {
+	let mut bytes = vec![0; 128];
+	bytes[8] = 2;
+	bytes[12..16].copy_from_slice(class);
+	bytes[16..20].copy_from_slice(space);
+	bytes[20..24].copy_from_slice(space);
+	bytes[36..40].copy_from_slice(b"acsp");
+
+	bytes.extend_from_slice(&1_u32.to_be_bytes());
+	bytes.extend_from_slice(b"A2B0");
+	bytes.extend_from_slice(&144_u32.to_be_bytes());
+	bytes.extend_from_slice(&(tag.len() as u32).to_be_bytes());
+	bytes.extend_from_slice(tag);
+	bytes
+}
+
+/// A value from 0 to 1 as an ICC profile's unsigned 16-bit sample.
+fn icc_sample(value: f32) -> [u8; 2] {
+	((value.clamp(0., 1.) * 65_535.).round() as u16).to_be_bytes()
+}
+
+/// An ICC profile's `s15Fixed16Number`.
+fn icc_fixed(value: f32) -> [u8; 4] {
+	((value * 65_536.).round() as i32).to_be_bytes()
+}
+
+/// An abstract profile with a `lut16Type` table bending CIELAB in its legacy encoding, with output curves after it.
+fn icc_abstract_profile() -> Vec<u8> {
+	const GRID: usize = 5;
+	const OUTPUT_ENTRIES: usize = 16;
+
+	let mut tag = vec![0; 52];
+	tag[0..4].copy_from_slice(b"mft2");
+	tag[8] = 3;
+	tag[9] = 3;
+	tag[10] = GRID as u8;
+	tag[48..50].copy_from_slice(&2_u16.to_be_bytes());
+	tag[50..52].copy_from_slice(&(OUTPUT_ENTRIES as u16).to_be_bytes());
+
+	// Identity input curves, a grid lightening and saturating, then output curves bending gently
+	for _ in 0..3 {
+		tag.extend([icc_sample(0.), icc_sample(1.)].concat());
+	}
+	let step = |index: usize| index as f32 / (GRID - 1) as f32;
+	for l in 0..GRID {
+		for a in 0..GRID {
+			for b in 0..GRID {
+				let (l, a, b) = (step(l), step(a), step(b));
+				for value in [l.powf(0.85), 0.5 + (a - 0.5) * 1.3, 0.5 + (b - 0.5) * 0.8 + 0.05 * l] {
+					tag.extend(icc_sample(value));
+				}
+			}
+		}
+	}
+	for _ in 0..3 {
+		tag.extend((0..OUTPUT_ENTRIES).flat_map(|index| icc_sample((index as f32 / (OUTPUT_ENTRIES - 1) as f32).powf(0.9))));
+	}
+
+	icc_profile(b"abst", b"Lab ", &tag)
+}
+
+/// An abstract profile with a `lutAToBType` transform bending CIELAB in its standard encoding without a grid, by parametric curves of functions 0, 1, and 2
+/// around a matrix, among them one with an `a` of 0 and one raising to a power of 0.
+fn icc_standard_lab_profile() -> Vec<u8> {
+	let parametric = |function: u16, parameters: &[f32]| {
+		let mut bytes = b"para\0\0\0\0".to_vec();
+		bytes.extend_from_slice(&function.to_be_bytes());
+		bytes.extend_from_slice(&[0, 0]);
+		bytes.extend(parameters.iter().flat_map(|&parameter| icc_fixed(parameter)));
+		bytes
+	};
+
+	let mut tag = b"mAB \0\0\0\0\x03\x03\0\0".to_vec();
+	tag.extend_from_slice(&[0; 20]);
+	let place = |tag: &mut Vec<u8>, elements: Vec<Vec<u8>>| {
+		let offset = tag.len() as u32;
+		for element in elements {
+			tag.extend(element);
+			tag.resize(tag.len().next_multiple_of(4), 0);
+		}
+		offset
+	};
+
+	let b_curves = vec![parametric(1, &[1.2, 0.95, 0.02]), parametric(2, &[0.9, 1.1, -0.05, 0.03]), parametric(2, &[1.4, 0., 0.5, 0.1])];
+	let b_offset = place(&mut tag, b_curves);
+	let matrix = [1., 0.05, 0., 0., 0.9, 0.1, 0., 0., 1., 0., 0.02, -0.03];
+	let matrix_offset = place(&mut tag, vec![matrix.iter().flat_map(|&value| icc_fixed(value)).collect()]);
+	let m_offset = place(&mut tag, vec![parametric(0, &[0.8]), parametric(0, &[1.]), parametric(0, &[0.])]);
+
+	for (index, offset) in [b_offset, matrix_offset, m_offset].into_iter().enumerate() {
+		tag[12 + 4 * index..16 + 4 * index].copy_from_slice(&offset.to_be_bytes());
+	}
+	icc_profile(b"abst", b"Lab ", &tag)
+}
+
+/// A device link profile with a `lutAToBType` transform running sampled curves, a grid of `grid_size` points along each axis, power curves,
+/// a matrix with offsets, then parametric curves.
+fn icc_device_link_profile(grid_size: u8) -> Vec<u8> {
+	let sampled = |samples: &[f32]| {
+		let mut bytes = b"curv\0\0\0\0".to_vec();
+		bytes.extend_from_slice(&(samples.len() as u32).to_be_bytes());
+		bytes.extend(samples.iter().flat_map(|&sample| icc_sample(sample)));
+		bytes
+	};
+	let power = |gamma: f32| {
+		let mut bytes = b"curv\0\0\0\0".to_vec();
+		bytes.extend_from_slice(&1_u32.to_be_bytes());
+		bytes.extend_from_slice(&((gamma * 256.).round() as u16).to_be_bytes());
+		bytes
+	};
+	let parametric = |function: u16, parameters: &[f32]| {
+		let mut bytes = b"para\0\0\0\0".to_vec();
+		bytes.extend_from_slice(&function.to_be_bytes());
+		bytes.extend_from_slice(&[0, 0]);
+		bytes.extend(parameters.iter().flat_map(|&parameter| icc_fixed(parameter)));
+		bytes
+	};
+
+	// Each element starts on a four-byte boundary, located by its offset within the tag
+	let mut tag = b"mAB \0\0\0\0\x03\x03\0\0".to_vec();
+	tag.extend_from_slice(&[0; 20]);
+	let place = |tag: &mut Vec<u8>, elements: Vec<Vec<u8>>| {
+		let offset = tag.len() as u32;
+		for element in elements {
+			tag.extend(element);
+			tag.resize(tag.len().next_multiple_of(4), 0);
+		}
+		offset
+	};
+
+	let b_curves = vec![
+		parametric(3, &[2.4, 1. / 1.055, 0.055 / 1.055, 1. / 12.92, 0.04045]),
+		parametric(4, &[1.8, 0.9, 0.05, 0.5, 0.1, 0.02, 0.01]),
+		parametric(0, &[0.7]),
+	];
+	let b_offset = place(&mut tag, b_curves);
+	let matrix = [0.9, 0.1, 0., -0.05, 1.05, 0., 0.1, -0.1, 1., 0.02, 0., -0.01];
+	let matrix_offset = place(&mut tag, vec![matrix.iter().flat_map(|&value| icc_fixed(value)).collect()]);
+	let m_offset = place(&mut tag, vec![power(1.8), power(1.), power(0.6)]);
+
+	let mut grid = vec![grid_size; 3];
+	grid.resize(16, 0);
+	grid.extend_from_slice(&[2, 0, 0, 0]);
+	for r in 0..grid_size {
+		for g in 0..grid_size {
+			for b in 0..grid_size {
+				let [r, g, b] = [r, g, b].map(|index| index as f32 / (grid_size - 1) as f32);
+				for value in [r * 0.8 + g * 0.2, g * g, (b + 0.25 * r * g).min(1.)] {
+					grid.extend(icc_sample(value));
+				}
+			}
+		}
+	}
+	let grid_offset = place(&mut tag, vec![grid]);
+	let a_offset = place(&mut tag, vec![sampled(&[0., 0.3, 0.55, 0.8, 1.]), sampled(&[0., 0.1, 0.4, 1.]), sampled(&[0.2, 0.9])]);
+
+	for (index, offset) in [b_offset, matrix_offset, m_offset, grid_offset, a_offset].into_iter().enumerate() {
+		tag[12 + 4 * index..16 + 4 * index].copy_from_slice(&offset.to_be_bytes());
+	}
+	icc_profile(b"link", b"RGB ", &tag)
+}
+
+#[test]
+fn gpu_color_lookups_match_the_cpu_kernels() {
+	use graphic_types::Adjustment;
+
+	let grid = |size: usize| (0..size * size * size).map(move |index| [index % size, index / size % size, index / (size * size)].map(|step| step as f32 / (size - 1) as f32));
+
+	// Three-dimensional CUBE files with red varying fastest, the largest spanning several rows of the texture holding it
+	let cube_of_size = |size: usize| {
+		let mut cube = format!("TITLE \"Bent\"\nLUT_3D_SIZE {size}\n");
+		for [r, g, b] in grid(size) {
+			cube += &format!("{} {} {}\n", r.powf(0.8) * 0.9 + 0.1 * g, g * g * 0.7 + 0.2 * b, (b + 0.3 * r * g).min(1.));
+		}
+		cube
+	};
+	let cube = cube_of_size(9);
+
+	// A one-dimensional CUBE file over a domain other than 0 to 1
+	let mut one_dimensional = String::from("LUT_1D_SIZE 17\nDOMAIN_MIN 0 0.1 0\nDOMAIN_MAX 1 0.9 2\n");
+	for index in 0..17 {
+		let value = index as f32 / 16.;
+		one_dimensional += &format!("{} {} {}\n", value.powf(1.6), value.sqrt(), 1. - value);
+	}
+
+	// A 3DL file with blue varying fastest, and an input line uneven enough to shape the values before its 12-bit table
+	let mut three_dl = (0..17).map(|index| ((index as f32 / 16.).powf(1.5) * 1023.).round().to_string()).collect::<Vec<_>>().join(" ") + "\nMesh 3 12\n";
+	for [b, g, r] in grid(9) {
+		let [r, g, b] = [1. - r * 0.6, (g + b) / 2., b * b].map(|value: f32| (value * 4095.).round());
+		three_dl += &format!("{r} {g} {b}\n");
+	}
+
+	// A CSP file with piecewise input curves, one of them an identity of no points
+	let mut csp = String::from("CSPLUTV100\n3D\n\n5\n0 0.2 0.5 0.8 1\n0 0.3 0.6 0.85 1\n1\n3\n0 0.5 1\n0 0.4 1\n5 5 5\n");
+	for [r, g, b] in grid(5) {
+		csp += &format!("{} {} {}\n", 1. - g, (r + b) / 2., r * g);
+	}
+
+	let lookup = |file: Vec<u8>| {
+		let lut_file = graphene_resource::Resource::new(file);
+		assert!(raster_kernels::color_lookup_table::parse_cached(&lut_file).is_ok(), "A test's table isn't readable");
+		Adjustment::ColorLookup { lut_file }
+	};
+	let cube = lookup(cube.into_bytes());
+	let device_link = lookup(icc_device_link_profile(3));
+	let standard_lab = lookup(icc_standard_lab_profile());
+
+	// Channels outside 0 to 1 coming into the tables, and a negative one raised to an integer power after one
+	let out_of_gamut = lookup(b"LUT_1D_SIZE 2\n-0.6 -0.6 -0.6\n1.7 1.7 1.7\n".to_vec());
+	let negative_red = lookup(b"LUT_1D_SIZE 2\n-1 0.5 0.5\n-1 0.5 0.5\n".to_vec());
+
+	let mut runs = vec![
+		("Color Lookup of a CUBE file", vec![cube.clone()]),
+		("Color Lookup of a 33-point CUBE file", vec![lookup(cube_of_size(33).into_bytes())]),
+		("Color Lookup of a one-dimensional CUBE file with a domain", vec![lookup(one_dimensional.into_bytes())]),
+		("Color Lookup of a 3DL file with a shaper", vec![lookup(three_dl.into_bytes())]),
+		("Color Lookup of a CSP file", vec![lookup(csp.into_bytes())]),
+		("Color Lookup of an abstract ICC profile", vec![lookup(icc_abstract_profile())]),
+		("Color Lookup of an abstract ICC profile in standard Lab without a grid", vec![standard_lab.clone()]),
+		("Color Lookup of a device link ICC profile", vec![device_link.clone()]),
+		// A grid of more texels than 16 bits count, which the stages after it lie past
+		("Color Lookup of a device link ICC profile with a 65-point grid", vec![lookup(icc_device_link_profile(65))]),
+		("Color Lookup of one CUBE file twice over", vec![cube.clone(), cube.clone()]),
+		("Color Lookups of a CUBE file out of gamut", vec![out_of_gamut.clone(), cube]),
+		("Color Lookups of a device link ICC profile out of gamut", vec![out_of_gamut.clone(), device_link]),
+		("Color Lookups of a standard Lab ICC profile out of gamut", vec![out_of_gamut, standard_lab]),
+		(
+			"Color Lookup to negative red, then Gamma Correction",
+			vec![negative_red, Adjustment::GammaCorrection { gamma: 0.5, inverse: false }],
+		),
+	];
+
+	// A table with steps after it, which share the texture of the steps while the table has its own
+	let record = |shadows, midtones, highlights, output_minimums, output_maximums| graphic_types::adjustment::LevelsRecord {
+		shadows,
+		midtones,
+		highlights,
+		output_minimums,
+		output_maximums,
+	};
+	let identity = record(0., 1., 100., 0., 100.);
+	let levels = Adjustment::Levels(Box::new(graphic_types::adjustment::LevelsSettings {
+		composite: record(8., 1.3, 93., 2., 97.),
+		red: identity,
+		green: identity,
+		blue: identity,
+		alpha: identity,
+	}));
+	let curves = Adjustment::Curves(Box::new(graphic_types::adjustment::CurvesSettings {
+		composite: core_types::transfer_curve::TransferCurve::new(vec![glam::DVec2::ZERO, glam::DVec2::new(0.4, 0.3), glam::DVec2::ONE]),
+		..Default::default()
+	}));
+	runs.push(("Color Lookup of a 17-point CUBE file, Levels, then Curves", vec![lookup(cube_of_size(17).into_bytes()), levels, curves]));
+
+	assert_gpu_adjustments_match_the_cpu_kernels(runs);
+}
+
+#[test]
+fn gpu_runs_of_several_adjustments_match_the_cpu_kernels() {
+	use core_types::Color;
+	use core_types::blending::BlendMode;
+	use core_types::list::Item;
+	use core_types::transfer_curve::TransferCurve;
+	use glam::DVec2;
+	use graphic_types::adjustment::*;
+	use graphic_types::vector_types::Gradient;
+
+	let record = |shadows, midtones, highlights| LevelsRecord {
+		shadows,
+		midtones,
+		highlights,
+		output_minimums: 0.,
+		output_maximums: 100.,
+	};
+	let identity = record(0., 1., 100.);
+	let levels = Adjustment::Levels(Box::new(LevelsSettings {
+		composite: record(10., 1.4, 90.),
+		red: identity,
+		green: record(5., 0.8, 100.),
+		blue: identity,
+		alpha: LevelsRecord { output_maximums: 60., ..identity },
+	}));
+	let curves = Adjustment::Curves(Box::new(CurvesSettings {
+		composite: TransferCurve::new(vec![DVec2::ZERO, DVec2::new(0.3, 0.45), DVec2::ONE]),
+		..Default::default()
+	}));
+	let gradient_map = Adjustment::GradientMap {
+		gradient: Item::new_from_element(Gradient::from(vec![Color::from_rgbaf32_unchecked(0.1, 0., 0.4, 1.), Color::from_rgbaf32_unchecked(1., 0.8, 0.2, 1.)])),
+		reverse: false,
+	};
+	let overlay = Adjustment::ColorOverlay {
+		color: Color::from_gamma_srgb_channels(0.2, 0.5, 0.9, 1.),
+		blend_mode: BlendMode::SoftLight,
+		opacity: 60.,
+	};
+	let exposure = Adjustment::Exposure {
+		exposure: 0.5,
+		offset: 0.,
+		gamma_correction: 1.2,
+	};
+	let vibrance = Adjustment::Vibrance { vibrance: 60., saturation: 20. };
+	let posterize = Adjustment::Posterize { levels: 5 };
+	let channel_mixer = Adjustment::ChannelMixer(Box::new(ChannelMixerSettings {
+		monochrome: false,
+		monochrome_mix: Default::default(),
+		red: ChannelMixerRow {
+			red: 70.,
+			green: 30.,
+			..Default::default()
+		},
+		green: ChannelMixerRow { green: 100., ..Default::default() },
+		blue: ChannelMixerRow {
+			blue: 80.,
+			constant: 10.,
+			..Default::default()
+		},
+	}));
+	let threshold = Adjustment::Threshold {
+		min_luminance: 37.3,
+		max_luminance: 88.1,
+	};
+	let unreadable_lookup = Adjustment::ColorLookup {
+		lut_file: graphene_resource::Resource::new(b"not a table".to_vec()),
+	};
+
+	// White passes through Color Balance as white, which a Threshold up to 100% keeps and a Color Burn of black leaves alone
+	let color_balance = Adjustment::ColorBalance(ColorBalanceSettings {
+		midtones: ColorBalanceShifts {
+			cyan_red: 10.,
+			magenta_green: -20.,
+			yellow_blue: 5.,
+		},
+		preserve_luminosity: true,
+		..Default::default()
+	});
+	let threshold_to_white = Adjustment::Threshold {
+		min_luminance: 50.,
+		max_luminance: 100.,
+	};
+	let color_burn = Adjustment::ColorOverlay {
+		color: Color::BLACK,
+		blend_mode: BlendMode::ColorBurn,
+		opacity: 100.,
+	};
+
+	// An alpha curve emptying the faintest pixels, which nothing after it fills back in
+	let emptying_curves = Adjustment::Curves(Box::new(CurvesSettings {
+		alpha: TransferCurve::new(vec![DVec2::new(0.4, 0.), DVec2::ONE]),
+		..Default::default()
+	}));
+
+	// A Color Lookup leaving colors as they are, in a pass of its own
+	let identity_lookup = Adjustment::ColorLookup {
+		lut_file: graphene_resource::Resource::new(b"LUT_1D_SIZE 2\n0 0 0\n1 1 1\n".to_vec()),
+	};
+
+	let runs = vec![
+		(
+			"Levels, Curves, Color Overlay, then Gradient Map",
+			vec![levels.clone(), curves.clone(), overlay.clone(), gradient_map.clone()],
+		),
+		("Exposure, Vibrance, Invert, then Posterize", vec![exposure.clone(), vibrance.clone(), Adjustment::Invert, posterize]),
+		(
+			"Levels fading alpha, Make Opaque, Channel Mixer, then Threshold",
+			vec![levels.clone(), Adjustment::MakeOpaque, channel_mixer.clone(), threshold],
+		),
+		("Vibrance, an unreadable Color Lookup, then Curves", vec![vibrance.clone(), unreadable_lookup.clone(), curves.clone()]),
+		("an unreadable Color Lookup alone", vec![unreadable_lookup]),
+		("Gradient Map, Color Overlay, then Exposure", vec![gradient_map.clone(), overlay.clone(), exposure.clone()]),
+		("Color Balance, then Threshold up to white", vec![color_balance.clone(), threshold_to_white.clone()]),
+		(
+			"Color Balance at its defaults, then Threshold up to white",
+			vec![Adjustment::ColorBalance(Default::default()), threshold_to_white],
+		),
+		("Color Balance, then a Color Burn of black", vec![color_balance, color_burn]),
+		(
+			"Curves emptying faint pixels, then Make Opaque",
+			vec![emptying_curves.clone(), Adjustment::MakeOpaque, Adjustment::Invert],
+		),
+		// The pass emptying a pixel ends before the Color Lookup's own pass, and the one after it with Make Opaque still leaves the pixel empty
+		(
+			"Curves emptying faint pixels, then a Color Lookup and Make Opaque",
+			vec![emptying_curves, identity_lookup, Adjustment::MakeOpaque],
+		),
+	];
+	assert_gpu_adjustments_stray_at_most(0.3, runs, &[1., 0.5]);
+
+	// Passes on either side of each Gradient Map, each reading the result of the one before unrounded
+	let chained = vec![gradient_map.clone(), curves, channel_mixer, gradient_map, vibrance];
+	assert_gpu_adjustments_stray_at_most(0.3, vec![("Gradient Map, Curves, Channel Mixer, Gradient Map, then Vibrance", chained)], &[1., 0.5]);
+}
+
+#[test]
+fn passes_of_a_split_run_hand_on_their_results_unrounded() {
+	use core_types::transfer_curve::TransferCurve;
+	use glam::DVec2;
+	use graphic_types::adjustment::*;
+
+	// A Color Lookup leaving colors as they are, in a pass of its own that splits the run around it
+	let split = Adjustment::ColorLookup {
+		lut_file: graphene_resource::Resource::new(b"LUT_1D_SIZE 2\n0 0 0\n1 1 1\n".to_vec()),
+	};
+	let record = |shadows, highlights, output_maximums| LevelsRecord {
+		shadows,
+		midtones: 1.,
+		highlights,
+		output_minimums: 0.,
+		output_maximums,
+	};
+	let identity = record(0., 100., 100.);
+	let levels = |composite, alpha| {
+		Adjustment::Levels(Box::new(LevelsSettings {
+			composite,
+			red: identity,
+			green: identity,
+			blue: identity,
+			alpha,
+		}))
+	};
+
+	// A slight bend leaving tones between those half floats hold, then a tenfold stretch of the middle tones that would show their rounding ten times over
+	let bend = Adjustment::GammaCorrection { gamma: 1.1, inverse: false };
+	let steep = vec![bend, split.clone(), levels(record(45., 55., 100.), identity)];
+
+	// A gray just over a Threshold's cutoff, where rounding it to a half float either way (as GPUs differ in) would land under it
+	let just_over_cutoff = Adjustment::Curves(Box::new(CurvesSettings {
+		composite: TransferCurve::new(vec![DVec2::new(0., 0.5002), DVec2::new(1., 0.5002)]),
+		..Default::default()
+	}));
+	let threshold = Adjustment::Threshold {
+		min_luminance: 50.01,
+		max_luminance: 100.,
+	};
+	let cutoff = vec![just_over_cutoff, split.clone(), threshold];
+
+	// An alpha too faint for a half float to hold, which Make Opaque then lifts
+	let faint = levels(identity, record(0., 100., 2e-6));
+	let lifted = vec![faint, split, Adjustment::MakeOpaque];
+
+	// Grays a 4096th apart, hundreds of which land within the stretch
+	let grays: Vec<core_types::Color> = (0..=4096)
+		.map(|level| level as f32 / 4096.)
+		.map(|gray| core_types::Color::from_gamma_srgb_channels(gray, gray, gray, 1.))
+		.collect();
+
+	let mut strays = Vec::new();
+	for (name, run) in [("a steep Levels", steep), ("a Threshold", cutoff), ("Make Opaque", lifted)] {
+		// Each run takes three passes, the last of them holding the step that would reveal any rounding
+		let references: Vec<&Adjustment> = run.iter().collect();
+		let steps = raster_kernels::adjustment_steps::AdjustmentSteps::encode(&references);
+		assert_eq!(crate::vello_adjustments::pass_steps(steps.kinds()), [0..1, 1..2, 2..3], "{name}");
+
+		let Some((levels, worst_pixel)) = gpu_adjustment_deviation(&run, &grays, 1.) else { return };
+		println!("{name} after two passes: {levels:.3} levels");
+		if levels > 0.3 {
+			strays.push(format!("{name} after two passes strays from the CPU's kernels by {levels} levels, adjusting {worst_pixel}"));
+		}
+	}
+	assert!(strays.is_empty(), "{}", strays.join("\n"));
+}
+
+#[test]
+fn gpu_adjustments_of_8_bit_content_match_the_cpu_kernels_at_the_edges_of_their_steps() {
+	use graphic_types::adjustment::*;
+	use graphic_types::{EffectOperation, Effects};
+
+	// Every 8-bit gray as one opaque pixel, rendered as exactly that level
+	let size = UVec2::splat(16);
+	let square = Rect::new(0., 0., 16., 16.);
+	let draw_grays = |scene: &mut VelloSceneBuilder| {
+		for level in 0..=255_u8 {
+			let (x, y) = (f64::from(level % 16), f64::from(level / 16));
+			scene.fill(Fill::NonZero, Affine::IDENTITY, Color::from_rgba8(level, level, level, 255), None, &Rect::new(x, y, x + 1., y + 1.));
+		}
+	};
+
+	// Grays landing exactly on the edges between posterized levels, on the pivot of a full contrast, and at a Levels input bound
+	let record = |shadows, highlights| LevelsRecord {
+		shadows,
+		midtones: 1.,
+		highlights,
+		output_minimums: 0.,
+		output_maximums: 100.,
+	};
+	let levels = |shadows, highlights| {
+		Adjustment::Levels(Box::new(LevelsSettings {
+			composite: record(shadows, highlights),
+			red: record(0., 100.),
+			green: record(0., 100.),
+			blue: record(0., 100.),
+			alpha: record(0., 100.),
+		}))
+	};
+	let mut cases: Vec<(String, Adjustment)> = [2, 3, 5, 7, 255]
+		.into_iter()
+		.map(|levels| (format!("Posterize to {levels} levels"), Adjustment::Posterize { levels }))
+		.collect();
+	for pivot in [0., 64., 100., 127., 128., 191., 255.] {
+		let contrast = Adjustment::BrightnessContrast {
+			brightness: 0.,
+			contrast: 100.,
+			use_classic: true,
+			classic_pivot: pivot,
+		};
+		cases.push((format!("Brightness/Contrast classic at full contrast about {pivot}"), contrast));
+	}
+	for (shadows, highlights) in [(40., 100.), (41., 100.), (0., 40.), (0., 41.)] {
+		cases.push((format!("Levels from {shadows}% to {highlights}%"), levels(shadows, highlights)));
+	}
+
+	// Thresholds bounded exactly at a gray, which lies within them
+	for level in [1_u8, 64, 127, 128, 200, 254, 255] {
+		let bound = f64::from(level) / 255. * 100.;
+		let threshold = |min_luminance, max_luminance| Adjustment::Threshold { min_luminance, max_luminance };
+		cases.push((format!("Threshold from gray {level}"), threshold(bound, 100.)));
+		cases.push((format!("Threshold up to gray {level}"), threshold(0., bound)));
+	}
+
+	let mut strays = Vec::new();
+	for (name, adjustment) in cases {
+		let effects = Effects::from_operations([EffectOperation::Adjustment(adjustment.clone())]);
+		let Some(pixels) = render(size, |scene| scene.draw_effects(&effects, 1., Some(square), DAffine2::IDENTITY, &mut |scene| draw_grays(scene))) else {
+			return;
+		};
+
+		let mut grays: Vec<core_types::Color> = (0..=255)
+			.map(|level| core_types::Color::from_gamma_srgb_channels(level as f32 / 255., level as f32 / 255., level as f32 / 255., 1.))
+			.collect();
+		raster_kernels::adjustments::adjust_colors(&adjustment, &mut grays);
+
+		let mut worst = (0_f32, 0);
+		for (level, gray) in grays.iter().enumerate() {
+			let gpu = pixel(&pixels, size, level as u32 % 16, level as u32 / 16)[0] as f32;
+			let deviation = (gpu - gray.to_gamma_srgb_channels()[0] * 255.).abs();
+			if deviation > worst.0 {
+				worst = (deviation, level);
+			}
+		}
+		println!("{name}: {:.3} levels", worst.0);
+
+		// The rendered level is rounded, after passing through a half float
+		if worst.0 > 0.7 {
+			strays.push(format!("{name} strays from the CPU's kernel by {} levels at gray {}", worst.0, worst.1));
+		}
+	}
+	assert!(strays.is_empty(), "{}", strays.join("\n"));
+}
+
+#[test]
+fn steep_adjustments_of_smooth_gradients_stay_smooth() {
+	use graphic_types::adjustment::*;
+	use graphic_types::{EffectOperation, Effects};
+
+	// Levels stretching the middle fifth of the tones across all of them brings out any rounding of the content before it
+	let record = |shadows, highlights| LevelsRecord {
+		shadows,
+		midtones: 1.,
+		highlights,
+		output_minimums: 0.,
+		output_maximums: 100.,
+	};
+	let identity = record(0., 100.);
+	let levels = Adjustment::Levels(Box::new(LevelsSettings {
+		composite: record(40., 60.),
+		red: identity,
+		green: identity,
+		blue: identity,
+		alpha: identity,
+	}));
+	let effects = Effects::from_operations([EffectOperation::Adjustment(levels)]);
+
+	let width = 1024_u32;
+	let size = UVec2::new(width, 8);
+	let bounds = Rect::new(0., 0., f64::from(width), 8.);
+	let gradient = peniko::Gradient::new_linear((0., 0.), (f64::from(width), 0.)).with_stops([Color::BLACK, Color::WHITE]);
+
+	// A layer just short of opaque is drawn in an intermediate texture of its own
+	for in_layer in [false, true] {
+		let Some(pixels) = render(size, |scene| {
+			scene.draw_effects(&effects, 1., Some(bounds), DAffine2::IDENTITY, &mut |scene| {
+				if in_layer {
+					scene.push_layer(Fill::NonZero, peniko::Mix::Normal, 0.999, Affine::IDENTITY, &bounds);
+				}
+				scene.fill(Fill::NonZero, Affine::IDENTITY, &gradient, None, &bounds);
+				if in_layer {
+					scene.pop_layer();
+				}
+			});
+		}) else {
+			return;
+		};
+
+		// The stretched tones climb about 1.25 levels a pixel, where content rounded to 8 bits would climb 5 levels every 4 pixels
+		let ramp: Vec<i32> = (0..width).map(|x| i32::from(pixel(&pixels, size, x, 4)[0])).filter(|&value| value > 5 && value < 250).collect();
+		let largest_step = ramp.windows(2).map(|pair| (pair[1] - pair[0]).abs()).max().unwrap_or(0);
+		let mut distinct = ramp.clone();
+		distinct.dedup();
+		assert!(
+			largest_step <= 2 && distinct.len() * 10 >= ramp.len() * 9,
+			"the gradient (in a layer: {in_layer}) bands, climbing by up to {largest_step} levels through {} distinct levels across {} pixels",
+			distinct.len(),
+			ramp.len()
+		);
+	}
+}
+
+#[test]
+fn gpu_adjustments_that_keep_white_do_not_carry_it_past_white() {
+	use graphic_types::adjustment::*;
+	use half::f16;
+
+	let identity = LevelsRecord {
+		shadows: 0.,
+		midtones: 1.,
+		highlights: 100.,
+		output_minimums: 0.,
+		output_maximums: 100.,
+	};
+	let levels = |midtones| {
+		Adjustment::Levels(Box::new(LevelsSettings {
+			composite: LevelsRecord { midtones, ..identity },
+			red: identity,
+			green: identity,
+			blue: identity,
+			alpha: identity,
+		}))
+	};
+	let color_balance = |cyan_red| {
+		Adjustment::ColorBalance(ColorBalanceSettings {
+			midtones: ColorBalanceShifts { cyan_red, ..Default::default() },
+			preserve_luminosity: true,
+			..Default::default()
+		})
+	};
+	let cases = [
+		("Levels", levels(1.)),
+		("Levels with bent midtones", levels(1.2)),
+		("Color Balance", color_balance(0.)),
+		("Color Balance with shifted midtones", color_balance(10.)),
+		("Curves", Adjustment::Curves(Default::default())),
+		("Posterize", Adjustment::Posterize { levels: 4 }),
+		(
+			"Exposure",
+			Adjustment::Exposure {
+				exposure: 0.,
+				offset: 0.,
+				gamma_correction: 1.,
+			},
+		),
+		(
+			"Brightness/Contrast",
+			Adjustment::BrightnessContrast {
+				brightness: 0.,
+				contrast: 0.,
+				use_classic: false,
+				classic_pivot: 127.,
+			},
+		),
+		("Hue/Saturation", Adjustment::HueSaturation(Default::default())),
+		("Selective Color", Adjustment::SelectiveColor(Default::default())),
+		("Gamma Correction", Adjustment::GammaCorrection { gamma: 2.2, inverse: false }),
+		("Vibrance", Adjustment::Vibrance { vibrance: 20., saturation: 0. }),
+		(
+			"Photo Filter",
+			Adjustment::PhotoFilter {
+				color: core_types::Color::WHITE,
+				density: 25.,
+				preserve_luminosity: false,
+			},
+		),
+	];
+
+	// White, opaque and translucent, as premultiplied half floats
+	let whites = [[1.; 4], [0.5; 4]].map(|texel: [f32; 4]| texel.map(f16::from_f32));
+
+	// A half float rounds a channel left a hair past 1 back to 1, hiding it, but its inverse falls below zero where the sign shows
+	for (name, adjustment) in cases {
+		let Some(inverted) = gpu_adjusted_texels(&[adjustment, Adjustment::Invert], &whites, 1.) else {
+			return;
+		};
+
+		for [red, green, blue, _] in inverted {
+			for channel in [red, green, blue] {
+				assert!(channel.is_sign_positive() && channel < 1e-3, "{name} leaves white at {channel} once inverted");
+			}
+		}
+	}
+}
+
+#[test]
+fn adjustments_leave_the_empty_space_around_content_empty() {
+	use core_types::transfer_curve::TransferCurve;
+	use glam::DVec2;
+	use graphic_types::adjustment::*;
+	use graphic_types::{EffectOperation, Effects};
+
+	let size = UVec2::splat(128);
+	let bounds = Rect::new(40., 40., 88., 88.);
+	let identity = LevelsRecord {
+		shadows: 0.,
+		midtones: 1.,
+		highlights: 100.,
+		output_minimums: 0.,
+		output_maximums: 100.,
+	};
+
+	// Adjustments raising alpha, the last after a curve that empties everything first
+	let raised_alpha = Adjustment::Levels(Box::new(LevelsSettings {
+		composite: identity,
+		red: identity,
+		green: identity,
+		blue: identity,
+		alpha: LevelsRecord { output_minimums: 50., ..identity },
+	}));
+	let emptied = Adjustment::Curves(Box::new(CurvesSettings {
+		alpha: TransferCurve::new(vec![DVec2::ZERO, DVec2::new(1., 0.)]),
+		..Default::default()
+	}));
+	let cases = [
+		("Make Opaque", vec![Adjustment::MakeOpaque], 255),
+		("Levels with a raised alpha output", vec![raised_alpha], 255),
+		("Curves emptying alpha, then Make Opaque", vec![emptied, Adjustment::MakeOpaque], 0),
+	];
+
+	for (name, run, alpha_within) in cases {
+		let effects = Effects::from_operations(run.into_iter().map(EffectOperation::Adjustment));
+		let Some(pixels) = render(size, |scene| {
+			scene.draw_effects(&effects, 1., Some(bounds), DAffine2::IDENTITY, &mut |scene| {
+				scene.fill(Fill::NonZero, Affine::IDENTITY, RED, None, &circle((64., 64.), 20.))
+			});
+		}) else {
+			return;
+		};
+
+		// The content keeps its own alpha as adjusted, and the corner of its bounds outside it (like everything past them) holds nothing
+		assert_eq!(pixel(&pixels, size, 64, 64)[3], alpha_within, "{name} within the content");
+		assert_eq!(pixel(&pixels, size, 42, 42), [0; 4], "{name} within the content's bounds");
+		assert_eq!(pixel(&pixels, size, 4, 4), [0; 4], "{name} past the content's bounds");
+	}
+}
+
+#[test]
+fn adjustments_on_image_textures_and_through_effects_groups_match_the_cpu_kernels() {
+	use core_types::Color as GraphicColor;
+	use core_types::list::Item;
+	use graphic_types::adjustment::*;
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::vector_types::Gradient;
+	use graphic_types::{EffectOperation, Effects};
+
+	// Opaque colors spread across the RGB cube, one per pixel, on whole 8-bit levels as the content's 8-bit render holds them
+	let size = UVec2::new(64, 64);
+	let channel = |value: u32| ((value % 64) * 4) as f32 / 255.;
+	let colors: Vec<GraphicColor> = (0..size.x * size.y)
+		.map(|index| GraphicColor::from_gamma_srgb_channels(channel(index % 64), channel(index / 64), channel(index * 7 + index / 64 * 13), 1.))
+		.collect();
+	let raster = Raster::new_cpu(Image {
+		width: size.x,
+		height: size.y,
+		data: colors.clone(),
+	});
+
+	let record = |shadows, midtones, highlights| LevelsRecord {
+		shadows,
+		midtones,
+		highlights,
+		output_minimums: 0.,
+		output_maximums: 100.,
+	};
+	let identity = record(0., 1., 100.);
+	let levels = Adjustment::Levels(Box::new(LevelsSettings {
+		composite: record(10., 1.4, 90.),
+		red: identity,
+		green: record(5., 0.8, 100.),
+		blue: identity,
+		alpha: identity,
+	}));
+	let hue_saturation = Adjustment::HueSaturation(Box::new(HueSaturationSettings {
+		master: HueSaturationSliders {
+			hue: 25.,
+			saturation: 30.,
+			lightness: 5.,
+		},
+		..Default::default()
+	}));
+	let gradient_map = Adjustment::GradientMap {
+		gradient: Item::new_from_element(Gradient::from(vec![
+			GraphicColor::from_rgbaf32_unchecked(0.1, 0., 0.4, 1.),
+			GraphicColor::from_rgbaf32_unchecked(1., 0.8, 0.2, 1.),
+		])),
+		reverse: false,
+	};
+	let exposure = Adjustment::Exposure {
+		exposure: 0.5,
+		offset: 0.,
+		gamma_correction: 1.2,
+	};
+	let vibrance = |vibrance, saturation| Adjustment::Vibrance { vibrance, saturation };
+
+	// Runs of one kind and of several, each in one pass however many kinds it mixes, but for the last, which its Gradient Map splits into three
+	let runs = [
+		vec![levels.clone(), exposure, Adjustment::Invert],
+		vec![hue_saturation, Adjustment::Desaturate { method: DesaturateMethod::LumaRec601 }],
+		vec![gradient_map.clone()],
+		vec![vibrance(60., 20.)],
+		vec![vibrance(40., 0.), Adjustment::Invert],
+		vec![Adjustment::Invert, vibrance(-30., 10.), Adjustment::Invert],
+		vec![levels, gradient_map, vibrance(30., 10.)],
+	];
+
+	for run in runs {
+		let mut expected = colors.clone();
+		run.iter().for_each(|adjustment| raster_kernels::adjustments::adjust_colors(adjustment, &mut expected));
+
+		// Carried out on the rendered content by an effects group, and on the image's own texture as it's drawn
+		let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
+		let through_effects_group = |scene: &mut VelloSceneBuilder| {
+			let bounds = Rect::new(0., 0., size.x as f64, size.y as f64);
+			scene.draw_effects(&effects, 1., Some(bounds), DAffine2::IDENTITY, &mut |scene| {
+				scene.draw_raster(raster.clone(), Vec::new(), peniko::ImageSampler::new(), Affine::IDENTITY)
+			});
+		};
+		let on_image_texture = |scene: &mut VelloSceneBuilder| scene.draw_raster(raster.clone(), run.clone(), peniko::ImageSampler::new(), Affine::IDENTITY);
+		let paths = [
+			("through an effects group", &through_effects_group as &dyn Fn(&mut VelloSceneBuilder)),
+			("on the image's texture", &on_image_texture),
+		];
+
+		// Only the 8-bit rounding of the content and the result separates them
+		for (path, draw) in paths {
+			let Some(gpu) = render(size, draw) else { return };
+
+			let mut worst = 0;
+			for (index, color) in expected.iter().enumerate() {
+				let cpu = color.to_gamma_srgb_channels().map(|channel| (channel * 255.).round() as i32);
+				for channel in 0..3 {
+					worst = worst.max((cpu[channel] - gpu[index][channel] as i32).unsigned_abs());
+				}
+			}
+			let names = run.iter().map(|adjustment| adjustment.kind().to_string()).collect::<Vec<_>>().join(" + ");
+			assert!(worst <= 1, "{names} {path} differs from the CPU kernels by up to {worst} levels");
+		}
+	}
+}
+
 #[test]
 fn minified_images_average_their_pixels() {
 	use raster_types::{Image, Raster};
@@ -602,7 +2007,7 @@ fn minified_images_average_their_pixels() {
 			.collect(),
 	};
 	let stripes = Raster::new_cpu(stripes);
-	let draw = |scene: &mut VelloSceneBuilder| scene.draw_raster(stripes.clone(), peniko::ImageSampler::new(), Affine::scale(1. / 8.));
+	let draw = |scene: &mut VelloSceneBuilder| scene.draw_raster(stripes.clone(), Vec::new(), peniko::ImageSampler::new(), Affine::scale(1. / 8.));
 
 	let size = UVec2::new(8, 8);
 	let Some(pixels) = render(size, draw) else { return };
@@ -615,17 +2020,33 @@ fn minified_images_average_their_pixels() {
 }
 
 #[test]
+fn minified_adjusted_images_sample_their_adjusted_mipmaps() {
+	use graphic_types::Adjustment;
+	use graphic_types::raster_types::{Image, Raster};
+
+	// White inverted to black, drawn at an eighth of its size where only the smaller levels are sampled
+	let white = Raster::new_cpu(Image::new(64, 64, core_types::Color::WHITE));
+	let draw = |scene: &mut VelloSceneBuilder| scene.draw_raster(white.clone(), vec![Adjustment::Invert], peniko::ImageSampler::new(), Affine::scale(1. / 8.));
+
+	let Some(pixels) = render(UVec2::new(8, 8), draw) else { return };
+	for (index, pixel) in pixels.iter().enumerate() {
+		assert!(pixel[0] <= 1 && pixel[3] == 255, "pixel {index} is {pixel:?} rather than black");
+	}
+}
+
+#[test]
 fn rasters_upload_once_across_scenes_until_modified() {
 	use raster_types::{Image, Raster};
 
 	let Some(executor) = executor() else { return };
+	let _turn = take_turn();
 	let max_texture_size = executor.context().device.limits().max_texture_dimension_2d;
 	let raster = Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE));
 
 	// Each render draws its scene anew, as the editor does whenever the graph runs
 	let scene_drawing = |raster: &Raster<raster_types::CPU>| {
 		let mut scene = VelloSceneBuilder::new(64, 64, Affine::IDENTITY, max_texture_size);
-		scene.draw_raster(raster.clone(), peniko::ImageSampler::new(), Affine::scale(8.));
+		scene.draw_raster(raster.clone(), Vec::new(), peniko::ImageSampler::new(), Affine::scale(8.));
 		scene
 	};
 
@@ -652,8 +2073,101 @@ fn textures_of_dropped_rasters_are_freed() {
 	let mut canvas = crate::VelloCanvas::default();
 	for _ in 0..10 {
 		let mut scene = VelloSceneBuilder::new(64, 64, Affine::IDENTITY, max_texture_size);
-		scene.draw_raster(Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE)), peniko::ImageSampler::new(), Affine::scale(8.));
+		scene.draw_raster(Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE)), Vec::new(), peniko::ImageSampler::new(), Affine::scale(8.));
 		executor.render_vello_scene_on_canvas(&mut canvas, scene).unwrap();
 	}
 	assert_eq!(canvas.images.textures.len(), 1, "only the texture of pixels that still exist stays");
+}
+
+#[test]
+fn svgs_draw_content_with_effects_svg_cannot_express_as_images_the_gpu_renders() {
+	use core_types::list::{Item, List};
+	use core_types::transform::Footprint;
+	use core_types::{ATTR_TRANSFORM, Color};
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{Adjustment, Effect, EffectOperation, stamp_effect};
+	use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
+
+	let Some(executor) = executor() else { return };
+	let _turn = take_turn();
+
+	// An orange square casting a shadow, with Vibrance draining its color, which no SVG filter can do after the shadow
+	let shadow = EffectOperation::DropShadow {
+		color: Color::BLACK,
+		angle: 180.,
+		distance: 4.,
+		spread: 0.,
+		size: 0.,
+		contour: Default::default(),
+		knockout: true,
+	};
+	let mut item =
+		Item::new_from_element(Raster::new_cpu(Image::new(2, 2, Color::from_gamma_srgb_channels(1., 0.5, 0., 1.)))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(glam::DVec2::splat(10.)));
+	stamp_effect(&mut item, Effect::new(&shadow));
+	stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(Adjustment::Vibrance { vibrance: 0., saturation: -100. })));
+
+	let mut render = SvgRender::new();
+	List::new_from_item(item).render_svg(
+		&mut render,
+		&RenderParams {
+			for_export: true,
+			..Default::default()
+		},
+	);
+	let footprint = Footprint {
+		transform: DAffine2::IDENTITY,
+		resolution: UVec2::splat(32),
+		..Default::default()
+	};
+	let rendered = executor.render_deferred_svg_images(&render.deferred_images, footprint);
+
+	// The square comes out gray, with the shadow beside it
+	let [(_, texture)] = &rendered[..] else { panic!("expected one image, got {}", rendered.len()) };
+	let pixels = executor.read_texture_pixels(texture).unwrap();
+	let width = texture.width() as usize;
+	let [red, green, blue, alpha] = pixels[(5 * width + 2) * 4..][..4] else { unreachable!() };
+	assert!(
+		red.abs_diff(green) <= 2 && green.abs_diff(blue) <= 2 && alpha == 255,
+		"expected gray, got {:?}",
+		[red, green, blue, alpha]
+	);
+	assert_eq!(pixels[(5 * width + 12) * 4..][..4], [0, 0, 0, 255], "the shadow");
+
+	// Its image replaces the markup standing in for it
+	let mut svg = render.svg.to_svg_string();
+	futures::executor::block_on(executor.resolve_deferred_svg_images(&mut svg, &mut Vec::new(), rendered));
+	assert!(svg.contains("data:image/png;base64,") && !svg.contains("deferred-image"), "{svg}");
+}
+
+#[test]
+fn adjusted_images_remake_one_copy_as_their_adjustments_change() {
+	use graphic_types::Adjustment;
+	use graphic_types::raster_types::{Image, Raster};
+
+	let Some(executor) = executor() else { return };
+	let _turn = take_turn();
+	let new_scene = || VelloSceneBuilder::new(64, 64, Affine::IDENTITY, executor.context().device.limits().max_texture_dimension_2d);
+	let raster = Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE));
+	let exposure = |exposure| Adjustment::Exposure {
+		exposure,
+		offset: 0.,
+		gamma_correction: 1.,
+	};
+	let copies = |canvas: &crate::VelloCanvas| canvas.images.textures.values().map(|image_texture| image_texture.adjusted.len()).sum::<usize>();
+
+	// Dragging a slider adjusts the same pixels differently in every render
+	let mut canvas = crate::VelloCanvas::default();
+	for amount in [0.1, 0.2, 0.3] {
+		let mut scene = new_scene();
+		scene.draw_raster(raster.clone(), vec![exposure(amount)], peniko::ImageSampler::new(), Affine::scale(8.));
+		executor.render_vello_scene_on_canvas(&mut canvas, scene).unwrap();
+	}
+	assert_eq!(copies(&canvas), 1, "each new run takes over the copy the last render drew");
+
+	// Two layers sharing the pixels with different adjustments need a copy each
+	let mut scene = new_scene();
+	scene.draw_raster(raster.clone(), vec![exposure(0.4)], peniko::ImageSampler::new(), Affine::scale(4.));
+	scene.draw_raster(raster.clone(), vec![Adjustment::Invert], peniko::ImageSampler::new(), Affine::scale(8.));
+	executor.render_vello_scene_on_canvas(&mut canvas, scene).unwrap();
+	assert_eq!(copies(&canvas), 2);
 }

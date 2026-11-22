@@ -2,7 +2,8 @@ use core_types::list::Item;
 use core_types::transfer_curve::TransferCurve;
 use core_types::{Color, Ctx};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Effect, EffectOperation, GlowTechnique, Graphic, Vector, stamp_effect};
+use graphic_types::{Effect, EffectOperation, GlowTechnique, Graphic, Vector, paint_with_envelope_effects, stamp_effect};
+use raster_kernels::{evaluate_color_effects, evaluate_gradient_effects};
 use vector_types::Gradient;
 
 /// Blurs the input graphics, whether vector shapes, images, or text.
@@ -78,7 +79,7 @@ fn drop_shadow<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::DropShadow {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			angle: *angle.element(),
 			distance: *distance.element(),
 			spread: *spread.element(),
@@ -130,7 +131,7 @@ fn inner_shadow<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::InnerShadow {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			angle: *angle.element(),
 			distance: *distance.element(),
 			choke: *choke.element(),
@@ -139,6 +140,17 @@ fn inner_shadow<T>(
 		}),
 	);
 	content
+}
+
+/// A glow's color or gradient paint with its own effects carried out.
+fn glow_paint(paint: Item<Graphic>) -> Graphic {
+	match paint_with_envelope_effects(paint) {
+		Graphic::Color(color) => Graphic::Color(evaluate_color_effects(color)),
+		Graphic::Gradient(gradient) => Graphic::Gradient(evaluate_gradient_effects(gradient)),
+		Graphic::ColorList(colors) => Graphic::ColorList(colors.into_iter().map(evaluate_color_effects).collect()),
+		Graphic::GradientList(gradients) => Graphic::GradientList(gradients.into_iter().map(evaluate_gradient_effects).collect()),
+		paint => paint,
+	}
 }
 
 /// Surrounds the input graphics with a soft glow of their silhouette.
@@ -178,7 +190,7 @@ fn outer_glow<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::OuterGlow {
-			color: color.into_element(),
+			color: glow_paint(color),
 			technique: *technique.element(),
 			spread: *spread.element(),
 			size: *size.element(),

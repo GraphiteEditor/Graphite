@@ -3,6 +3,7 @@
 //! Each renderer decodes the rows into [`EffectOperation`]s and carries them out its own way, at the resolution of each render.
 
 use crate::Graphic;
+use crate::adjustment::Adjustment;
 use core_types::ATTR_TRANSFORM;
 use core_types::Color;
 use core_types::color::SRGBA8;
@@ -29,6 +30,27 @@ pub enum EffectKind {
 	InnerShadow,
 	/// Surrounds the content with a soft glow of its silhouette.
 	OuterGlow,
+	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
+	Desaturate,
+	GammaCorrection,
+	MakeOpaque,
+	BrightnessContrast,
+	Levels,
+	Curves,
+	BlackAndWhite,
+	HueSaturation,
+	Invert,
+	Threshold,
+	GradientMap,
+	Vibrance,
+	ChannelMixer,
+	SelectiveColor,
+	Posterize,
+	Exposure,
+	ColorBalance,
+	PhotoFilter,
+	ColorLookup,
+	ColorOverlay,
 }
 
 impl std::fmt::Display for EffectKind {
@@ -38,6 +60,26 @@ impl std::fmt::Display for EffectKind {
 			Self::DropShadow => "Drop Shadow",
 			Self::InnerShadow => "Inner Shadow",
 			Self::OuterGlow => "Outer Glow",
+			Self::Desaturate => "Desaturate",
+			Self::GammaCorrection => "Gamma Correction",
+			Self::MakeOpaque => "Make Opaque",
+			Self::BrightnessContrast => "Brightness/Contrast",
+			Self::Levels => "Levels",
+			Self::Curves => "Curves",
+			Self::BlackAndWhite => "Black & White",
+			Self::HueSaturation => "Hue/Saturation",
+			Self::Invert => "Invert",
+			Self::Threshold => "Threshold",
+			Self::GradientMap => "Gradient Map",
+			Self::Vibrance => "Vibrance",
+			Self::ChannelMixer => "Channel Mixer",
+			Self::SelectiveColor => "Selective Color",
+			Self::Posterize => "Posterize",
+			Self::Exposure => "Exposure",
+			Self::ColorBalance => "Color Balance",
+			Self::PhotoFilter => "Photo Filter",
+			Self::ColorLookup => "Color Lookup",
+			Self::ColorOverlay => "Color Overlay",
 		})
 	}
 }
@@ -120,7 +162,7 @@ impl Effect {
 	}
 }
 
-/// An item's ordered list of effects. A blur acts on the result of those before it, while shadows and glows are cast from the content and stack in order beneath it (or within it, for an inner shadow).
+/// An item's ordered list of effects. A blur or adjustment acts on the result of those before it, shadows and glows included, while shadows and glows are cast from the content and stack in order beneath it (or within it, for an inner shadow).
 #[derive(Clone, Debug, Default, PartialEq, CacheHash)]
 pub struct Effects(pub List<Effect>);
 
@@ -137,6 +179,11 @@ impl Effects {
 	/// The effects in the order they're carried out.
 	pub fn effects(&self) -> impl Iterator<Item = &Effect> {
 		self.0.iter_element_values()
+	}
+
+	/// The effects after the first `count`.
+	pub fn after(&self, count: usize) -> Self {
+		self.run(count.min(self.len())..self.len()).into_owned()
 	}
 
 	/// The effects decoded into the operations renderers carry out, in order.
@@ -210,6 +257,12 @@ impl Effects {
 		(self.runs().into_iter())
 			.map(|(stamped_transform, rows)| self.operations_in(rows).map(|operation| reach(&operation)).sum::<f64>() * spans_along_axes(effect_space(content_transform, stamped_transform).matrix2))
 			.sum()
+	}
+
+	/// How far past the content the effects reading around each pixel (see [`EffectOperation::reads_pixels_around`]) together read, along the axis of the space `content_transform` places the content in that they read furthest along.
+	pub fn read_reach(&self, content_transform: DAffine2) -> f64 {
+		let reach = |operation: &EffectOperation| if operation.reads_pixels_around() { operation.painted_reach() } else { 0. };
+		self.reach_along_axes_by(content_transform, reach).max_element()
 	}
 
 	pub fn len(&self) -> usize {
@@ -308,6 +361,36 @@ pub fn stamp_effect<T>(item: &mut Item<T>, effect: Effect) {
 		.push(Item::new_from_element(effect).with_attribute(ATTR_TRANSFORM, transform));
 }
 
+/// The graphic a paint input's wire carries, without the attributes of its envelope but for the effects stamped on it, such as an adjustment applied to the paint as a graphic.
+/// Colors and gradients (each row of a list of them) take those effects after their own, staying solid or gradient paints, no paint stays none, and other paints nest as a group carrying them.
+pub fn paint_with_envelope_effects(paint: Item<Graphic>) -> Graphic {
+	let effects = paint.attribute::<Effects>(ATTR_EFFECTS).filter(|effects| !effects.is_empty()).cloned();
+	let paint = paint.into_element();
+	let Some(effects) = effects else { return paint };
+
+	let append_to_rows = |rows: std::slice::IterMut<'_, Effects>| rows.for_each(|row| row.0.extend(effects.0.clone()));
+	match paint {
+		Graphic::None(_) | Graphic::NoneList(_) => paint,
+		Graphic::Color(mut item) => {
+			item.attribute_mut_or_insert_default::<Effects>(ATTR_EFFECTS).0.extend(effects.0);
+			Graphic::Color(item)
+		}
+		Graphic::Gradient(mut item) => {
+			item.attribute_mut_or_insert_default::<Effects>(ATTR_EFFECTS).0.extend(effects.0);
+			Graphic::Gradient(item)
+		}
+		Graphic::ColorList(mut list) => {
+			append_to_rows(list.iter_attribute_values_mut_or_default::<Effects>(ATTR_EFFECTS));
+			Graphic::ColorList(list)
+		}
+		Graphic::GradientList(mut list) => {
+			append_to_rows(list.iter_attribute_values_mut_or_default::<Effects>(ATTR_EFFECTS));
+			Graphic::GradientList(list)
+		}
+		paint => Graphic::Graphic(Box::new(Item::new_from_element(paint).with_attribute(ATTR_EFFECTS, effects))),
+	}
+}
+
 /// The part of a content transform a coverage or effect records, its linear part, since the content's position cancels out wherever it's used.
 pub fn stamped_transform(content_transform: DAffine2) -> DAffine2 {
 	DAffine2::from_mat2(content_transform.matrix2)
@@ -378,6 +461,7 @@ pub enum EffectOperation {
 		range: f64,
 		contour: TransferCurve,
 	},
+	Adjustment(Adjustment),
 }
 
 impl EffectOperation {
@@ -392,6 +476,7 @@ impl EffectOperation {
 			Self::DropShadow { .. } => EffectKind::DropShadow,
 			Self::InnerShadow { .. } => EffectKind::InnerShadow,
 			Self::OuterGlow { .. } => EffectKind::OuterGlow,
+			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
 	}
 
@@ -401,6 +486,17 @@ impl EffectOperation {
 			Self::Blur { radius, .. } => *radius <= 0.,
 			Self::DropShadow { color, .. } | Self::InnerShadow { color, .. } => color.a() <= 0.,
 			Self::OuterGlow { color, .. } => GlowFill::of(color).is_none_or(|fill| fill.is_invisible()),
+			Self::Adjustment(_) => false,
+		}
+	}
+
+	/// Whether this operation reads the pixels around each one of the image the effects before it leave, like a blur, rather than casting from the content's shape or changing each pixel alone.
+	pub fn reads_pixels_around(&self) -> bool {
+		match self {
+			Self::Blur { .. } => true,
+			// Cast from the content's shape or changing each pixel alone
+			Self::DropShadow { .. } | Self::InnerShadow { .. } | Self::OuterGlow { .. } => false,
+			Self::Adjustment(_) => false,
 		}
 	}
 
@@ -418,6 +514,7 @@ impl EffectOperation {
 			// Shadows and glows end within their size, past which a precise glow fades over one more unit.
 			Self::DropShadow { distance, size, .. } | Self::InnerShadow { distance, size, .. } => distance.abs() + size.max(0.) + 1.,
 			Self::OuterGlow { size, .. } => size.max(0.) + 1.,
+			Self::Adjustment(_) => 0.,
 		}
 	}
 
@@ -438,6 +535,7 @@ impl EffectOperation {
 				[angle, distance, spread, size].into_iter().for_each(finite);
 			}
 			Self::OuterGlow { spread, size, range, .. } => [spread, size, range].into_iter().for_each(finite),
+			Self::Adjustment(_) => {}
 		}
 		self
 	}
@@ -475,6 +573,46 @@ impl EffectOperation {
 				range: 0.,
 				contour: TransferCurve::default(),
 			},
+			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
+			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
+			EffectKind::MakeOpaque => Self::Adjustment(Adjustment::MakeOpaque),
+			EffectKind::BrightnessContrast => Self::Adjustment(Adjustment::BrightnessContrast {
+				brightness: 0.,
+				contrast: 0.,
+				use_classic: false,
+				classic_pivot: 0.,
+			}),
+			EffectKind::Levels => Self::Adjustment(Adjustment::Levels(Default::default())),
+			EffectKind::Curves => Self::Adjustment(Adjustment::Curves(Default::default())),
+			EffectKind::BlackAndWhite => Self::Adjustment(Adjustment::BlackAndWhite(Default::default())),
+			EffectKind::HueSaturation => Self::Adjustment(Adjustment::HueSaturation(Default::default())),
+			EffectKind::Invert => Self::Adjustment(Adjustment::Invert),
+			EffectKind::Threshold => Self::Adjustment(Adjustment::Threshold { min_luminance: 0., max_luminance: 0. }),
+			EffectKind::GradientMap => Self::Adjustment(Adjustment::GradientMap {
+				gradient: Default::default(),
+				reverse: false,
+			}),
+			EffectKind::Vibrance => Self::Adjustment(Adjustment::Vibrance { vibrance: 0., saturation: 0. }),
+			EffectKind::ChannelMixer => Self::Adjustment(Adjustment::ChannelMixer(Default::default())),
+			EffectKind::SelectiveColor => Self::Adjustment(Adjustment::SelectiveColor(Default::default())),
+			EffectKind::Posterize => Self::Adjustment(Adjustment::Posterize { levels: 0 }),
+			EffectKind::Exposure => Self::Adjustment(Adjustment::Exposure {
+				exposure: 0.,
+				offset: 0.,
+				gamma_correction: 0.,
+			}),
+			EffectKind::ColorBalance => Self::Adjustment(Adjustment::ColorBalance(Default::default())),
+			EffectKind::PhotoFilter => Self::Adjustment(Adjustment::PhotoFilter {
+				color: Color::TRANSPARENT,
+				density: 0.,
+				preserve_luminosity: false,
+			}),
+			EffectKind::ColorLookup => Self::Adjustment(Adjustment::ColorLookup { lut_file: Default::default() }),
+			EffectKind::ColorOverlay => Self::Adjustment(Adjustment::ColorOverlay {
+				color: Color::TRANSPARENT,
+				blend_mode: Default::default(),
+				opacity: 0.,
+			}),
 		}
 	}
 
@@ -537,6 +675,7 @@ impl EffectOperation {
 				visitor.parameter("range", range, 50.);
 				visitor.parameter("contour", contour, TransferCurve::default());
 			}
+			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
 }
@@ -701,5 +840,84 @@ mod tests {
 		};
 		let runs: Vec<_> = effects.runs().into_iter().map(|(_, rows)| rows).collect();
 		assert_eq!(runs, vec![0..3, 3..4]);
+	}
+
+	#[test]
+	fn adjustment_rows_elide_their_defaults_and_name_grouped_parameters() {
+		use EffectKind::*;
+		let kinds = [
+			Desaturate,
+			GammaCorrection,
+			MakeOpaque,
+			BrightnessContrast,
+			Levels,
+			Curves,
+			BlackAndWhite,
+			HueSaturation,
+			Invert,
+			Threshold,
+			GradientMap,
+			Vibrance,
+			ChannelMixer,
+			SelectiveColor,
+			Posterize,
+			Exposure,
+			ColorBalance,
+			PhotoFilter,
+			ColorLookup,
+			ColorOverlay,
+		];
+		for kind in kinds {
+			let operation = EffectOperation::default_for(kind);
+			assert_eq!(operation.kind(), kind);
+			assert_eq!(Effect::new(&operation).0.attributes().iter_any().count(), 0, "{kind} stamps no defaults");
+		}
+
+		// A parameter in one of the node's groups rides the attribute named with the group's prefix
+		let mut levels = EffectOperation::default_for(Levels);
+		if let EffectOperation::Adjustment(Adjustment::Levels(settings)) = &mut levels {
+			settings.blue.midtones = 1.5;
+		}
+		let row = Effect::new(&levels);
+		assert_eq!(row.0.attribute::<f64>("blue_midtones"), Some(&1.5));
+		assert_eq!(row.operation(), levels);
+	}
+
+	#[test]
+	fn paints_keep_the_effects_stamped_on_their_wire_envelope() {
+		let invert = Effect::new(&EffectOperation::Adjustment(Adjustment::Invert));
+		let desaturate = Effect::new(&EffectOperation::Adjustment(Adjustment::Desaturate { method: Default::default() }));
+		let operations = |item_effects: Option<&Effects>| item_effects.map(|effects| effects.operations().collect::<Vec<_>>()).unwrap_or_default();
+
+		// A color keeps its own effects first, then takes the envelope's
+		let mut color = Item::new_from_element(Color::RED);
+		stamp_effect(&mut color, desaturate.clone());
+		let mut envelope = Item::new_from_element(Graphic::Color(color));
+		stamp_effect(&mut envelope, invert.clone());
+		let Graphic::Color(color) = paint_with_envelope_effects(envelope) else {
+			panic!("the color paint should stay a color")
+		};
+		assert_eq!(operations(color.attribute::<Effects>(ATTR_EFFECTS)), [desaturate.operation(), invert.operation()]);
+
+		// Each row of a list of colors takes them, and other paints nest as a group carrying them
+		let mut envelope = Item::new_from_element(Graphic::ColorList(List::new_from_element(Color::RED)));
+		stamp_effect(&mut envelope, invert.clone());
+		let Graphic::ColorList(list) = paint_with_envelope_effects(envelope) else {
+			panic!("the list of colors should stay a list of colors")
+		};
+		assert_eq!(operations(list.clone_item(0).as_ref().and_then(|row| row.attribute::<Effects>(ATTR_EFFECTS))), [invert.operation()]);
+		let mut envelope = Item::new_from_element(Graphic::VectorList(List::new_from_element(crate::Vector::default())));
+		stamp_effect(&mut envelope, invert.clone());
+		let Graphic::Graphic(group) = paint_with_envelope_effects(envelope) else {
+			panic!("the vector paint should nest as a group")
+		};
+		assert_eq!(operations(group.attribute::<Effects>(ATTR_EFFECTS)), [invert.operation()]);
+
+		// Without effects, the paint is the element alone, and no paint stays none
+		let envelope = Item::new_from_element(Graphic::Color(Item::new_from_element(Color::RED)));
+		assert!(matches!(paint_with_envelope_effects(envelope), Graphic::Color(color) if color.attribute::<Effects>(ATTR_EFFECTS).is_none()));
+		let mut envelope = Item::new_from_element(Graphic::default());
+		stamp_effect(&mut envelope, invert);
+		assert!(matches!(paint_with_envelope_effects(envelope), Graphic::None(_)));
 	}
 }

@@ -354,10 +354,34 @@ pub fn interpolate_stop_colors(color_a: Color, color_b: Color, t: f32, gradient_
 	}
 }
 
+/// The channels [`interpolate_stop_colors`] mixes between for two neighboring stops, for evaluating it elsewhere as a shader does.
+/// They're linear or gamma-encoded RGB in the two RGB spaces, else the space's own with the second's hue arcing as the direction asks.
+pub fn interpolation_endpoints(color_a: Color, color_b: Color, gradient_space: GradientSpace, gradient_hue_direction: GradientHueDirection) -> [[f32; 3]; 2] {
+	let gamma = |color: Color| {
+		let [red, green, blue, _] = color.to_gamma_srgb_channels();
+		[red, green, blue]
+	};
+
+	match gradient_space {
+		GradientSpace::RgbLinear => [[color_a.r(), color_a.g(), color_a.b()], [color_b.r(), color_b.g(), color_b.b()]],
+		GradientSpace::RgbGamma => [gamma(color_a), gamma(color_b)],
+		gradient_space => with_space!(gradient_space, space_endpoints, color_a, color_b, gradient_hue_direction),
+	}
+}
+
 /// Mix two colors in the color space `CS`, with alpha interpolating linearly like the sRGB spaces.
-/// Polar spaces arc through hue per the direction, with an achromatic endpoint's powerless hue adopting the other's per CSS.
 /// The mix can land slightly outside the sRGB gamut; it stays unclamped here and clips at render encoding.
 fn lerp_in_space<CS: color::ColorSpace>(color_a: Color, color_b: Color, t: f32, gradient_hue_direction: GradientHueDirection) -> Color {
+	let [a, b] = space_endpoints::<CS>(color_a, color_b, gradient_hue_direction);
+	let mixed = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+	let [red, green, blue] = CS::to_linear_srgb(mixed);
+	Color::from_rgbaf32_unchecked(red, green, blue, color_a.a() + (color_b.a() - color_a.a()) * t)
+}
+
+/// The two colors' channels in the color space `CS` that [`lerp_in_space`] mixes between.
+/// Polar spaces arc through hue per the direction, with an achromatic endpoint's powerless hue adopting the other's per CSS.
+fn space_endpoints<CS: color::ColorSpace>(color_a: Color, color_b: Color, gradient_hue_direction: GradientHueDirection) -> [[f32; 3]; 2] {
 	let mut a = CS::from_linear_srgb([color_a.r(), color_a.g(), color_a.b()]);
 	let mut b = CS::from_linear_srgb([color_b.r(), color_b.g(), color_b.b()]);
 
@@ -374,10 +398,7 @@ fn lerp_in_space<CS: color::ColorSpace>(color_a: Color, color_b: Color, t: f32, 
 		b[hue_index] = a[hue_index] + hue_delta((b[hue_index] - a[hue_index]) as f64, gradient_hue_direction) as f32;
 	}
 
-	let mixed = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-
-	let [red, green, blue] = CS::to_linear_srgb(mixed);
-	Color::from_rgbaf32_unchecked(red, green, blue, color_a.a() + (color_b.a() - color_a.a()) * t)
+	[a, b]
 }
 
 /// The classic HSV cylinder as `[hue in degrees, saturation 0-100, value 0-100]`, implemented locally
@@ -618,7 +639,14 @@ impl MonotonicSpline {
 
 		(2. * t3 - 3. * t2 + 1.) * self.value[index] + (t3 - 2. * t2 + t) * run * self.tangent[index] + (-2. * t3 + 3. * t2) * self.value[index + 1] + (t3 - t2) * run * self.tangent[index + 1]
 	}
+
+	fn knots(&self) -> SplineKnots {
+		(0..self.position.len()).map(|index| [self.position[index], self.value[index], self.tangent[index]]).collect()
+	}
 }
+
+/// Each knot of a [`MonotonicSpline`] as its position, value, and tangent.
+pub type SplineKnots = Vec<[f64; 3]>;
 
 /// The Smooth path: a monotonicity-preserving spline per color channel through every stop, traversed by a second such spline that
 /// maps ramp position to spline parameter. Fitting the stop and midpoint constraints into one global warp is what keeps the
@@ -1405,6 +1433,61 @@ impl Gradient {
 		mapped
 	}
 
+	/// The ramp of `map` applied along this gradient's ramp, as stops that interpolate linearly in gamma sRGB to within [`SAMPLE_THRESHOLD`]
+	/// of it, since a map that isn't linear in the gradient's own space bends the ramp between the stops. Read the result with
+	/// [`GradientSpace::RgbGamma`] and [`GradientInterpolation::Linear`] in place of the space and interpolation in `settings`.
+	pub fn map_ramp(&self, settings: GradientSettings, map: impl Fn(Color) -> Color) -> Self {
+		/// Deeper than this, an interval is under 1/4096 of the ramp, too short to see a step in the mapped colors smear.
+		const MAX_DEPTH: u32 = 12;
+
+		fn subdivide(ramp: &impl Fn(f64) -> Color, left: f64, right: f64, color_left: Color, color_right: Color, result: &mut Vec<GradientStop>, depth: u32) {
+			// Probe the quarter points as well as the center, since a map with a steep toe peaks its deviation off-center
+			let deviates = [0.25, 0.5, 0.75].into_iter().any(|fraction| {
+				let probe = ramp(left + (right - left) * fraction);
+				max_gamma_channel_deviation(probe, color_left.lerp_gamma_srgb(&color_right, fraction as f32)) > SAMPLE_THRESHOLD
+			});
+			if !deviates || depth >= MAX_DEPTH {
+				return;
+			}
+
+			let mid = (left + right) / 2.;
+			let color_mid = ramp(mid);
+			subdivide(ramp, left, mid, color_left, color_mid, result, depth + 1);
+			result.push(GradientStop {
+				position: mid,
+				midpoint: 0.5,
+				color: color_mid,
+			});
+			subdivide(ramp, mid, right, color_mid, color_right, result, depth + 1);
+		}
+
+		let stops = self.normalized_stops(settings.cyclic);
+		let evaluator = self.evaluator(settings);
+		let ramp = |position: f64| map(evaluator.evaluate(position));
+
+		// Each stop anchors its own color, keeping the jump between coincident stops, and a cyclic ramp's seam anchors at both ends
+		let mut anchors: Vec<(f64, Color)> = stops.iter().map(|stop| (stop.position, map(stop.color))).collect();
+		if settings.cyclic && anchors.first().is_some_and(|&(position, _)| position > 0.) {
+			anchors.insert(0, (0., ramp(0.)));
+		}
+		if settings.cyclic && anchors.last().is_some_and(|&(position, _)| position < 1.) {
+			anchors.push((1., ramp(0.)));
+		}
+
+		let mut result = Vec::new();
+		for (index, &(position, color)) in anchors.iter().enumerate() {
+			result.push(GradientStop { position, midpoint: 0.5, color });
+
+			if let Some(&(next_position, next_color)) = anchors.get(index + 1)
+				&& next_position > position
+			{
+				subdivide(&ramp, position, next_position, color, next_color, &mut result, 0);
+			}
+		}
+
+		Gradient::new(result)
+	}
+
 	/// The gradient's [`Gradient::interpolated_samples`], falling back to one black sample when it has no stops, since a
 	/// stopless SVG gradient paints nothing where [`Gradient::evaluate`] gives black.
 	pub fn interpolated_samples_or_black(&self, settings: GradientSettings) -> Vec<(f64, Color, Option<f64>)> {
@@ -1602,29 +1685,74 @@ pub struct GradientEvaluator {
 	smooth_path: Option<SmoothPath>,
 }
 
+/// How far past a ramp's ends, or short of a stepped ramp's stops, a position [`GradientEvaluator::evaluate_mapped`] takes may fall and still count as on them.
+pub const MAPPED_POSITION_SLACK: f64 = 1. / 65536.;
+
 impl GradientEvaluator {
 	/// Samples the gradient's color at `t`. Given a `t` outside the 0 to 1 range, the spread determines how the gradient extends.
 	pub fn evaluate(&self, t: f64) -> Color {
-		let t = match self.settings.spread {
-			GradientSpread::Pad => t.clamp(0., 1.),
-			GradientSpread::Repeat => t.rem_euclid(1.),
-			GradientSpread::Reflect => {
-				let cycle = t.rem_euclid(2.);
-				if cycle > 1. { 2. - cycle } else { cycle }
-			}
-			GradientSpread::Clear => {
-				if !(0. ..=1.).contains(&t) {
-					return Color::TRANSPARENT;
-				}
-				t
-			}
+		match self.position_within(t) {
+			Some(t) => self.evaluate_within(t),
+			None => Color::TRANSPARENT,
+		}
+	}
+
+	/// Samples the color the gradient maps an intensity `t` to. A position within [`MAPPED_POSITION_SLACK`] past either end lies on that end, a repeating
+	/// ramp's end stays its end (so white maps to the last color), and each stop of a stepped ramp reaches that slack short of itself.
+	pub fn evaluate_mapped(&self, t: f64) -> Color {
+		let t = if t > 1. && t <= 1. + MAPPED_POSITION_SLACK {
+			1.
+		} else if (-MAPPED_POSITION_SLACK..0.).contains(&t) {
+			0.
+		} else {
+			t
 		};
 
+		let stays_at_end = self.settings.spread == GradientSpread::Repeat && t > 0. && t.rem_euclid(1.) == 0.;
+		let Some(t) = (if stays_at_end { Some(1.) } else { self.position_within(t) }) else {
+			return Color::TRANSPARENT;
+		};
+
+		let stepped = self.smooth_path.is_none() && self.settings.interpolation == GradientInterpolation::Stepped;
+		self.evaluate_within(if stepped { t + MAPPED_POSITION_SLACK } else { t })
+	}
+
+	/// Where along the ramp, from 0 to 1, the spread lands `t`, or `None` where it leaves the ramp clear.
+	fn position_within(&self, t: f64) -> Option<f64> {
+		match self.settings.spread {
+			GradientSpread::Pad => Some(t.clamp(0., 1.)),
+			GradientSpread::Repeat => Some(t.rem_euclid(1.)),
+			GradientSpread::Reflect => {
+				let cycle = t.rem_euclid(2.);
+				Some(if cycle > 1. { 2. - cycle } else { cycle })
+			}
+			GradientSpread::Clear => (0. ..=1.).contains(&t).then_some(t),
+		}
+	}
+
+	/// Samples the ramp at a position along it, which no spread is applied to.
+	fn evaluate_within(&self, t: f64) -> Color {
 		match &self.smooth_path {
 			Some(path) => path.evaluate(t),
 			None if self.settings.interpolation == GradientInterpolation::Stepped => stepped_color(&self.stops, t, self.settings.cyclic),
 			None => linear_color(&self.stops, t, self.settings),
 		}
+	}
+
+	/// The stops evaluation interpolates between, sorted by position.
+	pub fn stops(&self) -> &[GradientStop] {
+		&self.stops
+	}
+
+	pub fn settings(&self) -> GradientSettings {
+		self.settings
+	}
+
+	/// For a ramp evaluated along the Smooth path, the knots of its splines, for evaluating it elsewhere as a shader does: first the spline mapping
+	/// ramp position to the parameter the others are evaluated at, then one for each channel of the color space and one for alpha.
+	pub fn smooth_knots(&self) -> Option<(SplineKnots, [SplineKnots; 4])> {
+		let path = self.smooth_path.as_ref()?;
+		Some((path.warp.knots(), path.channel.each_ref().map(MonotonicSpline::knots)))
 	}
 }
 
@@ -2223,6 +2351,63 @@ mod tests {
 		let (first, last) = (samples.first().expect("a baked ramp has samples"), samples.last().expect("a baked ramp has samples"));
 		assert_eq!((first.0, first.1), (0., Color::BLACK));
 		assert_eq!((last.0, last.1), (1., Color::WHITE));
+	}
+
+	#[test]
+	fn mapped_positions_a_hair_off_the_ramp_or_its_stops_land_on_them() {
+		let settings = |interpolation, spread| GradientSettings {
+			interpolation,
+			spread,
+			..Default::default()
+		};
+		let mut ramp = Gradient::from(vec![Color::BLACK, Color::RED, Color::WHITE]);
+		ramp.set_positions(&[0., 0.5, 1.]);
+		let hair = MAPPED_POSITION_SLACK / 2.;
+
+		// A repeating ramp wraps past its end, but the end itself (and a hair past it) stays the last color
+		let repeating = ramp.evaluator(settings(GradientInterpolation::Linear, GradientSpread::Repeat));
+		assert_eq!(repeating.evaluate(1.), Color::BLACK);
+		for position in [1., 1. + hair, 2.] {
+			assert_eq!(repeating.evaluate_mapped(position), Color::WHITE, "at {position}");
+		}
+		assert_eq!(repeating.evaluate_mapped(0.), Color::BLACK);
+		assert_eq!(repeating.evaluate_mapped(1.25), repeating.evaluate(0.25));
+
+		// A clear ramp takes in a hair past either end
+		let clear = ramp.evaluator(settings(GradientInterpolation::Linear, GradientSpread::Clear));
+		assert_eq!((clear.evaluate_mapped(-hair), clear.evaluate_mapped(1. + hair)), (Color::BLACK, Color::WHITE));
+		assert_eq!(clear.evaluate_mapped(1.01), Color::TRANSPARENT);
+
+		// Each stop of a stepped ramp starts a hair short of itself
+		let stepped = ramp.evaluator(settings(GradientInterpolation::Stepped, GradientSpread::Pad));
+		assert_eq!((stepped.evaluate(0.5 - hair), stepped.evaluate_mapped(0.5 - hair)), (Color::BLACK, Color::RED));
+		assert_eq!((stepped.evaluate_mapped(0.49), stepped.evaluate_mapped(1. - hair)), (Color::BLACK, Color::WHITE));
+	}
+
+	#[test]
+	fn mapped_ramp_follows_the_map_and_keeps_hard_stops() {
+		let gamma = GradientSettings {
+			space: GradientSpace::RgbGamma,
+			..Default::default()
+		};
+
+		// Thresholding at middle gray needs samples beside the jump, where the two stops alone would blend from black to white
+		let threshold = |color: Color| if color.to_gamma_srgb_channels()[0] < 0.5 { Color::BLACK } else { Color::WHITE };
+		let mapped = Gradient::from(vec![Color::BLACK, Color::WHITE]).map_ramp(gamma, threshold);
+		for t in [0.1, 0.4, 0.48] {
+			assert_eq!(mapped.evaluate(t, gamma), Color::BLACK, "below the threshold at {t}");
+		}
+		for t in [0.52, 0.6, 0.9] {
+			assert_eq!(mapped.evaluate(t, gamma), Color::WHITE, "above the threshold at {t}");
+		}
+
+		// Coincident stops keep their jump, and a map that changes nothing adds no stops
+		let mut hard = Gradient::from(vec![Color::RED, Color::RED, Color::BLUE, Color::BLUE]);
+		hard.set_positions(&[0., 0.5, 0.5, 1.]);
+		let unchanged = hard.map_ramp(gamma, |color| color);
+		assert_eq!(unchanged.len(), 4);
+		assert_eq!(unchanged.evaluate(0.49, gamma), Color::RED);
+		assert_eq!(unchanged.evaluate(0.51, gamma), Color::BLUE);
 	}
 
 	#[test]

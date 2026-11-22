@@ -1,14 +1,16 @@
 //! The GPU passes that carry out an item's effects on its content, between rendering the content offscreen and drawing the result back.
 
+use crate::vello_adjustments::{AdjustmentShaders, AdjustmentUploads, PassEncodings, PreparedPass};
 use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use core_types::transfer_curve::TransferCurve;
 use glam::{DMat2, DVec2, UVec2};
 use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GlowFill, grow_and_tent, shadow_offset};
-use graphic_types::{EffectOperation, Effects, GlowTechnique};
+use graphic_types::{Adjustment, EffectOperation, Effects, GlowTechnique};
 use raster_kernels::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
+use wgpu::util::DeviceExt;
 
 /// The format of the images the passes produce, with the precision to keep soft gradients smooth.
 pub(crate) const WORKING_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -67,6 +69,38 @@ fn kernel_taps(kernel: BlurKernel, levels: u32) -> Vec<[f32; 4]> {
 	taps
 }
 
+/// A pipeline running the `entry_point` of `shader` over one triangle covering a target of `format`.
+pub(crate) fn full_target_pipeline(device: &wgpu::Device, layout: &wgpu::PipelineLayout, shader: &wgpu::ShaderModule, entry_point: &'static str, format: wgpu::TextureFormat) -> wgpu::RenderPipeline {
+	device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+		label: Some(entry_point),
+		layout: Some(layout),
+		vertex: wgpu::VertexState {
+			module: shader,
+			entry_point: Some("vertex"),
+			compilation_options: Default::default(),
+			buffers: &[],
+		},
+		fragment: Some(wgpu::FragmentState {
+			module: shader,
+			entry_point: Some(entry_point),
+			compilation_options: Default::default(),
+			targets: &[Some(wgpu::ColorTargetState {
+				format,
+				blend: None,
+				write_mask: wgpu::ColorWrites::ALL,
+			})],
+		}),
+		primitive: wgpu::PrimitiveState {
+			topology: wgpu::PrimitiveTopology::TriangleList,
+			..Default::default()
+		},
+		depth_stencil: None,
+		multisample: wgpu::MultisampleState::default(),
+		multiview_mask: None,
+		cache: None,
+	})
+}
+
 /// The pipelines of the effect passes, each built the first time it is used.
 pub(crate) struct EffectPasses {
 	shader: wgpu::ShaderModule,
@@ -74,6 +108,7 @@ pub(crate) struct EffectPasses {
 	pipeline_layout: wgpu::PipelineLayout,
 	sampler: wgpu::Sampler,
 	pipelines: Mutex<HashMap<(&'static str, wgpu::TextureFormat), wgpu::RenderPipeline>>,
+	adjustment_shaders: AdjustmentShaders,
 	/// Whether the GPU can render into the passes' formats, which WebGL2 can't without `EXT_color_buffer_float`.
 	pub(crate) renders_working_formats: bool,
 }
@@ -145,6 +180,7 @@ impl EffectPasses {
 			pipeline_layout,
 			sampler,
 			pipelines: Mutex::new(HashMap::new()),
+			adjustment_shaders: AdjustmentShaders::new(device, adapter),
 			renders_working_formats,
 		}
 	}
@@ -154,36 +190,7 @@ impl EffectPasses {
 
 		pipelines
 			.entry((entry_point, format))
-			.or_insert_with(|| {
-				device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-					label: Some(entry_point),
-					layout: Some(&self.pipeline_layout),
-					vertex: wgpu::VertexState {
-						module: &self.shader,
-						entry_point: Some("vertex"),
-						compilation_options: Default::default(),
-						buffers: &[],
-					},
-					fragment: Some(wgpu::FragmentState {
-						module: &self.shader,
-						entry_point: Some(entry_point),
-						compilation_options: Default::default(),
-						targets: &[Some(wgpu::ColorTargetState {
-							format,
-							blend: None,
-							write_mask: wgpu::ColorWrites::ALL,
-						})],
-					}),
-					primitive: wgpu::PrimitiveState {
-						topology: wgpu::PrimitiveTopology::TriangleList,
-						..Default::default()
-					},
-					depth_stencil: None,
-					multisample: wgpu::MultisampleState::default(),
-					multiview_mask: None,
-					cache: None,
-				})
-			})
+			.or_insert_with(|| full_target_pipeline(device, &self.pipeline_layout, &self.shader, entry_point, format))
 			.clone()
 	}
 
@@ -212,13 +219,17 @@ impl EffectPasses {
 		};
 		let length_scale = lengths_to_pixels.determinant().abs().sqrt();
 
-		// The content at full strength, which casts every silhouette, and the content faded by the fill, which shows in the result
-		let mut full = recorder.scale(content, 1.);
+		// The content at full strength, which casts every silhouette, read from the content itself (whatever its format) until a pass replaces it
+		let mut full: Option<wgpu::Texture> = None;
+		// The content faded by the fill, which shows in the result
 		let mut filled = (fill < 1.).then(|| recorder.scale(content, fill));
 		// The shadows and glows stacked beneath the content
 		let mut beneath: Option<wgpu::Texture> = None;
 
-		for (index, effect) in effects.operations().enumerate() {
+		// Each operation with its index, for a capture to name, leaving out those that change nothing so they don't split the runs of adjustments around them
+		let operations: Vec<(usize, EffectOperation)> = effects.operations().enumerate().filter(|(_, operation)| !changes_nothing(operation, length_scale)).collect();
+		for (position, (index, operation)) in operations.iter().enumerate() {
+			let index = *index;
 			// A captured coverage ends the passes in place of the effects' result
 			let mut captured = None;
 			// A coverage is captured in black, and an already tinted image as it is
@@ -235,26 +246,15 @@ impl EffectPasses {
 				}
 			};
 
-			match effect {
+			match *operation {
 				EffectOperation::Blur { radius, box_blur, gamma } => {
 					let radius = radius * length_scale;
-					if radius < NEGLIGIBLE_LENGTH {
-						continue;
-					}
+					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
 
-					// What lies beneath blurs together with the content
-					if let Some(beneath) = beneath.take() {
-						if let Some(filled) = &mut filled {
-							let composited = recorder.composite_beneath(filled, &beneath);
-							recorder.replace(filled, composited);
-						}
-						let composited = recorder.composite_beneath(&full, &beneath);
-						recorder.replace(&mut full, composited);
-						recorder.textures.release(beneath);
-					}
-
+					// The blur gives its input back to the pool, so it takes a copy of the content rather than the content itself
 					let kernel = if box_blur { BlurKernel::Box { radius } } else { BlurKernel::Gaussian { sigma: radius } };
-					full = recorder.blur(full, kernel, !gamma);
+					let unblurred = full.take().unwrap_or_else(|| recorder.scale(content, 1.));
+					full = Some(recorder.blur(unblurred, kernel, !gamma));
 					filled = filled.map(|filled| recorder.blur(filled, kernel, !gamma));
 				}
 				EffectOperation::DropShadow {
@@ -263,13 +263,14 @@ impl EffectPasses {
 					distance,
 					spread,
 					size,
-					contour,
+					ref contour,
 					knockout,
 				} => {
-					let silhouette = recorder.silhouette(&full, lengths_to_pixels * shadow_offset(angle, distance), false);
-					let mut strength = recorder.cast(silhouette, size, spread, GlowTechnique::Softer, 100., &contour, length_scale);
+					let full_content = full.as_ref().unwrap_or(content);
+					let silhouette = recorder.silhouette(full_content, lengths_to_pixels * shadow_offset(angle, distance), false);
+					let mut strength = recorder.cast(silhouette, size, spread, GlowTechnique::Softer, 100., contour, length_scale);
 					if knockout {
-						strength = recorder.knock_out(strength, &full, fill);
+						strength = recorder.knock_out(strength, full_content, fill);
 					}
 					capture_plane(&mut recorder, 0, &strength, false);
 
@@ -277,17 +278,18 @@ impl EffectPasses {
 					recorder.textures.release(strength);
 				}
 				EffectOperation::OuterGlow {
-					color,
+					ref color,
 					technique,
 					spread,
 					size,
 					range,
-					contour,
+					ref contour,
 				} => {
-					let Some(paint) = GlowFill::of(&color) else { continue };
-					let silhouette = recorder.silhouette(&full, DVec2::ZERO, false);
+					let Some(paint) = GlowFill::of(color) else { continue };
+					let full_content = full.as_ref().unwrap_or(content);
+					let silhouette = recorder.silhouette(full_content, DVec2::ZERO, false);
 					let raw = recorder.cast_strength(silhouette, size, spread, technique, length_scale);
-					let shaped = recorder.shaped(&raw, range, &contour);
+					let shaped = recorder.shaped(&raw, range, contour);
 					let strength = shaped.as_ref().unwrap_or(&raw);
 
 					// A solid color tints the coverage as it stacks, but a gradient paints each pixel its own color, which a map captures whole
@@ -300,7 +302,7 @@ impl EffectPasses {
 					};
 					[Some(raw), shaped].into_iter().flatten().for_each(|texture| recorder.textures.release(texture));
 
-					let coverage = recorder.knock_out(coverage, &full, fill);
+					let coverage = recorder.knock_out(coverage, full_content, fill);
 					capture_plane(&mut recorder, 0, &coverage, color.is_none());
 					beneath = Some(recorder.stack_beneath(beneath, &coverage, color));
 					recorder.textures.release(coverage);
@@ -311,24 +313,63 @@ impl EffectPasses {
 					distance,
 					choke,
 					size,
-					contour,
+					ref contour,
 				} => {
-					let outside = recorder.silhouette(&full, lengths_to_pixels * shadow_offset(angle, distance), true);
-					let strength = recorder.cast(outside, size, choke, GlowTechnique::Softer, 100., &contour, length_scale);
+					let full_content = full.as_ref().unwrap_or(content);
+					let outside = recorder.silhouette(full_content, lengths_to_pixels * shadow_offset(angle, distance), true);
+					let strength = recorder.cast(outside, size, choke, GlowTechnique::Softer, 100., contour, length_scale);
 					capture_plane(&mut recorder, 0, &strength, false);
 
 					if let Some(filled) = &mut filled {
-						let composited = recorder.composite_within(filled, &strength, &full, color);
+						let composited = recorder.composite_within(filled, &strength, full_content, color);
 						recorder.replace(filled, composited);
 					}
-					let composited = recorder.composite_within(&full, &strength, &full, color);
-					recorder.replace(&mut full, composited);
+					let composited = recorder.composite_within(full_content, &strength, full_content, color);
+					recorder.replace_or_fill(&mut full, composited);
 					recorder.textures.release(strength);
+				}
+				EffectOperation::Adjustment(_) => {
+					// A run of adjustments is carried out from its first row, in a pass for each standalone step and one for the steps between them
+					if position > 0 && matches!(operations[position - 1].1, EffectOperation::Adjustment(_)) {
+						continue;
+					}
+					let run: Vec<&Adjustment> = operations[position..]
+						.iter()
+						.map_while(|(_, operation)| match operation {
+							EffectOperation::Adjustment(adjustment) => Some(adjustment),
+							_ => None,
+						})
+						.collect();
+
+					// The content at full strength is read only by an operation after the run, or shown as the result where no fill fades it
+					let full_is_read = filled.is_none() || position + run.len() < operations.len();
+
+					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
+					let prepared_passes = recorder.textures.prepare_adjustments(device, queue, &run);
+
+					// Each pass but the last hands its result on in the chained format, so splitting the run rounds nothing
+					for (index, prepared) in prepared_passes.iter().enumerate() {
+						let format = if index + 1 < prepared_passes.len() {
+							self.adjustment_shaders.chained_format
+						} else {
+							WORKING_FORMAT
+						};
+						let encodings = self.adjustment_shaders.pass_encodings(index, prepared_passes.len(), false);
+
+						if full_is_read {
+							let adjusted = recorder.adjust(full.as_ref().unwrap_or(content), prepared, format, encodings);
+							recorder.replace_or_fill(&mut full, adjusted);
+						}
+						if let Some(filled) = &mut filled {
+							let adjusted = recorder.adjust(filled, prepared, format, encodings);
+							recorder.replace(filled, adjusted);
+						}
+					}
 				}
 			}
 
 			if let Some(captured) = captured {
-				[Some(full), filled, beneath].into_iter().flatten().for_each(|texture| recorder.textures.release(texture));
+				[full, filled, beneath].into_iter().flatten().for_each(|texture| recorder.textures.release(texture));
 				queue.submit([recorder.encoder.finish()]);
 				return captured;
 			}
@@ -336,23 +377,95 @@ impl EffectPasses {
 
 		let result = match (filled, beneath) {
 			(filled, Some(beneath)) => {
-				let result = recorder.composite_beneath(filled.as_ref().unwrap_or(&full), &beneath);
-				recorder.textures.release(beneath);
-				recorder.textures.release(full);
-				if let Some(filled) = filled {
-					recorder.textures.release(filled);
-				}
+				let result = recorder.composite_beneath(filled.as_ref().or(full.as_ref()).unwrap_or(content), &beneath);
+				[Some(beneath), full, filled].into_iter().flatten().for_each(|texture| recorder.textures.release(texture));
 				result
 			}
 			(Some(filled), None) => {
-				recorder.textures.release(full);
+				if let Some(full) = full {
+					recorder.textures.release(full);
+				}
 				filled
 			}
-			(None, None) => full,
+			(None, None) => full.unwrap_or_else(|| recorder.scale(content, 1.)),
 		};
 
 		queue.submit([recorder.encoder.finish()]);
 		result
+	}
+
+	/// Carries out a run of adjustments, in the passes `prepared` for it, on the top level of `image`, a texture of straight linear color if
+	/// `straight_linear_image` or else of premultiplied pixels, into the top level of `target`, then averages each of `target`'s smaller levels
+	/// from the one above it like the levels of an uploaded image.
+	#[expect(clippy::too_many_arguments)]
+	pub(crate) fn adjust_image(
+		&self,
+		device: &wgpu::Device,
+		queue: &wgpu::Queue,
+		textures: &mut EffectTextures,
+		image: &wgpu::Texture,
+		straight_linear_image: bool,
+		prepared: &[PreparedPass],
+		target: &wgpu::Texture,
+	) {
+		let size = UVec2::new(image.width(), image.height());
+		let mut recorder = PassRecorder {
+			passes: self,
+			device,
+			queue,
+			encoder: device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+				label: Some("vello_effects_adjust_image"),
+			}),
+			textures,
+			size,
+		};
+		let level = |texture: &wgpu::Texture, level: u32| {
+			texture.create_view(&wgpu::TextureViewDescriptor {
+				base_mip_level: level,
+				mip_level_count: Some(1),
+				..Default::default()
+			})
+		};
+
+		// Each pass but the last hands its result on in the chained format, so only the last one's result rounds to the target's format
+		let mut chained: Option<wgpu::Texture> = None;
+		for (index, pass) in prepared.iter().enumerate() {
+			let source = chained.as_ref().unwrap_or(image);
+			let encodings = self.adjustment_shaders.pass_encodings(index, prepared.len(), straight_linear_image);
+			if index + 1 < prepared.len() {
+				let adjusted = recorder.adjust(source, pass, self.adjustment_shaders.chained_format, encodings);
+				recorder.replace_or_fill(&mut chained, adjusted);
+			} else {
+				let source = source.create_view(&wgpu::TextureViewDescriptor::default());
+				recorder.adjust_into(&level(target, 0), target.format(), &source, pass, encodings);
+			}
+		}
+		chained.into_iter().for_each(|texture| recorder.textures.release(texture));
+
+		for index in 1..target.mip_level_count() {
+			let level_size = UVec2::new(target.width() >> index, target.height() >> index).max(UVec2::ONE);
+			recorder.run_into(
+				"halve",
+				target.format(),
+				&level(target, index),
+				level_size,
+				&level(target, index - 1),
+				None,
+				None,
+				Parameters::default(),
+			);
+		}
+
+		queue.submit([recorder.encoder.finish()]);
+	}
+}
+
+/// Whether an operation leaves the content as it is: a blur too slight to see, or a glow with nothing to paint.
+fn changes_nothing(operation: &EffectOperation, length_scale: f64) -> bool {
+	match operation {
+		EffectOperation::Blur { radius, .. } => radius * length_scale < NEGLIGIBLE_LENGTH,
+		EffectOperation::OuterGlow { color, .. } => GlowFill::of(color).is_none(),
+		_ => false,
 	}
 }
 
@@ -394,16 +507,34 @@ impl PassRecorder<'_> {
 		content: Option<&wgpu::Texture>,
 		parameters: Parameters,
 	) -> wgpu::Texture {
-		use wgpu::util::DeviceExt;
-
 		let target = self.textures.acquire(self.device, size, format);
+
+		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let (source, secondary, content) = (view(source), secondary.map(view), content.map(view));
+		self.run_into(entry_point, format, &view(&target), size, &source, secondary.as_ref(), content.as_ref(), parameters);
+
+		target
+	}
+
+	/// Runs the shader's `entry_point` into `target`, a view of `format` and `size`, reading the `source` view and optionally the `secondary` and `content` views.
+	#[expect(clippy::too_many_arguments)]
+	fn run_into(
+		&mut self,
+		entry_point: &'static str,
+		format: wgpu::TextureFormat,
+		target: &wgpu::TextureView,
+		size: UVec2,
+		source: &wgpu::TextureView,
+		secondary: Option<&wgpu::TextureView>,
+		content: Option<&wgpu::TextureView>,
+		parameters: Parameters,
+	) {
 		let parameters = Parameters {
 			target_to_uv: [1. / size.x as f32, 1. / size.y as f32],
 			..parameters
 		};
 
-		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
-		let (source_view, secondary_view, content_view) = (view(source), view(secondary.unwrap_or(source)), view(content.unwrap_or(source)));
+		let (secondary, content) = (secondary.unwrap_or(source), content.unwrap_or(source));
 		let parameters_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("vello_effects_parameters"),
 			contents: bytemuck::bytes_of(&parameters),
@@ -415,15 +546,15 @@ impl PassRecorder<'_> {
 			entries: &[
 				wgpu::BindGroupEntry {
 					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&source_view),
+					resource: wgpu::BindingResource::TextureView(source),
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::TextureView(&secondary_view),
+					resource: wgpu::BindingResource::TextureView(secondary),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
-					resource: wgpu::BindingResource::TextureView(&content_view),
+					resource: wgpu::BindingResource::TextureView(content),
 				},
 				wgpu::BindGroupEntry {
 					binding: 3,
@@ -437,11 +568,15 @@ impl PassRecorder<'_> {
 		});
 
 		let pipeline = self.passes.pipeline(self.device, entry_point, format);
-		let target_view = view(&target);
+		self.draw_into(entry_point, &pipeline, &bind_group, target);
+	}
+
+	/// Clears `target` and draws one triangle covering it with the `pipeline` reading the `bind_group`.
+	fn draw_into(&mut self, label: &'static str, pipeline: &wgpu::RenderPipeline, bind_group: &wgpu::BindGroup, target: &wgpu::TextureView) {
 		let mut pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some(entry_point),
+			label: Some(label),
 			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: &target_view,
+				view: target,
 				resolve_target: None,
 				ops: wgpu::Operations {
 					load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
@@ -454,17 +589,25 @@ impl PassRecorder<'_> {
 			occlusion_query_set: None,
 			multiview_mask: None,
 		});
-		pass.set_pipeline(&pipeline);
-		pass.set_bind_group(0, &bind_group, &[]);
+		pass.set_pipeline(pipeline);
+		pass.set_bind_group(0, bind_group, &[]);
 		pass.draw(0..3, 0..1);
 		drop(pass);
 
-		target
+		#[cfg(test)]
+		self.textures.drawn_passes.push(label);
 	}
 
 	/// Puts `next` in place of the texture in `slot`, returning the old one to the pool.
 	fn replace(&mut self, slot: &mut wgpu::Texture, next: wgpu::Texture) {
 		self.textures.release(std::mem::replace(slot, next));
+	}
+
+	/// Puts `next` in `slot`, returning any texture it held to the pool.
+	fn replace_or_fill(&mut self, slot: &mut Option<wgpu::Texture>, next: wgpu::Texture) {
+		if let Some(previous) = slot.replace(next) {
+			self.textures.release(previous);
+		}
 	}
 
 	/// A copy of `source` in the working format, multiplied by `amount`.
@@ -681,9 +824,62 @@ impl PassRecorder<'_> {
 		self.run("composite_within", WORKING_FORMAT, self.size, image, Some(coverage), Some(full_content), parameters)
 	}
 
+	/// Places what lies `beneath` under the full-strength content (`content` itself until a pass replaces it) and the faded fill,
+	/// so a pixel filter after it (a blur or an adjustment) processes them together.
+	fn merge_beneath(&mut self, content: &wgpu::Texture, full: &mut Option<wgpu::Texture>, filled: &mut Option<wgpu::Texture>, beneath: Option<wgpu::Texture>) {
+		let Some(beneath) = beneath else { return };
+
+		if let Some(filled) = filled {
+			let composited = self.composite_beneath(filled, &beneath);
+			self.replace(filled, composited);
+		}
+		let composited = self.composite_beneath(full.as_ref().unwrap_or(content), &beneath);
+		self.replace_or_fill(full, composited);
+		self.textures.release(beneath);
+	}
+
 	/// The image with the shadows and glows `beneath` placed under it.
 	fn composite_beneath(&mut self, image: &wgpu::Texture, beneath: &wgpu::Texture) -> wgpu::Texture {
 		self.run("composite_beneath", WORKING_FORMAT, self.size, image, Some(beneath), None, Parameters::default())
+	}
+
+	/// The image (of any format a shader can load from) with a pass of adjustments carried out on it into a texture of `format`, reading what was `prepared` for the pass,
+	/// in the `encodings` of its source and result.
+	fn adjust(&mut self, image: &wgpu::Texture, prepared: &PreparedPass, format: wgpu::TextureFormat, encodings: PassEncodings) -> wgpu::Texture {
+		let target = self.textures.acquire(self.device, self.size, format);
+
+		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
+		self.adjust_into(&view(&target), format, &view(image), prepared, encodings);
+
+		target
+	}
+
+	/// Carries out a pass of adjustments on the `image` view, reading what was `prepared` for the pass, into `target`, a view of `format`, in the `encodings` of its source and result.
+	fn adjust_into(&mut self, target: &wgpu::TextureView, format: wgpu::TextureFormat, image: &wgpu::TextureView, prepared: &PreparedPass, encodings: PassEncodings) {
+		let passes = self.passes;
+		let shaders = &passes.adjustment_shaders;
+
+		// The pixels, the steps, the tables, and the encodings, bound in that order
+		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let (steps, tables) = (view(&prepared.steps), view(prepared.tables.as_ref().unwrap_or(&shaders.no_tables)));
+		let mut entries: Vec<wgpu::BindGroupEntry> = ([image, &steps, &tables].into_iter().enumerate())
+			.map(|(binding, view)| wgpu::BindGroupEntry {
+				binding: binding as u32,
+				resource: wgpu::BindingResource::TextureView(view),
+			})
+			.collect();
+		entries.push(wgpu::BindGroupEntry {
+			binding: 3,
+			resource: shaders.encodings_buffer(encodings).as_entire_binding(),
+		});
+		let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("vello_adjustments_bind_group"),
+			layout: &shaders.bind_group_layout,
+			entries: &entries,
+		});
+
+		let pipeline = shaders.pipeline(self.device, prepared.shader, format);
+		self.draw_into("adjust", &pipeline, &bind_group, target);
 	}
 
 	/// Blurs `texture` by `kernel` along both axes, in linear light if `linear`.
@@ -740,10 +936,20 @@ impl PassRecorder<'_> {
 pub(crate) struct EffectTextures {
 	/// Each unused texture with the render it was last used in.
 	free: Vec<(wgpu::Texture, u64)>,
+	/// The uploads of recent runs of adjustments.
+	adjustments: AdjustmentUploads,
 	render_count: u64,
+	/// The label of each pass drawn, in order.
+	#[cfg(test)]
+	pub(crate) drawn_passes: Vec<&'static str>,
 }
 
 impl EffectTextures {
+	/// What each pass carrying out a run of adjustments reads, as [`AdjustmentUploads::prepare`] gives it.
+	pub(crate) fn prepare_adjustments(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, run: &[&Adjustment]) -> Vec<PreparedPass> {
+		self.adjustments.prepare(device, queue, run, self.render_count)
+	}
+
 	pub(crate) fn acquire(&mut self, device: &wgpu::Device, size: UVec2, format: wgpu::TextureFormat) -> wgpu::Texture {
 		let size = size.max(UVec2::ONE);
 		let matches = |texture: &wgpu::Texture| texture.width() == size.x && texture.height() == size.y && texture.format() == format;
@@ -776,6 +982,8 @@ impl EffectTextures {
 	pub(crate) fn finish_render(&mut self) {
 		let render_count = self.render_count;
 		self.free.retain(|(_, last_used)| render_count - last_used < UNUSED_TEXTURE_RENDER_LIMIT);
+		self.adjustments.finish_render(render_count);
+
 		self.render_count += 1;
 	}
 }
@@ -801,6 +1009,131 @@ mod tests {
 			assert!(taps.len() <= MAX_TAPS, "{kernel:?} needs {} taps", taps.len());
 			assert!((total_weight(&taps) - 1.).abs() < 1e-5, "{kernel:?} weighs {}", total_weight(&taps));
 		}
+	}
+
+	#[test]
+	fn the_steps_between_standalone_ones_share_a_pass() {
+		use core_types::list::Item;
+		use graphic_types::vector_types::Gradient;
+
+		let Some(context) = futures::executor::block_on(crate::WgpuContext::for_tests()) else { return };
+		let passes = EffectPasses::new(&context.device, &context.adapter);
+		if !passes.renders_working_formats {
+			return;
+		}
+
+		// Kinds of every sort in one run, which a blur ends, then a run of two more that a blur too slight to see doesn't split
+		let first_run = [
+			Adjustment::Vibrance { vibrance: 30., saturation: 10. },
+			Adjustment::Threshold {
+				min_luminance: 40.,
+				max_luminance: 90.,
+			},
+			Adjustment::GradientMap {
+				gradient: Item::new_from_element(Gradient::black_to_white()),
+				reverse: true,
+			},
+			Adjustment::Levels(Default::default()),
+			Adjustment::ColorLookup {
+				lut_file: graphene_resource::Resource::new(b"LUT_1D_SIZE 2\n0 0 0\n1 0.5 1\n".to_vec()),
+			},
+			Adjustment::Invert,
+		];
+		let second_run = [Adjustment::Invert, Adjustment::Posterize { levels: 3 }];
+		let blur = |radius| EffectOperation::Blur {
+			radius,
+			box_blur: false,
+			gamma: false,
+		};
+		let operations = (first_run.iter().cloned().map(EffectOperation::Adjustment)).chain([blur(2.)]).chain([
+			EffectOperation::Adjustment(second_run[0].clone()),
+			blur(NEGLIGIBLE_LENGTH / 2.),
+			EffectOperation::Adjustment(second_run[1].clone()),
+		]);
+		let effects = Effects::from_operations(operations);
+
+		let mut textures = EffectTextures::default();
+		let content = textures.acquire(&context.device, UVec2::splat(16), wgpu::TextureFormat::Rgba8Unorm);
+		let queue = context.queue.lock();
+		let draw = |textures: &mut EffectTextures| {
+			textures.drawn_passes.clear();
+			let result = passes.apply(&context.device, &queue, textures, &content, &effects, 1., DMat2::IDENTITY, None);
+			textures.release(result);
+			textures.drawn_passes.iter().filter(|&&label| label == "adjust").count()
+		};
+
+		// Five passes for the first run (its Gradient Map and Color Lookup one each) and one for the second. Drawing again builds no more pipelines
+		// than one for each shader and format, the interpreter's for both the format chained between passes and the one each run ends in.
+		let built = if passes.adjustment_shaders.chained_format == WORKING_FORMAT { 3 } else { 4 };
+		assert_eq!(draw(&mut textures), 6);
+		assert_eq!(passes.adjustment_shaders.cached_pipelines(), built);
+		assert_eq!(draw(&mut textures), 6);
+		assert_eq!(passes.adjustment_shaders.cached_pipelines(), built);
+		assert_eq!(textures.adjustments.cached_counts(), (2, 1));
+
+		// A run reading the content first does so straight from the content's own format, without copying it beforehand
+		let mut drawn = |operations: Vec<EffectOperation>, fill| {
+			textures.drawn_passes.clear();
+			let result = passes.apply(&context.device, &queue, &mut textures, &content, &Effects::from_operations(operations), fill, DMat2::IDENTITY, None);
+			textures.release(result);
+			textures.drawn_passes.clone()
+		};
+		let second_run: Vec<EffectOperation> = second_run.iter().cloned().map(EffectOperation::Adjustment).collect();
+		assert_eq!(drawn(second_run.clone(), 1.), ["adjust"]);
+
+		// With a fill, the run adjusts the faded content alone unless an operation after it reads the content at full strength
+		assert_eq!(drawn(second_run.clone(), 0.5), ["scale", "adjust"]);
+		let shadow = EffectOperation::DropShadow {
+			color: Color::BLACK,
+			angle: 0.,
+			distance: 2.,
+			spread: 0.,
+			size: 0.,
+			contour: Default::default(),
+			knockout: false,
+		};
+		let shadowed = drawn([second_run, vec![shadow]].concat(), 0.5);
+		assert_eq!(shadowed.iter().filter(|&&label| label == "adjust").count(), 2);
+
+		// Each standalone step takes a pass of its own, even beside another of its kind
+		let gradient_map = EffectOperation::Adjustment(first_run[2].clone());
+		assert_eq!(drawn(vec![gradient_map; 5], 1.), ["adjust"; 5]);
+	}
+
+	#[test]
+	fn a_table_stays_uploaded_while_the_settings_beside_it_change() {
+		let Some(context) = futures::executor::block_on(crate::WgpuContext::for_tests()) else { return };
+		let queue = context.queue.lock();
+
+		let lookup = Adjustment::ColorLookup {
+			lut_file: graphene_resource::Resource::new(b"LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n".to_vec()),
+		};
+		let mut textures = EffectTextures::default();
+		let prepare = |textures: &mut EffectTextures, posterize_levels| {
+			let posterize = Adjustment::Posterize { levels: posterize_levels };
+			// Color Lookup's pass and then Posterize's, which share the run's tables
+			let mut prepared = textures.prepare_adjustments(&context.device, &queue, &[&lookup, &posterize]);
+			prepared.pop().map(|prepared| (prepared.steps, prepared.tables))
+		};
+
+		// Drawing the same run again reuses its steps, and a slider dragged beside the table reuses the table
+		let Some((first_steps, Some(first_table))) = prepare(&mut textures, 4) else {
+			panic!("The run reads its table")
+		};
+		let Some((again_steps, Some(again_table))) = prepare(&mut textures, 4) else {
+			panic!("The run reads its table")
+		};
+		assert!(first_steps == again_steps && first_table == again_table);
+		for levels in 5..20 {
+			let Some((steps, Some(table))) = prepare(&mut textures, levels) else {
+				panic!("The run reads its table")
+			};
+			assert!(steps != first_steps && table == first_table);
+			textures.finish_render();
+		}
+
+		// Of the runs drawn while dragging, only the latest few are kept, but the table they share stays
+		assert_eq!(textures.adjustments.cached_counts(), (8, 1));
 	}
 
 	#[test]

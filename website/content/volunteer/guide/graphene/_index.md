@@ -68,7 +68,7 @@ Without a compile server, all the nodes are precompiled when Graphite is built. 
 
 ### GPU rendering
 
-Nodes run on the CPU, and the renderer draws their results on the GPU with [Vello](https://github.com/linebender/vello) through [`wgpu`](https://wgpu.rs/) (WebGL2 in browsers). Raster nodes, like the adjustments and filters, process their pixels on the CPU.
+Nodes are evaluated on the CPU, although a raster may pass between nodes as a GPU texture, and the renderer draws their results on the GPU with [Vello](https://github.com/linebender/vello) through [`wgpu`](https://wgpu.rs/) (WebGL2 in browsers). Raster operations like adjustments and effects are recorded as data on the content they apply to, then carried out by the renderer with [WGSL](https://www.w3.org/TR/WGSL/) shaders, only for the pixels being drawn and at the resolution they're drawn at. Nodes that need to read pixels carry out those operations on the CPU instead.
 
 ### A language within a language
 

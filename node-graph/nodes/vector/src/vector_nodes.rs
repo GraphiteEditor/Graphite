@@ -18,7 +18,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_transform_into_attributes, is_paint_present};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, stamp_coverage, stamped_transform};
+use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, paint_with_envelope_effects, stamp_coverage, stamped_transform};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{RngExt, SeedableRng};
@@ -358,6 +358,7 @@ fn vary_cover_colors<T: VectorListIterMut>(
 	if gradient.element().is_empty() {
 		return Err(VaryColorsError::EmptyGradient);
 	}
+	let gradient = raster_kernels::evaluate_gradient_effects(gradient);
 
 	let mut content = content;
 	let length = content.vector_count();
@@ -427,8 +428,8 @@ where
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
 
 	let mut content = content;
-	// The paint is the element alone: keeping the wire envelope's attributes would nest the paint as a group, changing how it renders
-	let mut paint = paint.into_element();
+	// Keeping the wire envelope's attributes would nest the paint as a group, changing how it renders, so only its effects carry over
+	let mut paint = paint_with_envelope_effects(paint);
 
 	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
 	let (needs_form, needs_transform) = match &paint {
@@ -553,7 +554,7 @@ where
 	};
 
 	// The wire envelope is dropped for the same reason as in `fill` above
-	let paint = paint.into_element();
+	let paint = paint_with_envelope_effects(paint);
 
 	stamp_coverage(&mut content, Coverage::new_stroke(&stroke), paint, CoverPlacement::Above);
 	content

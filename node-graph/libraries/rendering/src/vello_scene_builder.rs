@@ -1,7 +1,7 @@
 use glam::{DAffine2, DMat2, DVec2, UVec2};
 use graphic_types::effects::EffectCapture;
 use graphic_types::raster_types::{CPU, Raster, Texture};
-use graphic_types::{EffectOperation, Effects};
+use graphic_types::{Adjustment, EffectOperation, Effects};
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape, Stroke};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -14,8 +14,8 @@ const SHAPE_TOLERANCE: f64 = 0.1;
 /// The texture size an effects group's area rounds up to a multiple of, so a group moving across renders keeps reusing the same pooled textures.
 const EFFECTS_SIZE_CLASS: u32 = 64;
 
-/// The most pixels an effects group's area renders with, as a multiple of the viewport's, beyond which it renders at a lower resolution to bound its memory.
-const MAX_EFFECTS_AREA_PER_VIEWPORT_AREA: f64 = 4.;
+/// The most pixels an effects group's area, or an image for an SVG, renders with, as a multiple of the viewport's, beyond which it renders at a lower resolution to bound its memory.
+pub(crate) const MAX_EFFECTS_AREA_PER_VIEWPORT_AREA: f64 = 4.;
 
 /// Builds a Vello GPU scene of a fixed size, recording the images it draws so the renderer can supply their textures at render time.
 pub struct VelloSceneBuilder<'a> {
@@ -61,7 +61,8 @@ pub enum SceneImage {
 	/// Straight-alpha RGBA8 pixels in CPU memory, identified by their blob's ID so the renderer uploads them once.
 	Pixels(peniko::ImageData),
 	/// A CPU raster's straight-alpha linear pixels, identified by their buffer's ID so the renderer uploads them once.
-	Raster(Raster<CPU>),
+	/// The adjustments, if any, are carried out on its pixels before they are sampled.
+	Raster { raster: Raster<CPU>, adjustments: Vec<Adjustment> },
 	/// Straight-alpha pixels in a GPU texture.
 	Texture(Texture),
 	/// Premultiplied pixels of an effects group's result, rendered for this scene.
@@ -247,9 +248,9 @@ impl<'a> VelloSceneBuilder<'a> {
 		self.draw_image_source(source, image.sampler, transform * texture_to_image, texture_size);
 	}
 
-	/// Draws a CPU raster's rectangle of pixels, from the origin to its width and height, placed by `transform`.
-	pub fn draw_raster(&mut self, raster: Raster<CPU>, sampler: peniko::ImageSampler, transform: Affine) {
-		let Some((source, texture_to_image, texture_size)) = self.image_source(SceneImage::Raster(raster)) else {
+	/// Draws a CPU raster's rectangle of pixels with `adjustments` carried out on them, from the origin to its width and height, placed by `transform`.
+	pub fn draw_raster(&mut self, raster: Raster<CPU>, adjustments: Vec<Adjustment>, sampler: peniko::ImageSampler, transform: Affine) {
+		let Some((source, texture_to_image, texture_size)) = self.image_source(SceneImage::Raster { raster, adjustments }) else {
 			return;
 		};
 		self.draw_image_source(source, sampler, transform * texture_to_image, texture_size);
@@ -357,7 +358,7 @@ impl<'a> VelloSceneBuilder<'a> {
 	fn image_source(&mut self, image: SceneImage) -> Option<(ImageSource, Affine, (u32, u32))> {
 		let (width, height) = match &image {
 			SceneImage::Pixels(data) => (data.width, data.height),
-			SceneImage::Raster(raster) => (raster.width, raster.height),
+			SceneImage::Raster { raster, .. } => (raster.width, raster.height),
 			SceneImage::Texture(texture) => (texture.width(), texture.height()),
 			SceneImage::Rendered(texture) => (texture.width(), texture.height()),
 		};
@@ -365,16 +366,23 @@ impl<'a> VelloSceneBuilder<'a> {
 			return None;
 		}
 
+		// Adjusted rasters aren't shared, since the same pixels can be drawn with different adjustments
 		let key = match &image {
-			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
-			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
-			SceneImage::Texture(texture) => ImageKey::Texture(texture.clone()),
-			SceneImage::Rendered(texture) => ImageKey::Rendered(texture.clone()),
+			SceneImage::Pixels(data) => Some(ImageKey::Blob(data.data.id())),
+			SceneImage::Raster { raster, adjustments } if adjustments.is_empty() => Some(ImageKey::Raster(raster.buffer_id())),
+			SceneImage::Raster { .. } => None,
+			SceneImage::Texture(texture) => Some(ImageKey::Texture(texture.clone())),
+			SceneImage::Rendered(texture) => Some(ImageKey::Rendered(texture.clone())),
 		};
-		let id = *self.image_ids.entry(key).or_insert_with(|| {
-			self.images.push(image);
-			TextureId(self.images.len() as u64 - 1)
-		});
+		let images = &mut self.images;
+		let mut add_image = move |image| {
+			images.push(image);
+			TextureId(images.len() as u64 - 1)
+		};
+		let id = match key {
+			Some(key) => *self.image_ids.entry(key).or_insert_with(|| add_image(image)),
+			None => add_image(image),
+		};
 
 		let (texture_width, texture_height) = image_texture_size(width, height, self.max_texture_size);
 		let texture_to_image = Affine::scale_non_uniform(width as f64 / texture_width as f64, height as f64 / texture_height as f64);

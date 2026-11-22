@@ -1,4 +1,4 @@
-use crate::deferred_image::{self, EffectMap};
+use crate::deferred_image::{self, DeferredImage, EffectMap};
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use crate::vello_scene_builder::VelloSceneBuilder;
@@ -33,13 +33,16 @@ use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, Stroke
 use graphic_types::vector_types::vector::{
 	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
 };
-use graphic_types::{Appearance, Artboard, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Graphic, Vector};
+use graphic_types::{Adjustment, Appearance, Artboard, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape};
 use num_traits::Zero;
+use raster_kernels::raster_effects::adjusted_raster;
+use raster_kernels::value_effects::{adjusted_color, adjusted_gradient, adjustments};
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as SkrifaFontRef;
 use skrifa::{GlyphId, MetadataProvider};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::Hash;
@@ -212,6 +215,52 @@ impl ItemCompositing<'_> {
 		self.effects.map_or(DVec2::ZERO, |(effects, _)| effects.reach_along_axes(DAffine2::IDENTITY))
 	}
 
+	/// The adjustments at the start of the effects, which can be carried out on the content's own colors ahead of the rest.
+	/// A fill fades the content before the effects adjust it, so with one, only adjustments that keep alpha commute with it.
+	fn leading_adjustments(&self) -> Vec<Adjustment> {
+		let Some((effects, fill)) = self.effects else { return Vec::new() };
+
+		effects
+			.operations()
+			.map_while(|operation| match operation {
+				EffectOperation::Adjustment(adjustment) if fill == 1. || raster_kernels::adjustments::preserves_alpha(&adjustment) => Some(adjustment),
+				_ => None,
+			})
+			.collect()
+	}
+
+	/// The leading adjustments for the content to carry out on its own colors, and the compositing left for it, holding the effects after them in `remaining`.
+	fn split_leading_adjustments<'b>(&self, remaining: &'b mut Effects) -> (Vec<Adjustment>, ItemCompositing<'b>)
+	where
+		Self: 'b,
+	{
+		let leading_adjustments = self.leading_adjustments();
+		let Some((effects, _)) = self.effects.filter(|_| !leading_adjustments.is_empty()) else {
+			return (leading_adjustments, ItemCompositing { ..*self });
+		};
+
+		*remaining = effects.after(leading_adjustments.len());
+		(leading_adjustments, self.with_remaining_effects(remaining))
+	}
+
+	/// This compositing with only the `remaining` effects, those after the leading adjustments the content has taken.
+	fn with_remaining_effects<'b>(&self, remaining: &'b Effects) -> ItemCompositing<'b> {
+		let fill = self.effects.map_or(1., |(_, fill)| fill);
+
+		match remaining.change_nothing() {
+			true => ItemCompositing {
+				opacity: self.opacity * fill,
+				effects: None,
+				content_transform: self.content_transform,
+			},
+			false => ItemCompositing {
+				opacity: self.opacity,
+				effects: Some((remaining, fill)),
+				content_transform: self.content_transform,
+			},
+		}
+	}
+
 	/// Draws the content `draw` draws through the effects group, given the content's bounds in the scene's space.
 	/// Rendering a split scene calls `draw` again for each part.
 	fn draw_with_effects(&self, scene: &mut VelloSceneBuilder, bounds: impl FnOnce() -> RenderBoundingBox, mut draw: impl FnMut(&mut VelloSceneBuilder)) {
@@ -241,6 +290,43 @@ impl ItemCompositing<'_> {
 	/// The opacity for content drawn without the effects group, as SVG draws content its filter can't apply to.
 	fn opacity_without_effects(&self) -> f32 {
 		self.opacity * self.effects.map_or(1., |(_, fill)| fill)
+	}
+
+	/// Whether SVG filters can carry out every one of the effects, rather than leaving some undone.
+	fn svg_expresses_effects(&self) -> bool {
+		self.effects.is_none_or(|(effects, _)| effects.operations().all(|operation| svg_expresses(&operation)))
+	}
+
+	/// A vector's solid `fill` and `stroke` paints with the leading adjustments carried out on their colors, sparing the content an effects group or an SVG filter
+	/// that might not express them. Only the antialiased seam where an opaque fill meets an opaque stroke differs. `strokes` is whether the stroke is drawn at all.
+	fn fold_into_solid_paints(&self, fill: Option<&Graphic>, stroke: Option<&Graphic>, strokes: bool, for_mask: bool) -> Option<FoldedPaints> {
+		// Antialiased edges are translucent, so an adjustment changing alpha would act differently on them than on the paint
+		let adjustments: Vec<Adjustment> = self.leading_adjustments().into_iter().take_while(raster_kernels::adjustments::preserves_alpha).collect();
+		let (effects, _) = self.effects.filter(|_| !adjustments.is_empty())?;
+
+		// The color a solid paint draws, which is `None` for no paint, or no color at all for a paint that isn't solid
+		let solid_color = |paint: Option<&Graphic>| match paint {
+			None | Some(Graphic::None(_) | Graphic::NoneList(_)) => Some(None),
+			Some(Graphic::Color(item)) => Some(faded_paint_color(ItemRef::Item(item), for_mask)),
+			Some(Graphic::ColorList(list)) => Some(composite_paint_colors(list, for_mask)),
+			Some(_) => None,
+		};
+		let fill_color = solid_color(fill)?;
+		let stroke_color = if strokes { solid_color(stroke)? } else { None };
+
+		// Where translucent paints overlap, the adjustment would act on their blend rather than on each
+		if let (Some(fill_color), Some(stroke_color)) = (fill_color, stroke_color)
+			&& (fill_color.a() < 1. || stroke_color.a() < 1.)
+		{
+			return None;
+		}
+
+		let adjusted = |color: Option<Color>| Some(Graphic::Color(Item::new_from_element(adjusted_color(color?, &adjustments))));
+		Some(FoldedPaints {
+			fill: adjusted(fill_color),
+			stroke: adjusted(stroke_color),
+			remaining_effects: effects.after(adjustments.len()),
+		})
 	}
 
 	/// Writes the SVG filters carrying out the effects, if there are any to apply, given the content's bounds in the current user space, where `content_transform` places it.
@@ -273,12 +359,14 @@ impl ItemCompositing<'_> {
 			let filter = write_svg_effects_filter(&mut render.svg_defs, &effects.run(rows.clone()), run_fill, content_bounds, rows.start);
 			let space_to_document = if transformed { render.transform * *space } else { render.transform };
 
-			// A paint's markup is embedded as an image, where no map can reach its placeholders
-			if !filter.maps.is_empty() && !render_params.inside_pattern {
+			// A paint's markup is embedded as an image, where no map can reach its placeholders, and deferred content's image already covers its effects
+			if !filter.maps.is_empty() && !render_params.inside_pattern && !render.drawing_deferred_markup {
 				if let Some(build_content) = build_content.take() {
 					built_content = Some(build_content());
 				}
 				for map in filter.maps {
+					// The effects after the map's, and the groups' around the content, read past the view
+					let margin = effects.after(map.capture.index + 1).read_reach(render.transform * self.content_transform) + render.ancestors_reach;
 					render.effect_maps.push(EffectMap {
 						id: map.id,
 						content: built_content.clone().unwrap_or_default(),
@@ -288,6 +376,7 @@ impl ItemCompositing<'_> {
 						user_to_document: space_to_document,
 						content_to_document: render.transform,
 						bounds: filter.region,
+						margin,
 					});
 				}
 			}
@@ -343,12 +432,19 @@ fn draw_effect_runs(
 	});
 }
 
-/// The item as content of its own, without the opacity and blend mode that act on its effects' result as a whole.
+/// The item as content of its own, without the opacity and blend mode that act on its effects' result as a whole, which an image of it takes instead.
 fn without_opacity_and_blend_mode<T>(item: ItemRef<'_, T>, element: T) -> Item<T> {
 	let mut content = Item::from_parts(element, item.clone_item_attributes());
 	content.remove_attribute::<f64>(ATTR_OPACITY);
 	content.remove_attribute::<BlendMode>(ATTR_BLEND_MODE);
 	content
+}
+
+/// A vector's solid paints with adjustments carried out on their colors, and the effects left after those adjustments.
+struct FoldedPaints {
+	fill: Option<Graphic>,
+	stroke: Option<Graphic>,
+	remaining_effects: Effects,
 }
 
 /// How far the effects of the items nested anywhere inside `graphic`, which `transform` places in the document, reach past its bounds along the document's axes,
@@ -504,6 +600,84 @@ fn render_svg_transformed(render: &mut SvgRender, transform: DAffine2, content: 
 	);
 }
 
+/// Markup standing in for an image the GPU renders of an item whose effects hold one that SVG filters can't carry out.
+struct DeferredMarkup {
+	id: u64,
+	/// The content's extent with how far its effects reach past it, in the user space the markup is drawn in.
+	bounds: [DVec2; 2],
+}
+
+/// Opens markup standing in for an image the GPU renders of an item, if SVG filters can't carry out all its effects, which [`finish_deferred_markup`] then closes.
+/// `bounds` gives the content's extent in the current user space.
+fn start_deferred_markup(render: &mut SvgRender, render_params: &RenderParams, compositing: &ItemCompositing, bounds: impl FnOnce() -> RenderBoundingBox) -> Option<DeferredMarkup> {
+	// Masks and paints are nested markup no image can replace, and content inside deferred content is in its image already
+	let replaceable = !render.drawing_deferred_markup && !render_params.for_mask && !render_params.inside_pattern && !render_params.thumbnail;
+	if !replaceable || compositing.svg_expresses_effects() || !render.transform.matrix2.determinant().is_normal() {
+		return None;
+	}
+	let RenderBoundingBox::Rectangle([min, max]) = bounds() else { return None };
+
+	// The image covers how far the effects reach past the content, measured in this user space
+	let reach = compositing.reach();
+
+	let id = generate_uuid();
+	render.leaf_node(deferred_image::image_markers(id).0);
+	render.drawing_deferred_markup = true;
+
+	Some(DeferredMarkup {
+		id,
+		bounds: [min - reach, max + reach],
+	})
+}
+
+/// Closes the markup [`start_deferred_markup`] opened, if it did, recording the item `content` makes without its opacity and blend mode for the GPU to render.
+fn finish_deferred_markup(
+	render: &mut SvgRender,
+	markup: Option<DeferredMarkup>,
+	render_params: &RenderParams,
+	compositing: &ItemCompositing,
+	blend_mode: BlendMode,
+	content: impl FnOnce() -> Graphic,
+) {
+	let Some(DeferredMarkup { id, bounds }) = markup else { return };
+
+	render.drawing_deferred_markup = false;
+	render.leaf_node(deferred_image::image_markers(id).1);
+
+	render.deferred_images.push(DeferredImage {
+		id,
+		content: content(),
+		render_params: render_params.clone(),
+		user_to_document: render.transform,
+		bounds,
+		margin: render.ancestors_reach,
+		opacity: compositing.opacity,
+		blend_mode,
+	});
+}
+
+/// Whether SVG filter primitives can carry out the effect operation, rather than leaving it undone.
+fn svg_expresses(operation: &EffectOperation) -> bool {
+	match operation {
+		EffectOperation::Adjustment(adjustment) => svg_expresses_adjustment(adjustment),
+		_ => true,
+	}
+}
+
+/// Whether SVG's color primitives can carry out the adjustment, which [`SvgFilterPrimitives::adjust`] otherwise leaves undone.
+fn svg_expresses_adjustment(adjustment: &Adjustment) -> bool {
+	use graphic_types::adjustment::DesaturateMethod;
+
+	match adjustment {
+		Adjustment::Threshold { .. } | Adjustment::GradientMap { .. } | Adjustment::ChannelMixer(_) => true,
+		Adjustment::Desaturate { method } => matches!(
+			method,
+			DesaturateMethod::LuminanceRec709 | DesaturateMethod::ChannelsAverage | DesaturateMethod::LumaRec709 | DesaturateMethod::LumaRec601
+		),
+		_ => adjustment.is_per_channel(),
+	}
+}
+
 /// Builds the primitives of an SVG filter, naming each result so later primitives can take it as an input.
 #[derive(Default)]
 struct SvgFilterPrimitives {
@@ -532,6 +706,14 @@ impl SvgFilterPrimitives {
 		self.push("feComposite", &format!(r#"in="{first}" in2="{second}" operator="arithmetic" k2="1" k3="1""#), "")
 	}
 
+	/// Places what lies `beneath` under the full-strength content and the faded fill, so a pixel filter after it (a blur or an adjustment) processes them together.
+	fn merge_beneath(&mut self, full: &mut String, filled: &mut Option<String>, beneath: Option<String>) {
+		let Some(beneath) = beneath else { return };
+
+		*filled = filled.take().map(|filled| self.composite_beneath(&filled, &beneath));
+		*full = self.composite_beneath(full, &beneath);
+	}
+
 	/// The image with the shadows and glows `beneath` it.
 	fn composite_beneath(&mut self, image: &str, beneath: &str) -> String {
 		self.push("feComposite", &format!(r#"in="{image}" in2="{beneath}" operator="over""#), "")
@@ -543,9 +725,89 @@ impl SvgFilterPrimitives {
 		let result = format!("effect-{}", self.count);
 		let id = generate_uuid();
 
-		self.markup.push_str(&deferred_image::placeholder(id, &result));
+		self.markup.push_str(&deferred_image::map_placeholder(id, &result));
 		self.maps.push(SvgEffectMap { id, capture, result: result.clone() });
 		result
+	}
+
+	/// The image with `adjustment` applied where SVG's color primitives can express it, or left as it is where they can't.
+	fn adjust(&mut self, image: &str, adjustment: &graphic_types::Adjustment) -> String {
+		use graphic_types::Adjustment;
+		use graphic_types::adjustment::DesaturateMethod;
+
+		// Enough entries that interpolating between them strays less than a level from the curve
+		const TABLE_SIZE: usize = 256;
+
+		if !svg_expresses_adjustment(adjustment) {
+			return image.to_string();
+		}
+
+		let table = |values: &[f32]| values.iter().map(|value| format!("{:.4}", value.clamp(0., 1.))).collect::<Vec<_>>().join(" ");
+		let functions = |kind: &str, [red, green, blue]: [&[f32]; 3]| {
+			[("R", red), ("G", green), ("B", blue)]
+				.map(|(channel, values)| format!(r#"<feFunc{channel} type="{kind}" tableValues="{}" />"#, table(values)))
+				.concat()
+		};
+		let in_gamma = |input: &str| format!(r#"in="{input}" color-interpolation-filters="sRGB""#);
+		// A matrix whose three color rows each hold `weights` (red, green, blue, constant), leaving alpha as it is
+		let matrix = |rows: [[f32; 4]; 3]| {
+			let row = |[red, green, blue, constant]: [f32; 4]| format!("{red} {green} {blue} 0 {constant}");
+			format!(r#"type="matrix" values="{} {} {} 0 0 0 1 0""#, row(rows[0]), row(rows[1]), row(rows[2]))
+		};
+
+		if let Some([red, green, blue, mut alpha]) = raster_kernels::adjustments::channel_curves(adjustment, TABLE_SIZE) {
+			// Fully transparent pixels keep no color to adjust, so they stay empty as on the GPU
+			alpha[0] = 0.;
+			let curves = functions("table", [&red, &green, &blue]) + &format!(r#"<feFuncA type="table" tableValues="{}" />"#, table(&alpha));
+			return self.push("feComponentTransfer", &in_gamma(image), &curves);
+		}
+
+		match adjustment {
+			Adjustment::Threshold { min_luminance, max_luminance } => {
+				// The same fixed-point Rec. 601 luma the kernel compares, then white where it falls within the range
+				let weight = [4915., 9667., 1802., 0.].map(|weight| weight / 16384.);
+				let luma = self.push("feColorMatrix", &format!("{} {}", in_gamma(image), matrix([weight; 3])), "");
+				let (min, max) = ((min_luminance / 100.) as f32, (max_luminance / 100.) as f32);
+				let steps: Vec<f32> = (0..TABLE_SIZE)
+					.map(|index| index as f32 / TABLE_SIZE as f32)
+					.map(|luma| if luma >= min && luma <= max { 1. } else { 0. })
+					.collect();
+				self.push("feComponentTransfer", &in_gamma(&luma), &functions("discrete", [&steps, &steps, &steps]))
+			}
+			Adjustment::GradientMap { gradient, reverse } => {
+				// The classic luma picks each color's position along the gradient, whose colors the tables hold
+				let luma = self.push("feColorMatrix", &format!("{} {}", in_gamma(image), matrix([[0.3, 0.59, 0.11, 0.]; 3])), "");
+				let evaluator = gradient.element().evaluator(GradientSettings::from_item_attributes(gradient));
+				let colors: Vec<[f32; 4]> = (0..TABLE_SIZE)
+					.map(|index| index as f64 / (TABLE_SIZE - 1) as f64)
+					.map(|position| evaluator.evaluate_mapped(if *reverse { 1. - position } else { position }).to_gamma_srgb_channels())
+					.collect();
+				let channel = |index: usize| colors.iter().map(|color| color[index]).collect::<Vec<_>>();
+				self.push("feComponentTransfer", &in_gamma(&luma), &functions("table", [&channel(0), &channel(1), &channel(2)]))
+			}
+			Adjustment::ChannelMixer(settings) => {
+				// Weights are 10-bit fixed point truncated toward zero, as the kernel takes them
+				let row = |row: graphic_types::adjustment::ChannelMixerRow| [row.red, row.green, row.blue, row.constant].map(|percent| (percent as f32 * 1024. / 100.).trunc() / 1024.);
+				let rows = match settings.monochrome {
+					true => [row(settings.monochrome_mix); 3],
+					false => [row(settings.red), row(settings.green), row(settings.blue)],
+				};
+				self.push("feColorMatrix", &format!("{} {}", in_gamma(image), matrix(rows)), "")
+			}
+			Adjustment::Desaturate { method } => {
+				let (weights, space) = match method {
+					DesaturateMethod::LuminanceRec709 => ([0.2126, 0.7152, 0.0722, 0.], "linearRGB"),
+					DesaturateMethod::ChannelsAverage => ([1. / 3., 1. / 3., 1. / 3., 0.], "linearRGB"),
+					DesaturateMethod::LumaRec709 => ([0.2126, 0.7152, 0.0722, 0.], "sRGB"),
+					DesaturateMethod::LumaRec601 => ([0.299, 0.587, 0.114, 0.], "sRGB"),
+					// The rest take the extremes of the channels or a perceptual lightness, which a matrix can't express
+					_ => return image.to_string(),
+				};
+				self.push("feColorMatrix", &format!(r#"in="{image}" color-interpolation-filters="{space}" {}"#, matrix([weights; 3])), "")
+			}
+			// TODO: Express the other cross-channel adjustments, which no SVG primitive covers exactly
+			_ => image.to_string(),
+		}
 	}
 }
 
@@ -589,11 +851,7 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 					continue;
 				}
 
-				// What lies beneath blurs together with the content
-				if let Some(beneath) = beneath.take() {
-					filled = filled.map(|filled| primitives.composite_beneath(&filled, &beneath));
-					full = primitives.composite_beneath(&full, &beneath);
-				}
+				primitives.merge_beneath(&mut full, &mut filled, beneath.take());
 
 				// SVG has no box blur, so a box becomes the Gaussian of the same variance
 				let sigma = pair(if box_blur { (radius * (radius + 1.) / 3.).map(f64::sqrt) } else { radius });
@@ -619,6 +877,12 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 				_ => continue,
 			},
 			EffectOperation::InnerShadow { color, .. } => (color, true),
+			EffectOperation::Adjustment(ref adjustment) => {
+				primitives.merge_beneath(&mut full, &mut filled, beneath.take());
+				filled = filled.map(|filled| primitives.adjust(&filled, adjustment));
+				full = primitives.adjust(&full, adjustment);
+				continue;
+			}
 		};
 		if color.a() <= 0. {
 			continue;
@@ -693,11 +957,26 @@ fn rect_bounds(rect: kurbo::Rect) -> RenderBoundingBox {
 	RenderBoundingBox::Rectangle([DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)])
 }
 
-/// The color one paint item contributes, faded by its opacity attributes.
+/// The color one paint item contributes, with the adjustments among its effects carried out and faded by its opacity attributes.
 pub(crate) fn faded_paint_color(item: ItemRef<'_, Color>, for_mask: bool) -> Option<Color> {
-	let color = item.element()?;
+	let mut color = *item.element()?;
+	if let Some(effects) = item.attribute::<Effects>(ATTR_EFFECTS) {
+		color = adjusted_color(color, &adjustments(effects));
+	}
 
 	Some(color.with_alpha(color.a() * item.paint_opacity(for_mask)))
+}
+
+/// The ramp one gradient paint item contributes, with the adjustments among its effects carried out along it, and the settings to read it with.
+pub(crate) fn painted_gradient(item: ItemRef<'_, Gradient>) -> Option<(Cow<'_, Gradient>, GradientSettings)> {
+	let gradient = item.element()?;
+	let settings = gradient_settings_from_item(item);
+
+	let adjusted = item.attribute::<Effects>(ATTR_EFFECTS).and_then(|effects| adjusted_gradient(gradient, settings, &adjustments(effects)));
+	Some(match adjusted {
+		Some((gradient, settings)) => (Cow::Owned(gradient), settings),
+		None => (Cow::Borrowed(gradient), settings),
+	})
 }
 
 /// Flattens a rank-1 color paint into the single color the fast path emits, stacking the items in paint order.
@@ -763,6 +1042,12 @@ pub struct SvgRender {
 	pub image_data: HashMap<u64, CanvasImage>,
 	/// The maps of effects' coverages the filters take, for the GPU to render.
 	pub effect_maps: Vec<EffectMap>,
+	/// The content with effects SVG filters can't carry out, for the GPU to render images of in place of the markup standing in for it.
+	pub deferred_images: Vec<DeferredImage>,
+	/// Whether markup standing in for deferred content is being drawn, inside which nothing more is deferred since the content's image covers it.
+	drawing_deferred_markup: bool,
+	/// How far the filters of the groups around the content being drawn read past it, in document pixels, which the maps and images inside cover past the view.
+	pub(crate) ancestors_reach: f64,
 	indent: usize,
 }
 
@@ -774,6 +1059,9 @@ impl SvgRender {
 			transform: DAffine2::IDENTITY,
 			image_data: HashMap::new(),
 			effect_maps: Vec::new(),
+			deferred_images: Vec::new(),
+			drawing_deferred_markup: false,
+			ancestors_reach: 0.,
 			indent: 0,
 		}
 	}
@@ -859,6 +1147,7 @@ pub struct SvgRenderOutput {
 	pub svg_defs: String,
 	pub image_data: HashMap<u64, CanvasImage>,
 	pub effect_maps: Vec<EffectMap>,
+	pub deferred_images: Vec<DeferredImage>,
 }
 
 impl From<&SvgRenderOutput> for SvgRender {
@@ -869,6 +1158,9 @@ impl From<&SvgRenderOutput> for SvgRender {
 			transform: DAffine2::IDENTITY,
 			image_data: value.image_data.clone(),
 			effect_maps: value.effect_maps.clone(),
+			deferred_images: value.deferred_images.clone(),
+			drawing_deferred_markup: false,
+			ancestors_reach: 0.,
 			indent: 0,
 		}
 	}
@@ -881,6 +1173,7 @@ impl From<SvgRender> for SvgRenderOutput {
 			svg_defs: val.svg_defs,
 			image_data: val.image_data,
 			effect_maps: val.effect_maps,
+			deferred_images: val.deferred_images,
 		}
 	}
 }
@@ -1195,13 +1488,12 @@ fn peniko_extend(gradient_spread: GradientSpread) -> peniko::Extend {
 /// The Vello brush for one gradient item, paired with its placement transform.
 /// `for_mask` keeps the fill opacity at full, as [`ItemRef::paint_opacity`] explains.
 fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied_transform: &DAffine2, for_mask: bool) -> Option<(peniko::Brush, DAffine2)> {
-	let stops = gradient_item.element()?;
+	let (stops, settings) = painted_gradient(gradient_item)?;
 
 	let gradient_form: GradientForm = gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
 	let gradient_transform: DAffine2 = gradient_item.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let settings = gradient_settings_from_item(gradient_item);
 
-	let mut samples = spread_adjusted_samples(stops, settings, gradient_form);
+	let mut samples = spread_adjusted_samples(&stops, settings, gradient_form);
 
 	let paint_opacity = gradient_item.paint_opacity(for_mask);
 	if paint_opacity < 1. {
@@ -1379,6 +1671,7 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 		let mask_type = if element.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 
 		let mut svg = SvgRender::new();
+		svg.ancestors_reach = render.ancestors_reach;
 		element.render_svg(&mut svg, &render_params.for_clipper());
 
 		// The def is resolved in this list's space, so the masker's own transform has to be baked into it
@@ -1409,6 +1702,7 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 			}
 			bounds => bounds,
 		};
+		let deferred = start_deferred_markup(render, render_params, &compositing, bounds);
 		let filter = compositing.svg_filter(render, render_params, bounds, || Graphic::Graphic(Box::new(without_opacity_and_blend_mode(item, element.clone()))));
 		let filtered = filter.is_some();
 
@@ -1435,12 +1729,19 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 					}
 				},
 				|render| {
-					let parent_transform = render.transform;
+					let (parent_transform, parent_reach) = (render.transform, render.ancestors_reach);
 					render.transform = parent_transform * transform;
+					if filtered {
+						render.ancestors_reach += compositing.effects.map_or(0., |(effects, _)| effects.read_reach(render.transform));
+					}
 					element.render_svg(render, render_params);
-					render.transform = parent_transform;
+					(render.transform, render.ancestors_reach) = (parent_transform, parent_reach);
 				},
 			);
+		});
+
+		finish_deferred_markup(render, deferred, render_params, &compositing, blend_mode, || {
+			Graphic::Graphic(Box::new(without_opacity_and_blend_mode(item, element.clone())))
 		});
 	};
 
@@ -2063,7 +2364,7 @@ impl Render for List<Graphic> {
 
 /// Emits one vector shape as SVG, with no wrapping group of its own.
 /// When `filtered`, the group applying the item's effects takes its opacity and blend mode instead.
-fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered: bool, render: &mut SvgRender, render_params: &RenderParams) {
+fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered: bool, folded: Option<&FoldedPaints>, render: &mut SvgRender, render_params: &RenderParams) {
 	let paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
 	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let blend_mode_attr: BlendMode = if filtered { BlendMode::default() } else { item.attribute_cloned_or_default(ATTR_BLEND_MODE) };
@@ -2082,6 +2383,10 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered:
 		stroke_paint,
 		stroke_below: wants_stroke_below,
 	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+	let (fill_paint, stroke_paint) = match folded {
+		Some(folded) => (folded.fill.as_ref(), folded.stroke.as_ref()),
+		None => (fill_paint, stroke_paint),
+	};
 
 	// Only consider strokes with nonzero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
@@ -2299,23 +2604,44 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 	}
 
 	let compositing = item.compositing(render_params, item.attribute_cloned_or_default(ATTR_TRANSFORM));
+	let appearance = || {
+		item.attribute::<Appearance>(ATTR_APPEARANCE)
+			.and_then(Appearance::declared)
+			.or(render_params.inherited_appearance.as_ref())
+	};
+
+	// Solid paints take leading adjustments into their colors, which SVG filters can't always express
+	let folded = compositing.effects.and_then(|_| {
+		let fill_and_stroke = appearance()?.fill_and_stroke();
+		let strokes = fill_and_stroke.stroke.as_ref().is_some_and(|stroke| stroke.weight() > 0.);
+		compositing.fold_into_solid_paints(fill_and_stroke.fill_paint, fill_and_stroke.stroke_paint, strokes, render_params.for_mask)
+	});
+	let compositing = match &folded {
+		Some(folded) => compositing.with_remaining_effects(&folded.remaining_effects),
+		None => compositing,
+	};
+
 	let render_shape = |render: &mut SvgRender| {
 		let bounds = || {
 			let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let appearance = item.attribute::<Appearance>(ATTR_APPEARANCE).and_then(Appearance::declared);
-			let stroke = appearance.or(render_params.inherited_appearance.as_ref()).and_then(|appearance| appearance.fill_and_stroke().stroke);
+			let stroke = appearance().and_then(|appearance| appearance.fill_and_stroke().stroke);
 			let paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
 
 			vector
 				.stroke_inclusive_bounding_box_with_transform(paths, item_transform, stroke.as_ref())
 				.map_or(RenderBoundingBox::None, RenderBoundingBox::Rectangle)
 		};
+		let deferred = start_deferred_markup(render, render_params, &compositing, bounds);
 		let filter = compositing.svg_filter(render, render_params, bounds, || Graphic::Vector(Box::new(without_opacity_and_blend_mode(item, vector.clone()))));
 		let filtered = filter.is_some();
 		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 
 		render_svg_through_filter(render, filter, compositing.opacity, blend_mode, |render| {
-			render_vector_shape_svg(item, vector, filtered, render, render_params)
+			render_vector_shape_svg(item, vector, filtered, folded.as_ref(), render, render_params)
+		});
+
+		finish_deferred_markup(render, deferred, render_params, &compositing, blend_mode, || {
+			Graphic::Vector(Box::new(without_opacity_and_blend_mode(item, vector.clone())))
 		});
 	};
 
@@ -2367,6 +2693,14 @@ fn render_vector_item_to_vello(
 	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
+
+	// Solid paints take leading adjustments into their colors rather than through an effects group
+	let folded = compositing.fold_into_solid_paints(fill_paint, stroke_paint, has_real_stroke.is_some(), render_params.for_mask);
+	let (fill_paint, stroke_paint, compositing) = match &folded {
+		Some(folded) => (folded.fill.as_ref(), folded.stroke.as_ref(), compositing.with_remaining_effects(&folded.remaining_effects)),
+		None => (fill_paint, stroke_paint, compositing),
+	};
+
 	// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
 	let set_stroke_transform = has_real_stroke
 		.map(|stroke| if own_appearance.is_some() { stroke.transform } else { item_transform })
@@ -2990,6 +3324,9 @@ fn extend_free_point_targets<'a>(vector: &'a Vector, geometry_paths: &List<Path>
 /// The most times an image drawn to a canvas is halved, which is when 4096 of its pixels fit on one screen pixel.
 const MAX_CANVAS_HALVINGS: u32 = 12;
 
+/// The most pixels an image may have for its adjustments to be carried out on a copy of its texture, past which an effects group carries them out at the render's resolution.
+const MAX_ADJUSTED_TEXTURE_PIXELS: u64 = 4096 * 4096;
+
 /// An image the frontend draws to a canvas rather than an SVG embedding it, at a resolution to suit how large it appears.
 #[derive(Clone, Debug, PartialEq, CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3016,8 +3353,27 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 		return;
 	}
 
+	// SVG filters can't carry out every adjustment, so those leading the effects are carried out in the image's pixels
+	let source_image = image;
+	let mut remaining_effects = Effects::default();
+	let (leading_adjustments, compositing) = compositing.split_leading_adjustments(&mut remaining_effects);
+	let adjusted_image;
+	let image = match leading_adjustments.is_empty() {
+		true => image,
+		false => {
+			adjusted_image = adjusted_raster(image, &leading_adjustments);
+			&adjusted_image
+		}
+	};
+
 	let bounds = || RenderBoundingBox::Rectangle((transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
-	let filter = compositing.svg_filter(render, render_params, bounds, || Graphic::RasterCPU(Box::new(without_opacity_and_blend_mode(item, image.clone()))));
+	let deferred = start_deferred_markup(render, render_params, &compositing, bounds);
+	// The filter's maps are of the adjusted image with the effects that remain, which the filter numbers them by
+	let filter = compositing.svg_filter(render, render_params, bounds, || {
+		let mut content = without_opacity_and_blend_mode(item, image.clone());
+		content.set_attribute(ATTR_EFFECTS, compositing.effects.map(|(effects, _)| effects.clone()).unwrap_or_default());
+		Graphic::RasterCPU(Box::new(content))
+	});
 
 	// A filter's wrapping group takes the opacity and blend mode instead
 	let (opacity, blend_mode) = match filter {
@@ -3028,10 +3384,15 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 	render_svg_through_filter(render, filter, compositing.opacity, blend_mode_attr, |render| {
 		render_raster_cpu_image_svg(image, transform, opacity, blend_mode, render, render_params)
 	});
+
+	// The GPU carries out the leading adjustments too, on the image as it was
+	finish_deferred_markup(render, deferred, render_params, &compositing, blend_mode_attr, || {
+		Graphic::RasterCPU(Box::new(without_opacity_and_blend_mode(item, source_image.clone())))
+	});
 }
 
 /// Emits a CPU raster's image as SVG, either as a placeholder for a canvas or as an embedded PNG.
-fn render_raster_cpu_image_svg(image: &Raster<CPU>, transform: DAffine2, opacity: f32, blend_mode: BlendMode, render: &mut SvgRender, render_params: &RenderParams) {
+pub(crate) fn render_raster_cpu_image_svg(image: &Raster<CPU>, transform: DAffine2, opacity: f32, blend_mode: BlendMode, render: &mut SvgRender, render_params: &RenderParams) {
 	if render_params.to_canvas() {
 		// An image drawn smaller than its pixels is sent at a resolution halved enough times to still cover each screen pixel
 		let document_to_screen = DAffine2::from_scale(DVec2::splat(render_params.canvas_image_scale));
@@ -3111,6 +3472,22 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 	let compositing = item.compositing(render_params, transform * transform_attribute);
 	let blend_mode = blend_mode_attr.to_peniko();
 
+	// Leading adjustments are carried out on the image's texture as it's drawn, rather than on a render of it in an effects group
+	let mut remaining_effects = Effects::default();
+	let (leading_adjustments, split_compositing) = compositing.split_leading_adjustments(&mut remaining_effects);
+	let changes_alpha = leading_adjustments.iter().any(|adjustment| !raster_kernels::adjustments::preserves_alpha(adjustment));
+	let fits_texture_copy = image.width as u64 * image.height as u64 <= MAX_ADJUSTED_TEXTURE_PIXELS;
+	let adjusted_image;
+	let (image, adjustments, compositing) = if leading_adjustments.is_empty() || !(changes_alpha || fits_texture_copy) {
+		(image, Vec::new(), compositing)
+	} else if changes_alpha {
+		// GPU passes, an effects group's included, leave fully transparent pixels empty, so adjustments changing alpha are carried out on the CPU like in SVG at any size
+		adjusted_image = adjusted_raster(image, &leading_adjustments);
+		(&adjusted_image, Vec::new(), split_compositing)
+	} else {
+		(image, leading_adjustments, split_compositing)
+	};
+
 	let opacity = compositing.opacity;
 	let mut layer = false;
 
@@ -3143,7 +3520,7 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 
 	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
 	compositing.draw_with_effects(scene, item_bounds, |scene| {
-		scene.draw_raster(image.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
+		scene.draw_raster(image.clone(), adjustments.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
 	});
 
 	if layer {
@@ -3316,6 +3693,8 @@ impl Render for List<Color> {
 /// Emits one item of color content as SVG, painting a stand-in for an infinite background.
 fn render_color_item_svg(item: ItemRef<'_, Color>, render: &mut SvgRender, render_params: &RenderParams) {
 	let Some(color) = item.element() else { return };
+	// SVG filters change nothing visible about an endless color, so its adjustments are carried out on the color itself
+	let color = item.attribute::<Effects>(ATTR_EFFECTS).map_or(*color, |effects| adjusted_color(*color, &adjustments(effects)));
 	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
@@ -3326,7 +3705,7 @@ fn render_color_item_svg(item: ItemRef<'_, Color>, render: &mut SvgRender, rende
 		const MAX: f64 = 1e7;
 		attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 
-		attributes.push("fill", format!("#{}", SRGBA8::from(*color).to_rgb_hex()));
+		attributes.push("fill", format!("#{}", SRGBA8::from(color).to_rgb_hex()));
 		if color.a() < 1. {
 			attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 		}
@@ -3347,10 +3726,16 @@ fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut VelloSceneBu
 	let Some(color) = item.element() else { return };
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let compositing = item.compositing(render_params, parent_transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM));
+
+	// The adjustments leading the effects are carried out on the color itself, leaving the rest to the effects group
+	let mut remaining_effects = Effects::default();
+	let (leading_adjustments, compositing) = compositing.split_leading_adjustments(&mut remaining_effects);
+	let color = adjusted_color(*color, &leading_adjustments);
+
 	let blend_mode = blend_mode_attr.to_peniko();
 	let opacity = compositing.opacity;
 
-	let vello_color = SRGBA8::from(*color).to_peniko_color();
+	let vello_color = SRGBA8::from(color).to_peniko_color();
 
 	let mut layer = false;
 	if opacity < 1. || blend_mode_attr != BlendMode::default() {
@@ -3446,13 +3831,13 @@ impl Render for List<Gradient> {
 
 /// Emits one item of gradient content as SVG, painting the thumbnail rect or an infinite-background stand-in.
 fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thumbnail_rect: Option<(DVec2, DVec2)>, render: &mut SvgRender, render_params: &RenderParams) {
-	let Some(gradient) = item.element() else { return };
+	// SVG filters change nothing visible about an endless gradient, so its adjustments are carried out along its ramp
+	let Some((gradient, settings)) = painted_gradient(item) else { return };
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
-	let settings = gradient_settings_from_item(item);
 	let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 	render.leaf_tag(tag, |attributes| {
 		if let Some((min, size)) = thumbnail_rect {
@@ -3468,7 +3853,7 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 			attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 		}
 
-		let samples = spread_adjusted_samples(gradient, settings, gradient_form);
+		let samples = spread_adjusted_samples(&gradient, settings, gradient_form);
 
 		let mut stop_string = String::new();
 		for (position, color, original_midpoint) in samples {
@@ -3541,11 +3926,19 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut VelloS
 		let gradient_transform = parent_transform * transform;
 		let compositing = item.compositing(render_params, gradient_transform);
 
+		// The adjustments leading the effects are carried out along the ramp, leaving the rest to the effects group
+		let mut remaining_effects = Effects::default();
+		let (leading_adjustments, compositing) = compositing.split_leading_adjustments(&mut remaining_effects);
+		let settings = gradient_settings_from_item(item);
+		let (gradient, settings) = match adjusted_gradient(gradient, settings, &leading_adjustments) {
+			Some((adjusted, settings)) => (Cow::Owned(adjusted), settings),
+			None => (Cow::Borrowed(gradient), settings),
+		};
+
 		let blend_mode = blend_mode_attr.to_peniko();
 		let opacity = compositing.opacity;
 
-		let settings = gradient_settings_from_item(item);
-		let samples = spread_adjusted_samples(gradient, settings, gradient_form);
+		let samples = spread_adjusted_samples(&gradient, settings, gradient_form);
 
 		let stops = peniko_color_stops(&samples);
 
@@ -3909,6 +4302,7 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 		return;
 	}
 
+	let deferred = start_deferred_markup(render, render_params, &compositing, || layout_bounds);
 	let filter = compositing.svg_filter(render, render_params, || layout_bounds, || Graphic::Text(without_opacity_and_blend_mode(item, text.clone())));
 	let filtered = filter.is_some();
 
@@ -3949,6 +4343,10 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 				}
 			},
 		);
+	});
+
+	finish_deferred_markup(render, deferred, render_params, &compositing, blend_mode_attr, || {
+		Graphic::Text(without_opacity_and_blend_mode(item, text.clone()))
 	});
 }
 
@@ -4387,6 +4785,111 @@ mod tests {
 		assert!(defs.ends_with(r#"<feOffset in="effect-2" result="effect-4" /></filter>"#), "{defs}");
 	}
 
+	#[test]
+	fn svg_effects_filters_express_adjustments_where_svg_can() {
+		use graphic_types::adjustment::DesaturateMethod;
+		use graphic_types::{Adjustment, EffectOperation};
+
+		let filter = |adjustment| {
+			let mut defs = String::new();
+			write_svg_effects_filter(&mut defs, &Effects::from_operations([EffectOperation::Adjustment(adjustment)]), 1., [DVec2::ZERO, DVec2::ONE], 0);
+			defs
+		};
+
+		// A per-channel adjustment becomes curves on the gamma-encoded channels, and Invert's run from white to black
+		let invert = filter(Adjustment::Invert);
+		assert!(invert.contains(r#"<feComponentTransfer in="SourceGraphic" color-interpolation-filters="sRGB""#), "{invert}");
+		assert!(invert.contains(r#"<feFuncR type="table" tableValues="1.0000 0.9961"#), "{invert}");
+
+		// Making the content opaque leaves the empty space around it empty
+		let make_opaque = filter(Adjustment::MakeOpaque);
+		assert!(make_opaque.contains(r#"<feFuncA type="table" tableValues="0.0000 1.0000"#), "{make_opaque}");
+
+		// A luma in linear light is a matrix there
+		let desaturate = filter(Adjustment::Desaturate {
+			method: DesaturateMethod::LuminanceRec709,
+		});
+		assert!(
+			desaturate.contains(r#"color-interpolation-filters="linearRGB" type="matrix" values="0.2126 0.7152 0.0722 0 0"#),
+			"{desaturate}"
+		);
+
+		// One no primitive expresses passes the content through unchanged
+		let vibrance = filter(Adjustment::Vibrance { vibrance: 50., saturation: 0. });
+		assert!(!vibrance.contains("feComponentTransfer") && !vibrance.contains("feColorMatrix"), "{vibrance}");
+	}
+
+	#[test]
+	fn image_adjustments_changing_alpha_are_carried_out_on_the_cpu_for_vello() {
+		use crate::vello_scene_builder::{SceneImage, VelloSceneBuilder};
+		use graphic_types::raster_types::Image;
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+
+		// A hidden color under full transparency, which only the CPU's straight colors keep for Make Opaque to reveal
+		let hidden = Color::from_rgbaf32_unchecked(0.8, 0.4, 0.2, 0.);
+		let mut item = Item::new_from_element(Raster::new_cpu(Image::new(2, 2, hidden)));
+		stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(Adjustment::MakeOpaque)));
+		stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(Adjustment::Invert)));
+
+		let mut scene = VelloSceneBuilder::new(16, 16, kurbo::Affine::IDENTITY, 4096);
+		List::new_from_item(item).render_to_vello(&mut scene, DAffine2::IDENTITY, &RenderParams::default());
+		let (_, images) = scene.finish();
+		let drawn = images.into_iter().find_map(|image| match image {
+			SceneImage::Raster { raster, adjustments } => Some((raster, adjustments)),
+			_ => None,
+		});
+		let (raster, adjustments) = drawn.expect("the image is drawn");
+		assert!(adjustments.is_empty(), "the texture takes no adjustments of its own");
+		assert_eq!(raster.data[0], raster_kernels::adjustments::adjust_color(&Adjustment::Invert, hidden.with_alpha(1.)));
+	}
+
+	#[test]
+	fn solid_vector_paints_take_their_adjustments_into_their_colors() {
+		use crate::vello_scene_builder::{EffectsRenderer, VelloSceneBuilder};
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+		use kurbo::Shape;
+
+		let orange = Color::from_gamma_srgb_channels(1., 0.5, 0., 1.);
+		let mut item = Vector::item_from_bezpath(&kurbo::Rect::new(0., 0., 10., 10.).to_path(0.1));
+		item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(orange))));
+		stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(Adjustment::Vibrance { vibrance: 0., saturation: -100. })));
+		let vector = List::new_from_item(item);
+		let is_gray = |[red, green, blue]: [u8; 3]| red.abs_diff(green) <= 1 && green.abs_diff(blue) <= 1;
+
+		// SVG fills the shape gray rather than leaving Vibrance, which no filter primitive expresses, undone
+		let mut render = SvgRender::new();
+		vector.render_svg(&mut render, &RenderParams::default());
+		let svg = render.svg.to_svg_string();
+		assert!(!render.svg_defs.contains("<filter"), "{}", render.svg_defs);
+		let hex = svg.split(r##"fill="#"##).nth(1).map(|rest| &rest[..6]).expect("a solid fill");
+		let channel = |index: usize| u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16).unwrap();
+		assert!(is_gray([channel(0), channel(1), channel(2)]), "expected a gray fill, got #{hex}");
+
+		// Vello fills it without rendering it through an effects group
+		struct NoEffectsGroups;
+		impl EffectsRenderer for NoEffectsGroups {
+			fn renders_effects(&self) -> bool {
+				true
+			}
+
+			fn render_effects(
+				&mut self,
+				_: glam::UVec2,
+				_: kurbo::Affine,
+				_: &Effects,
+				_: f32,
+				_: DAffine2,
+				_: Option<graphic_types::effects::EffectCapture>,
+				_: &mut dyn FnMut(&mut VelloSceneBuilder),
+			) -> wgpu::Texture {
+				panic!("the vector is drawn through an effects group");
+			}
+		}
+		let mut effects_renderer = NoEffectsGroups;
+		let mut scene = VelloSceneBuilder::new(16, 16, kurbo::Affine::IDENTITY, 4096).with_effects_renderer(&mut effects_renderer);
+		vector.render_to_vello(&mut scene, DAffine2::IDENTITY, &RenderParams::default());
+	}
+
 	/// A 10 unit orange square with `effects` stamped on it, its `fill` opacity, and its `opacity`.
 	fn orange_square(effects: &[graphic_types::EffectOperation], fill: f64, opacity: f64) -> List<Vector> {
 		List::new_from_item(orange_square_item(effects, fill, opacity))
@@ -4452,5 +4955,142 @@ mod tests {
 			graphic_list_painted_bounds(&list, true),
 			RenderBoundingBox::Rectangle([DVec2::splat(-shadow.reach()), DVec2::splat(110.)])
 		);
+	}
+
+	#[test]
+	fn svg_maps_cover_past_the_view_as_far_as_the_filters_reading_them_reach() {
+		let blur = graphic_types::EffectOperation::Blur {
+			radius: 4.,
+			box_blur: false,
+			gamma: false,
+		};
+		let blur_reach = Effects::from_operations([blur.clone()]).reach();
+
+		// A shadow's map is read by the blur after it and by the blur of the group around the item
+		let mut group = Item::new_from_element(Graphic::VectorList(orange_square(&[drop_shadow(180., 30., 10.), blur.clone()], 1., 1.)));
+		group.set_attribute(ATTR_EFFECTS, Effects::from_operations([blur]));
+		let mut render = SvgRender::new();
+		List::new_from_item(group).render_svg(
+			&mut render,
+			&RenderParams {
+				for_export: true,
+				..Default::default()
+			},
+		);
+		let [map] = &render.effect_maps[..] else {
+			panic!("expected one map, got {}", render.effect_maps.len())
+		};
+		assert!((map.margin - 2. * blur_reach).abs() < 1e-9, "{} for {blur_reach}", map.margin);
+
+		// So in a view cutting across the shadow, the map covers that far past each of its edges, with no more pixels than four views hold
+		let layout = map.layout(DAffine2::IDENTITY, DVec2::new(5., 5.), 8192).expect("the map lies in view");
+		let expected = 5. + 2. * map.margin;
+		let covered = layout.placement.transform.matrix2.x_axis.x;
+		assert!((covered - expected).abs() <= 1., "{covered} for {expected}");
+		assert!(layout.size.x == layout.size.y && layout.size.x <= 10, "{}", layout.size);
+	}
+
+	#[test]
+	fn svg_images_carry_out_their_adjustments_in_their_pixels() {
+		use graphic_types::raster_types::Image;
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+
+		// Vibrance, which no filter primitive expresses, followed by a blur, which one does
+		let orange = Color::from_gamma_srgb_channels(1., 0.5, 0., 1.);
+		let mut item = Item::new_from_element(Raster::new_cpu(Image::new(2, 2, orange)));
+		stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(Adjustment::Vibrance { vibrance: 0., saturation: -100. })));
+		stamp_effect(
+			&mut item,
+			Effect::new(&EffectOperation::Blur {
+				radius: 1.,
+				box_blur: false,
+				gamma: false,
+			}),
+		);
+		let image = List::new_from_item(item);
+
+		let render_canvas_images = || {
+			let mut render = SvgRender::new();
+			image.render_svg(&mut render, &RenderParams::default());
+			assert!(render.svg_defs.contains("feGaussianBlur") && !render.svg_defs.contains("feComponentTransfer"), "{}", render.svg_defs);
+			render.image_data
+		};
+
+		// The canvas shows gray pixels, and a second render reuses them rather than sending another image
+		let first = render_canvas_images();
+		let [canvas] = first.values().collect::<Vec<_>>()[..] else {
+			panic!("expected one canvas, got {}", first.len())
+		};
+		let [red, green, blue, _] = canvas.raster.data[0].to_gamma_srgb_channels();
+		assert!((red - green).abs() < 1e-3 && (green - blue).abs() < 1e-3, "expected gray, got {:?}", [red, green, blue]);
+		assert_eq!(render_canvas_images().keys().collect::<Vec<_>>(), first.keys().collect::<Vec<_>>());
+	}
+
+	#[test]
+	fn content_with_effects_svg_cannot_express_defers_to_an_image() {
+		use graphic_types::raster_types::Image;
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+
+		// A shadow, which a filter expresses, followed by Vibrance, which none does
+		let shadow = EffectOperation::DropShadow {
+			color: Color::BLACK,
+			angle: 180.,
+			distance: 3.,
+			spread: 0.,
+			size: 0.,
+			contour: Default::default(),
+			knockout: true,
+		};
+		let mut item = Item::new_from_element(Raster::new_cpu(Image::new(2, 2, Color::WHITE)))
+			.with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(10.)))
+			.with_attribute(ATTR_OPACITY, 0.5_f64);
+		stamp_effect(&mut item, Effect::new(&shadow));
+		stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(Adjustment::Vibrance { vibrance: 0., saturation: -100. })));
+
+		let mut render = SvgRender::new();
+		List::new_from_item(item).render_svg(
+			&mut render,
+			&RenderParams {
+				for_export: true,
+				..Default::default()
+			},
+		);
+		let mut svg = render.svg.to_svg_string();
+
+		// The image's own markup stands between the markers, and the image of it covers the shadow, taking the item's opacity
+		let [deferred] = &render.deferred_images[..] else {
+			panic!("expected one deferred image, got {}", render.deferred_images.len())
+		};
+		let (opening, closing) = deferred_image::image_markers(deferred.id);
+		let (start, end) = (svg.find(&opening).unwrap(), svg.find(&closing).unwrap());
+		assert!(svg[start..end].contains("<image"), "{svg}");
+		assert_eq!(deferred.bounds, [DVec2::splat(-4.), DVec2::splat(14.)]);
+		assert_eq!(deferred.opacity, 0.5);
+		assert!(matches!(&deferred.content, Graphic::RasterCPU(content) if content.attribute::<f64>(ATTR_OPACITY).is_none()));
+
+		// In a view of the document's first 100 units, the image spans the part of the reach in it, replacing the markup
+		let layout = deferred.layout(DAffine2::IDENTITY, DVec2::splat(100.), 8192).unwrap();
+		assert_eq!(layout.size, glam::UVec2::splat(14));
+		deferred_image::substitute_deferred_image(&mut svg, &mut Vec::new(), &layout.placement, &Raster::new_cpu(Image::new(14, 14, Color::BLACK)));
+		assert!(!svg.contains(&opening) && !svg.contains(&closing), "{svg}");
+		assert!(svg.contains(r#"opacity="0.5""#) && svg.contains("matrix(14,0,0,14,0,0)"), "{svg}");
+	}
+
+	#[test]
+	fn paints_carry_out_the_adjustments_stamped_on_them() {
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+
+		let invert = || Effect::new(&EffectOperation::Adjustment(Adjustment::Invert));
+
+		let mut color = Item::new_from_element(Color::BLACK);
+		stamp_effect(&mut color, invert());
+		assert_eq!(faded_paint_color(ItemRef::Item(&color), false), Some(Color::WHITE));
+
+		let mut gradient = Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE]));
+		stamp_effect(&mut gradient, invert());
+		let (ramp, settings) = painted_gradient(ItemRef::Item(&gradient)).unwrap();
+		let close = |actual: Color, expected: Color| (actual.to_vec4() - expected.to_vec4()).abs().max_element() < 1e-6;
+		assert!(close(ramp.evaluate(0., settings), Color::WHITE), "the start turns white");
+		assert!(close(ramp.evaluate(1., settings), Color::BLACK), "the end turns black");
 	}
 }

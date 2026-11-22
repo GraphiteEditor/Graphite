@@ -234,6 +234,9 @@ impl RGB for Luma {
 
 impl Pixel for Luma {}
 
+/// How close to black or white a channel must be for the blend modes with a hard edge there (Color Burn, Color Dodge, and Divide) to treat it as exactly that.
+pub const BLEND_EDGE_TOLERANCE: f32 = 1e-6;
+
 /// Linear-light sRGB color with `f32` channels and unassociated (straight) alpha.
 ///
 /// Channels range from `0.` to `f32::MAX`, encoding brightness proportional to light intensity (cd/m² nits in HDR, or `0..=1` mapped to white for SDR).
@@ -615,9 +618,9 @@ impl Color {
 	/// Per-channel "Color Burn" blend.
 	#[inline(always)]
 	pub fn blend_color_burn(c_b: f32, c_s: f32) -> f32 {
-		if c_b == 1. {
+		if (c_b - 1.).abs() <= BLEND_EDGE_TOLERANCE {
 			1.
-		} else if c_s == 0. {
+		} else if c_s.abs() <= BLEND_EDGE_TOLERANCE {
 			0.
 		} else {
 			1. - ((1. - c_b) / c_s).min(1.)
@@ -653,7 +656,7 @@ impl Color {
 	/// Per-channel "Color Dodge" blend.
 	#[inline(always)]
 	pub fn blend_color_dodge(c_b: f32, c_s: f32) -> f32 {
-		if c_s == 1. { 1. } else { (c_b / (1. - c_s)).min(1.) }
+		if (c_s - 1.).abs() <= BLEND_EDGE_TOLERANCE { 1. } else { (c_b / (1. - c_s)).min(1.) }
 	}
 
 	/// Per-channel "Linear Dodge" (Add) blend.
@@ -743,7 +746,7 @@ impl Color {
 
 	/// Per-channel "Divide" blend.
 	pub fn blend_divide(c_b: f32, c_s: f32) -> f32 {
-		if c_b == 0. { 1. } else { c_b / c_s }
+		if c_b.abs() <= BLEND_EDGE_TOLERANCE { 1. } else { c_b / c_s }
 	}
 
 	/// Runs `blend` on this color's and `c_s`'s gamma-encoded channels, which the component blend modes are defined on, keeping `c_s`'s alpha.
