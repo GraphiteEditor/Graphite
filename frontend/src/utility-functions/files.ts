@@ -83,3 +83,52 @@ export type UploadResult<T> = { filename: string; type: string; content: T };
 export function acceptStringFromFilters(filters: FileFilter[]): string {
 	return filters.flatMap((filter) => [...filter.mimeTypes, ...filter.extensions.map((extension) => `.${extension}`)]).join(",");
 }
+
+// Firefox and Safari lack the File System Access API
+export function fileHandlesSupported(): boolean {
+	return "showOpenFilePicker" in window && "showSaveFilePicker" in window;
+}
+
+// Matches the editor's `FILE_EXTENSION` and `GDD_FILE_EXTENSION`
+const DOCUMENT_EXTENSIONS = ["graphite", "gdd"];
+
+export function isDocumentFilename(filename: string): boolean {
+	const extension = filename.includes(".") ? filename.split(".").pop()?.toLowerCase() : undefined;
+	return extension !== undefined && DOCUMENT_EXTENSIONS.includes(extension);
+}
+
+function pickerTypes(filters: FileFilter[]): FilePickerAcceptType[] {
+	return filters.map((filter) => {
+		const extensions = filter.extensions.map((extension) => `.${extension}`);
+		const mimeTypes = filter.mimeTypes.length > 0 ? filter.mimeTypes : ["application/octet-stream"];
+		return { description: filter.name, accept: Object.fromEntries(mimeTypes.map((mimeType) => [mimeType, extensions])) };
+	});
+}
+
+// Resolves to undefined if the user cancels the picker
+async function picked<T>(picker: Promise<T>): Promise<T | undefined> {
+	try {
+		return await picker;
+	} catch (error) {
+		if (error instanceof DOMException && error.name === "AbortError") return undefined;
+		throw error;
+	}
+}
+
+export async function browseFileHandles(filters: FileFilter[], multiple: boolean): Promise<FileSystemFileHandle[]> {
+	return (await picked(window.showOpenFilePicker({ multiple, types: pickerTypes(filters) }))) ?? [];
+}
+
+export async function saveFileHandle(suggestedName: string, filters: FileFilter[]): Promise<FileSystemFileHandle | undefined> {
+	return picked(window.showSaveFilePicker({ suggestedName, types: pickerTypes(filters) }));
+}
+
+// Returns false if the user denies permission, which handles from earlier sessions ask for again
+export async function writeFileHandle(handle: FileSystemFileHandle, content: Uint8Array): Promise<boolean> {
+	if ((await handle.requestPermission({ mode: "readwrite" })) !== "granted" || !(content.buffer instanceof ArrayBuffer)) return false;
+
+	const writable = await handle.createWritable();
+	await writable.write(new Uint8Array(content.buffer, content.byteOffset, content.byteLength));
+	await writable.close();
+	return true;
+}

@@ -65,6 +65,7 @@ export async function readPersistedState(editor: EditorWrapper) {
 	await migrateDocumentsToStore();
 
 	const state = await databaseGet<PersistedState>("state");
+	await fileHandlesPrune(state?.documents ?? []);
 	editor.loadPersistedState(state ?? emptyPersistedState());
 }
 
@@ -75,6 +76,33 @@ export async function saveEditorPreferences(preferences: unknown) {
 export async function loadEditorPreferences(editor: EditorWrapper) {
 	const preferences = await databaseGet<Record<string, unknown>>("preferences");
 	editor.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
+}
+
+// ============
+// File handles
+// ============
+
+// Handles to documents on disk, keyed by the path the editor knows each document by
+export async function fileHandleGet(path: string): Promise<FileSystemFileHandle | undefined> {
+	const handles = await databaseGet<Record<string, FileSystemFileHandle>>("file_handles");
+	return handles?.[path];
+}
+
+// Reuses the path of a stored handle to the same file, so reopening it switches to its open document
+export async function fileHandleStore(handle: FileSystemFileHandle): Promise<string> {
+	const handles = (await databaseGet<Record<string, FileSystemFileHandle>>("file_handles")) ?? {};
+	for (const [path, stored] of Object.entries(handles)) {
+		if (await stored.isSameEntry(handle)) return path;
+	}
+
+	const path = `/${crypto.randomUUID()}/${handle.name}`;
+	await databaseUpdate<Record<string, FileSystemFileHandle>>("file_handles", (current) => ({ ...current, [path]: handle }));
+	return path;
+}
+
+async function fileHandlesPrune(documents: DocumentInfo[]) {
+	const paths = new Set(documents.map((entry) => entry.path));
+	await databaseUpdate<Record<string, FileSystemFileHandle>>("file_handles", (current) => Object.fromEntries(Object.entries(current ?? {}).filter(([path]) => paths.has(path))));
 }
 
 // =========================
@@ -146,6 +174,7 @@ export async function wipeDocuments() {
 	await databaseDelete("state");
 	await databaseDelete("documents");
 	await databaseDelete("documents_migrated");
+	await databaseDelete("file_handles");
 	await wipeStoredDocuments();
 
 	await wipeOldFormat();
@@ -265,6 +294,19 @@ async function databaseSet(key: string, value: unknown): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
 		transaction.objectStore(PERSISTENCE_STORE).put(value, key);
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = () => reject(transaction.error);
+	});
+}
+
+// Reads and writes in one transaction, so another tab's write in between isn't lost
+async function databaseUpdate<T>(key: string, update: (value: T | undefined) => T): Promise<void> {
+	const db = await databaseOpen();
+	return new Promise((resolve, reject) => {
+		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
+		const store = transaction.objectStore(PERSISTENCE_STORE);
+		const request = store.get(key);
+		request.onsuccess = () => store.put(update(request.result), key);
 		transaction.oncomplete = () => resolve();
 		transaction.onerror = () => reject(transaction.error);
 	});

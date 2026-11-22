@@ -48,3 +48,16 @@ interface Permissions {
 interface ErrorConstructor {
 	stackTraceLimit?: number;
 }
+
+// Experimental File System Access API: https://developer.mozilla.org/en-US/docs/Web/API/File_System_API
+interface Window {
+	showOpenFilePicker(options?: { multiple?: boolean; types?: FilePickerAcceptType[] }): Promise<FileSystemFileHandle[]>;
+	showSaveFilePicker(options?: { suggestedName?: string; types?: FilePickerAcceptType[] }): Promise<FileSystemFileHandle>;
+}
+interface FilePickerAcceptType {
+	description?: string;
+	accept: Record<string, string[]>;
+}
+interface FileSystemHandle {
+	requestPermission(descriptor?: { mode?: "read" | "readwrite" }): Promise<PermissionState>;
+}

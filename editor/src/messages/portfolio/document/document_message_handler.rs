@@ -1290,12 +1290,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Saved as a `.gdd` container under the `.graphite` extension
 				let name = format!("{}.{FILE_EXTENSION}", self.name.clone());
 
-				// A document opened from a `.gdd` file is saved back under the `.graphite` extension
 				let path = match message {
 					DocumentMessage::SaveDocumentAs => None,
+					// On web, the path keys the file handle to write back to
+					_ if environment.is_web() => self.path.clone(),
+					// A document opened from a `.gdd` file is saved back under the `.graphite` extension
 					_ => self.path.clone().map(|path| path.with_extension(FILE_EXTENSION)),
 				};
-				if path.is_some() || environment.is_web() {
+				// On web, the frontend confirms with `SavedDocument` once the file is written
+				if path.is_some() && !environment.is_web() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
@@ -2172,6 +2175,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			Noop,
 			Redo,
 			SaveDocument,
+			SaveDocumentAs,
 			SelectAllLayers,
 			SetSnapping,
 			ToggleGridVisibility,
@@ -2189,10 +2193,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 		if self.history_preview.is_some() {
 			common.extend(actions!(DocumentMessageDiscriminant::PreviewHistoryStep));
 		}
-
-		// Additional actions available on desktop
-		#[cfg(not(target_family = "wasm"))]
-		common.extend(actions!(DocumentMessageDiscriminant::SaveDocumentAs));
 
 		// Deleting, duplicating, and hiding apply to any selected nodes, not just layers, such as chain nodes selected in the Layers panel
 		if self.network_interface.selected_nodes().has_selected_nodes() {

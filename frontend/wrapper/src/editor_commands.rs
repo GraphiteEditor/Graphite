@@ -215,6 +215,16 @@ mod editor_commands {
 		PortfolioMessage::AutoSaveDocument { document_id: DocumentId(document_id) }.into()
 	}
 
+	/// Confirms that `TriggerSaveDocument` wrote the document
+	fn saved_document(document_id: u64, path: Option<String>) -> Message {
+		let message = DocumentMessage::SavedDocument { path: path.map(PathBuf::from) };
+		PortfolioMessage::DocumentPassMessage {
+			document_id: DocumentId(document_id),
+			message,
+		}
+		.into()
+	}
+
 	fn reorder_document(document_id: u64, new_index: usize) -> Message {
 		PortfolioMessage::ReorderDocument {
 			document_id: DocumentId(document_id),

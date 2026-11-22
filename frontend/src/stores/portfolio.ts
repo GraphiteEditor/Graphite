@@ -2,10 +2,12 @@ import { SvelteMap } from "svelte/reactivity";
 import { get, writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { acceptStringFromFilters, downloadFile, upload } from "/src/utility-functions/files";
+import { acceptStringFromFilters, browseFileHandles, downloadFile, fileHandlesSupported, isDocumentFilename, saveFileHandle, upload, writeFileHandle } from "/src/utility-functions/files";
+import type { UploadResult } from "/src/utility-functions/files";
 import { createLayout } from "/src/utility-functions/layout-state.svelte";
+import { fileHandleGet, fileHandleStore } from "/src/utility-functions/persistence";
 import { deepEqual, patchLayout } from "/src/utility-functions/widgets";
-import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { EditorWrapper, DocumentInfo, FileFilter, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
 
@@ -91,13 +93,37 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerBrowse", async ({ options, action }) => {
+		if (action === "Open" && fileHandlesSupported()) {
+			const files = await browseFilesWithHandles(options.filters, options.multiple);
+			if (files) {
+				files.forEach((file) => editor.ingestPicked(file.filename, file.type, file.content, action));
+				return;
+			}
+		}
+
 		const accept = acceptStringFromFilters(options.filters);
 		const files = options.multiple ? await upload(accept, "data", true) : [await upload(accept, "data")];
 		files.forEach((file) => editor.ingestPicked(file.filename, file.type, file.content, action));
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerSaveDocument", (data) => {
-		downloadFile(data.name, data.content);
+	subscriptions.subscribeFrontendMessage("TriggerSaveDocument", async (data) => {
+		const { document_id: documentId, name, path, filters, content } = data;
+
+		try {
+			if (fileHandlesSupported()) {
+				const existing = path ? await fileHandleGet(path) : undefined;
+				const handle = existing ?? (await saveFileHandle(name, filters));
+				if (!handle || !(await writeFileHandle(handle, content))) return;
+
+				editor.savedDocument(documentId, existing ? path : await fileHandleStore(handle));
+				return;
+			}
+		} catch {
+			// Pickers and permission prompts need a recent user interaction, which a slow save can outlast
+		}
+
+		downloadFile(name, content);
+		editor.savedDocument(documentId, path);
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerSaveFile", (data) => {
@@ -203,4 +229,20 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomRightBar");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
+}
+
+// Names each picked document after the path of its stored file handle
+async function browseFilesWithHandles(filters: FileFilter[], multiple: boolean): Promise<UploadResult<Uint8Array>[] | undefined> {
+	try {
+		const files: UploadResult<Uint8Array>[] = [];
+		for (const handle of await browseFileHandles(filters, multiple)) {
+			const file = await handle.getFile();
+			const filename = isDocumentFilename(file.name) ? await fileHandleStore(handle) : file.name;
+			files.push({ filename, type: file.type, content: new Uint8Array(await file.arrayBuffer()) });
+		}
+		return files;
+	} catch {
+		// Pickers need a recent user interaction, which may have expired by the time the browse request arrives
+		return undefined;
+	}
 }
