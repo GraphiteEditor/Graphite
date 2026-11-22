@@ -18,6 +18,7 @@ pub struct PreferencesMessageHandler {
 	pub zoom_with_scroll: bool,
 	pub brush_tool: bool,
 	pub graph_wire_style: GraphWireStyle,
+	pub node_graph_collision_avoidance: bool,
 	pub viewport_zoom_wheel_rate: f64,
 	pub ui_scale: f64,
 	pub disable_ui_acceleration: bool,
@@ -52,6 +53,7 @@ impl Default for PreferencesMessageHandler {
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			brush_tool: false,
 			graph_wire_style: GraphWireStyle::default(),
+			node_graph_collision_avoidance: false,
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
 			disable_ui_acceleration: true, // TODO: Set this back to false once we have ui acceleration working more reliably
@@ -128,6 +130,11 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				self.graph_wire_style = style;
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendWires);
+			}
+			PreferencesMessage::NodeGraphCollisionAvoidance { enabled } => {
+				self.node_graph_collision_avoidance = enabled;
+				responses.add(NodeGraphMessage::UnloadWires);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			PreferencesMessage::ViewportZoomWheelRate { rate } => {
 				self.viewport_zoom_wheel_rate = rate;

@@ -1,10 +1,11 @@
 use super::*;
-use graph_layout::{Graph, Layout, Node, Placement, Wire, layout, reach};
+use graph_layout::{Graph, Layout, Node, Placement, Wire, layout, layout_as_stored, reach};
 
 /// Where each node of a network is drawn and which layer's chain it is drawn in, as of one revision of the interface.
 #[derive(Debug, Clone)]
 pub struct NetworkLayout {
 	revision: u64,
+	collision_avoidance: bool,
 	node_ids: Vec<NodeId>,
 	indices: HashMap<NodeId, u32>,
 	graph: Graph,
@@ -63,11 +64,16 @@ impl NetworkLayout {
 }
 
 impl NodeNetworkInterface {
-	/// Reads the layout of the network at `network_path`, laying it out again first if anything was written since.
+	pub fn set_collision_avoidance(&mut self, collision_avoidance: bool) {
+		self.collision_avoidance = collision_avoidance;
+	}
+
+	/// Reads the layout of the network at `network_path`, laying it out again first if anything was written or collision avoidance was toggled since.
 	pub(crate) fn with_layout<R>(&self, network_path: &[NodeId], read: impl FnOnce(&NetworkLayout) -> R) -> Option<R> {
 		let cache = &self.network_metadata(network_path)?.transient_metadata.layout;
 		let revision = store::revision();
-		if cache.with_loaded(|layout| layout.revision != revision) == Some(true) {
+		let outdated = |layout: &NetworkLayout| layout.revision != revision || layout.collision_avoidance != self.collision_avoidance;
+		if cache.with_loaded(outdated) == Some(true) {
 			cache.unload();
 		}
 
@@ -164,9 +170,11 @@ impl NodeNetworkInterface {
 			.collect();
 
 		let graph = Graph { nodes, wires };
+		let layout = if self.collision_avoidance { layout(&graph) } else { layout_as_stored(&graph) };
 		Some(NetworkLayout {
 			revision,
-			layout: layout(&graph),
+			collision_avoidance: self.collision_avoidance,
+			layout,
 			graph,
 			node_ids,
 			indices,

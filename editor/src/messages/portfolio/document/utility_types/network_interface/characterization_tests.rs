@@ -3873,6 +3873,7 @@ async fn group_selected_layers(editor: &mut EditorTestUtils) {
 async fn grouping_the_top_layer_leaves_no_layers_overlapping_in_the_graph() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
+	editor.handle_message(PreferencesMessage::NodeGraphCollisionAvoidance { enabled: true }).await;
 	editor.draw_rect(0., 0., 100., 100.).await;
 	editor.draw_rect(50., 50., 150., 150.).await;
 
@@ -3886,6 +3887,7 @@ async fn grouping_the_top_layer_leaves_no_layers_overlapping_in_the_graph() {
 async fn grouping_a_group_moves_the_layer_below_it_past_all_of_its_contents() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
+	editor.handle_message(PreferencesMessage::NodeGraphCollisionAvoidance { enabled: true }).await;
 	editor.draw_rect(0., 0., 100., 100.).await;
 	editor.draw_rect(50., 50., 150., 150.).await;
 	let bottom = editor.active_document().metadata().all_layers().last().expect("the bottom rectangle should be a layer");

@@ -149,12 +149,21 @@ const HORIZONTAL_GAP: i32 = CHAIN_WIDTH - 5;
 /// Lays out the graph as a forest: each node goes to its highest reader as stored, each node's upstream is then fitted together
 /// below and left of it, and finally every node is placed from the left of its readers, level with its owner.
 pub fn layout(graph: &Graph) -> Layout {
+	lay_out(graph, true)
+}
+
+/// Lays out the graph like `layout`, but draws every node where its stored offset places it, without fitting upstreams together.
+pub fn layout_as_stored(graph: &Graph) -> Layout {
+	lay_out(graph, false)
+}
+
+fn lay_out(graph: &Graph, fit_upstream: bool) -> Layout {
 	let node_count = graph.nodes.len();
 	let readers = GroupedByNode::grouped(node_count, &graph.wires, |wire| wire.source);
 	let inputs = GroupedByNode::grouped(node_count, &graph.wires, |wire| wire.target);
 
 	let forest = Forest::grow(graph, &readers, &inputs);
-	let elongations = elongations(graph, &forest);
+	let elongations = if fit_upstream { elongations(graph, &forest) } else { vec![IVec2::ZERO; node_count] };
 
 	let mut positions = vec![IVec2::ZERO; node_count];
 	let mut anchors = vec![IVec2::ZERO; node_count];
@@ -588,6 +597,15 @@ mod tests {
 		assert_eq!(layout.positions[4], IVec2::new(30, 13 + 4));
 		assert_eq!(layout.elongations[4], IVec2::new(0, 4));
 		assert_eq!(layout.positions[5], layout.positions[4] - IVec2::new(CHAIN_WIDTH, 0));
+	}
+
+	#[test]
+	fn a_layer_laid_out_as_stored_stays_where_it_is_stored() {
+		let graph = stack_with_tall_content(1, 0);
+		let layout = layout_as_stored(&graph);
+
+		assert_eq!(layout.positions[4], IVec2::new(30, 13));
+		assert!(layout.elongations.iter().all(|elongation| *elongation == IVec2::ZERO));
 	}
 
 	#[test]

@@ -119,6 +119,9 @@ pub struct NodeNetworkInterface {
 	/// The table entries the last paste carried, under the IDs they take here, added once a node names one.
 	#[serde(skip)]
 	carried_definitions: HashMap<NetworkId, CopiedDefinition>,
+	/// Whether the layout fits each node's upstream together, drawing connections longer so nodes don't overlap.
+	#[serde(skip)]
+	collision_avoidance: bool,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -135,6 +138,7 @@ impl Clone for NodeNetworkInterface {
 			transaction_edited_nodes_changed: false,
 			dots_that_lost_a_wire: HashMap::new(),
 			carried_definitions: HashMap::new(),
+			collision_avoidance: self.collision_avoidance,
 		}
 	}
 }

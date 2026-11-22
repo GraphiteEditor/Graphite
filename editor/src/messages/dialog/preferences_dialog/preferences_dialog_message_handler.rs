@@ -297,7 +297,30 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
-			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, brush_tool]);
+			let checkbox_id = CheckboxId::new();
+			let collision_avoidance_description = "
+				Move nodes in the graph apart so they don't overlap, drawing their connections longer where needed.\n\
+				\n\
+				*Default: Off.*
+				"
+			.trim();
+			let collision_avoidance = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				CheckboxInput::new(preferences.node_graph_collision_avoidance)
+					.tooltip_label("Node Graph Collision Avoidance")
+					.tooltip_description(collision_avoidance_description)
+					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::NodeGraphCollisionAvoidance { enabled: checkbox_input.checked }.into())
+					.for_label(checkbox_id)
+					.widget_instance(),
+				TextLabel::new("Node Graph Collision Avoidance")
+					.tooltip_label("Node Graph Collision Avoidance")
+					.tooltip_description(collision_avoidance_description)
+					.for_checkbox(checkbox_id)
+					.widget_instance(),
+			];
+
+			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, collision_avoidance, brush_tool]);
 		}
 
 		// =========
