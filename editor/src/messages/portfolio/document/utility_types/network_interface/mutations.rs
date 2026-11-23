@@ -770,7 +770,7 @@ impl NodeNetworkInterface {
 			..
 		} = &current_input
 		{
-			// If the node upstream from the disconnected input is a chain, then break the chain by setting it to absolute positioning
+			// If the node upstream from the disconnected input is in a chain, take it out of the chain where it is drawn
 			if self.is_chain(upstream_node_id, network_path) {
 				self.unchain_upstream(upstream_node_id, network_path);
 			}

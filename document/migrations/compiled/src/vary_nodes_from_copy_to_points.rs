@@ -318,7 +318,7 @@ mod tests {
 			panic!("the repeat reads the group")
 		};
 
-		assert_eq!(stages, [-1, 6, 13].map(|x| Some(Position::Absolute([x, 10]))));
+		assert_eq!(stages, [Some(Position::Relative([-CHAIN_WIDTH, 0])); 3]);
 		assert_eq!(position_of(group), Some(Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT])));
 	}
 

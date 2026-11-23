@@ -7,13 +7,11 @@ use std::collections::{BTreeMap, btree_map};
 /// keys live on `Node.inputs_attributes[i]`; per-network keys live on `Network.attributes`.
 pub mod attr;
 
-/// Unified storage-side position. The valid variants depend on `attr::node::ui::IS_LAYER`:
-/// layers use `Absolute` or `Stack`; non-layer nodes use `Absolute`, `Chain`, or `Relative`.
+/// Where a node or layer is stored, in grid cells.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Position {
+	/// A position of its own, starting a tree of its own.
 	Absolute([i32; 2]),
-	Chain,
-	Stack(u32),
 	/// An offset from the top left corner of the bounding box of the positions of the nodes reading this one.
 	Relative([i32; 2]),
 }

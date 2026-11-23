@@ -1,4 +1,4 @@
-//! Opening a document converts the absolute, chained, and stacked positions of nodes other nodes read to positions relative to them.
+//! Converting a document's positions, as importing an older document does, makes the absolute positions of nodes other nodes read relative to them.
 
 use super::test_support::{node_paths, open_demo};
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeLocator, NodeNetworkInterface};
@@ -42,11 +42,12 @@ fn store_drawn_positions_as_absolute(interface: &mut NodeNetworkInterface, posit
 }
 
 #[test]
-fn opening_a_demo_makes_every_read_node_relative_where_it_was_drawn() {
+fn converting_a_demo_makes_every_read_node_relative_where_it_was_drawn() {
 	for demo in DEMOS {
 		let mut document = open_demo(demo);
 		let interface = &mut document.network_interface;
 
+		interface.convert_positions_to_relative();
 		let converted = editable_positions(interface);
 		assert!(converted.iter().all(|(_, position)| position.is_some()), "{demo}: every node should resolve a position");
 

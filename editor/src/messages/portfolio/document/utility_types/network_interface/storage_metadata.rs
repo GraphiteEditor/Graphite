@@ -150,31 +150,20 @@ pub fn position_from_runtime(node_type: &NodeTypePersistentMetadata) -> Position
 	match node_type {
 		NodeTypePersistentMetadata::Layer(layer) => match layer.position {
 			LayerPosition::Absolute(v) => Position::Absolute([v.x, v.y]),
-			LayerPosition::Stack(offset) => Position::Stack(offset),
 			LayerPosition::Relative(offset) => Position::Relative([offset.x, offset.y]),
 		},
 		NodeTypePersistentMetadata::Node(node) => match *node.position() {
 			NodePosition::Absolute(v) => Position::Absolute([v.x, v.y]),
-			NodePosition::Chain => Position::Chain,
 			NodePosition::Relative(offset) => Position::Relative([offset.x, offset.y]),
 		},
 	}
 }
 
 /// Inverse of the position extraction in `NodeMetadataSource::position`.
-/// `(Stack, !is_layer)` and `(Chain, is_layer)` shouldn't arise from a faithful round-trip; they fall back to a default of the matching variant.
 pub fn position_to_runtime(position: Position, is_layer: bool) -> NodeTypePersistentMetadata {
 	match (position, is_layer) {
 		(Position::Absolute([x, y]), true) => NodeTypePersistentMetadata::layer(IVec2::new(x, y)),
 		(Position::Absolute([x, y]), false) => NodeTypePersistentMetadata::node(IVec2::new(x, y)),
-		(Position::Stack(offset), _) => {
-			let mut metadata = NodeTypePersistentMetadata::layer(IVec2::ZERO);
-			if let NodeTypePersistentMetadata::Layer(layer) = &mut metadata {
-				layer.position = LayerPosition::Stack(offset);
-			}
-			metadata
-		}
-		(Position::Chain, _) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Chain)),
 		(Position::Relative([x, y]), true) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 			position: LayerPosition::Relative(IVec2::new(x, y)),
 		}),

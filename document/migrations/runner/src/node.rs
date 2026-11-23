@@ -334,9 +334,9 @@ fn add_nodes(target: &mut Registry, runs: &[(NodeId, Edits)], resolver: &dyn Dec
 	Ok(())
 }
 
-/// Default positions for the nodes one run adds, read from the anchor's own position only. The nodes leading up to the anchor's
-/// chain input form a row, or join the chain of a chained or layer anchor. Each other node sits relative to the nodes reading it,
-/// below the first one of this run that does, or on the anchor when nothing reads it.
+/// Default positions for the nodes one run adds. The nodes leading up to the anchor's chain input form a row to its left, which
+/// joins the chain of a chained or layer anchor. Each other node sits relative to the nodes reading it, below the first one of this
+/// run that does, or on the anchor when nothing reads it.
 fn place_added_nodes(target: &mut Registry, anchor: NodeId, edits: &Edits) {
 	let Some(anchor_node) = target.node_instances.get(&anchor) else { return };
 	let stored = anchor_node.attributes().get_typed::<Position>(POSITION);
@@ -360,20 +360,12 @@ fn place_added_nodes(target: &mut Registry, anchor: NodeId, edits: &Edits) {
 		next = inputs.first();
 	}
 
-	let joins_chain = is_layer || stored == Some(Position::Chain);
 	let coordinates = match stored {
 		Some(Position::Absolute(coordinates)) => Some(coordinates),
 		_ => None,
 	};
 
-	let mut positions = Vec::new();
-	for (step, id) in chain.iter().enumerate() {
-		match coordinates {
-			_ if joins_chain => positions.push((*id, Position::Chain)),
-			Some([x, y]) => positions.push((*id, Position::Absolute([x - CHAIN_WIDTH * (step as i32 + 1), y]))),
-			None => {}
-		}
-	}
+	let mut positions: Vec<(NodeId, Position)> = chain.iter().map(|id| (*id, Position::Relative([-CHAIN_WIDTH, 0]))).collect();
 
 	let readers: Vec<(NodeId, &[NodeInput])> = std::iter::once((anchor, anchor_inputs.as_slice()))
 		.chain(edits.added_nodes.iter().map(|added| (added.id, added.node.inputs.as_slice())))

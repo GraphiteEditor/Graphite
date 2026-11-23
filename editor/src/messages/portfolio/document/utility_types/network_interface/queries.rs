@@ -473,7 +473,7 @@ impl NodeNetworkInterface {
 				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::layer_secondary_input(old_id), network_path) {
 					if let Some(node_template) = new_nodes.iter_mut().find_map(|(_, old_id, template)| (*old_id == valid_upstream_chain_node).then_some(template)) {
 						match &mut node_template.node_type_metadata {
-							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Chain,
+							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::chained(),
 							NodeTypePersistentMetadata::Layer(_) => log::error!("Node cannot be a layer"),
 						};
 					}

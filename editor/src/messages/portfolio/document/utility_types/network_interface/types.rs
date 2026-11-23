@@ -1080,7 +1080,7 @@ impl NodeTypePersistentMetadata {
 /// All fields in LayerMetadata should automatically be updated by using the network interface API
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LayerPersistentMetadata {
-	/// Stores the position of a layer node, which can be Absolute or Relative, or Stack in older documents
+	/// Stores the position of a layer node, which can be Absolute or Relative
 	pub position: LayerPosition,
 }
 
@@ -1092,7 +1092,7 @@ impl PartialEq for LayerPersistentMetadata {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodePersistentMetadata {
-	/// Stores the position of a non layer node, which can be Absolute, Chain, or Relative
+	/// Stores the position of a non layer node, which can be Absolute or Relative
 	pub(crate) position: NodePosition,
 }
 
@@ -1105,14 +1105,13 @@ impl NodePersistentMetadata {
 	}
 }
 
-/// A layer is positioned as Absolute or Relative to the nodes reading it. Stack is only read from older documents, which opening converts to Relative.
+/// A layer is positioned as Absolute or Relative to the nodes reading it.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(from = "LegacyLayerPosition")]
 pub enum LayerPosition {
 	// Position of the node in grid spaces
 	Absolute(IVec2),
-	// A layer is in a Stack when it feeds into the bottom input of a layer. The Y position stores the vertical distance between the layer and its upstream sibling/parent.
-	Stack(u32),
-	// Offset from the node it is placed relative to, the first reader reaching it from the roots
+	// Offset from the left of the nodes reading it, level with the highest of them
 	Relative(IVec2),
 }
 
@@ -1123,15 +1122,57 @@ impl LayerPosition {
 	}
 }
 
-/// A node can be positioned as Absolute, in a Chain, or Relative to the nodes reading it
+/// A layer position as older documents store it, where a stacked layer kept only its gap below the layer reading it.
+#[derive(serde::Deserialize)]
+enum LegacyLayerPosition {
+	Absolute(IVec2),
+	Stack(u32),
+	Relative(IVec2),
+}
+
+impl From<LegacyLayerPosition> for LayerPosition {
+	fn from(position: LegacyLayerPosition) -> Self {
+		match position {
+			LegacyLayerPosition::Absolute(position) => Self::Absolute(position),
+			LegacyLayerPosition::Stack(y_offset) => Self::stacked(y_offset),
+			LegacyLayerPosition::Relative(offset) => Self::Relative(offset),
+		}
+	}
+}
+
+/// A node is positioned as Absolute or Relative to the nodes reading it.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(from = "LegacyNodePosition")]
 pub enum NodePosition {
 	// Position of the node in grid spaces
 	Absolute(IVec2),
-	// In a chain the position is based on the number of nodes to the first layer node
-	Chain,
-	// Offset from the node it is placed relative to, the first reader reaching it from the roots
+	// Offset from the left of the nodes reading it, level with the highest of them
 	Relative(IVec2),
+}
+
+impl NodePosition {
+	/// One chain width left of the node reading it, which draws it in that node's chain.
+	pub fn chained() -> Self {
+		Self::Relative(IVec2::new(-NODE_CHAIN_WIDTH, 0))
+	}
+}
+
+/// A node position as older documents store it, where a chained node kept no coordinates.
+#[derive(serde::Deserialize)]
+enum LegacyNodePosition {
+	Absolute(IVec2),
+	Chain,
+	Relative(IVec2),
+}
+
+impl From<LegacyNodePosition> for NodePosition {
+	fn from(position: LegacyNodePosition) -> Self {
+		match position {
+			LegacyNodePosition::Absolute(position) => Self::Absolute(position),
+			LegacyNodePosition::Chain => Self::chained(),
+			LegacyNodePosition::Relative(offset) => Self::Relative(offset),
+		}
+	}
 }
 
 /// Cached metadata that should be calculated when creating a node, and should be recalculated when modifying a node property that affects one of the cached fields.

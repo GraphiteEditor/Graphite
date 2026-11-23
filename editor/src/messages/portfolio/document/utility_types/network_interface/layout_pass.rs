@@ -254,16 +254,8 @@ impl NodeNetworkInterface {
 			(true, Placement::Relative(offset)) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 				position: LayerPosition::Relative(offset),
 			}),
-			(true, Placement::Stack(gap)) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-				position: LayerPosition::stacked(gap),
-			}),
 			(false, Placement::Absolute(position)) => NodeTypePersistentMetadata::node(position),
 			(false, Placement::Relative(offset)) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(offset))),
-			(false, Placement::Chain) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Chain)),
-			(true, Placement::Chain) | (false, Placement::Stack(_)) => {
-				log::error!("Node {node_id} cannot be stored as {placement:?}");
-				return false;
-			}
 		};
 		if node.set_node_type(node_type) {
 			self.transaction_modified();
@@ -328,12 +320,10 @@ impl NodeNetworkInterface {
 		let (placement, is_layer) = match &metadata.persistent_metadata.node_type_metadata {
 			NodeTypePersistentMetadata::Layer(layer) => match layer.position {
 				LayerPosition::Absolute(position) => (Placement::Absolute(position), true),
-				LayerPosition::Stack(gap) => (Placement::Stack(gap), true),
 				LayerPosition::Relative(offset) => (Placement::Relative(offset), true),
 			},
 			NodeTypePersistentMetadata::Node(node) => match *node.position() {
 				NodePosition::Absolute(position) => (Placement::Absolute(position), false),
-				NodePosition::Chain => (Placement::Chain, false),
 				NodePosition::Relative(offset) => (Placement::Relative(offset), false),
 			},
 		};

@@ -294,9 +294,8 @@ impl Generator<'_> {
 			}
 			1 => {
 				let coordinates = [self.random.below(20) as i32, self.random.below(20) as i32];
-				let position = match self.random.below(4) {
-					0 => Position::Chain,
-					1 => Position::Relative(coordinates),
+				let position = match self.random.below(3) {
+					0 => Position::Relative(coordinates),
 					_ => Position::Absolute(coordinates),
 				};
 				(POSITION, Some(to_value(&position).expect("positions serialize")))

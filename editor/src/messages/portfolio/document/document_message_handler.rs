@@ -2274,7 +2274,6 @@ impl DocumentMessageHandler {
 			self.network_interface.validate_input_metadata(node_id, node, &path);
 			self.network_interface.validate_output_names(node_id, node, &path);
 		}
-		self.network_interface.convert_positions_to_relative();
 
 		// Restoring the parallel-array invariant is how the document arrives, not an edit to it, so what the
 		// fix-ups recorded must not ride along in the first real commit. They still have to reach storage,

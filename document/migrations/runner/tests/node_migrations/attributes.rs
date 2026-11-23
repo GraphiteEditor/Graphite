@@ -112,16 +112,15 @@ fn a_name_given_by_the_user_is_kept() {
 fn added_nodes_lead_up_to_a_placed_anchor() {
 	let [far, near, below] = placed_around(Position::Absolute([20, 10]));
 
-	assert_eq!(far, Some(Position::Absolute([20 - 2 * CHAIN_WIDTH, 10])));
-	assert_eq!(near, Some(Position::Absolute([20 - CHAIN_WIDTH, 10])));
+	assert_eq!([far, near], [Some(Position::Relative([-CHAIN_WIDTH, 0])); 2]);
 	assert_eq!(below, Some(Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT])));
 }
 
 #[test]
-fn added_nodes_join_a_chained_anchors_chain() {
-	let [far, near, below] = placed_around(Position::Chain);
+fn added_nodes_lead_up_to_a_chained_anchor() {
+	let [far, near, below] = placed_around(Position::Relative([-CHAIN_WIDTH, 0]));
 
-	assert_eq!([far, near], [Some(Position::Chain); 2]);
+	assert_eq!([far, near], [Some(Position::Relative([-CHAIN_WIDTH, 0])); 2]);
 	assert_eq!(below, Some(Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT])));
 }
 
