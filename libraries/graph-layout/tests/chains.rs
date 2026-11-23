@@ -1,6 +1,6 @@
 mod common;
 
-use common::{at, chain_layers, layer, node, wire};
+use common::{CHAINED, at, chain_layers, layer, node, wire};
 use glam::IVec2;
 use graph_layout::{CHAIN_WIDTH, Graph, Layout, Placement, snaps_into_chain};
 
@@ -10,7 +10,7 @@ fn a_node_beside_a_layer_joins_its_chain_however_it_is_placed() {
 		nodes: vec![
 			layer(Placement::Absolute(IVec2::new(30, 10))),
 			node(Placement::Absolute(IVec2::new(30 - CHAIN_WIDTH, 10))),
-			node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0))),
+			node(CHAINED),
 			node(Placement::Absolute(IVec2::ZERO)),
 		],
 		wires: vec![wire(1, 0, 1), wire(2, 1, 0), wire(3, 2, 0)],
@@ -27,8 +27,8 @@ fn a_chain_is_never_drawn_apart() {
 	let graph = Graph {
 		nodes: vec![
 			layer(Placement::Absolute(IVec2::new(30, 10))),
-			node(Placement::Chain),
-			node(Placement::Chain),
+			node(CHAINED),
+			node(CHAINED),
 			common::tall_node(Placement::Relative(IVec2::new(0, 3)), 3),
 		],
 		wires: vec![wire(1, 0, 1), wire(2, 1, 0), wire(3, 1, 1)],

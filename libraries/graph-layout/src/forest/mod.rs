@@ -60,7 +60,7 @@ impl Forest {
 		let owner_wire = self.highest_reader(graph, connections, node, stored_positions).filter(|_| !connections.is_root(graph, node));
 		stored_positions[node] = match owner_wire {
 			Some(wire) => self.attach(graph, connections, wire, stored_positions),
-			None => graph[node].root_position(),
+			None => graph[node].placement.root_position(),
 		};
 	}
 
@@ -69,7 +69,7 @@ impl Forest {
 		self.owners[node] = Some(owner);
 		self.owner_inputs[node] = owner_wire.input;
 
-		let stored_position = self.anchor(graph, connections, node, |reader| stored_positions[reader]) + graph[node].stored_offset(&graph[owner]);
+		let stored_position = self.anchor(graph, connections, node, |reader| stored_positions[reader]) + graph[node].placement.stored_offset();
 		self.offsets[node] = stored_position - stored_positions[owner];
 		self.detached[node] = self.has_reader_nearer_than_owner(graph, connections, node, stored_position, stored_positions);
 		stored_position

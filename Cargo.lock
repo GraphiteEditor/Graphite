@@ -2871,6 +2871,7 @@ dependencies = [
  "futures",
  "glam",
  "graph-craft",
+ "graph-layout",
  "graphene-hash",
  "graphene-std",
  "graphite-proc-macros",
@@ -5976,6 +5977,7 @@ name = "regression"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "document-container",
  "document-format",
  "document-loader",
  "fern",

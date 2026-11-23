@@ -444,7 +444,7 @@ fn test_ui_metadata_round_trip() {
 		None,
 		NodeId(1),
 		UiState {
-			position: Some(Position::Chain),
+			position: Some(Position::Relative([-7, 0])),
 			..Default::default()
 		},
 	);
@@ -454,7 +454,7 @@ fn test_ui_metadata_round_trip() {
 		Some(NESTED),
 		NodeId(10),
 		UiState {
-			position: Some(Position::Stack(7)),
+			position: Some(Position::Relative([0, 10])),
 			is_layer: true,
 			..Default::default()
 		},
@@ -484,14 +484,14 @@ fn test_ui_metadata_round_trip() {
 	assert!(!root_layer.pinned);
 
 	let root_node = lookup.get(&(NetworkLocation::default(), NodeId(1))).expect("entry for root-network chain node missing");
-	assert_eq!(root_node.position, Some(Position::Chain));
+	assert_eq!(root_node.position, Some(Position::Relative([-7, 0])));
 	assert!(!root_node.is_layer);
 
 	let DocumentNodeImplementation::Definition(nested) = converted.nodes[&NodeId(0)].implementation else {
 		panic!("the nested network converts back as a table entry")
 	};
 	let nested_layer = lookup.get(&(Some(nested), NodeId(10))).expect("entry for nested layer-in-stack missing");
-	assert_eq!(nested_layer.position, Some(Position::Stack(7)));
+	assert_eq!(nested_layer.position, Some(Position::Relative([0, 10])));
 	assert!(nested_layer.is_layer);
 }
 

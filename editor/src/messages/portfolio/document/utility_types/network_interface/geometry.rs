@@ -6,6 +6,83 @@
 use super::*;
 
 impl NodeNetworkInterface {
+	pub(super) fn node_input_anchor(&self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> Option<DVec2> {
+		let top_left = self.position(node_id, network_path)?.as_dvec2() * GRID_SIZE as f64;
+		let grid = GRID_SIZE as f64;
+		let inputs = &self.document_node(node_id, network_path)?.inputs;
+
+		if self.is_redirect_dot(node_id, network_path) {
+			return (input_index == 0).then_some(top_left + DVec2::new(0., grid));
+		}
+
+		if self.is_layer(node_id, network_path) {
+			return match input_index {
+				0 => Some(top_left + DVec2::new(2. * grid, 2. * grid + 8.)),
+				1 if inputs.iter().filter(|input| input.is_exposed()).count() > 1 => Some(top_left + DVec2::new(0., grid)),
+				_ => None,
+			};
+		}
+
+		if !inputs.get(input_index)?.is_exposed() {
+			return None;
+		}
+		let row = inputs.iter().take(input_index).enumerate().filter(|(index, input)| *index == 0 || input.is_exposed()).count();
+		Some(top_left + DVec2::new(0., grid * (row as f64 + 1.)))
+	}
+
+	pub(super) fn node_output_anchor(&self, node_id: &NodeId, output_index: usize, network_path: &[NodeId]) -> Option<DVec2> {
+		let top_left = self.position(node_id, network_path)?.as_dvec2() * GRID_SIZE as f64;
+		let grid = GRID_SIZE as f64;
+
+		if self.is_redirect_dot(node_id, network_path) {
+			return (output_index == 0).then_some(top_left + DVec2::new(0., grid));
+		}
+
+		if self.is_layer(node_id, network_path) {
+			return (output_index == 0).then_some(top_left + DVec2::new(2. * grid, -8.));
+		}
+
+		let hidden = output_index == 0 && self.hidden_primary_output(node_id, network_path);
+		(!hidden && output_index < self.number_of_outputs(node_id, network_path)).then_some(top_left + DVec2::new(5. * grid, grid * (output_index as f64 + 1.)))
+	}
+
+	pub(crate) fn compute_node_ports(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<Ports> {
+		let Some(node_position) = self.position(node_id, network_path) else {
+			log::error!("Could not get node position in compute_node_ports for node {node_id}");
+			return None;
+		};
+		let document_node = self.document_node(node_id, network_path)?;
+		let node_top_left = node_position.as_dvec2() * GRID_SIZE as f64;
+		let mut ports = Ports::new();
+
+		if self.is_redirect_dot(node_id, network_path) {
+			ports.insert_dot_ports(node_top_left + DVec2::new(0., GRID_SIZE as f64));
+		} else if !self.is_layer(node_id, network_path) {
+			let mut input_row_count = 0;
+			for (input_index, input) in document_node.inputs.iter().enumerate() {
+				if input.is_exposed() {
+					ports.insert_node_input(input_index, input_row_count, node_top_left);
+				}
+				if input_index == 0 || input.is_exposed() {
+					input_row_count += 1;
+				}
+			}
+
+			let start_index = if self.hidden_primary_output(node_id, network_path) { 1 } else { 0 };
+			for output_index in start_index..self.number_of_outputs(node_id, network_path) {
+				ports.insert_node_output(output_index, node_top_left);
+			}
+		} else {
+			ports.insert_layer_input(0, node_top_left);
+			if document_node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
+				ports.insert_layer_input(1, node_top_left);
+			}
+			ports.insert_layer_output(node_top_left);
+		}
+
+		Some(ports)
+	}
+
 	/// The node body, its ports, and for a layer its visibility, lock, grip and name handles, all in node graph space.
 	pub(super) fn compute_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<DocumentNodeClickTargets> {
 		let Some(node_position) = self.position(node_id, network_path) else {
@@ -13,13 +90,8 @@ impl NodeNetworkInterface {
 			return None;
 		};
 		let node_metadata = self.node_metadata(node_id, network_path)?;
-		let Some(document_node) = self.document_node(node_id, network_path) else {
-			log::error!("Could not get document node in compute_node_click_targets");
-			return None;
-		};
-
+		let port_click_targets = self.compute_node_ports(node_id, network_path)?;
 		let node_top_left = node_position.as_dvec2() * GRID_SIZE as f64;
-		let mut port_click_targets = Ports::new();
 
 		// A redirect dot is centered on the grid point at the connector height of an ordinary node's first row.
 		// Its body also covers the gutters beside it holding its ports, so every press near it moves the dot unless it lands on an available port.
@@ -28,7 +100,6 @@ impl NodeNetworkInterface {
 			const DOT_HALF_HEIGHT: f64 = 8.;
 
 			let center = node_top_left + DVec2::new(0., GRID_SIZE as f64);
-			port_click_targets.insert_dot_ports(center);
 			let path = rounded_rectangle_path(
 				center - DVec2::new(DOT_HALF_WIDTH, DOT_HALF_HEIGHT),
 				center + DVec2::new(DOT_HALF_WIDTH, DOT_HALF_HEIGHT),
@@ -43,24 +114,6 @@ impl NodeNetworkInterface {
 		}
 
 		let document_node_click_targets = if !node_metadata.persistent_metadata.is_layer() {
-			let mut input_row_count = 0;
-			for (input_index, input) in document_node.inputs.iter().enumerate() {
-				if input.is_exposed() {
-					port_click_targets.insert_node_input(input_index, input_row_count, node_top_left);
-				}
-				// Primary input row is always displayed, even if the input is not exposed
-				if input_index == 0 || input.is_exposed() {
-					input_row_count += 1;
-				}
-			}
-
-			let number_of_outputs = self.number_of_outputs(node_id, network_path);
-			// If the node has a hidden primary output, do not display the first output
-			let start_index = if self.hidden_primary_output(node_id, network_path) { 1 } else { 0 };
-			for output_index in start_index..number_of_outputs {
-				port_click_targets.insert_node_output(output_index, node_top_left);
-			}
-
 			let height = self.displayed_row_count(node_id, network_path) as u32 * GRID_SIZE;
 			let width = 5 * GRID_SIZE;
 			// Offset down by half a grid so the click target sits below the top connector strip.
@@ -77,12 +130,6 @@ impl NodeNetworkInterface {
 				node_type_metadata: NodeTypeClickTargets::Node,
 			}
 		} else {
-			port_click_targets.insert_layer_input(0, node_top_left);
-			if document_node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
-				port_click_targets.insert_layer_input(1, node_top_left);
-			}
-			port_click_targets.insert_layer_output(node_top_left);
-
 			let layer_width_cells = self.layer_width(node_id, network_path).unwrap_or_else(|| {
 				log::error!("Could not get layer width in compute_node_click_targets");
 				0

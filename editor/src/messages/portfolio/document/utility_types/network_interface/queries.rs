@@ -264,8 +264,14 @@ impl NodeNetworkInterface {
 		layers
 	}
 
+	/// The width in grid cells of a layer's chain area: one cell plus a chain width per chained node, or zero for a layer without a displayed chain input.
 	pub fn chain_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
-		self.query(network_path, "chain_width", |view| Ok(view.chain_width(node_id))).unwrap_or_default()
+		if self.number_of_displayed_inputs(node_id, network_path) <= 1 {
+			return 0;
+		}
+
+		let chain_length = self.with_layout(network_path, |layout| layout.chain_length(node_id)).unwrap_or_default();
+		chain_length * NODE_CHAIN_WIDTH as u32 + 1
 	}
 
 	/// Check if the specified node id is connected to the output
@@ -466,7 +472,7 @@ impl NodeNetworkInterface {
 				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::layer_secondary_input(old_id), network_path) {
 					if let Some(node_template) = new_nodes.iter_mut().find_map(|(_, old_id, template)| (*old_id == valid_upstream_chain_node).then_some(template)) {
 						match &mut node_template.node_type_metadata {
-							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Chain,
+							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::chained(),
 							NodeTypePersistentMetadata::Layer(_) => log::error!("Node cannot be a layer"),
 						};
 					}
@@ -953,11 +959,30 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn is_chain(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		self.query(network_path, "is_chain", |view| view.is_chain(node_id)).unwrap_or_default()
+		self.with_layout(network_path, |layout| layout.chain_layer(node_id).is_some()).unwrap_or_default()
 	}
 
+	pub fn is_relative(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		self.query(network_path, "is_relative", |view| view.is_relative(node_id)).unwrap_or_default()
+	}
+
+	/// Whether the layer sits straight below the one layer reading it through its stack input.
 	pub fn is_stack(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		self.query(network_path, "is_stack", |view| view.is_stack(node_id)).unwrap_or_default()
+		self.stack_offset(node_id, network_path).is_some()
+	}
+
+	/// The rows a stacked layer sits below the gap under the layer reading it.
+	pub fn stack_offset(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<i32> {
+		let stack_offset = self.query(network_path, "stack_offset", |view| view.stack_offset(node_id)).flatten()?;
+
+		let read_by_one_stack_input = self
+			.with_outward_wires(network_path, |outward_wires| match outward_wires.get(&OutputConnector::primary_output(*node_id)).map(Vec::as_slice) {
+				Some([InputConnector::Node { node_id: reader, input_index: 0 }]) => self.is_layer(reader, network_path),
+				_ => false,
+			})
+			.unwrap_or_default();
+
+		read_by_one_stack_input.then_some(stack_offset)
 	}
 
 	/// Whether the node is an Artboard node by identity, regardless of whether it currently participates in the scene.

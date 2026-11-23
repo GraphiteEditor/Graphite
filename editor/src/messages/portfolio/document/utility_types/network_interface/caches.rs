@@ -30,8 +30,6 @@ impl NodeNetworkInterface {
 			let empty = current.selected_layers_except_artboards(self).next().is_none();
 			(current, previous, empty)
 		};
-		self.unload_stack_dependents(network_path);
-
 		let Some(history) = self.selection_history_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes_mut");
 			return None;
@@ -76,196 +74,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub(crate) fn stack_dependents(&mut self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
-		self.try_load_stack_dependents(network_path);
-		self.try_get_stack_dependents(network_path)
-	}
-
-	pub(crate) fn try_load_stack_dependents(&self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in try_load_stack_dependents");
-			return;
-		};
-
-		if !network_metadata.transient_metadata.stack_dependents.is_loaded() {
-			self.load_stack_dependents(network_path);
-		}
-	}
-
-	/// Reads the stack dependents through &self if they are already loaded.
-	pub(crate) fn with_stack_dependents_if_loaded<R>(&self, network_path: &[NodeId], read: impl FnOnce(&HashMap<NodeId, LayerOwner>) -> R) -> Option<R> {
-		self.network_metadata(network_path)?.transient_metadata.stack_dependents.with_loaded(read)
-	}
-
-	pub(crate) fn try_get_stack_dependents(&mut self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in try_get_stack_dependents");
-			return None;
-		};
-		let Some(stack_dependents) = transient.stack_dependents.get_loaded_mut() else {
-			log::error!("Could not load stack dependents in try_get_stack_dependents");
-			return None;
-		};
-		Some(stack_dependents)
-	}
-
-	// This function always has to be in sync with the selected nodes.
-	fn load_stack_dependents(&self, network_path: &[NodeId]) {
-		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
-			log::error!("Could not get selected nodes in load_stack_dependents");
-			return;
-		};
-		self.load_stack_dependents_for_nodes(selected_nodes.selected_nodes().cloned().collect(), network_path);
-	}
-
-	/// Builds the stack dependents as if `seed_nodes` were the selection, for shifts driven by a node set other than the selection.
-	pub(crate) fn load_stack_dependents_for_nodes(&self, seed_nodes: Vec<NodeId>, network_path: &[NodeId]) {
-		let mut selected_layers = seed_nodes.iter().filter(|node_id| self.is_layer(node_id, network_path)).copied().collect::<HashSet<_>>();
-
-		// Deselect all layers that are upstream of other selected layers
-		let mut removed_layers = Vec::new();
-		for layer in selected_layers.clone() {
-			if removed_layers.contains(&layer) {
-				continue;
-			}
-			for upstream_node in self.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::UpstreamFlow).skip(1) {
-				if selected_layers.remove(&upstream_node) {
-					removed_layers.push(upstream_node)
-				}
-			}
-		}
-
-		// Get a unique list of the top of each stack for each layer
-		let mut stack_tops = HashSet::new();
-
-		for layer in &selected_layers {
-			let mut current_node = *layer;
-			loop {
-				if self.is_layer(&current_node, network_path) && self.is_absolute(&current_node, network_path) {
-					stack_tops.insert(current_node);
-					break;
-				};
-				let Some(first_downstream_input) = self.with_outward_wires(network_path, |outward_wires| {
-					outward_wires
-						.get(&OutputConnector::primary_output(current_node))
-						.map(|layer_outward_wires| layer_outward_wires.first().copied())
-				}) else {
-					log::error!("Cannot load outward wires in load_stack_dependents_for_nodes");
-					return;
-				};
-				let Some(first_downstream_input) = first_downstream_input else {
-					log::error!("Could not get outward_wires for layer {current_node}");
-					break;
-				};
-				match first_downstream_input {
-					Some(downstream_input) => {
-						let Some(downstream_node) = downstream_input.node_id() else {
-							log::error!("Node connected to export should be absolute");
-							break;
-						};
-						current_node = downstream_node
-					}
-					None => break,
-				}
-			}
-		}
-
-		let mut stack_dependents = HashMap::new();
-		let mut owned_sole_dependents = HashSet::new();
-		// Loop through all layers below the stack_tops, and set sole dependents upstream from that layer to be owned by that layer. Ensure LayerOwner is kept in sync.
-		for stack_top in &stack_tops {
-			for upstream_stack_layer in self
-				.upstream_flow_back_from_nodes(vec![*stack_top], network_path, FlowType::PrimaryFlow)
-				.take_while(|upstream_node| self.is_layer(upstream_node, network_path))
-				.collect::<Vec<_>>()
-			{
-				for upstream_layer in self.upstream_flow_back_from_nodes(vec![upstream_stack_layer], network_path, FlowType::UpstreamFlow).collect::<Vec<_>>() {
-					if !self.is_layer(&upstream_layer, network_path) {
-						continue;
-					}
-					let mut new_owned_nodes = HashSet::new();
-					for layer_sole_dependent in &self.upstream_nodes_below_layer(&upstream_layer, network_path) {
-						stack_dependents.insert(*layer_sole_dependent, LayerOwner::Layer(upstream_layer));
-						owned_sole_dependents.insert(*layer_sole_dependent);
-						new_owned_nodes.insert(*layer_sole_dependent);
-					}
-					let Some(layer_node) = self.node_metadata(&upstream_layer, network_path) else {
-						log::error!("Could not get layer node in load_stack_dependents_for_nodes");
-						continue;
-					};
-					layer_node.transient_metadata.owned_nodes.store(new_owned_nodes);
-				}
-			}
-		}
-
-		// Set any sole dependents of the stack top that are not dependents of a layer in the stack to LayerOwner::None. These nodes will be pushed as blocks when a layer is shifted.
-		for stack_top in &stack_tops {
-			let mut sole_dependents = HashSet::new();
-			let mut not_sole_dependents = HashSet::new();
-			sole_dependents.insert(*stack_top);
-			for upstream_node in self.upstream_flow_back_from_nodes(vec![*stack_top], network_path, FlowType::UpstreamFlow).collect::<Vec<_>>() {
-				if sole_dependents.contains(&upstream_node) || not_sole_dependents.contains(&upstream_node) {
-					continue;
-				}
-
-				// A path terminates at an already-verified sole dependent, and fails fast through a known non-sole node
-				let is_sole_dependent = self.is_sole_dependent(upstream_node, network_path, |downstream_node, _| {
-					if not_sole_dependents.contains(&downstream_node) {
-						SoleDependentStep::Escape
-					} else if sole_dependents.contains(&downstream_node) {
-						SoleDependentStep::Terminate
-					} else {
-						SoleDependentStep::Continue
-					}
-				});
-
-				if is_sole_dependent {
-					sole_dependents.insert(upstream_node);
-				} else {
-					not_sole_dependents.insert(upstream_node);
-				}
-			}
-
-			for sole_dependent in sole_dependents {
-				if !owned_sole_dependents.contains(&sole_dependent) {
-					stack_dependents.insert(sole_dependent, LayerOwner::None);
-				}
-			}
-		}
-
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get current network in load_stack_dependents_for_nodes");
-			return;
-		};
-
-		network_metadata.transient_metadata.stack_dependents.store(stack_dependents);
-	}
-
-	pub fn unload_stack_dependents(&mut self, network_path: &[NodeId]) {
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in unload_stack_dependents");
-			return;
-		};
-		transient.stack_dependents.unload();
-
-		// Drag offsets are only meaningful relative to the stack dependents snapshot they were accumulated against, so they must not outlive it
-		transient.drag_offsets.borrow_mut().clear();
-	}
-
-	/// The vertical distance the node has been pushed from its resting position during the current drag.
-	pub(crate) fn drag_offset(&self, node_id: &NodeId, network_path: &[NodeId]) -> i32 {
-		self.network_metadata(network_path)
-			.map_or(0, |network_metadata| network_metadata.transient_metadata.drag_offsets.borrow().get(node_id).copied().unwrap_or(0))
-	}
-
-	pub(crate) fn add_drag_offset(&self, node_id: &NodeId, delta: i32, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in add_drag_offset");
-			return;
-		};
-		*network_metadata.transient_metadata.drag_offsets.borrow_mut().entry(*node_id).or_insert(0) += delta;
-	}
-
 	pub fn glide_offsets(&self, network_path: &[NodeId]) -> GlideOffsets {
 		self.network_metadata(network_path)
 			.map(|network_metadata| network_metadata.transient_metadata.glide_offsets.borrow().clone())
@@ -278,15 +86,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		*network_metadata.transient_metadata.glide_offsets.borrow_mut() = glide_offsets;
-	}
-
-	/// Discards all drag offsets when the drag ends.
-	pub fn clear_drag_offsets(&self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in clear_drag_offsets");
-			return;
-		};
-		network_metadata.transient_metadata.drag_offsets.borrow_mut().clear();
 	}
 
 	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
@@ -325,39 +124,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		transient.import_export_ports.unload();
-
-		// Always unload all wires connected to them as well
-		let number_of_imports = self.number_of_imports(network_path);
-		let Some(outward_wires) = self.outward_wires(network_path) else {
-			log::error!("Could not get outward wires in unload_import_export_ports");
-			return;
-		};
-		let mut input_connectors = Vec::new();
-		for import_index in 0..number_of_imports {
-			let Some(outward_wires_for_import) = outward_wires.get(&OutputConnector::Import(import_index)).cloned() else {
-				log::error!("Could not get outward wires for import in unload_import_export_ports");
-				return;
-			};
-			input_connectors.extend(outward_wires_for_import);
-		}
-		let Some(network) = self.nested_network(network_path) else {
-			return;
-		};
-		for export_index in 0..network.exports.len() {
-			input_connectors.push(InputConnector::Export(export_index));
-		}
-		for input in &input_connectors {
-			self.unload_wire(input, network_path);
-		}
-	}
-
-	/// Reads the owned nodes of a layer through &self if they are loaded.
-	pub(crate) fn with_owned_nodes_if_loaded<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&HashSet<NodeId>) -> R) -> Option<R> {
-		let layer_node = self.node_metadata(node_id, network_path)?;
-		if !layer_node.persistent_metadata.is_layer() {
-			return None;
-		}
-		layer_node.transient_metadata.owned_nodes.with_loaded(read)
 	}
 
 	pub fn all_nodes_bounding_box(&self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
@@ -627,51 +393,11 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn get_input_center(&self, input: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {
-		match input {
-			InputConnector::Node { node_id, input_index } => self
-				.with_node_click_targets(node_id, network_path, |click_targets| click_targets.port_click_targets.input_port_position(*input_index))
-				.flatten(),
-			InputConnector::Export(export_index) => self.with_import_export_ports(network_path, |ports| ports.input_port_position(*export_index)).flatten(),
-		}
+		self.input_position(input, network_path)
 	}
 
 	pub fn get_output_center(&self, output: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
-		match output {
-			OutputConnector::Node { node_id, output_index } => self
-				.with_node_click_targets(node_id, network_path, |click_targets| click_targets.port_click_targets.output_port_position(*output_index))
-				.flatten(),
-			OutputConnector::Import(import_index) => self.with_import_export_ports(network_path, |ports| ports.output_port_position(*import_index)).flatten(),
-		}
-	}
-
-	pub fn newly_loaded_input_wire(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
-		if !self.wire_is_loaded(input, network_path) {
-			self.load_wire(input, graph_wire_style, network_path);
-		} else {
-			return None;
-		}
-
-		let network_metadata = self.network_metadata(network_path)?;
-		let Some(wire) = network_metadata.transient_metadata.wires.borrow().get(input).cloned() else {
-			log::error!("Could not load wire for input: {input:?}");
-			return None;
-		};
-		Some(wire)
-	}
-
-	pub fn wire_is_loaded(&self, input: &InputConnector, network_path: &[NodeId]) -> bool {
-		self.network_metadata(network_path)
-			.is_some_and(|network_metadata| network_metadata.transient_metadata.wires.borrow().contains_key(input))
-	}
-
-	fn load_wire(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
-		let Some(wire_update) = self.wire_update_from_input(input, graph_wire_style, &GlideOffsets::default(), network_path) else {
-			log::error!("Could not load wire path from input");
-			return;
-		};
-
-		let Some(network_metadata) = self.network_metadata(network_path) else { return };
-		network_metadata.transient_metadata.wires.borrow_mut().insert(*input, wire_update);
+		self.output_position(output, network_path)
 	}
 
 	/// The wire into the input as the frontend draws it, with its ends following anything drawn gliding into place.
@@ -723,34 +449,6 @@ impl NodeNetworkInterface {
 			})
 			.chain(std::iter::once((NodeId(u64::MAX), u32::MAX as usize)))
 			.collect()
-	}
-
-	fn unload_wires_for_node(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
-		let number_of_outputs = self.number_of_outputs(node_id, network_path);
-		let Some(outward_wires) = self.outward_wires(network_path) else {
-			log::error!("Could not get outward wires in unload_wires_for_node");
-			return;
-		};
-		let mut input_connectors = Vec::new();
-		for output_index in 0..number_of_outputs {
-			let Some(inputs) = outward_wires.get(&OutputConnector::node(*node_id, output_index)) else {
-				continue;
-			};
-			input_connectors.extend(inputs.clone())
-		}
-		for input_index in 0..self.number_of_inputs(node_id, network_path) {
-			input_connectors.push(InputConnector::node_at_index(*node_id, input_index));
-		}
-		for input in input_connectors {
-			self.unload_wire(&input, network_path);
-		}
-	}
-
-	pub fn unload_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			return;
-		};
-		network_metadata.transient_metadata.wires.borrow_mut().remove(input);
 	}
 
 	/// The dashed wire from the previewed node to the export, drawn alongside the export's own wire.
@@ -850,92 +548,18 @@ impl NodeNetworkInterface {
 		})
 	}
 
-	pub fn node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeClickTargets> {
-		self.load_node_click_targets(node_id, network_path);
-
-		let transient = self.node_transient_mut(node_id, network_path)?;
-		let Some(click_targets) = transient.click_targets.get_loaded_mut() else {
-			log::error!("Could not load click targets in node_click_targets");
-			return None;
-		};
-		Some(click_targets)
+	/// The node's body, ports, and handles, built where it is drawn now.
+	pub fn node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<DocumentNodeClickTargets> {
+		self.compute_node_click_targets(node_id, network_path)
 	}
 
-	pub(crate) fn load_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) {
-		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get nested node_metadata in load_node_click_targets");
-			return;
-		};
-		node_metadata.transient_metadata.click_targets.ensure_loaded(|| self.compute_node_click_targets(node_id, network_path));
-	}
-
-	/// Loads the node click targets if needed, then reads them through &self.
 	pub(crate) fn with_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
-		self.node_metadata(node_id, network_path)?
-			.transient_metadata
-			.click_targets
-			.with_loaded_or(|| self.compute_node_click_targets(node_id, network_path), read)
-	}
-
-	/// Reads the node click targets through &self if they are already loaded.
-	pub(crate) fn with_node_click_targets_if_loaded<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
-		let node_metadata = self.node_metadata(node_id, network_path)?;
-		let result = node_metadata.transient_metadata.click_targets.with_loaded(read);
-		if result.is_none() {
-			log::error!("Could not load click targets in with_node_click_targets_if_loaded");
-		}
-		result
+		self.compute_node_click_targets(node_id, network_path).as_ref().map(read)
 	}
 
 	pub fn node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		self.with_node_click_targets(node_id, network_path, |click_targets| click_targets.node_click_target.bounding_box())
 			.flatten()
-	}
-
-	/// The bounding box only if the click targets are already loaded, for a caller that is walking many
-	/// nodes and cannot afford to load each one it looks at.
-	pub fn try_get_node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		self.with_node_click_targets_if_loaded(node_id, network_path, |click_targets| click_targets.node_click_target.bounding_box())
-			.flatten()
-	}
-
-	pub fn load_all_node_click_targets(&self, network_path: &[NodeId]) {
-		let Some(network) = self.nested_network(network_path) else {
-			log::error!("Could not get network in load_all_node_click_targets");
-			return;
-		};
-		for node_id in network.nodes.keys().cloned().collect::<Vec<_>>() {
-			self.load_node_click_targets(&node_id, network_path);
-		}
-	}
-
-	pub fn unload_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
-		let Some(transient) = self.node_transient_mut(node_id, network_path) else {
-			log::error!("Could not get nested node_metadata in unload_node_click_targets");
-			return;
-		};
-		transient.click_targets.unload();
-		self.unload_wires_for_node(node_id, network_path);
-	}
-
-	pub fn unload_upstream_node_click_targets(&mut self, node_ids: Vec<NodeId>, network_path: &[NodeId]) {
-		let upstream_nodes = self.upstream_flow_back_from_nodes(node_ids, network_path, FlowType::UpstreamFlow).collect::<Vec<_>>();
-
-		for upstream_id in &upstream_nodes {
-			self.unload_node_click_targets(upstream_id, network_path);
-		}
-	}
-
-	pub fn unload_all_nodes_click_targets(&mut self, network_path: &[NodeId]) {
-		let Some(network) = self.nested_network(network_path) else {
-			log::error!("Could not get nested network in unload_all_nodes_click_targets");
-			return;
-		};
-		let upstream_nodes = network.nodes.keys().cloned().collect::<Vec<_>>();
-
-		for upstream_id in &upstream_nodes {
-			self.unload_node_click_targets(upstream_id, network_path);
-		}
 	}
 }
 

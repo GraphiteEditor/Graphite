@@ -35,11 +35,7 @@ impl Stack<'_> {
 
 	fn layer_above(&self, node: NodeIndex) -> Option<NodeIndex> {
 		let stored = &self.graph[node];
-		let placed_in_a_stack = match stored.placement {
-			Placement::Stack(_) => true,
-			Placement::Relative(offset) => offset.x == 0,
-			Placement::Absolute(_) | Placement::Chain => false,
-		};
+		let placed_in_a_stack = matches!(stored.placement, Placement::Relative(offset) if offset.x == 0);
 		if !stored.is_layer() || !placed_in_a_stack {
 			return None;
 		}

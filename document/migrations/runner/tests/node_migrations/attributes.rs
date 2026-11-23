@@ -2,7 +2,7 @@
 
 use document_graph_storage::attr::node::ui::{DISPLAY_NAME, POSITION};
 use document_graph_storage::{NodeId, NodeInput, Position, Value, to_value};
-use migration_core::{Attributes, CHAIN_WIDTH, Downstream, FEEDER_ROW_HEIGHT, Inputs, NewNode, Node, Upstream, decl, migration};
+use migration_core::{Attributes, CHAIN_WIDTH, Downstream, FEEDER_ROW_HEIGHT, Inputs, NewNode, Node, OutputConnector, Upstream, decl, migration};
 use migration_runner::RunnerError;
 use migration_runner::testing::Fixture;
 
@@ -50,6 +50,22 @@ pub fn placed(node: &Node, inputs: &mut Inputs, upstream: &mut Upstream) {
 		"near",
 	);
 	inputs.set(0, wire(near));
+}
+
+/// Puts a node of its own between the anchor and each slot reading it.
+#[migration("attributes::interposed"@1 => @2)]
+pub fn interposed(node: &Node, downstream: &mut Downstream) {
+	for (index, consumer) in downstream.consumers(0).into_iter().enumerate() {
+		let inputs = vec![NodeInput::Node { id: node.id(), index: 0 }];
+		let added = downstream.add_node_keyed(
+			NewNode {
+				declaration: decl!("math_nodes::add"@1),
+				inputs,
+			},
+			&index.to_string(),
+		);
+		downstream.connect(OutputConnector { node: added, output: 0 }, consumer);
+	}
 }
 
 fn set_name(fixture: &mut Fixture, node: NodeId, name: &str) {
@@ -112,17 +128,16 @@ fn a_name_given_by_the_user_is_kept() {
 fn added_nodes_lead_up_to_a_placed_anchor() {
 	let [far, near, below] = placed_around(Position::Absolute([20, 10]));
 
-	assert_eq!(far, Some(Position::Absolute([20 - 2 * CHAIN_WIDTH, 10])));
-	assert_eq!(near, Some(Position::Absolute([20 - CHAIN_WIDTH, 10])));
-	assert_eq!(below, Some(Position::Absolute([20 - 2 * CHAIN_WIDTH, 10 + FEEDER_ROW_HEIGHT])));
+	assert_eq!([far, near], [Some(Position::Relative([-CHAIN_WIDTH, 0])); 2]);
+	assert_eq!(below, Some(Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT])));
 }
 
 #[test]
-fn added_nodes_join_a_chained_anchors_chain() {
-	let [far, near, below] = placed_around(Position::Chain);
+fn added_nodes_lead_up_to_a_chained_anchor() {
+	let [far, near, below] = placed_around(Position::Relative([-CHAIN_WIDTH, 0]));
 
-	assert_eq!([far, near], [Some(Position::Chain); 2]);
-	assert_eq!(below, None);
+	assert_eq!([far, near], [Some(Position::Relative([-CHAIN_WIDTH, 0])); 2]);
+	assert_eq!(below, Some(Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT])));
 }
 
 #[test]
@@ -134,4 +149,24 @@ fn writing_another_nodes_attributes_fails() {
 
 	let error = fixture.migrate(migration).unwrap_err();
 	assert!(matches!(error, RunnerError::AttributesOutsideRegion { node, .. } if node == other), "{error}");
+}
+
+#[test]
+fn added_nodes_feeding_the_same_consumer_sit_in_rows_below_each_other() {
+	let migration = &Interposed;
+	let mut fixture = Fixture::new(migration);
+	let anchor = fixture.add(decl!("attributes::interposed"@1), vec![]);
+	let consumer = fixture.add(decl!("math_nodes::add"@1), vec![wire(anchor), wire(anchor)]);
+
+	let migrated = fixture.migrate(migration).unwrap();
+	let positions: Vec<Option<Position>> = fixture
+		.inputs(&migrated, consumer)
+		.iter()
+		.map(|input| match input {
+			NodeInput::Node { id, .. } => migrated.node_instances[id].attributes().get_typed::<Position>(POSITION),
+			_ => None,
+		})
+		.collect();
+
+	assert_eq!(positions, [1, 2].map(|row| Some(Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT * row]))));
 }

@@ -4,7 +4,9 @@
 //!
 //! Shared fixtures live in [`test_support`].
 
+mod layout_pass_tests;
 mod lifecycle_tests;
 mod metadata_tests;
+mod relative_positions_tests;
 mod round_trip_tests;
 pub(crate) mod test_support;

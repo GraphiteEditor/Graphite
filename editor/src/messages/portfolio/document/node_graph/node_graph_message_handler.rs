@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, NodeInspectorContext, resolve_document_node_type, resolve_network_node_type};
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeEvaluationError, NodeGraphErrorDiagnostic};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType, NodeEvaluationError, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
@@ -31,7 +31,6 @@ use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezp
 use graphene_std::*;
 use kurbo::{DEFAULT_ACCURACY, Shape};
 use renderer::Quad;
-use std::cmp::Ordering;
 
 #[derive(Debug, ExtractField)]
 pub struct NodeGraphMessageContext<'a> {
@@ -89,8 +88,7 @@ pub struct NodeGraphMessageHandler {
 	pub box_selection_start: Option<(DVec2, bool)>,
 	/// Restore the selection before box selection if it is aborted
 	pub selection_before_pointer_down: Vec<NodeId>,
-	/// If the grip icon is held during a drag, then shift without pushing other nodes
-	shift_without_push: bool,
+	keep_upstream_in_place: bool,
 	disconnecting: Option<InputConnector>,
 	initial_disconnecting: bool,
 	/// Node to select on pointer up if multiple nodes are selected and they were not dragged.
@@ -137,8 +135,7 @@ pub struct NodeGraphMessageHandler {
 	end_index: Option<usize>,
 	/// The nodes the frontend currently knows about
 	frontend_nodes: Vec<FrontendNode>,
-	/// Used to keep track of what wires are sent to the frontend so the old ones can be removed
-	frontend_wires: HashSet<(NodeId, usize)>,
+	frontend_wires: HashMap<(NodeId, usize), WirePath>,
 	evaluation_errors: Vec<NodeEvaluationError>,
 }
 
@@ -805,7 +802,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Shift the nodes back to the origin
 				responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 					graph_delta: -center_of_selected_nodes_grid_space - IVec2::new(2, 2),
-					rubber_band: false,
 					glide: false,
 				});
 
@@ -940,13 +936,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 
-				if network_interface
-					.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Grip, selection_network_path)
-					.is_some()
-				{
-					self.shift_without_push = true;
-				}
-
 				let clicked_id = network_interface.node_from_click(click, selection_network_path);
 				let clicked_input = network_interface.input_port_from_click(click, selection_network_path);
 				let clicked_output = network_interface.output_port_from_click(click, selection_network_path);
@@ -963,6 +952,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// Abort dragging a node
 					if self.drag_start.is_some() {
 						self.drag_start = None;
+						network_interface.cancel_drag(selection_network_path);
 						self.select_if_not_dragged = None;
 						self.nodes_added_in_drag = false;
 						self.clear_wire_insertion_preview(responses);
@@ -1285,8 +1275,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let drag_start = DragStart {
 							start_x: node_graph_point.x,
 							start_y: node_graph_point.y,
-							round_x: 0,
-							round_y: 0,
+							stored: IVec2::ZERO,
 						};
 
 						self.drag_start = Some((drag_start, false));
@@ -1460,7 +1449,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
 							responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 								graph_delta: IVec2::new(-2, -2),
-								rubber_band: false,
 								glide: false,
 							});
 							self.preview_on_mouse_up = None;
@@ -1468,22 +1456,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						}
 					}
 
-					let mut graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
-					let previous_round_x = drag_start.round_x;
-					let previous_round_y = drag_start.round_y;
+					self.keep_upstream_in_place = ipp.keyboard.get(Key::Control as usize);
 
-					drag_start.round_x = graph_delta.x;
-					drag_start.round_y = graph_delta.y;
+					let reached = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
+					let offset = reached - drag_start.stored;
+					let previous_offset = network_interface.drag_preview(selection_network_path).0;
 
-					graph_delta.x -= previous_round_x;
-					graph_delta.y -= previous_round_y;
-
-					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
-						graph_delta,
-						rubber_band: true,
-						glide: true,
-					});
-					if graph_delta != IVec2::ZERO {
+					responses.add(NodeGraphMessage::DragSelectedNodes { offset });
+					if offset != previous_offset {
 						self.node_has_moved_in_drag = true;
 
 						// Queued after the shift so it reads where the node has come to rest
@@ -1664,10 +1644,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 				// End of dragging a node
 				else if let Some((drag_start, _)) = &self.drag_start {
-					self.shift_without_push = false;
+					self.keep_upstream_in_place = false;
+					network_interface.finish_drag(selection_network_path);
 
-					// Reset all offsets to end the rubber banding while dragging
-					network_interface.clear_drag_offsets(selection_network_path);
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerUp");
 						return;
@@ -1735,6 +1714,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				self.drag_start = None;
+				network_interface.finish_drag(selection_network_path);
 				self.begin_dragging = false;
 				self.nodes_added_in_drag = false;
 				self.clear_wire_insertion_preview(responses);
@@ -1821,10 +1801,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Collect the distance to move the shaken nodes after the undo
 				let graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
 
-				if !self.nodes_added_in_drag {
-					// Keep the incremental rounding baseline in sync with the total shift reapplied below
-					drag_start.round_x = graph_delta.x;
-					drag_start.round_y = graph_delta.y;
+				if self.nodes_added_in_drag {
+					drag_start.stored += network_interface.drag_preview(selection_network_path).0;
+					network_interface.finish_drag(selection_network_path);
+				} else {
+					network_interface.cancel_drag(selection_network_path);
+					drag_start.stored = graph_delta;
 
 					// Undo to the state of the graph before shaking (skipped when the drag added its nodes, which the undo would remove)
 					responses.add(DocumentMessage::AbortTransaction);
@@ -1925,11 +1907,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// }
 				}
 				if !self.nodes_added_in_drag {
-					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
-						graph_delta,
-						rubber_band: false,
-						glide: false,
-					});
+					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, glide: false });
 				}
 				// A dot left with nothing to carry, like one fed by a shaken generator, goes along with its wire
 				responses.add(NodeGraphMessage::RemoveOrphanedDots);
@@ -2039,10 +2017,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}),
 			NodeGraphMessage::EndSendClickTargets => responses.add(FrontendMessage::UpdateClickTargets { click_targets: None }),
 			NodeGraphMessage::UnloadWires => {
-				for input in network_interface.node_graph_input_connectors(breadcrumb_network_path) {
-					network_interface.unload_wire(&input, breadcrumb_network_path);
-				}
-
+				self.frontend_wires.clear();
 				responses.add(FrontendMessage::ClearAllNodeGraphWires);
 			}
 			NodeGraphMessage::SendWires => {
@@ -2197,83 +2172,51 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::NudgeSelectedNodes { direction } => {
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::ShiftSelectedNodes {
-					direction,
-					rubber_band: false,
-					glide: true,
-				});
+				responses.add(NodeGraphMessage::ShiftSelectedNodes { direction, glide: true });
 				responses.add(DocumentMessage::EndTransaction);
 			}
-			NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band, glide } => {
-				// The shift can also push other nodes and the imports and exports, so everything it moves glides to where it lands
+			NodeGraphMessage::ShiftSelectedNodes { direction, glide } => {
+				responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
+					graph_delta: direction.offset(),
+					glide,
+				});
+			}
+			NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, glide } => {
 				let positions_before = (glide && graph_view_overlay_open).then(|| Self::glide_positions(network_interface, selection_network_path));
 
-				network_interface.shift_selected_nodes(direction, self.shift_without_push, selection_network_path);
-
-				if !rubber_band {
-					network_interface.clear_drag_offsets(selection_network_path);
-				}
+				network_interface.shift_selected_nodes(graph_delta, self.keep_upstream_in_place, selection_network_path);
 
 				if let Some(positions_before) = positions_before {
 					self.begin_glide(positions_before, network_interface, selection_network_path, responses);
 					responses.add(NodeGraphMessage::SendGlide);
 				}
 
+				responses.add(NodeGraphMessage::SendWires);
 				if graph_view_overlay_open {
-					if !rubber_band {
-						responses.add(NodeGraphMessage::SendGraph);
-					}
+					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 				}
 			}
-			NodeGraphMessage::ShiftSelectedNodesByAmount { mut graph_delta, rubber_band, glide } => {
-				let moved = graph_delta != IVec2::ZERO;
-				while graph_delta != IVec2::ZERO {
-					match graph_delta.x.cmp(&0) {
-						Ordering::Greater => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Right,
-								rubber_band,
-								glide,
-							});
-							graph_delta.x -= 1;
-						}
-						Ordering::Less => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Left,
-								rubber_band,
-								glide,
-							});
-							graph_delta.x += 1;
-						}
-						Ordering::Equal => {}
-					}
+			NodeGraphMessage::DragSelectedNodes { offset } => {
+				let keep_upstream = self.keep_upstream_in_place;
+				if network_interface.drag_preview(selection_network_path) == (offset, keep_upstream) {
+					return;
+				}
 
-					match graph_delta.y.cmp(&0) {
-						Ordering::Greater => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Down,
-								rubber_band,
-								glide,
-							});
-							graph_delta.y -= 1;
-						}
-						Ordering::Less => {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Up,
-								rubber_band,
-								glide,
-							});
-							graph_delta.y += 1;
-						}
-						Ordering::Equal => {}
-					}
+				let positions_before = graph_view_overlay_open.then(|| Self::glide_positions(network_interface, selection_network_path));
+				network_interface.drag_selected_nodes(offset, keep_upstream, selection_network_path);
+
+				if let Some(positions_before) = positions_before {
+					self.begin_glide(positions_before, network_interface, selection_network_path, responses);
+					responses.add(NodeGraphMessage::SendGlide);
 				}
 
 				responses.add(NodeGraphMessage::SendWires);
-				if rubber_band && moved {
+				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendNodePositions);
+					responses.add(DocumentMessage::RenderRulers);
+					responses.add(DocumentMessage::RenderScrollbars);
 				}
 			}
 			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
@@ -2293,7 +2236,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::ShiftNodePosition { node_id, x, y } => {
-				network_interface.shift_absolute_node_position(&node_id, IVec2::new(x, y), selection_network_path);
+				network_interface.shift_node(&node_id, IVec2::new(x, y), selection_network_path);
 
 				responses.add(NodeGraphMessage::SendWires);
 			}
@@ -2689,35 +2632,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				node_graph_errors,
 				node_graph_warnings,
 			} => {
-				// Hidden passthrough nodes let a wire borrow its color and rank from an upstream node, so any type change can restyle wires whose own node is unchanged.
-				// Compare each displayed wire's style (color, rank) across the update and unload only those that changed, so value-only recompiles keep their built wire paths.
-				let types_changed = !resolved_types.add.is_empty() || !resolved_types.remove.is_empty();
-				let wire_style = |network_interface: &mut NodeNetworkInterface, input: &InputConnector| {
-					network_interface.upstream_output_connector(input, breadcrumb_network_path).map(|output| {
-						let output_type = network_interface.output_type(&output, breadcrumb_network_path);
-						(output_type.displayed_type(), output_type.is_list())
-					})
-				};
-				let styles_before = types_changed.then(|| {
-					network_interface
-						.node_graph_input_connectors(breadcrumb_network_path)
-						.into_iter()
-						.map(|input| {
-							let style = wire_style(network_interface, &input);
-							(input, style)
-						})
-						.collect::<Vec<_>>()
-				});
-
 				network_interface.resolved_types.update(resolved_types, node_graph_errors, node_graph_warnings);
-
-				if let Some(styles_before) = styles_before {
-					for (input, style_before) in styles_before {
-						if wire_style(network_interface, &input) != style_before {
-							network_interface.unload_wire(&input, breadcrumb_network_path);
-						}
-					}
-				}
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -2873,8 +2788,7 @@ impl NodeGraphMessageHandler {
 		let drag_start = DragStart {
 			start_x: start.x,
 			start_y: start.y,
-			round_x: moved.x,
-			round_y: moved.y,
+			stored: moved,
 		};
 		self.drag_start = Some((drag_start, moved != IVec2::ZERO));
 		self.drag_start_chain_nodes = Vec::new();
@@ -3826,26 +3740,28 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn collect_wires(&mut self, network_interface: &mut NodeNetworkInterface, graph_wire_style: GraphWireStyle, breadcrumb_network_path: &[NodeId]) -> Vec<WirePathUpdate> {
-		let mut added_wires = network_interface
+		let drawn_wires: HashMap<(NodeId, usize), WirePath> = network_interface
 			.node_graph_input_connectors(breadcrumb_network_path)
 			.iter()
-			.filter_map(|connector| network_interface.newly_loaded_input_wire(connector, graph_wire_style, breadcrumb_network_path))
-			.collect::<Vec<_>>();
+			.filter_map(|connector| network_interface.wire_update_from_input(connector, graph_wire_style, &GlideOffsets::default(), breadcrumb_network_path))
+			.filter_map(|update| Some(((update.id, update.input_index), update.wire_path_update?)))
+			.collect();
 
-		let changed_wire_inputs = added_wires.iter().map(|update| (update.id, update.input_index)).collect::<Vec<_>>();
-		self.frontend_wires.extend(changed_wire_inputs);
-
-		let mut orphaned_wire_inputs = self.frontend_wires.clone();
-		self.frontend_wires = network_interface
-			.node_graph_wire_inputs(breadcrumb_network_path)
-			.iter()
-			.filter_map(|visible_wire_input| orphaned_wire_inputs.take(visible_wire_input))
-			.collect::<HashSet<_>>();
-		added_wires.extend(orphaned_wire_inputs.into_iter().map(|(id, input_index)| WirePathUpdate {
-			id,
-			input_index,
+		let removed_wires = self.frontend_wires.keys().filter(|wire| !drawn_wires.contains_key(wire)).map(|(id, input_index)| WirePathUpdate {
+			id: *id,
+			input_index: *input_index,
 			wire_path_update: None,
-		}));
+		});
+		let changed_wires = drawn_wires
+			.iter()
+			.filter(|(wire, path)| self.frontend_wires.get(wire) != Some(path))
+			.map(|((id, input_index), path)| WirePathUpdate {
+				id: *id,
+				input_index: *input_index,
+				wire_path_update: Some(path.clone()),
+			});
+		let mut added_wires: Vec<WirePathUpdate> = removed_wires.chain(changed_wires).collect();
+		self.frontend_wires = drawn_wires;
 
 		if let Some(wire_to_preview) = network_interface.wire_to_preview(graph_wire_style, &GlideOffsets::default(), breadcrumb_network_path) {
 			added_wires.push(wire_to_preview);
@@ -4183,7 +4099,7 @@ impl Default for NodeGraphMessageHandler {
 			latest_left_press: None,
 			double_click_used_by_press: false,
 			dot_drag_out: None,
-			shift_without_push: false,
+			keep_upstream_in_place: false,
 			box_selection_start: None,
 			drag_start_chain_nodes: Vec::new(),
 			wire_insertion_preview: None,
@@ -4213,7 +4129,7 @@ impl Default for NodeGraphMessageHandler {
 			reordering_import: None,
 			end_index: None,
 			frontend_nodes: Vec::new(),
-			frontend_wires: HashSet::new(),
+			frontend_wires: HashMap::new(),
 			evaluation_errors: Vec::new(),
 		}
 	}

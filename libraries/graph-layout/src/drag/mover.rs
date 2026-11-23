@@ -61,8 +61,10 @@ impl Mover {
 
 		let layout = self.layout();
 		let owned: Vec<NodeIndex> = layout.owners.indices().filter(|node| layout.owners[*node].is_some_and(|owner| newly_held.contains(&owner))).collect();
-		let carriers: Vec<NodeIndex> = newly_held.iter().flat_map(|node| layout.owner_chain(*node)).collect();
-		let drawn_before: Vec<(NodeIndex, IVec2)> = newly_held.iter().chain(&owned).map(|node| (*node, layout.positions[*node])).collect();
+		let mut carriers: Vec<NodeIndex> = newly_held.iter().flat_map(|node| layout.owner_chain(*node)).filter(|carrier| !newly_held.contains(carrier)).collect();
+		carriers.sort_by_key(|carrier| (layout.owner_chain(*carrier).count(), *carrier));
+		carriers.dedup();
+		let drawn_before: Vec<(NodeIndex, IVec2)> = carriers.iter().chain(&newly_held).chain(&owned).map(|node| (*node, layout.positions[*node])).collect();
 		let holding_moves_something = newly_held.iter().chain(&owned).chain(&carriers).any(|node| layout.elongations[*node] != IVec2::ZERO);
 
 		for node in &newly_held {

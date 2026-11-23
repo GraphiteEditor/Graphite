@@ -79,7 +79,7 @@ The function runs once per **anchor**: a node of the source declaration. The run
 
 `Inputs` operations apply in order to the target layout being built. `node.inputs()` is always the source layout. Reads through a mutable view (such as `Downstream::consumers`) also see the source state, so nodes added by the migration never appear among the anchor's consumers.
 
-The runner places added nodes from the anchor's own position. Nodes leading up to the anchor's chain input form a row, or join the chain when the anchor is chained or a layer. Other nodes feeding the anchor or that row sit below the first one reading them, and the rest sit on the anchor. A chained anchor has no coordinates of its own, so only its chain is placed, and an anchor with no stored position gets nothing placed. A migration overrides these positions, or clears a stored name that no longer fits the anchor, through `Attributes`.
+The runner places added nodes relative to the nodes reading them. Nodes leading up to the anchor's chain input form a row one chain width apart, which joins the chain when the anchor is chained or a layer. Each other node that feeds a node, whether one this run adds or one it connects to, gets a `Position::Relative` offset in a row below the others feeding that node, so it needs no coordinates of the anchor. A node that feeds nothing sits on the anchor, and gets nothing placed when the anchor has no stored coordinates. A migration overrides these positions, or clears a stored name that no longer fits the anchor, through `Attributes`.
 
 A migration addresses declarations with `decl!`, values with a frozen mirror of the value variants it uses, and connections with plain connector types:
 
@@ -541,7 +541,7 @@ document/migrations/
 - **Input attributes of inserted nodes.** `NewNode` takes bare `NodeInput`s, so inserted nodes start with empty per-input attributes. Taking `InputSlot`s would let a migration carry them over.
 - **Removal safety.** `Upstream::remove_node` is only correct when nothing else reads the removed node, which the region system can't check.
 - **`unrepresentable` in CI.** Whether reaching it in the commutation test fails CI outright.
-- **Layout.** Migrations position the nodes they add and can move the anchor, but can't move other existing nodes, so an inserted node can overlap what sits upstream. Positions stored relative to each node's consumers would move the upstream without writing it.
+- **Layout.** Migrations position the nodes they add and can move the anchor, but can't move other existing nodes, so an inserted node can overlap what sits upstream. Storing every node's position relative to its consumers, as `Position::Relative` does for the nodes migrations add, would move the upstream without writing it.
 - **Multiple pending migrations.** Whether consecutive pending node migrations run as separate rewrite passes or are fused into one replay.
 - **Migrations reading a subgraph.** A migration that inspects an instance's inner nodes depends on their versions, which change independently of the definition's. The planned answer is a cascading bump: the API dump lists a definition's inner `identifier@version`s, so bumping an inner node also requires bumping every definition containing it, and pins order that node's migrations around the definition's. Nothing reads a subgraph yet, so neither a read view for it nor the cascading bump exists.
 - **Detaching.** Whether a migration may clear an edited instance's reference, keeping it as a custom subgraph, instead of collapsing it.

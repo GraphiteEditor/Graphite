@@ -5,6 +5,7 @@ use std::hint::black_box;
 
 const SIZES: [u32; 3] = [1_000, 10_000, 100_000];
 const BESIDE: IVec2 = IVec2::new(-7, 0);
+const STACKED: IVec2 = IVec2::new(0, 3);
 
 type GraphShape = fn(u32) -> Graph;
 
@@ -70,8 +71,8 @@ fn fan_in(node_count: u32) -> Graph {
 
 fn stacked_layers(node_count: u32) -> Graph {
 	let layers = node_count / 4;
-	let stacked_layer = |index: u32| layer(if index == 0 { Placement::Absolute(IVec2::ZERO) } else { Placement::Stack(0) });
-	let chain = |_| [node(Placement::Chain), node(Placement::Chain), node(Placement::Chain)];
+	let stacked_layer = |index: u32| layer(if index == 0 { Placement::Absolute(IVec2::ZERO) } else { Placement::Relative(STACKED) });
+	let chain = |_| [node(Placement::Relative(BESIDE)), node(Placement::Relative(BESIDE)), node(Placement::Relative(BESIDE))];
 	let stack_wires = |index: u32| (index > 0).then(|| wire(4 * index, 4 * (index - 1), 0));
 	let chain_wires = |index: u32| [wire(4 * index + 1, 4 * index, 1), wire(4 * index + 2, 4 * index + 1, 0), wire(4 * index + 3, 4 * index + 2, 0)];
 

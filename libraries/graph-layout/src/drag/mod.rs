@@ -3,7 +3,7 @@ mod mover;
 mod shift;
 mod stack;
 
-use crate::{Graph, Layout, NodeIndex};
+use crate::{Graph, Layout, NodeIndex, Placement};
 use glam::IVec2;
 use mover::Mover;
 
@@ -14,19 +14,55 @@ pub struct Drag {
 	dragged: Vec<NodeIndex>,
 	keep_upstream: bool,
 	rows_up: Vec<Graph>,
+	held_in_place: Vec<HeldInPlace>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct HeldInPlace {
+	node: NodeIndex,
+	stored: Placement,
+	held: Placement,
 }
 
 impl Drag {
 	/// Holds the `dragged` nodes of `start`. With `keep_upstream`, nodes only carried along by them stay where they are drawn.
 	#[must_use]
 	pub fn new(start: Graph, start_layout: Layout, dragged: Vec<NodeIndex>, keep_upstream: bool) -> Self {
+		let stored: Vec<Placement> = start.nodes.iter().map(|node| node.placement).collect();
 		let mut mover = Mover::new(start, Some(start_layout));
 		mover.hold(&dragged);
+		let held = mover.into_graph();
+
+		let held_in_place = held
+			.node_indices()
+			.zip(stored)
+			.filter(|(node, stored)| held[*node].placement != *stored)
+			.map(|(node, stored)| HeldInPlace {
+				node,
+				stored,
+				held: held[node].placement,
+			})
+			.collect();
 		Self {
 			dragged,
 			keep_upstream,
-			rows_up: vec![mover.into_graph()],
+			rows_up: vec![held],
+			held_in_place,
 		}
+	}
+
+	/// The graph to store once the drag ends `offset` grid cells from its start. Nodes the drag only held in place go back to how they were stored.
+	pub fn released(&mut self, offset: IVec2) -> Graph {
+		let (mut graph, _) = self.moved(offset);
+		for node in &mut graph.nodes {
+			node.held = false;
+		}
+		for HeldInPlace { node, stored, held } in &self.held_in_place {
+			if graph[*node].placement == *held {
+				graph[*node].placement = *stored;
+			}
+		}
+		graph
 	}
 
 	/// The graph as stored and its layout once the dragged nodes are moved `offset` grid cells.

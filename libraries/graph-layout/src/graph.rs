@@ -35,20 +35,28 @@ impl From<NodeIndex> for u32 {
 pub enum Placement {
 	/// At this position, starting a tree of its own.
 	Absolute(IVec2),
-	/// One chain width left of the node reading it through its chain input.
-	Chain,
-	/// Below the layer reading it, past that layer's height, the empty row it keeps below it, and a gap of this many rows.
-	Stack(u32),
 	/// At this offset from the left of the nodes reading it, level with the highest of them.
 	Relative(IVec2),
 }
 
 impl Placement {
-	pub(crate) fn shifted(self, shift: IVec2) -> Option<Self> {
+	pub(crate) fn shifted(self, shift: IVec2) -> Self {
 		match self {
-			Self::Absolute(position) => Some(Self::Absolute(position + shift)),
-			Self::Relative(offset) => Some(Self::Relative(offset + shift)),
-			Self::Chain | Self::Stack(_) => None,
+			Self::Absolute(position) => Self::Absolute(position + shift),
+			Self::Relative(offset) => Self::Relative(offset + shift),
+		}
+	}
+
+	pub(crate) fn stored_offset(self) -> IVec2 {
+		match self {
+			Self::Absolute(_) => IVec2::ZERO,
+			Self::Relative(offset) => offset,
+		}
+	}
+
+	pub(crate) fn root_position(self) -> IVec2 {
+		match self {
+			Self::Absolute(position) | Self::Relative(position) => position,
 		}
 	}
 }
@@ -86,22 +94,6 @@ impl Node {
 
 	pub(crate) fn can_join_chain(&self) -> bool {
 		self.chainable && self.kind == NodeKind::Node
-	}
-
-	pub(crate) fn root_position(&self) -> IVec2 {
-		match self.placement {
-			Placement::Absolute(position) | Placement::Relative(position) => position,
-			Placement::Chain | Placement::Stack(_) => IVec2::ZERO,
-		}
-	}
-
-	pub(crate) fn stored_offset(&self, owner: &Node) -> IVec2 {
-		match self.placement {
-			Placement::Relative(offset) => offset,
-			Placement::Chain => CHAIN_OFFSET,
-			Placement::Stack(gap) => IVec2::new(0, owner.size.y + LAYER_BOTTOM_GAP + gap.cast_signed()),
-			Placement::Absolute(_) => IVec2::ZERO,
-		}
 	}
 
 	pub(crate) fn outline(&self) -> Option<Rect> {

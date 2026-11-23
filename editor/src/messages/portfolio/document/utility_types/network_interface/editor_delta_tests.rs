@@ -101,6 +101,11 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 	let a = editor.create_node_by_name(rectangle_definition()).await;
 	let b = editor.create_node_by_name(rectangle_definition()).await;
 
+	editor
+		.active_document_mut()
+		.network_interface
+		.set_input(&InputConnector::node_at_index(a, 2), NodeInput::node(b, 0), &[]);
+
 	let working = convert(&editor);
 	let wire = NodeInput::node(b, 0);
 	editor.active_document_mut().network_interface.set_input(&InputConnector::node_at_index(a, 1), wire.clone(), &[]);

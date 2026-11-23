@@ -1,7 +1,14 @@
 #![allow(dead_code, reason = "Each test file uses a different part of the shared builders")]
 
 use glam::IVec2;
-use graph_layout::{Graph, Layout, Node, NodeIndex, NodeKind, Placement, Wire};
+use graph_layout::{CHAIN_WIDTH, Graph, Layout, Node, NodeIndex, NodeKind, Placement, Wire};
+
+pub const LAYER_HEIGHT: i32 = 2;
+pub const CHAINED: Placement = Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0));
+
+pub fn stacked(gap: i32) -> Placement {
+	Placement::Relative(IVec2::new(0, LAYER_HEIGHT + 1 + gap))
+}
 
 pub fn node(placement: Placement) -> Node {
 	Node {

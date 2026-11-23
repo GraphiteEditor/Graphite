@@ -1,21 +1,20 @@
 mod common;
 
-use common::{at, chain_layers, layer, node, tall_node, waypoint, wire};
+use common::{CHAINED, LAYER_HEIGHT, at, chain_layers, layer, node, stacked, tall_node, waypoint, wire};
 use glam::IVec2;
 use graph_layout::{CHAIN_WIDTH, Graph, Layout, Placement};
 
-const LAYER_HEIGHT: i32 = 2;
 const COLUMNS_BETWEEN_NODES: i32 = 2;
 
 fn stack_with_tall_content(tall_node_reader: u32) -> Graph {
 	Graph {
 		nodes: vec![
 			layer(Placement::Absolute(IVec2::new(30, 10))),
-			node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0))),
-			node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0))),
+			node(CHAINED),
+			node(CHAINED),
 			tall_node(Placement::Relative(IVec2::new(0, 3)), 3),
 			layer(Placement::Relative(IVec2::new(0, LAYER_HEIGHT + 1))),
-			node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0))),
+			node(CHAINED),
 		],
 		wires: vec![wire(1, 0, 1), wire(2, 1, 0), wire(3, tall_node_reader, 1), wire(4, 0, 0), wire(5, 4, 1)],
 	}
@@ -31,9 +30,9 @@ fn far_upstream_beside_tall_content(also_read_from_beside: bool) -> Graph {
 	Graph {
 		nodes: vec![
 			layer(Placement::Absolute(IVec2::new(30, 10))),
-			layer(Placement::Stack(0)),
+			layer(stacked(0)),
 			tall_node(Placement::Relative(IVec2::new(-14, 0)), 30),
-			node(Placement::Chain),
+			node(CHAINED),
 			node(Placement::Absolute(IVec2::new(20, 40))),
 			node(Placement::Relative(far_offset)),
 		],
@@ -46,9 +45,9 @@ fn placements_resolve_from_their_readers() {
 	let graph = Graph {
 		nodes: vec![
 			layer(Placement::Absolute(IVec2::new(30, 10))),
-			layer(Placement::Stack(1)),
-			node(Placement::Chain),
-			node(Placement::Chain),
+			layer(stacked(1)),
+			node(CHAINED),
+			node(CHAINED),
 			node(Placement::Relative(IVec2::new(-7, 3))),
 		],
 		wires: vec![wire(1, 0, 0), wire(2, 0, 1), wire(3, 2, 0), wire(4, 2, 1), wire(4, 1, 1)],
@@ -131,11 +130,7 @@ fn a_node_covering_its_reader_is_drawn_left_of_it() {
 #[test]
 fn a_waypoint_takes_no_room_and_stays_where_it_is_put() {
 	let graph = Graph {
-		nodes: vec![
-			node(Placement::Absolute(IVec2::new(30, 10))),
-			waypoint(Placement::Relative(IVec2::new(-1, 1))),
-			node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0))),
-		],
+		nodes: vec![node(Placement::Absolute(IVec2::new(30, 10))), waypoint(Placement::Relative(IVec2::new(-1, 1))), node(CHAINED)],
 		wires: vec![wire(1, 0, 0), wire(2, 1, 0)],
 	};
 
@@ -148,11 +143,7 @@ fn a_waypoint_takes_no_room_and_stays_where_it_is_put() {
 #[test]
 fn a_shared_node_belongs_to_its_highest_reader() {
 	let graph = Graph {
-		nodes: vec![
-			node(Placement::Absolute(IVec2::new(30, 20))),
-			node(Placement::Absolute(IVec2::new(30, 10))),
-			node(Placement::Relative(IVec2::new(-CHAIN_WIDTH, 0))),
-		],
+		nodes: vec![node(Placement::Absolute(IVec2::new(30, 20))), node(Placement::Absolute(IVec2::new(30, 10))), node(CHAINED)],
 		wires: vec![wire(2, 0, 0), wire(2, 1, 0)],
 	};
 

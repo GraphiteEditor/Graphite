@@ -334,9 +334,6 @@ fn add_nodes(target: &mut Registry, runs: &[(NodeId, Edits)], resolver: &dyn Dec
 	Ok(())
 }
 
-/// Default positions for the nodes one run adds, read from the anchor's own position only. The nodes leading up to the anchor's
-/// chain input form a row, or join the chain of a chained or layer anchor. Each other node sits below the first one reading it,
-/// or on the anchor when none does. Without absolute coordinates for the anchor, only the chain is placed.
 fn place_added_nodes(target: &mut Registry, anchor: NodeId, edits: &Edits) {
 	let Some(anchor_node) = target.node_instances.get(&anchor) else { return };
 	let stored = anchor_node.attributes().get_typed::<Position>(POSITION);
@@ -360,37 +357,37 @@ fn place_added_nodes(target: &mut Registry, anchor: NodeId, edits: &Edits) {
 		next = inputs.first();
 	}
 
-	let joins_chain = is_layer || stored == Some(Position::Chain);
 	let coordinates = match stored {
 		Some(Position::Absolute(coordinates)) => Some(coordinates),
 		_ => None,
 	};
 
-	let mut positions = Vec::new();
-	for (step, id) in chain.iter().enumerate() {
-		match coordinates {
-			_ if joins_chain => positions.push((*id, Position::Chain)),
-			Some([x, y]) => positions.push((*id, Position::Absolute([x - CHAIN_WIDTH * (step as i32 + 1), y]))),
-			None => {}
-		}
-	}
+	let mut positions: Vec<(NodeId, Position)> = chain.iter().map(|id| (*id, Position::Relative([-CHAIN_WIDTH, 0]))).collect();
 
-	if let Some([x, y]) = coordinates {
-		let readers: Vec<(&[NodeInput], i32)> = std::iter::once((anchor_inputs.as_slice(), x))
-			.chain(chain.iter().enumerate().map(|(step, id)| (added_inputs[id], x - CHAIN_WIDTH * (step as i32 + 1))))
-			.collect();
-		let mut feeders_below = vec![0; readers.len()];
+	let readers: Vec<(NodeId, &[NodeInput])> = std::iter::once((anchor, anchor_inputs.as_slice()))
+		.chain(edits.added_nodes.iter().map(|added| (added.id, added.node.inputs.as_slice())))
+		.collect();
+	let mut feeders_below: HashMap<NodeId, i32> = HashMap::new();
 
-		for added in edits.added_nodes.iter().filter(|added| !chain.contains(&added.id)) {
-			let position = match readers.iter().position(|(inputs, _)| reads(inputs, added.id)) {
-				Some(reader) => {
-					feeders_below[reader] += 1;
-					[readers[reader].1 - CHAIN_WIDTH, y + FEEDER_ROW_HEIGHT * feeders_below[reader]]
-				}
-				None => [x, y],
-			};
-			positions.push((added.id, Position::Absolute(position)));
-		}
+	for added in edits.added_nodes.iter().filter(|added| !chain.contains(&added.id)) {
+		let reader = readers.iter().find(|(_, inputs)| reads(inputs, added.id)).map(|(reader, _)| *reader);
+		let downstream_consumer = edits.connections.iter().find_map(|(output, input)| match input {
+			InputConnector::Node { node, .. } if output.node == added.id => Some(*node),
+			_ => None,
+		});
+		let connected_downstream = edits.connections.iter().any(|(output, _)| output.node == added.id);
+
+		let position = match (reader.or(downstream_consumer), coordinates) {
+			(Some(consumer), _) => {
+				let row = feeders_below.entry(consumer).or_default();
+				*row += 1;
+				Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT * *row])
+			}
+			_ if connected_downstream => Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT]),
+			(None, Some(coordinates)) => Position::Absolute(coordinates),
+			(None, None) => continue,
+		};
+		positions.push((added.id, position));
 	}
 
 	for (id, position) in positions {

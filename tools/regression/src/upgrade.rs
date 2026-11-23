@@ -1,5 +1,6 @@
 //! Rewrites `.gdd` files through the migrations this build links.
 
+use document_container::archive::ArchiveFormat;
 use document_format::{ExportFormat, ExportOptions};
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -24,7 +25,7 @@ pub(crate) fn expand(paths: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn Error>> 
 	Ok(documents)
 }
 
-/// Open `path`, which migrates it, and save it back as a state-only xz archive if it needed migrating. Returns whether it did.
+/// Open `path`, which migrates it, and save it back as a state-only archive in its own format if it needed migrating. Returns whether it did.
 ///
 /// An archive's bytes aren't stable across a reopen, so the file is only rewritten when it changed. The embedded legacy `.graphite` is dropped, since it doesn't migrate and the editor would open it in place of the migrated state.
 pub(crate) async fn upgrade(path: &Path) -> Result<bool, Box<dyn Error>> {
@@ -38,7 +39,11 @@ pub(crate) async fn upgrade(path: &Path) -> Result<bool, Box<dyn Error>> {
 		include_history: false,
 		..Default::default()
 	};
-	let upgraded = gdd.export_to_bytes(ExportFormat::Xz, options, &gdd, None).await?;
+	let format = match ArchiveFormat::detect(&archive) {
+		Some(ArchiveFormat::Zip) => ExportFormat::Zip,
+		_ => ExportFormat::Xz,
+	};
+	let upgraded = gdd.export_to_bytes(format, options, &gdd, None).await?;
 	std::fs::write(path, upgraded)?;
 	Ok(true)
 }
