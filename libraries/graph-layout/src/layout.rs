@@ -8,15 +8,23 @@ use glam::IVec2;
 use std::iter;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Where one node is drawn and how it was placed there.
 pub struct NodeLayout {
+	/// The top left corner in grid cells.
 	pub position: IVec2,
+	/// The highest reader as stored, which the node is fitted with and drawn level with.
 	pub owner: Option<NodeIndex>,
+	/// The point a relative offset is taken from: the left of the node's readers, level with its owner.
 	pub anchor: IVec2,
+	/// How much further the node is drawn from its owner than stored, so its upstream clears what is placed before it.
 	pub elongation: IVec2,
+	/// The layer whose chain the node is drawn in.
 	pub chain_layer: Option<NodeIndex>,
+	/// How many nodes the chain of this layer holds.
 	pub chain_length: u32,
 }
 
+/// Where every node of a graph is drawn.
 #[derive(Clone, Debug, Default)]
 pub struct Layout {
 	pub(crate) positions: PerNode<IVec2>,
@@ -28,6 +36,7 @@ pub struct Layout {
 }
 
 impl Layout {
+	/// Lays out `graph` in one pass, placing each node after all the nodes reading it.
 	#[must_use]
 	pub fn new(graph: &Graph) -> Self {
 		let connections = Connections::new(graph);
@@ -49,6 +58,7 @@ impl Layout {
 		layout
 	}
 
+	/// Draws each node in the chain it would join if a drag released it now, rather than only in the chain it sits in.
 	pub fn snap_chains(&mut self, graph: &Graph) {
 		self.find_chains(graph, &Connections::new(graph), snaps_into_chain);
 	}
@@ -65,6 +75,7 @@ impl Layout {
 		}
 	}
 
+	/// A box in grid cells around the node and a layer's chain, for finding which nodes a point or a box may hit.
 	#[must_use]
 	pub fn reach(&self, graph: &Graph, node: NodeIndex) -> Rect {
 		let position = self.positions[node];

@@ -1,3 +1,5 @@
+//! Lays out a node graph on a grid from the placements its nodes store, fitting each node's upstream together so nothing overlaps.
+
 #![warn(clippy::pedantic)]
 
 mod chains;

@@ -8,6 +8,7 @@ use std::iter;
 
 pub(crate) type Beside = fn(IVec2, IVec2) -> bool;
 
+/// Whether a node drawn at `position` joins the chain of the node reading it at `reader_position` once a drag releases it.
 #[must_use]
 pub fn snaps_into_chain(position: IVec2, reader_position: IVec2) -> bool {
 	position.y == reader_position.y && (reader_position.x - CHAIN_WIDTH - 2..=reader_position.x).contains(&position.x)

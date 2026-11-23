@@ -7,6 +7,8 @@ use crate::{Graph, Layout, NodeIndex};
 use glam::IVec2;
 use mover::Mover;
 
+/// Nodes dragged from where they are drawn, computing the graph for any offset from the start alone.
+/// Rows moved up are kept, so a drag going on or coming back reuses them.
 #[derive(Clone, Debug)]
 pub struct Drag {
 	dragged: Vec<NodeIndex>,
@@ -15,6 +17,7 @@ pub struct Drag {
 }
 
 impl Drag {
+	/// Holds the `dragged` nodes of `start`. With `keep_upstream`, nodes only carried along by them stay where they are drawn.
 	#[must_use]
 	pub fn new(start: Graph, start_layout: Layout, dragged: Vec<NodeIndex>, keep_upstream: bool) -> Self {
 		let mut mover = Mover::new(start, Some(start_layout));
@@ -26,6 +29,7 @@ impl Drag {
 		}
 	}
 
+	/// The graph as stored and its layout once the dragged nodes are moved `offset` grid cells.
 	pub fn moved(&mut self, offset: IVec2) -> (Graph, Layout) {
 		let rows_up = offset.y.min(0).unsigned_abs() as usize;
 		self.extend_rows_up_to(rows_up);

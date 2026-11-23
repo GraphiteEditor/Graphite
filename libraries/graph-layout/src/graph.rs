@@ -2,10 +2,12 @@ use crate::Rect;
 use glam::IVec2;
 use std::ops::{Index, IndexMut};
 
+/// How many grid cells a chain steps left for each of its nodes.
 pub const CHAIN_WIDTH: i32 = 7;
 pub(crate) const CHAIN_OFFSET: IVec2 = IVec2::new(-CHAIN_WIDTH, 0);
 pub(crate) const LAYER_BOTTOM_GAP: i32 = 1;
 
+/// The position of a node in `Graph::nodes`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeIndex(u32);
 
@@ -28,11 +30,16 @@ impl From<NodeIndex> for u32 {
 	}
 }
 
+/// Where a node is stored, in grid cells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Placement {
+	/// At this position, starting a tree of its own.
 	Absolute(IVec2),
+	/// One chain width left of the node reading it through its chain input.
 	Chain,
+	/// Below the layer reading it, past that layer's height and a gap of this many rows.
 	Stack(u32),
+	/// At this offset from the left of the nodes reading it, level with the highest of them.
 	Relative(IVec2),
 }
 
@@ -46,10 +53,13 @@ impl Placement {
 	}
 }
 
+/// How a node takes part in the layout.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeKind {
 	Node,
+	/// Reads a stack through input 0 and a chain through input 1.
 	Layer,
+	/// A point wires are routed through, like a redirect dot, which takes no room and is never moved to make room.
 	Waypoint,
 }
 
@@ -57,8 +67,11 @@ pub enum NodeKind {
 pub struct Node {
 	pub placement: Placement,
 	pub kind: NodeKind,
+	/// The width and height in grid cells.
 	pub size: IVec2,
+	/// Whether the node can be drawn in a layer's chain.
 	pub chainable: bool,
+	/// Whether the user is moving the node, so it and the connections carrying it are drawn as stored.
 	pub held: bool,
 }
 
@@ -97,6 +110,7 @@ impl Node {
 	}
 }
 
+/// The output `output` of node `source` read by input `input` of node `target`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Wire {
 	pub source: NodeIndex,
@@ -111,6 +125,7 @@ impl Wire {
 	}
 }
 
+/// The nodes and wires of a graph as the layout reads them.
 #[derive(Clone, Debug, Default)]
 pub struct Graph {
 	pub nodes: Vec<Node>,

@@ -1,5 +1,6 @@
 use glam::IVec2;
 
+/// Grid cells from `min` up to but not including `max`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rect {
 	pub min: IVec2,
