@@ -741,31 +741,48 @@ mod tests {
 		editor.dispatch(Message::Wake).iter().any(|message| matches!(message, FrontendMessage::TriggerSaveFile { .. }))
 	}
 
-	/// Fills the document's layer with a trace of noise, which an export has to wait on over several evaluations.
-	fn vectorize_layer(editor: &mut EditorTestUtils) {
+	/// Adds a layer tracing an image of noise, which an export has to wait on over several evaluations.
+	async fn add_traced_noise_layer(editor: &mut EditorTestUtils) {
 		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use graphene_std::raster::Image;
+		use graphene_std::raster::color::Color;
 
+		// Pseudo-random grays from an xorshift sequence, so the trace finds many small regions
+		let mut noise = Image::new(64, 64, Color::BLACK);
+		let mut state = 0x2545_f491_u32;
+		for pixel in &mut noise.data {
+			state ^= state << 13;
+			state ^= state >> 17;
+			state ^= state << 5;
+			let gray = (state % 256) as f32 / 255.;
+			*pixel = Color::from_rgbaf32_unchecked(gray, gray, gray, 1.);
+		}
+		editor.create_raster_image(noise, None).await;
+
+		// Trace the image between the layer and the nodes feeding it
 		let layer = editor.active_document().metadata().all_layers().next().unwrap();
-		let mut create = |node_type| {
-			let node_id = NodeId::new();
-			editor.dispatch(NodeGraphMessage::CreateNodeFromContextMenu {
-				node_id: Some(node_id),
-				node_type,
-				xy: None,
-				add_transaction: true,
-			});
-			node_id
-		};
-		let noise = create(DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER));
-		let vectorize = create(DefinitionIdentifier::ProtoNode(graphene_std::vectorize_nodes::vectorize::IDENTIFIER));
+		let content = InputConnector::node_at_index(layer.to_node(), 1);
+		let image = editor
+			.active_document()
+			.network_interface
+			.upstream_output_connector(&content, &[])
+			.expect("the image layer has content");
+
+		let vectorize = NodeId::new();
+		editor.dispatch(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(vectorize),
+			node_type: DefinitionIdentifier::ProtoNode(graphene_std::vectorize_nodes::vectorize::IDENTIFIER),
+			xy: None,
+			add_transaction: true,
+		});
 		editor.dispatch(NodeGraphMessage::CreateWire {
-			output_connector: OutputConnector::primary_output(noise),
+			output_connector: image,
 			input_connector: InputConnector::node_at_index(vectorize, 0),
 		});
 		editor.dispatch(NodeGraphMessage::CreateWire {
 			output_connector: OutputConnector::primary_output(vectorize),
-			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+			input_connector: content,
 		});
 	}
 
@@ -1140,8 +1157,7 @@ mod tests {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
-		editor.draw_rect(0., 0., 512., 512.).await;
-		vectorize_layer(&mut editor);
+		add_traced_noise_layer(&mut editor).await;
 
 		send_export(&mut editor, FileType::Svg);
 		editor.runtime.update();
@@ -1211,8 +1227,7 @@ mod tests {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
-		editor.draw_rect(0., 0., 512., 512.).await;
-		vectorize_layer(&mut editor);
+		add_traced_noise_layer(&mut editor).await;
 
 		send_update_at(&mut editor, UVec2::splat(512));
 		editor.runtime.update();

@@ -6,6 +6,7 @@ use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs, Poll, RuntimeHandle, 
 use core_types::{Color, Context, Ctx, ExtractFootprint, Interrupt, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
+use graphic_types::Generator;
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::vello_scene_builder::VelloSceneBuilder;
@@ -20,6 +21,8 @@ pub enum RenderIntermediateType {
 	/// The content itself, drawn into a Vello scene at each render since the scene depends on the render's size and placement
 	Vello(Arc<dyn Render + Send + Sync>),
 	Svg(Arc<SvgRenderOutput>),
+	/// The content itself, for content that draws only the part of it in view, drawn as SVG at each render for its view
+	SvgInView(Arc<dyn Render + Send + Sync>),
 }
 #[derive(Clone, dyn_any::DynAny)]
 pub struct RenderIntermediate {
@@ -37,6 +40,7 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> List<String>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,
@@ -59,14 +63,20 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 			metadata,
 		},
 		RenderOutputTypeRequest::Svg => {
+			let render_params = RenderParams {
+				view_wanted: Default::default(),
+				..render_params.clone()
+			};
 			let mut render = SvgRender::new();
 
-			data.render_svg(&mut render, render_params);
+			data.render_svg(&mut render, &render_params);
 
-			RenderIntermediate {
-				ty: RenderIntermediateType::Svg(Arc::new(render.into())),
-				metadata,
-			}
+			// Markup leaving out content that draws only the part of it in view is drawn again for each view, and the rest only once here
+			let ty = match render_params.view_wanted.load(std::sync::atomic::Ordering::Relaxed) {
+				true => RenderIntermediateType::SvgInView(Arc::new(data)),
+				false => RenderIntermediateType::Svg(Arc::new(render.into())),
+			};
+			RenderIntermediate { ty, metadata }
 		}
 	};
 
@@ -88,11 +98,26 @@ fn render(
 		.expect("Did not find var args")
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
-	let mut render_params = render_params.clone();
-	render_params.footprint = *footprint;
 
 	let RenderIntermediate { ty, mut metadata } = data.into_element();
 	metadata.apply_transform(footprint.transform);
+
+	// Content drawing only the part of it in view draws its markup for this view
+	let ty = match ty {
+		RenderIntermediateType::SvgInView(content) => {
+			let mut render = SvgRender::new();
+			let in_view = RenderParams {
+				view: Some(*footprint),
+				..render_params.clone()
+			};
+			content.render_svg(&mut render, &in_view);
+			RenderIntermediateType::Svg(Arc::new(render.into()))
+		}
+		ty => ty,
+	};
+
+	let mut render_params = render_params.clone();
+	render_params.footprint = *footprint;
 
 	let data = match (render_params.render_output_type, ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(data)) => {

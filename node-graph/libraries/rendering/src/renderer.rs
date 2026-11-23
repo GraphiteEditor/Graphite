@@ -25,6 +25,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_resource::Resource;
 use graphic_types::effects::{EffectCapture, GlowFill, effect_space, spans_along_axes};
+use graphic_types::generator::GeneratorPattern;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
@@ -33,7 +34,7 @@ use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, Stroke
 use graphic_types::vector_types::vector::{
 	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
 };
-use graphic_types::{Adjustment, Appearance, Artboard, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Graphic, Vector};
+use graphic_types::{Adjustment, Appearance, Artboard, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Generator, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape};
 use num_traits::Zero;
 use raster_kernels::raster_effects::adjusted_raster;
@@ -77,6 +78,13 @@ impl<'a, T> ItemRef<'a, T> {
 		match self {
 			ItemRef::ListItem(list, index) => list.attribute(key, index),
 			ItemRef::Item(item) => item.attribute(key),
+		}
+	}
+
+	pub(crate) fn attribute_any(self, key: &str) -> Option<&'a dyn std::any::Any> {
+		match self {
+			ItemRef::ListItem(list, index) => list.attribute_any(key, index),
+			ItemRef::Item(item) => item.attributes().get_any(key),
 		}
 	}
 
@@ -481,6 +489,7 @@ fn nested_effects_reach(graphic: &Graphic, transform: DAffine2, reach: fn(&Effec
 		Graphic::RasterGPU(item) => item_reach(item, transform, reach),
 		Graphic::Color(item) => item_reach(item, transform, reach),
 		Graphic::Gradient(item) => item_reach(item, transform, reach),
+		Graphic::Generator(item) => item_reach(item, transform, reach),
 		Graphic::Text(item) => item_reach(item, transform, reach),
 		Graphic::GraphicList(list) => list_reach(list, transform, reach, |nested, content_transform| nested_effects_reach(nested, content_transform, reach)),
 		Graphic::VectorList(list) => list_reach(list, transform, reach, none),
@@ -488,6 +497,7 @@ fn nested_effects_reach(graphic: &Graphic, transform: DAffine2, reach: fn(&Effec
 		Graphic::RasterGPUList(list) => list_reach(list, transform, reach, none),
 		Graphic::ColorList(list) => list_reach(list, transform, reach, none),
 		Graphic::GradientList(list) => list_reach(list, transform, reach, none),
+		Graphic::GeneratorList(list) => list_reach(list, transform, reach, none),
 		Graphic::TextList(list) => list_reach(list, transform, reach, none),
 	}
 }
@@ -1196,6 +1206,11 @@ pub enum RenderOutputType {
 pub struct RenderParams {
 	pub render_mode: RenderMode,
 	pub footprint: Footprint,
+	/// The view an SVG is shown through, mapping the document into its pixels, of which content filling the plane (like a generator) draws only the part in view, or nothing without one.
+	pub view: Option<Footprint>,
+	/// Set by an SVG render without a `view` that leaves out content drawing only the part of it in view, so its markup depends on the view.
+	#[cache_hash(skip)]
+	pub view_wanted: Arc<std::sync::atomic::AtomicBool>,
 	#[cache_hash(skip)]
 	pub scale: f64,
 	pub render_output_type: RenderOutputType,
@@ -1351,9 +1366,22 @@ fn emit_svg_fill_path(
 		if !matrix.is_empty() {
 			attributes.push(ATTR_TRANSFORM, matrix);
 		}
+		let (user_to_document, paint_reach) = (attributes.0.transform, attributes.0.ancestors_reach);
 		let defs = &mut attributes.0.svg_defs;
 		let fill_attribute = fill_paint
-			.map(|paint| paint.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, render_params, PaintTarget::Fill))
+			.map(|paint| {
+				paint.render(
+					defs,
+					user_to_document,
+					paint_reach,
+					item_transform,
+					element_transform,
+					applied_stroke_transform,
+					bounds_matrix,
+					render_params,
+					PaintTarget::Fill,
+				)
+			})
 			.unwrap_or_else(|| r#" fill="none""#.to_string());
 		attributes.push_val(fill_attribute);
 	});
@@ -1671,6 +1699,7 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 		let mask_type = if element.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 
 		let mut svg = SvgRender::new();
+		svg.transform = render.transform * transform;
 		svg.ancestors_reach = render.ancestors_reach;
 		element.render_svg(&mut svg, &render_params.for_clipper());
 
@@ -1967,6 +1996,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(item) => render_color_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::Gradient(item) => render_gradient_item_svg(ItemRef::Item(item), render, render_params),
+			Graphic::Generator(item) => render_generator_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::Text(item) => render_text_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::GraphicList(list) => list.render_svg(render, render_params),
 			Graphic::VectorList(list) => list.render_svg(render, render_params),
@@ -1974,6 +2004,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(_) => (),
 			Graphic::ColorList(list) => list.render_svg(render, render_params),
 			Graphic::GradientList(list) => list.render_svg(render, render_params),
+			Graphic::GeneratorList(list) => list.render_svg(render, render_params),
 			Graphic::TextList(list) => list.render_svg(render, render_params),
 			Graphic::StrokeList(_) => (),
 		}
@@ -1995,6 +2026,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => render_raster_gpu_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Color(item) => render_color_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Gradient(item) => render_gradient_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
+			Graphic::Generator(item) => render_generator_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Text(item) => render_text_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::VectorList(list) => list.render_to_vello(scene, transform, render_params),
@@ -2002,6 +2034,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::ColorList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::GradientList(list) => list.render_to_vello(scene, transform, render_params),
+			Graphic::GeneratorList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::TextList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::StrokeList(_) => (),
 		}
@@ -2038,6 +2071,7 @@ impl Render for Graphic {
 				Graphic::RasterGPU(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::Color(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::Gradient(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
+				Graphic::Generator(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::Text(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::RasterCPUList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
@@ -2064,6 +2098,14 @@ impl Render for Graphic {
 					}
 				}
 				Graphic::GradientList(list) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than the first item
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					}
+				}
+				Graphic::GeneratorList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -2098,6 +2140,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => collect_raster_metadata(Some(ItemRef::Item(item)), metadata, footprint, element_id),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(item) => collect_gradient_items_metadata(std::iter::once(ItemRef::Item(item)), metadata, element_id),
+			Graphic::Generator(_) => (),
 			Graphic::Text(item) => collect_text_items_metadata(std::iter::once(ItemRef::Item(item)), metadata, footprint, element_id),
 			Graphic::GraphicList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::VectorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
@@ -2105,6 +2148,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::ColorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::GradientList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::GeneratorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::TextList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::StrokeList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 		}
@@ -2119,6 +2163,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => add_unit_square_click_target(item.attribute_cloned_or_default(ATTR_TRANSFORM), click_targets),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(item) => add_gradient_item_click_targets(ItemRef::Item(item), click_targets),
+			Graphic::Generator(_) => (),
 			Graphic::Text(item) => add_text_item_click_targets(ItemRef::Item(item), click_targets),
 			Graphic::GraphicList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::VectorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
@@ -2126,6 +2171,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::ColorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::GradientList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::GeneratorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::TextList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::StrokeList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 		}
@@ -2140,6 +2186,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => add_unit_square_click_target(item.attribute_cloned_or_default(ATTR_TRANSFORM), outlines),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(item) => add_gradient_item_outline_targets(ItemRef::Item(item), outlines),
+			Graphic::Generator(_) => (),
 			Graphic::Text(item) => add_text_item_click_targets(ItemRef::Item(item), outlines),
 			Graphic::GraphicList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::VectorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
@@ -2147,6 +2194,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::ColorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::GradientList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::GeneratorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::TextList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::StrokeList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 		}
@@ -2475,6 +2523,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered:
 			attributes.push(ATTR_TRANSFORM, matrix);
 		}
 
+		let (user_to_document, paint_reach) = (attributes.0.transform, attributes.0.ancestors_reach);
 		let defs = &mut attributes.0.svg_defs;
 		if let Some((ref id, mask_type, ref vector_item)) = push_id {
 			let mut svg = SvgRender::new();
@@ -2509,7 +2558,17 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered:
 			.as_ref()
 			.map(|stroke| {
 				if stroke_paint.is_some() {
-					stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
+					stroke.render(
+						defs,
+						user_to_document,
+						paint_reach,
+						item_transform,
+						element_transform,
+						applied_stroke_transform,
+						bounds_matrix,
+						&render_params,
+						PaintTarget::Stroke,
+					)
 				} else {
 					String::new()
 				}
@@ -2527,7 +2586,17 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered:
 						Graphic::Color(_) | Graphic::Gradient(_) | Graphic::ColorList(_) | Graphic::GradientList(_) => bounds_matrix,
 						_ => stroke_bounds_matrix,
 					};
-					paint.render(defs, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
+					paint.render(
+						defs,
+						user_to_document,
+						paint_reach,
+						item_transform,
+						element_transform,
+						applied_stroke_transform,
+						paint_bounds,
+						&render_params,
+						PaintTarget::Stroke,
+					)
 				})
 				.unwrap_or_else(|| r#" stroke="none""#.to_string())
 		} else {
@@ -2538,7 +2607,19 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered:
 			r#" fill="none""#.to_string()
 		} else {
 			fill_paint
-				.map(|paint| paint.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Fill))
+				.map(|paint| {
+					paint.render(
+						defs,
+						user_to_document,
+						paint_reach,
+						item_transform,
+						element_transform,
+						applied_stroke_transform,
+						bounds_matrix,
+						&render_params,
+						PaintTarget::Fill,
+					)
+				})
 				.unwrap_or_else(|| r#" fill="none""#.to_string())
 		};
 
@@ -2590,6 +2671,7 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 		let uuid = generate_uuid();
 
 		let mut masker_svg = SvgRender::new();
+		masker_svg.transform = render.transform;
 		masker.render_svg(&mut masker_svg, &render_params.for_clipper());
 		render.svg_defs.push_str(&masker_svg.svg_defs);
 		mask_type.write_to_defs(&mut render.svg_defs, uuid, masker_svg.svg.to_svg_string(), masker_region(&masker, DAffine2::IDENTITY));
@@ -2637,7 +2719,15 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 
 		render_svg_through_filter(render, filter, compositing.opacity, blend_mode, |render| {
-			render_vector_shape_svg(item, vector, filtered, folded.as_ref(), render, render_params)
+			// The item's own filters read its paints around each pixel, so a pattern paint's images and maps cover past the view as far as they read
+			let own_reach = if filtered {
+				compositing.effects.map_or(0., |(effects, _)| effects.read_reach(render.transform * compositing.content_transform))
+			} else {
+				0.
+			};
+			render.ancestors_reach += own_reach;
+			render_vector_shape_svg(item, vector, filtered, folded.as_ref(), render, render_params);
+			render.ancestors_reach -= own_reach;
 		});
 
 		finish_deferred_markup(render, deferred, render_params, &compositing, blend_mode, || {
@@ -2850,10 +2940,12 @@ fn render_vector_item_to_vello(
 			| Graphic::Vector(_)
 			| Graphic::RasterCPU(_)
 			| Graphic::RasterGPU(_)
+			| Graphic::Generator(_)
 			| Graphic::Text(_)
 			| Graphic::VectorList(_)
 			| Graphic::RasterCPUList(_)
 			| Graphic::RasterGPUList(_)
+			| Graphic::GeneratorList(_)
 			| Graphic::GraphicList(_)
 			| Graphic::TextList(_)
 			| Graphic::StrokeList(_) => {
@@ -2940,10 +3032,12 @@ fn render_vector_item_to_vello(
 			| Graphic::Vector(_)
 			| Graphic::RasterCPU(_)
 			| Graphic::RasterGPU(_)
+			| Graphic::Generator(_)
 			| Graphic::Text(_)
 			| Graphic::VectorList(_)
 			| Graphic::RasterCPUList(_)
 			| Graphic::RasterGPUList(_)
+			| Graphic::GeneratorList(_)
 			| Graphic::GraphicList(_)
 			| Graphic::TextList(_)
 			| Graphic::StrokeList(_) => {
@@ -3525,6 +3619,112 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 
 	if layer {
 		scene.pop_layer();
+	}
+}
+
+/// The most pixels across or down an SVG's image of a generator may have.
+const MAX_GENERATOR_IMAGE_PIXELS: f64 = 8192.;
+
+/// The most pixels across or down a thumbnail's image of a generator may have, whatever the size of the area it shows.
+const MAX_GENERATOR_THUMBNAIL_PIXELS: f64 = 256.;
+
+/// Emits one item of generator content as SVG, as an image of the part in view at the view's resolution.
+fn render_generator_item_svg(item: ItemRef<'_, Generator>, render: &mut SvgRender, render_params: &RenderParams) {
+	let Some(&generator) = item.element() else { return };
+	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+
+	// An image of the area in view, grown by how far the filters of the groups around it read around each pixel, so they find no edges in view, stands in for it
+	let Some((area, width, height)) = generator_area_in_view(transform, render.ancestors_reach, render, render_params) else {
+		return;
+	};
+
+	// An image of the area, carrying the generator's attributes, stands in for it
+	let pattern = GeneratorPattern::decode(generator, &|key| item.attribute_any(key));
+	let pixels = match raster_kernels::generators::render_pattern(&pattern, area, width, height) {
+		Ok(pixels) => pixels,
+		Err(error) => {
+			log::error!("Failed to render a generator as an SVG image: {error}");
+			return;
+		}
+	};
+	let mut image = Item::from_parts(Raster::new_cpu(pixels), item.clone_item_attributes());
+	image.set_attribute(ATTR_TRANSFORM, transform * DAffine2::from_translation(area[0]) * DAffine2::from_scale(area[1] - area[0]));
+	render_raster_cpu_item_svg(ItemRef::Item(&image), render, render_params);
+}
+
+/// The part of a generator's own space in view, which `transform` places, grown past the view by `reach` in document pixels, with the pixels across and down it covers in the view.
+fn generator_area_in_view(transform: DAffine2, reach: f64, render: &SvgRender, render_params: &RenderParams) -> Option<([DVec2; 2], u32, u32)> {
+	// A thumbnail's footprint starts at the document area it shows, one pixel per unit, rather than mapping the document into a view
+	let (footprint, document_to_view, max_pixels) = match (render_params.thumbnail, render_params.view) {
+		(true, _) => (
+			render_params.footprint,
+			DAffine2::from_translation(-render_params.footprint.transform.translation),
+			MAX_GENERATOR_THUMBNAIL_PIXELS,
+		),
+		(false, Some(view)) => (view, view.transform, MAX_GENERATOR_IMAGE_PIXELS),
+		(false, None) => {
+			render_params.view_wanted.store(true, std::sync::atomic::Ordering::Relaxed);
+			return None;
+		}
+	};
+	let local_to_view = document_to_view * render.transform * transform;
+	if local_to_view.matrix2.determinant() == 0. || !local_to_view.is_finite() || footprint.resolution.min_element() <= 1 {
+		return None;
+	}
+
+	let reach = reach * document_to_view.matrix2.determinant().abs().sqrt();
+	let view = Quad::from_box([DVec2::splat(-reach), footprint.resolution.as_dvec2() + reach]);
+	let [min, max] = (local_to_view.inverse() * view).bounding_box();
+
+	let pixels_per_unit = DVec2::new(local_to_view.matrix2.x_axis.length(), local_to_view.matrix2.y_axis.length());
+	let pixels = ((max - min) * pixels_per_unit).ceil().clamp(DVec2::ONE, DVec2::splat(max_pixels));
+	Some(([min, max], pixels.x as u32, pixels.y as u32))
+}
+
+/// Draws one item of generator content into the Vello scene, which renders its pattern for each render at the resolution it needs.
+fn render_generator_item_to_vello(item: ItemRef<'_, Generator>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+	let Some(&generator) = item.element() else { return };
+
+	// Outline mode shows only geometry, and a generator filling the plane has none
+	if let RenderMode::Outline = render_params.render_mode {
+		return;
+	}
+
+	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+	let local_to_scene = transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+	let compositing = item.compositing(render_params, local_to_scene);
+	let bounds = generator.bounding_box(local_to_scene, false);
+	if bounds == RenderBoundingBox::None {
+		return;
+	}
+
+	// Opacity and blend modes composite through a layer covering the whole render
+	let mut layer = false;
+	if compositing.opacity < 1. || blend_mode_attr != BlendMode::default() {
+		let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
+		scene.push_viewport_layer(blending, compositing.opacity);
+		layer = true;
+	}
+
+	let pattern = GeneratorPattern::decode(generator, &|key| item.attribute_any(key));
+	compositing.draw_with_effects(scene, || bounds, |scene| scene.draw_generator(&pattern, kurbo::Affine::new(local_to_scene.to_cols_array())));
+
+	if layer {
+		scene.pop_layer();
+	}
+}
+
+impl Render for List<Generator> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_generator_item_svg(ItemRef::ListItem(self, index), render, render_params);
+		}
+	}
+
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_generator_item_to_vello(ItemRef::ListItem(self, index), scene, transform, render_params);
+		}
 	}
 }
 
@@ -4988,6 +5188,137 @@ mod tests {
 		let covered = layout.placement.transform.matrix2.x_axis.x;
 		assert!((covered - expected).abs() <= 1., "{covered} for {expected}");
 		assert!(layout.size.x == layout.size.y && layout.size.x <= 10, "{}", layout.size);
+	}
+
+	#[test]
+	fn svg_draws_generators_as_images_of_the_part_in_view() {
+		use glam::UVec2;
+
+		let item = Item::new_from_element(Generator::Mandelbrot).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(100.)));
+		let canvases = |render_params: &RenderParams| {
+			let mut render = SvgRender::new();
+			List::new_from_item(item.clone()).render_svg(&mut render, render_params);
+			render.image_data.values().map(|canvas| (canvas.raster.width, canvas.raster.height)).collect::<Vec<_>>()
+		};
+
+		// Without a view to fit, a pattern filling the plane has no part to draw, so its markup depends on the view
+		let without_view = RenderParams::default();
+		assert_eq!(canvases(&without_view), Vec::new());
+		assert!(without_view.view_wanted.load(std::sync::atomic::Ordering::Relaxed));
+
+		// Content drawing all of itself doesn't depend on the view
+		let drawing_all = RenderParams::default();
+		orange_square(&[], 1., 1.).render_svg(&mut SvgRender::new(), &drawing_all);
+		assert!(!drawing_all.view_wanted.load(std::sync::atomic::Ordering::Relaxed));
+
+		// A 25 pixel view at half scale, drawn at the view's resolution
+		let view = Footprint {
+			transform: DAffine2::from_scale(DVec2::splat(0.5)),
+			resolution: UVec2::splat(25),
+			..Default::default()
+		};
+		let in_view = RenderParams {
+			view: Some(view),
+			..Default::default()
+		};
+		assert_eq!(canvases(&in_view), vec![(25, 25)]);
+	}
+
+	#[test]
+	fn svg_generators_painting_a_fill_draw_the_part_of_it_in_view() {
+		use glam::UVec2;
+		use kurbo::Shape;
+
+		// A square 20 units across its own origin, placed 60 across and 45 down, filled by a generator
+		let mut item = Vector::item_from_bezpath(&kurbo::Rect::new(-10., -10., 10., 10.).to_path(0.1));
+		item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), Graphic::from(Generator::Mandelbrot)));
+		item.set_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(60., 45.)));
+
+		let view = Footprint {
+			resolution: UVec2::new(96, 64),
+			..Default::default()
+		};
+		let render_params = RenderParams {
+			view: Some(view),
+			..Default::default()
+		};
+		let mut render = SvgRender::new();
+		List::new_from_item(item).render_svg(&mut render, &render_params);
+
+		// The pattern's image of the generator, placed in the square's own space, covers all of the square
+		let image = render.svg_defs.split("<image").nth(1).expect("the pattern holds an image");
+		let matrix = image.split(r#"transform="matrix("#).nth(1).and_then(|rest| rest.split(')').next()).expect("the image is placed");
+		let numbers: Vec<f64> = matrix.split(',').filter_map(|number| number.parse().ok()).collect();
+		let [width, _, _, height, x, y] = numbers[..] else { panic!("{matrix}") };
+		assert!(x <= -10. && y <= -10. && x + width >= 10. && y + height >= 10., "{matrix}");
+	}
+
+	#[test]
+	fn svg_clipping_vectors_draw_in_the_space_they_are_placed_in() {
+		use glam::UVec2;
+		use kurbo::Shape;
+
+		// A square 20 units across its own origin filled by a generator, in a group placing it 60 across and 45 down, clipping an orange square after it
+		let mut generator_square = Vector::item_from_bezpath(&kurbo::Rect::new(-10., -10., 10., 10.).to_path(0.1));
+		generator_square.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), Graphic::from(Generator::Mandelbrot)));
+		let mut vectors = List::new_from_item(generator_square);
+		vectors.push(orange_square_item(&[], 1., 1.).with_attribute(ATTR_CLIPPING_MASK, true));
+		let group = List::new_from_item(Item::new_from_element(Graphic::VectorList(vectors)).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(60., 45.))));
+
+		let render_params = RenderParams {
+			view: Some(Footprint {
+				resolution: UVec2::new(96, 64),
+				..Default::default()
+			}),
+			..Default::default()
+		};
+		let mut render = SvgRender::new();
+		group.render_svg(&mut render, &render_params);
+
+		// The clipper's image of the generator, placed in the square's own space, covers all of the square
+		let image = render.svg_defs.split("<image").nth(1).expect("the pattern holds an image");
+		let matrix = image.split(r#"transform="matrix("#).nth(1).and_then(|rest| rest.split(')').next()).expect("the image is placed");
+		let numbers: Vec<f64> = matrix.split(',').filter_map(|number| number.parse().ok()).collect();
+		let [width, _, _, height, x, y] = numbers[..] else { panic!("{matrix}") };
+		assert!(x <= -10. && y <= -10. && x + width >= 10. && y + height >= 10., "{matrix}");
+	}
+
+	#[test]
+	fn svg_generator_images_cover_past_the_view_as_far_as_the_filters_reading_them_reach() {
+		use glam::UVec2;
+		use kurbo::Shape;
+
+		let blur = graphic_types::EffectOperation::Blur {
+			radius: 10.,
+			box_blur: false,
+			gamma: false,
+		};
+		let reach = blur.reach();
+		let render_params = RenderParams {
+			view: Some(Footprint {
+				resolution: UVec2::new(96, 64),
+				..Default::default()
+			}),
+			..Default::default()
+		};
+		let rectangle = |paint: Graphic| {
+			let mut item = Vector::item_from_bezpath(&kurbo::Rect::new(-100., -100., 300., 300.).to_path(0.1));
+			item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), paint));
+			item
+		};
+
+		// A rectangle past the view filled by a generator, blurred, so the blur reads the fill that far past the view
+		let filled = rectangle(Graphic::from(Generator::Mandelbrot)).with_attribute(ATTR_EFFECTS, Effects::from_operations([blur]));
+		let mut render = SvgRender::new();
+		List::new_from_item(filled).render_svg(&mut render, &render_params);
+		let image = render.svg_defs.split("<image").nth(1).expect("the pattern holds an image");
+		let matrix = image.split(r#"transform="matrix("#).nth(1).and_then(|rest| rest.split(')').next()).expect("the image is placed");
+		let numbers: Vec<f64> = matrix.split(',').filter_map(|number| number.parse().ok()).collect();
+		let [width, _, _, height, x, y] = numbers[..] else { panic!("{matrix}") };
+		assert!(
+			x <= -reach + 1e-6 && y <= -reach + 1e-6 && x + width >= 96. + reach - 1e-6 && y + height >= 64. + reach - 1e-6,
+			"{matrix}"
+		);
 	}
 
 	#[test]

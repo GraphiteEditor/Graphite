@@ -3,7 +3,7 @@ use core_types::list::{Bundle, Item};
 use core_types::{Color, Context, Ctx, OwnedContextImpl, Poll};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::Gradient;
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Artboard, Generator, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 /// Shows the placeholder until the content has finished loading.
@@ -24,6 +24,7 @@ fn placeholder<T>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
@@ -37,6 +38,7 @@ fn placeholder<T>(
 		Context -> Item<Bundle<Raster<GPU>>>,
 		Context -> Item<Bundle<Color>>,
 		Context -> Item<Bundle<Gradient>>,
+		Context -> Item<Bundle<Generator>>,
 		Context -> Item<Bundle<Artboard>>,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
@@ -53,6 +55,7 @@ fn placeholder<T>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
@@ -66,6 +69,7 @@ fn placeholder<T>(
 		Context -> Item<Bundle<Raster<GPU>>>,
 		Context -> Item<Bundle<Color>>,
 		Context -> Item<Bundle<Gradient>>,
+		Context -> Item<Bundle<Generator>>,
 		Context -> Item<Bundle<Artboard>>,
 	)]
 	placeholder: impl Node<Context<'static>, Output = T>,
@@ -100,6 +104,7 @@ fn fallback<T>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
@@ -113,6 +118,7 @@ fn fallback<T>(
 		Context -> Item<Bundle<Raster<GPU>>>,
 		Context -> Item<Bundle<Color>>,
 		Context -> Item<Bundle<Gradient>>,
+		Context -> Item<Bundle<Generator>>,
 		Context -> Item<Bundle<Artboard>>,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
@@ -129,6 +135,7 @@ fn fallback<T>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
@@ -142,6 +149,7 @@ fn fallback<T>(
 		Context -> Item<Bundle<Raster<GPU>>>,
 		Context -> Item<Bundle<Color>>,
 		Context -> Item<Bundle<Gradient>>,
+		Context -> Item<Bundle<Generator>>,
 		Context -> Item<Bundle<Artboard>>,
 	)]
 	fallback: impl Node<Context<'static>, Output = T>,
@@ -178,6 +186,7 @@ fn catch<T>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
@@ -191,6 +200,7 @@ fn catch<T>(
 		Context -> Item<Bundle<Raster<GPU>>>,
 		Context -> Item<Bundle<Color>>,
 		Context -> Item<Bundle<Gradient>>,
+		Context -> Item<Bundle<Generator>>,
 		Context -> Item<Bundle<Artboard>>,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
@@ -207,6 +217,7 @@ fn catch<T>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
@@ -220,6 +231,7 @@ fn catch<T>(
 		Context -> Item<Bundle<Raster<GPU>>>,
 		Context -> Item<Bundle<Color>>,
 		Context -> Item<Bundle<Gradient>>,
+		Context -> Item<Bundle<Generator>>,
 		Context -> Item<Bundle<Artboard>>,
 	)]
 	alternative: impl Node<Context<'static>, Output = T>,
@@ -250,6 +262,7 @@ fn suppress_error<T>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
@@ -263,6 +276,7 @@ fn suppress_error<T>(
 		Context -> Item<Bundle<Raster<GPU>>>,
 		Context -> Item<Bundle<Color>>,
 		Context -> Item<Bundle<Gradient>>,
+		Context -> Item<Bundle<Generator>>,
 		Context -> Item<Bundle<Artboard>>,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
@@ -290,6 +304,7 @@ fn throw_error<T>(
 		Item<Raster<GPU>>,
 		Item<Color>,
 		Item<Gradient>,
+		Item<Generator>,
 		Item<Artboard>,
 		Item<Bundle<String>>,
 		Item<Bundle<bool>>,
@@ -303,6 +318,7 @@ fn throw_error<T>(
 		Item<Bundle<Raster<GPU>>>,
 		Item<Bundle<Color>>,
 		Item<Bundle<Gradient>>,
+		Item<Bundle<Generator>>,
 		Item<Bundle<Artboard>>,
 	)]
 	value: T,
