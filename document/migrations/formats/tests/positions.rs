@@ -146,10 +146,10 @@ fn a_node_read_by_an_unread_chain_node_is_placed_from_where_that_node_was_drawn(
 }
 
 #[test]
-fn a_node_with_a_pending_move_keeps_its_absolute_position() {
+fn a_document_with_pending_edits_keeps_its_absolute_positions() {
 	let (layer, read) = (NodeId(1), NodeId(2));
 	let mut session = version_four_session(layer, read);
-	session.stage_computed_ops(vec![set_position(read, Position::Absolute([20, 10]))]).unwrap();
+	session.stage_computed_ops(vec![set_position(layer, Position::Absolute([40, 10]))]).unwrap();
 
 	let (migrated, _) = open_at_version_five(&session);
 

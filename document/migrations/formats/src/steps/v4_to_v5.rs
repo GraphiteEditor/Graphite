@@ -108,10 +108,12 @@ fn convert_position(position: &mut Value) {
 
 fn relative_to_readers(document: &mut DocumentPayloads) -> Result<(), MigrationError> {
 	let Some(registry_record) = document.registry.clone() else { return Ok(()) };
+	if !document.hot_log.is_empty() {
+		return Ok(());
+	}
+
 	let mut registry: v5::Registry = registry_record.decode()?;
-	let pending = repositioned_by_hot_ops(document)?;
 	let mut conversions = StoredPositions::new(&registry).relative_to_readers();
-	conversions.retain(|(id, _)| !pending.contains(id));
 	conversions.sort_by_key(|(id, _)| *id);
 
 	if document.history.is_empty() {
@@ -128,31 +130,14 @@ fn relative_to_readers(document: &mut DocumentPayloads) -> Result<(), MigrationE
 	Ok(())
 }
 
-fn repositioned_by_hot_ops(document: &DocumentPayloads) -> Result<HashSet<NodeId>, MigrationError> {
-	let hot_ops: Vec<v5::HotOp> = document.hot_log.iter().map(Payload::decode).collect::<Result<_, _>>()?;
-	Ok(hot_ops
-		.into_iter()
-		.filter_map(|hot_op| match hot_op.op {
-			RegistryDelta::ChangeNodeAttribute { id, delta } if delta.key == POSITION => Some(id),
-			_ => None,
-		})
-		.collect())
-}
-
 fn append_as_one_interaction(document: &mut DocumentPayloads, registry: &mut v5::Registry, conversions: &[(NodeId, Position)]) -> Result<bool, MigrationError> {
 	let (Some(session_record), Some(template)) = (document.session.clone(), document.history.first().cloned()) else {
 		return Ok(false);
 	};
 	let mut session: v5::SessionState = session_record.decode()?;
 	let history: Vec<v5::Delta> = document.history.iter().map(Payload::decode).collect::<Result<_, _>>()?;
-	let hot_ops: Vec<v5::HotOp> = document.hot_log.iter().map(Payload::decode).collect::<Result<_, _>>()?;
 
-	let latest_counter = history
-		.iter()
-		.map(|delta| delta.timestamp)
-		.chain(hot_ops.iter().map(|hot_op| hot_op.timestamp))
-		.map(|timestamp| timestamp.counter);
-	let mut counter = latest_counter.fold(session.clock_counter, u64::max);
+	let mut counter = history.iter().map(|delta| delta.timestamp.counter).fold(session.clock_counter, u64::max);
 	let taken: HashSet<Rev> = history.iter().map(|delta| delta.id).collect();
 	let mut placeholders = (1..=u128::MAX).rev().filter_map(NonZeroU128::new).map(Rev).filter(|rev| !taken.contains(rev));
 	let retired_at_ms = history.iter().find(|delta| Some(delta.id) == session.head_rev).map_or(0, |delta| delta.retired_at_ms);
