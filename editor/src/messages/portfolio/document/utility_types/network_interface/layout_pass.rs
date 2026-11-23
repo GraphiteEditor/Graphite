@@ -1,7 +1,9 @@
+use super::node_parts::{NodeShape, PartTarget, PlacedNode};
 use super::*;
 use glam::UVec2;
 use graph_layout::{Drag, Graph, Layout, Node, NodeIndex, NodeKind, Placement, Wire};
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const REACH_MARGIN: f64 = 16.;
 
@@ -9,13 +11,54 @@ const REACH_MARGIN: f64 = 16.;
 #[derive(Debug, Clone)]
 pub struct NetworkLayout {
 	revision: u64,
+	generation: u64,
 	node_ids: Vec<NodeId>,
 	indices: HashMap<NodeId, NodeIndex>,
 	graph: Graph,
+	shapes: Vec<NodeShape>,
 	layout: Layout,
+	bounds: [DVec2; 2],
+	clearance: ImportExportClearance,
 }
 
+/// Counts every layout made, so whatever is derived from one can tell when it was replaced, even without a new revision.
+static LAYOUT_GENERATIONS: AtomicU64 = AtomicU64::new(0);
+
 impl NetworkLayout {
+	fn new(revision: u64, laid_out: LaidOutNodes, graph: Graph, layout: Layout) -> Self {
+		let LaidOutNodes { node_ids, indices, shapes } = laid_out;
+		let mut network_layout = Self {
+			revision,
+			generation: LAYOUT_GENERATIONS.fetch_add(1, Ordering::Relaxed),
+			node_ids,
+			indices,
+			graph,
+			shapes,
+			layout,
+			bounds: [DVec2::ZERO; 2],
+			clearance: ImportExportClearance::default(),
+		};
+		network_layout.measure_bounds_and_clearance();
+		network_layout
+	}
+
+	fn into_parts(self) -> (LaidOutNodes, Graph, Layout) {
+		let Self {
+			node_ids,
+			indices,
+			shapes,
+			graph,
+			layout,
+			..
+		} = self;
+		(LaidOutNodes { node_ids, indices, shapes }, graph, layout)
+	}
+
+	/// Which layout this is among all ever made.
+	pub fn generation(&self) -> u64 {
+		self.generation
+	}
+
 	pub fn position(&self, node_id: &NodeId) -> Option<IVec2> {
 		Some(self.node(node_id)?.position)
 	}
@@ -53,6 +96,33 @@ impl NetworkLayout {
 		self.node(layer).map_or(0, |node| node.chain_length)
 	}
 
+	/// The combined bounds of every node's body in node graph space, or a point at the origin for an empty network.
+	pub fn bounds(&self) -> [DVec2; 2] {
+		self.bounds
+	}
+
+	/// What the imports and exports keep their distance from horizontally.
+	pub(crate) fn clearance(&self) -> ImportExportClearance {
+		self.clearance
+	}
+
+	/// The node's body where it sits in its grid cell, in node graph space.
+	pub fn body(&self, node_id: &NodeId) -> Option<PartTarget> {
+		Some(self.placed(*self.indices.get(node_id)?).body())
+	}
+
+	/// The first of the node's parts, its body last, that `find` picks something from.
+	pub fn find_part<R>(&self, node_id: &NodeId, mut find: impl FnMut(&PartTarget) -> Option<R>) -> Option<R> {
+		let placed = self.placed(*self.indices.get(node_id)?);
+		let mut found = None;
+		placed.parts(|target| {
+			if found.is_none() {
+				found = find(&target);
+			}
+		});
+		found
+	}
+
 	/// Whether `point`, in node graph space, lies within the box around everything the node draws.
 	pub fn reaches(&self, node_id: &NodeId, point: DVec2) -> bool {
 		let Some(index) = self.indices.get(node_id) else { return false };
@@ -60,6 +130,38 @@ impl NetworkLayout {
 		let min = reach.min.as_dvec2() * GRID_SIZE as f64 - REACH_MARGIN;
 		let max = reach.max.as_dvec2() * GRID_SIZE as f64 + REACH_MARGIN;
 		point.cmpge(min).all() && point.cmplt(max).all()
+	}
+
+	fn placed(&self, index: NodeIndex) -> PlacedNode<'_> {
+		let node_layout = self.layout.node(index);
+		PlacedNode {
+			node: &self.graph[index],
+			shape: &self.shapes[index.index()],
+			position: node_layout.position,
+			chain_length: node_layout.chain_length,
+		}
+	}
+
+	/// Measures the combined bounds of the node bodies, and the horizontal extents the imports and exports keep clear of, with redirect dots measured by their centers.
+	fn measure_bounds_and_clearance(&mut self) {
+		let widen = |span: Option<[f64; 2]>, left: f64, right: f64| Some(span.map_or([left, right], |[min, max]| [min.min(left), max.max(right)]));
+
+		let mut bounds: Option<[DVec2; 2]> = None;
+		let mut clearance = ImportExportClearance::default();
+		for index in (0..self.graph.nodes.len()).map(|index| NodeIndex::from(index as u32)) {
+			let body = self.placed(index).body();
+			bounds = Some(bounds.map_or([body.min, body.max], |[min, max]| [min.min(body.min), max.max(body.max)]));
+
+			if self.graph[index].kind == NodeKind::Waypoint {
+				let center = (body.min.x + body.max.x) / 2.;
+				clearance.dot_centers = widen(clearance.dot_centers, center, center);
+			} else {
+				clearance.node_sides = widen(clearance.node_sides, body.min.x, body.max.x);
+			}
+		}
+
+		self.bounds = bounds.unwrap_or_default();
+		self.clearance = clearance;
 	}
 
 	fn node(&self, node_id: &NodeId) -> Option<graph_layout::NodeLayout> {
@@ -86,12 +188,14 @@ struct DragOrigin {
 	keep_upstream: bool,
 	node_ids: Vec<NodeId>,
 	indices: HashMap<NodeId, NodeIndex>,
+	shapes: Vec<NodeShape>,
 	start: Graph,
 	drag: Drag,
 }
 
 impl DragOrigin {
-	fn new(node_ids: Vec<NodeId>, indices: HashMap<NodeId, NodeIndex>, start: Graph, start_layout: Layout, dragged: &[NodeId], keep_upstream: bool, revision: u64) -> Self {
+	fn new(laid_out: LaidOutNodes, start: Graph, start_layout: Layout, dragged: &[NodeId], keep_upstream: bool, revision: u64) -> Self {
+		let LaidOutNodes { node_ids, indices, shapes } = laid_out;
 		let dragged = dragged.iter().filter_map(|node_id| indices.get(node_id).copied()).collect();
 		Self {
 			revision,
@@ -99,6 +203,7 @@ impl DragOrigin {
 			drag: Drag::new(start.clone(), start_layout, dragged, keep_upstream),
 			node_ids,
 			indices,
+			shapes,
 			start,
 		}
 	}
@@ -154,7 +259,6 @@ impl NodeNetworkInterface {
 			}
 		}
 		transient.layout.unload();
-		self.invalidate_positions(network_path);
 	}
 
 	/// Moves the selected nodes `offset` grid cells from where they are drawn, the same way as a drag.
@@ -178,9 +282,14 @@ impl NodeNetworkInterface {
 				.filter(|((before, after), _)| before.placement != after.placement)
 				.map(|((_, after), node_id)| (*node_id, after.placement))
 				.collect();
-			(moved_placements, std::mem::take(&mut origin.node_ids), std::mem::take(&mut origin.indices), moved)
+			let laid_out = LaidOutNodes {
+				node_ids: std::mem::take(&mut origin.node_ids),
+				indices: std::mem::take(&mut origin.indices),
+				shapes: std::mem::take(&mut origin.shapes),
+			};
+			(moved_placements, laid_out, moved)
 		});
-		let Some((moved_placements, node_ids, indices, graph)) = finished else { return };
+		let Some((moved_placements, laid_out, graph)) = finished else { return };
 
 		let mut stored_all = true;
 		for (node_id, placement) in moved_placements {
@@ -189,13 +298,7 @@ impl NodeNetworkInterface {
 
 		if stored_all && let Some(network_metadata) = self.network_metadata(network_path) {
 			let layout = Layout::new(&graph);
-			network_metadata.transient_metadata.layout.store(NetworkLayout {
-				revision: store::revision(),
-				layout,
-				graph,
-				node_ids,
-				indices,
-			});
+			network_metadata.transient_metadata.layout.store(NetworkLayout::new(store::revision(), laid_out, graph, layout));
 		}
 	}
 
@@ -208,16 +311,15 @@ impl NodeNetworkInterface {
 		let transient = self.network_transient_mut(network_path)?;
 		let drag = transient.drag.take()?;
 		transient.layout.unload();
-		self.invalidate_positions(network_path);
 		Some(drag)
 	}
 
 	fn with_drag_origin<R>(&self, drag: &DragPreview, network_path: &[NodeId], revision: u64, read: impl FnOnce(&mut DragOrigin) -> R) -> Option<R> {
 		let mut origin = drag.origin.borrow_mut();
 		if origin.as_ref().is_none_or(|origin| (origin.revision, origin.keep_upstream) != (revision, drag.keep_upstream)) {
-			let (node_ids, indices, start) = self.layout_graph(network_path)?;
+			let (laid_out, start) = self.layout_graph(network_path)?;
 			let start_layout = Layout::new(&start);
-			*origin = Some(DragOrigin::new(node_ids, indices, start, start_layout, &drag.dragged, drag.keep_upstream, revision));
+			*origin = Some(DragOrigin::new(laid_out, start, start_layout, &drag.dragged, drag.keep_upstream, revision));
 		}
 		origin.as_mut().map(read)
 	}
@@ -227,8 +329,8 @@ impl NodeNetworkInterface {
 		let cache = &self.network_metadata(network_path)?.transient_metadata.layout;
 		let cached = cache.with_loaded(|cached| (cached.revision == revision).then(|| cached.clone())).flatten()?;
 
-		let NetworkLayout { node_ids, indices, graph, layout, .. } = cached;
-		Some(DragOrigin::new(node_ids, indices, graph, layout, dragged, keep_upstream, revision))
+		let (laid_out, graph, layout) = cached.into_parts();
+		Some(DragOrigin::new(laid_out, graph, layout, dragged, keep_upstream, revision))
 	}
 
 	fn store_placement(&mut self, node_id: &NodeId, placement: Placement, network_path: &[NodeId]) -> bool {
@@ -246,40 +348,38 @@ impl NodeNetworkInterface {
 		};
 		if node.set_node_type(node_type) {
 			self.transaction_modified();
-			self.invalidate_positions(network_path);
 		}
 		true
 	}
 
 	fn lay_out(&self, network_path: &[NodeId], revision: u64) -> Option<NetworkLayout> {
-		let (node_ids, indices, graph, layout) = match &self.network_metadata(network_path)?.transient_metadata.drag {
+		let (laid_out, graph, layout) = match &self.network_metadata(network_path)?.transient_metadata.drag {
 			Some(drag) => self.with_drag_origin(drag, network_path, revision, |origin| {
 				let (graph, mut layout) = origin.drag.moved(drag.offset);
 				layout.snap_chains(&graph);
-				(origin.node_ids.clone(), origin.indices.clone(), graph, layout)
+				let laid_out = LaidOutNodes {
+					node_ids: origin.node_ids.clone(),
+					indices: origin.indices.clone(),
+					shapes: origin.shapes.clone(),
+				};
+				(laid_out, graph, layout)
 			})?,
 			None => {
-				let (node_ids, indices, graph) = self.layout_graph(network_path)?;
+				let (laid_out, graph) = self.layout_graph(network_path)?;
 				let layout = Layout::new(&graph);
-				(node_ids, indices, graph, layout)
+				(laid_out, graph, layout)
 			}
 		};
 
-		Some(NetworkLayout {
-			revision,
-			layout,
-			graph,
-			node_ids,
-			indices,
-		})
+		Some(NetworkLayout::new(revision, laid_out, graph, layout))
 	}
 
-	pub(crate) fn layout_graph(&self, network_path: &[NodeId]) -> Option<(Vec<NodeId>, HashMap<NodeId, NodeIndex>, Graph)> {
+	pub(crate) fn layout_graph(&self, network_path: &[NodeId]) -> Option<(LaidOutNodes, Graph)> {
 		let network = self.nested_network(network_path)?;
 		let node_ids: Vec<NodeId> = network.nodes.keys().copied().collect();
 		let indices: HashMap<NodeId, NodeIndex> = node_ids.iter().enumerate().map(|(index, node_id)| (*node_id, NodeIndex::from(index as u32))).collect();
 
-		let nodes = node_ids.iter().map(|node_id| self.layout_node(node_id, network_path)).collect::<Option<Vec<_>>>()?;
+		let (nodes, shapes) = node_ids.iter().map(|node_id| self.layout_node(node_id, network_path)).collect::<Option<(Vec<_>, Vec<_>)>>()?;
 		let wires = node_ids
 			.iter()
 			.enumerate()
@@ -297,10 +397,10 @@ impl NodeNetworkInterface {
 			})
 			.collect();
 
-		Some((node_ids, indices, Graph { nodes, wires }))
+		Some((LaidOutNodes { node_ids, indices, shapes }, Graph { nodes, wires }))
 	}
 
-	fn layout_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<Node> {
+	fn layout_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<(Node, NodeShape)> {
 		let metadata = self.node_metadata(node_id, network_path)?;
 		let (placement, is_layer) = match &metadata.persistent_metadata.node_type_metadata {
 			NodeTypePersistentMetadata::Layer(layer) => match layer.position {
@@ -314,17 +414,40 @@ impl NodeNetworkInterface {
 		};
 
 		let is_redirect_dot = self.is_redirect_dot(node_id, network_path);
+		let (layer_width, name_width) = if is_layer {
+			self.layer_width_and_name_width(node_id, network_path).unwrap_or_default()
+		} else {
+			(0, 0.)
+		};
 		let (kind, size) = match (is_layer, is_redirect_dot) {
-			(true, _) => (NodeKind::Layer, UVec2::new(self.layer_width(node_id, network_path).unwrap_or_default(), LAYER_GRID_HEIGHT)),
+			(true, _) => (NodeKind::Layer, UVec2::new(layer_width, LAYER_GRID_HEIGHT)),
 			(false, true) => (NodeKind::Waypoint, UVec2::new(5, self.node_height(node_id, network_path))),
 			(false, false) => (NodeKind::Node, UVec2::new(5, self.node_height(node_id, network_path))),
 		};
-		Some(Node {
+
+		let primary_output_hidden = self.hidden_primary_output(node_id, network_path);
+		let node = Node {
 			placement,
 			kind,
 			size: size.as_ivec2(),
-			chainable: !is_redirect_dot && !self.hidden_primary_output(node_id, network_path),
+			chainable: !is_redirect_dot && !primary_output_hidden,
 			held: false,
-		})
+		};
+		let shape = NodeShape {
+			inputs: self.number_of_displayed_inputs(node_id, network_path) as u32,
+			outputs: self.number_of_outputs(node_id, network_path) as u32,
+			primary_input_hidden: self.document_node(node_id, network_path)?.inputs.first().is_some_and(|input| !input.is_exposed()),
+			primary_output_hidden,
+			name_width,
+			locked: self.is_locked(node_id, network_path),
+		};
+		Some((node, shape))
 	}
+}
+
+/// The nodes of a network in the order the layout indexes them, with what each draws beyond its size in the layout.
+pub(crate) struct LaidOutNodes {
+	pub(crate) node_ids: Vec<NodeId>,
+	pub(crate) indices: HashMap<NodeId, NodeIndex>,
+	shapes: Vec<NodeShape>,
 }

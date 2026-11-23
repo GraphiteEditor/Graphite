@@ -94,11 +94,9 @@ impl NodeNetworkInterface {
 				self.set_to_node_or_layer(&parent_id, &encapsulating_path, false);
 			}
 
-			// Update the outward wires and bounding box for all nodes in the encapsulating network
+			// Update the outward wires for all nodes in the encapsulating network
 			if let Some(encapsulating_transient) = self.network_transient_mut(&encapsulating_path) {
 				encapsulating_transient.outward_wires.unload();
-				encapsulating_transient.all_nodes_bounding_box.unload();
-				encapsulating_transient.import_export_clearance.unload();
 			}
 
 			// An export inserted as the first or second output of a node in the document network may have affected the document metadata structure
@@ -141,7 +139,6 @@ impl NodeNetworkInterface {
 
 			// Update the metadata for the encapsulating node
 			self.unload_outward_wires(encapsulating_network_path);
-			self.unload_all_nodes_bounding_box(encapsulating_network_path);
 			affects_document_structure |= encapsulating_network_path.is_empty() && inserted_index <= 1;
 		}
 		if affects_document_structure {
@@ -179,7 +176,6 @@ impl NodeNetworkInterface {
 	fn finish_signature_edit(&mut self, parent_id: NodeId, encapsulating_network_path: &[NodeId], network_path: &[NodeId]) {
 		// Update the metadata for the encapsulating node
 		self.unload_outward_wires(encapsulating_network_path);
-		self.unload_all_nodes_bounding_box(encapsulating_network_path);
 		if !self.is_eligible_to_be_layer(&parent_id, encapsulating_network_path) && self.is_layer(&parent_id, encapsulating_network_path) {
 			self.set_to_node_or_layer(&parent_id, encapsulating_network_path, false);
 		}
@@ -572,8 +568,7 @@ impl NodeNetworkInterface {
 
 	/// Lightweight version of `set_input` for bulk import operations.
 	/// Directly sets the input without `is_acyclic` checks, `load_structure`, position conversions,
-	/// or per-node cache invalidation. Call `load_structure`, `unload_all_nodes_click_targets`, and
-	/// `unload_all_nodes_bounding_box` once after all import wiring is complete.
+	/// or per-node cache invalidation. Call `load_structure` once after all import wiring is complete.
 	pub fn set_input_for_import(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
 		if matches!(input_connector, InputConnector::Export(_)) && matches!(new_input, NodeInput::Import { .. }) {
 			log::error!("Cannot connect a network to an export, see https://github.com/GraphiteEditor/Graphite/issues/1762");
@@ -673,8 +668,6 @@ impl NodeNetworkInterface {
 			(NodeInput::Value { exposed: old_exposed, .. }, NodeInput::Value { exposed: new_exposed, .. }) => match input_connector {
 				// Exposing or hiding a value input changes the node's port count
 				InputConnector::Node { node_id, .. } if old_exposed != new_exposed => {
-					self.unload_all_nodes_bounding_box(network_path);
-
 					// A nested network draws its interior ports from the encapsulating node's inputs
 					if matches!(self.implementation(node_id, network_path), Some(DocumentNodeImplementation::Definition(_))) {
 						let nested_path = [network_path, &[*node_id]].concat();
@@ -904,7 +897,6 @@ impl NodeNetworkInterface {
 
 			self.transaction_modified();
 		}
-		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_outward_wires(network_path);
 	}
 
@@ -927,7 +919,6 @@ impl NodeNetworkInterface {
 		}
 
 		self.transaction_modified();
-		self.unload_all_nodes_bounding_box(network_path);
 
 		previous_entry
 	}
@@ -1092,7 +1083,6 @@ impl NodeNetworkInterface {
 			outward_wires.retain(|output, _| output.node_id().is_none_or(|node_id| !removed_nodes.contains(&node_id)));
 		}
 
-		self.unload_all_nodes_bounding_box(network_path);
 		let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
 			log::error!("Could not get selected nodes in NodeGraphMessage::DeleteNodes");
 			return;
@@ -1365,7 +1355,6 @@ impl NodeNetworkInterface {
 		transient.layer_width.unload();
 
 		self.transaction_modified();
-		self.unload_all_nodes_bounding_box(network_path);
 		self.invalidate_import_export(network_path);
 		self.load_structure();
 	}

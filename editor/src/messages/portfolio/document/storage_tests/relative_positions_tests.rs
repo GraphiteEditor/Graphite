@@ -35,7 +35,6 @@ fn store_drawn_positions_as_absolute(interface: &mut NodeNetworkInterface, posit
 		if let Some(mut node) = interface.node_mut(NodeLocator::new(*node_id, network_path)) {
 			node.set_absolute_position(*position);
 		}
-		interface.invalidate_positions(network_path);
 	}
 }
 
@@ -172,14 +171,14 @@ fn the_layout_kept_after_a_drag_matches_the_network_as_stored() {
 		interface.finish_drag(&[]);
 
 		let kept = interface.positions(node_ids.iter().copied(), &[]);
-		let Some((_, indices, graph)) = interface.layout_graph(&[]) else {
+		let Some((laid_out, graph)) = interface.layout_graph(&[]) else {
 			panic!("the root network is laid out")
 		};
 		let fresh = graph_layout::Layout::new(&graph);
 		for (other, position) in kept {
 			assert_eq!(
 				Some(position),
-				indices.get(&other).map(|index| fresh.node(*index).position),
+				laid_out.indices.get(&other).map(|index| fresh.node(*index).position),
 				"After dragging {node_id} by {offset}, node {other} should be where the stored network places it"
 			);
 		}

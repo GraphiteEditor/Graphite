@@ -747,16 +747,12 @@ impl<T> TransientCache<T> {
 #[derive(Debug, Default, Clone)]
 pub struct NodeNetworkTransientMetadata {
 	pub selected_nodes: SelectedNodes,
-	/// Cache for the bounding box around all nodes in node graph space.
-	pub(crate) all_nodes_bounding_box: TransientCache<[DVec2; 2]>,
-	/// Cache for what the imports and exports keep their distance from, unloaded along with `all_nodes_bounding_box`.
-	pub(crate) import_export_clearance: TransientCache<ImportExportClearance>,
 	/// Cache for all outward wire connections
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	pub(crate) layout: TransientCache<NetworkLayout>,
 	pub(crate) drag: Option<super::layout_pass::DragPreview>,
-	/// All export connector click targets
-	pub(crate) import_export_ports: TransientCache<Ports>,
+	/// The import and export connector click targets, with the generation of the layout they were placed by.
+	pub(crate) import_export_ports: TransientCache<(u64, Ports)>,
 
 	/// How far whatever is gliding into the place it just moved to is drawn from that place, which hit tests account for.
 	pub(crate) glide_offsets: std::cell::RefCell<GlideOffsets>,

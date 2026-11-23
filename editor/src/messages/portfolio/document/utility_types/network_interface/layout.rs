@@ -52,7 +52,6 @@ impl NodeNetworkInterface {
 		}
 
 		self.transaction_modified();
-		self.invalidate_positions(network_path);
 	}
 
 	/// Converts every node another node reads in all networks, whether absolute, chained, or stacked, to a position relative to the left of its readers, level with the highest.
@@ -145,7 +144,6 @@ impl NodeNetworkInterface {
 		}
 
 		self.transaction_modified();
-		self.invalidate_positions(network_path);
 	}
 
 	/// Sets the position of a layer to a stack position
@@ -159,8 +157,6 @@ impl NodeNetworkInterface {
 		} else if node.set_stack_position(y_offset) {
 			self.transaction_modified();
 		}
-
-		self.invalidate_positions(network_path);
 	}
 
 	/// Sets the position of a node to a stack position without changing its y offset
@@ -371,7 +367,6 @@ impl NodeNetworkInterface {
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
 		if node.shift_absolute_position(position - current_position) {
 			self.transaction_modified();
-			self.invalidate_positions(network_path);
 		}
 	}
 
