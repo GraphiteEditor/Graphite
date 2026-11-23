@@ -186,14 +186,11 @@ pub enum FrontendMessage {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
 	},
-	UpdateDocumentCursors {
+	UpdateRemoteCursors {
 		cursors: Vec<FrontendRemoteCursor>,
 	},
 	UpdateHistoryPanel {
 		state: crate::messages::portfolio::history::utility_types::HistoryPanelState,
-	},
-	UpdateNodeGraphCursors {
-		cursors: Vec<FrontendRemoteCursor>,
 	},
 	UpdateContextMenuInformation {
 		#[serde(rename = "contextMenuInformation")]
