@@ -48,6 +48,24 @@ impl NodeNetworkInterface {
 		Some(&mut navigation.node_graph_ptz)
 	}
 
+	/// The first of the node's parts, its body last, that `find` picks something from. Each part is given in node graph space where the node sits in its
+	/// grid cell, and an input by its index rather than the row a node draws it in.
+	pub(crate) fn find_node_part<R>(&self, node_id: &NodeId, network_path: &[NodeId], mut find: impl FnMut(Part, &PartTarget) -> Option<R>) -> Option<R> {
+		let rows_are_inputs = self.is_layer(node_id, network_path) || self.is_redirect_dot(node_id, network_path);
+		let inputs = &self.document_node(node_id, network_path)?.inputs;
+
+		self.with_layout(network_path, |layout| {
+			layout.find_part(node_id, |target| {
+				let part = match target.part {
+					Part::Input(row) if !rows_are_inputs => Part::Input(input_in_row(inputs, row as usize)? as u32),
+					part => part,
+				};
+				find(part, target)
+			})
+		})
+		.flatten()
+	}
+
 	/// The node drawn topmost at `click`, in viewport space. Only the nodes whose reach covers it build their exact click targets.
 	pub fn node_from_click(&self, click: DVec2, network_path: &[NodeId]) -> Option<NodeId> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
@@ -58,16 +76,13 @@ impl NodeNetworkInterface {
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 		// Each node is pressed where it's drawn, even while gliding into its grid cell
 		let glide_offsets = self.glide_offsets(network_path);
-		let clicked_nodes = self
-			.nodes_reaching(point, network_path)
-			.iter()
-			.filter(|node_id| {
-				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
-					transient_node_metadata.node_click_target.intersect_point_no_stroke(point - glide_offsets.node(node_id))
-				}) == Some(true)
-			})
-			.cloned()
-			.collect::<Vec<_>>();
+		let reaching = self.nodes_reaching(point, network_path);
+		let clicked_nodes = self.with_layout(network_path, |layout| {
+			reaching
+				.into_iter()
+				.filter(|node_id| layout.body(node_id).is_some_and(|body| body.contains(point - glide_offsets.node(node_id))))
+				.collect::<Vec<_>>()
+		})?;
 		// Redirect dots are drawn above nodes, which are drawn above layer chains, so the topmost clicked one is found in that order
 		let drawing_layer = |node_id: &NodeId| {
 			if self.is_redirect_dot(node_id, network_path) {
@@ -90,25 +105,18 @@ impl NodeNetworkInterface {
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 		let glide_offsets = self.glide_offsets(network_path);
 
-		self.nodes_reaching(point, network_path)
-			.iter()
-			.filter_map(|node_id| {
-				let point = point - glide_offsets.node(node_id);
-				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
-					if let NodeTypeClickTargets::Layer(layer) = &transient_node_metadata.node_type_metadata {
-						match click_target_type {
-							LayerClickTargetTypes::Visibility => layer.visibility_click_target.intersect_point_no_stroke(point).then_some(*node_id),
-							LayerClickTargetTypes::Lock => layer.lock_click_target.as_ref().and_then(|target| target.intersect_point_no_stroke(point).then_some(*node_id)),
-							LayerClickTargetTypes::Grip => layer.grip_click_target.intersect_point_no_stroke(point).then_some(*node_id),
-							LayerClickTargetTypes::Name => layer.name_click_target.as_ref().and_then(|target| target.intersect_point_no_stroke(point).then_some(*node_id)),
-						}
-					} else {
-						None
-					}
-				})
-				.flatten()
-			})
-			.next()
+		let wanted = match click_target_type {
+			LayerClickTargetTypes::Visibility => Part::Visibility,
+			LayerClickTargetTypes::Lock => Part::Lock,
+			LayerClickTargetTypes::Grip => Part::Grip,
+			LayerClickTargetTypes::Name => Part::Name,
+		};
+
+		self.nodes_reaching(point, network_path).into_iter().find(|node_id| {
+			let point = point - glide_offsets.node(node_id);
+			self.find_node_part(node_id, network_path, |part, target| (part == wanted && target.contains(point)).then_some(()))
+				.is_some()
+		})
 	}
 
 	/// The dimmed connector for adding an import (or else export) under `point`, given in node graph space, as the index it adds with its center.
@@ -194,13 +202,11 @@ impl NodeNetworkInterface {
 			.iter()
 			.filter(|node_id| covering_dot.is_none_or(|dot| dot == **node_id))
 			.filter_map(|node_id| {
-				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
-					transient_node_metadata
-						.port_click_targets
-						.clicked_input_port_from_point(point - glide_offsets.node(node_id))
-						.map(|port| InputConnector::node_at_index(*node_id, port))
+				let point = point - glide_offsets.node(node_id);
+				self.find_node_part(node_id, network_path, |part, target| match part {
+					Part::Input(index) if target.contains(point) => Some(InputConnector::node_at_index(*node_id, index as usize)),
+					_ => None,
 				})
-				.flatten()
 			})
 			.find(|input_connector| !self.is_wired_dot_input(input_connector, network_path))
 			.or_else(|| {
@@ -227,13 +233,11 @@ impl NodeNetworkInterface {
 			.iter()
 			.filter(|node_id| covering_dot.is_none_or(|dot| dot == **node_id))
 			.filter_map(|node_id| {
-				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
-					transient_node_metadata
-						.port_click_targets
-						.clicked_output_port_from_point(point - glide_offsets.node(node_id))
-						.map(|output_index| OutputConnector::node(*node_id, output_index))
+				let point = point - glide_offsets.node(node_id);
+				self.find_node_part(node_id, network_path, |part, target| match part {
+					Part::Output(index) if target.contains(point) => Some(OutputConnector::node(*node_id, index as usize)),
+					_ => None,
 				})
-				.flatten()
 			})
 			.next()
 			.or_else(|| {
@@ -325,4 +329,18 @@ impl NodeNetworkInterface {
 			.skip(1)
 			.all(|node_id| self.is_chain(&node_id, network_path))
 	}
+}
+
+/// The input drawn in `row` of a node, where the primary input's row is drawn even while it has no port.
+fn input_in_row(inputs: &[NodeInput], row: usize) -> Option<usize> {
+	let mut current_row = 0;
+	for (index, input) in inputs.iter().enumerate() {
+		if input.is_exposed() && current_row == row {
+			return Some(index);
+		}
+		if index == 0 || input.is_exposed() {
+			current_row += 1;
+		}
+	}
+	None
 }

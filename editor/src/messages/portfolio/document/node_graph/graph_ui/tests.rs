@@ -3,15 +3,13 @@ use crate::messages::dialog::simple_dialogs::ARTWORK;
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, NodeEvaluationError};
-use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodeClickTargets, NodeTypeClickTargets, Ports};
+use crate::messages::portfolio::document::utility_types::network_interface::{Part, Ports};
 use crate::messages::portfolio::ingest::utility_types::IngestAction;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::test_utils::test_prelude::*;
-use glam::DAffine2;
 use graphene_std::graph_ui::metrics::{CONNECTOR_SIZE, DOT_OUTPUT_ARROW, GRID_SIZE, IMPORT_EXPORT_NAME_RAISE, LAYER_LEFT_MARGIN, STACK_CONNECTOR_SIZE};
 use graphene_std::graph_ui::replicated_map::ReplicatedMap;
 use graphene_std::graph_ui::scene::GraphUiScene;
-use graphene_std::vector::click_target::ClickTarget;
 use kurbo::PathEl;
 use std::time::{Duration, Instant};
 
@@ -1454,8 +1452,16 @@ fn misses_in_open_network(editor: &EditorTestUtils) -> Vec<String> {
 	let (network_interface, network_path) = (&document.network_interface, document.breadcrumb_network_path());
 	let scene = scene(editor);
 	let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
-	let bounds = |target: &ClickTarget| target.bounding_box_with_transform(DAffine2::IDENTITY);
-	let targets = |node: &NodeId| network_interface.with_node_click_targets(node, network_path, DocumentNodeClickTargets::clone);
+	let body = |node: &NodeId| network_interface.with_layout(network_path, |layout| layout.body(node)).flatten();
+	let part_at = |node: &NodeId, wanted: fn(Part) -> bool, point: DVec2| network_interface.find_node_part(node, network_path, |part, target| (wanted(part) && target.contains(point)).then_some(part));
+	let input_at = |node: &NodeId, point: DVec2| part_at(node, |part| matches!(part, Part::Input(_)), point);
+	let output_at = |node: &NodeId, point: DVec2| part_at(node, |part| matches!(part, Part::Output(_)), point);
+	let inside = |node: &NodeId, wanted: Part, part: [DVec2; 2]| {
+		let point = middle(part);
+		network_interface
+			.find_node_part(node, network_path, |part, target| (part == wanted && target.contains(point)).then_some(()))
+			.is_some()
+	};
 	let exposed_inputs = |node: NodeId| {
 		let exposed = move |&index: &usize| network_interface.frontend_input_from_connector(&InputConnector::node_at_index(node, index), network_path).is_some();
 		(1..network_interface.number_of_inputs(&node, network_path)).filter(exposed)
@@ -1471,91 +1477,77 @@ fn misses_in_open_network(editor: &EditorTestUtils) -> Vec<String> {
 
 	for card in scene.cards() {
 		let name = format!("card {} \"{}\"", card.key, card.name);
-		let Some(targets) = targets(&card.key) else {
+		let Some(target) = body(&card.key) else {
 			check(false, format!("{name} has no click targets"));
 			continue;
 		};
 		let [min, max] = card.body();
-		let target = bounds(&targets.node_click_target);
-		let on_target = target.is_some_and(|[target_min, target_max]| near(min.x, target_min.x) && near(min.y, target_min.y) && near(max.x, target_max.x) && near(max.y, target_max.y));
-		check(on_target, format!("{name}: body {:?}, click target {target:?}", [min, max]));
-		let ports = &targets.port_click_targets;
+		let on_target = near(min.x, target.min.x) && near(min.y, target.min.y) && near(max.x, target.max.x) && near(max.y, target.max.y);
+		check(on_target, format!("{name}: body {:?}, click target {:?}", [min, max], [target.min, target.max]));
 		let inputs = card.primary_input.iter().map(|_| 0).chain(exposed_inputs(card.key));
 		for ((top_left, _), index) in card.inputs().zip(inputs) {
-			let hit = ports.clicked_input_port_from_point(top_left + CONNECTOR_SIZE / 2.);
-			check(hit == Some(index), format!("{name}: input {index} drawn at {top_left} hits input {hit:?}"));
+			let hit = input_at(&card.key, top_left + CONNECTOR_SIZE / 2.);
+			check(hit == Some(Part::Input(index as u32)), format!("{name}: input {index} drawn at {top_left} hits {hit:?}"));
 		}
 		let outputs = card.primary_output.iter().map(|_| 0).chain(1..network_interface.number_of_outputs(&card.key, network_path));
 		for ((top_left, _), index) in card.outputs().zip(outputs) {
-			let hit = ports.clicked_output_port_from_point(top_left + CONNECTOR_SIZE / 2.);
-			check(hit == Some(index), format!("{name}: output {index} drawn at {top_left} hits output {hit:?}"));
+			let hit = output_at(&card.key, top_left + CONNECTOR_SIZE / 2.);
+			check(hit == Some(Part::Output(index as u32)), format!("{name}: output {index} drawn at {top_left} hits {hit:?}"));
 		}
 	}
 
 	for layer in scene.layers() {
 		let name = format!("layer {} \"{}\"", layer.key, layer.name);
-		let Some(targets) = targets(&layer.key) else {
+		let Some(target) = body(&layer.key) else {
 			check(false, format!("{name} has no click targets"));
 			continue;
 		};
-		let NodeTypeClickTargets::Layer(buttons) = &targets.node_type_metadata else {
-			check(false, format!("{name} has the click targets of a node"));
-			continue;
-		};
-		let Some([target_min, target_max]) = bounds(&targets.node_click_target) else {
-			check(false, format!("{name} has an empty click target"));
-			continue;
-		};
 		let [min, max] = layer.body();
-		let on_target = near(min.y, target_min.y) && near(max.x, target_max.x) && near(max.y, target_max.y);
-		check(on_target, format!("{name}: body {:?}, click target {:?}", [min, max], [target_min, target_max]));
+		let on_target = near(min.y, target.min.y) && near(max.x, target.max.x) && near(max.y, target.max.y);
+		check(on_target, format!("{name}: body {:?}, click target {:?}", [min, max], [target.min, target.max]));
 		let undrawn_strip = if layer.chain_width > 0 { 0. } else { LAYER_LEFT_MARGIN };
 		check(
-			near(min.x - target_min.x, undrawn_strip),
-			format!("{name}: drawn from x {}, clickable from x {}, not {undrawn_strip} px apart", min.x, target_min.x),
+			near(min.x - target.min.x, undrawn_strip),
+			format!("{name}: drawn from x {}, clickable from x {}, not {undrawn_strip} px apart", min.x, target.min.x),
 		);
-		let inside = |target: &ClickTarget, part: [DVec2; 2]| target.intersect_point_no_stroke(middle(part));
-		check(inside(&targets.node_click_target, layer.thumbnail()), format!("{name}: thumbnail {:?}", layer.thumbnail()));
-		check(
-			inside(&buttons.visibility_click_target, layer.visibility()),
-			format!("{name}: visibility button {:?}", layer.visibility()),
-		);
-		match (layer.lock(), &buttons.lock_click_target) {
-			(Some(lock), Some(target)) => check(inside(target, lock), format!("{name}: lock button {lock:?}")),
+		check(target.contains(middle(layer.thumbnail())), format!("{name}: thumbnail {:?}", layer.thumbnail()));
+		check(inside(&layer.key, Part::Visibility, layer.visibility()), format!("{name}: visibility button {:?}", layer.visibility()));
+		let lock_target = network_interface.find_node_part(&layer.key, network_path, |part, target| (part == Part::Lock).then_some([target.min, target.max]));
+		match (layer.lock(), lock_target) {
+			(Some(lock), Some(_)) => check(inside(&layer.key, Part::Lock, lock), format!("{name}: lock button {lock:?}")),
 			(None, None) => {}
-			(lock, target) => check(false, format!("{name}: lock button {lock:?}, click target {:?}", target.as_ref().map(bounds))),
+			(lock, target) => check(false, format!("{name}: lock button {lock:?}, click target {target:?}")),
 		}
-		check(inside(&buttons.grip_click_target, layer.grip()), format!("{name}: grip {:?}", layer.grip()));
+		check(inside(&layer.key, Part::Grip, layer.grip()), format!("{name}: grip {:?}", layer.grip()));
 		if !layer.name.is_empty() {
 			let [top_left, bottom_right] = layer.name_box();
 			let start = DVec2::new(top_left.x + 4., (top_left.y + bottom_right.y) / 2.);
-			let hit = buttons.name_click_target.as_ref().is_some_and(|target| target.intersect_point_no_stroke(start));
+			let hit = part_at(&layer.key, |part| part == Part::Name, start).is_some();
 			check(hit, format!("{name}: the start of the name at {start}"));
 		}
-		let ports = &targets.port_click_targets;
 		if layer.primary_output.is_some() {
-			let hit = ports.clicked_output_port_from_point(layer.stack_output() + STACK_CONNECTOR_SIZE / 2.);
-			check(hit == Some(0), format!("{name}: stack output drawn at {} hits output {hit:?}", layer.stack_output()));
+			let hit = output_at(&layer.key, layer.stack_output() + STACK_CONNECTOR_SIZE / 2.);
+			check(hit == Some(Part::Output(0)), format!("{name}: stack output drawn at {} hits {hit:?}", layer.stack_output()));
 		}
-		let hit = ports.clicked_input_port_from_point(layer.stack_input() + STACK_CONNECTOR_SIZE / 2.);
-		check(hit == Some(0), format!("{name}: stack input drawn at {} hits input {hit:?}", layer.stack_input()));
+		let hit = input_at(&layer.key, layer.stack_input() + STACK_CONNECTOR_SIZE / 2.);
+		check(hit == Some(Part::Input(0)), format!("{name}: stack input drawn at {} hits {hit:?}", layer.stack_input()));
 		if layer.secondary_input.is_some() {
-			let index = exposed_inputs(layer.key).next();
-			let hit = ports.clicked_input_port_from_point(layer.secondary_input_connector() + CONNECTOR_SIZE / 2.);
-			check(hit == index, format!("{name}: input {index:?} drawn at {} hits input {hit:?}", layer.secondary_input_connector()));
+			let index = exposed_inputs(layer.key).next().map(|index| Part::Input(index as u32));
+			let hit = input_at(&layer.key, layer.secondary_input_connector() + CONNECTOR_SIZE / 2.);
+			check(hit == index, format!("{name}: input {index:?} drawn at {} hits {hit:?}", layer.secondary_input_connector()));
 		}
 	}
 
 	for dot in scene.dots() {
 		let name = format!("dot {}", dot.key);
-		let Some(targets) = targets(&dot.key) else {
+		let Some(target) = body(&dot.key) else {
 			check(false, format!("{name} has no click targets"));
 			continue;
 		};
-		check(targets.node_click_target.intersect_point_no_stroke(dot.center()), format!("{name}: center {}", dot.center()));
+		check(target.contains(dot.center()), format!("{name}: center {}", dot.center()));
 		let arrow = dot.center() + DOT_OUTPUT_ARROW;
-		let hit = targets.port_click_targets.clicked_output_port_from_point(arrow + CONNECTOR_SIZE / 2.);
-		check(hit == Some(0), format!("{name}: output drawn at {arrow} hits output {hit:?}"));
+		let hit = output_at(&dot.key, arrow + CONNECTOR_SIZE / 2.);
+		check(hit == Some(Part::Output(0)), format!("{name}: output drawn at {arrow} hits {hit:?}"));
 	}
 
 	let ports = network_interface.with_import_export_ports(network_path, Ports::clone).unwrap_or_default();
