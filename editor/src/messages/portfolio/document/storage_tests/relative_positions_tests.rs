@@ -185,3 +185,27 @@ fn the_layout_kept_after_a_drag_matches_the_network_as_stored() {
 		}
 	}
 }
+
+#[test]
+fn starting_a_drag_moves_nothing_and_releasing_it_where_it_started_stores_nothing() {
+	for demo in ["changing-seasons.graphite", "procedural-string-lights.graphite"] {
+		let mut document = open_demo(demo);
+		let interface = &mut document.network_interface;
+		let node_ids: Vec<NodeId> = interface.document_network().nodes.keys().copied().collect();
+		let stored = |interface: &NodeNetworkInterface| {
+			let metadata = |node_id: &NodeId| interface.node_metadata(node_id, &[]).map(|metadata| metadata.persistent_metadata.node_type_metadata.clone());
+			node_ids.iter().map(metadata).collect::<Vec<_>>()
+		};
+		let drawn = interface.positions(node_ids.iter().copied(), &[]);
+		let stored_before = stored(interface);
+
+		for node_id in &node_ids {
+			interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![*node_id]);
+			interface.drag_selected_nodes(IVec2::ZERO, false, &[]);
+			assert_eq!(interface.positions(node_ids.iter().copied(), &[]), drawn, "{demo}: starting to drag {node_id} should move nothing");
+
+			interface.finish_drag(&[]);
+			assert_eq!(stored(interface), stored_before, "{demo}: releasing {node_id} where it started should store nothing");
+		}
+	}
+}

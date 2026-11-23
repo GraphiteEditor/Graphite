@@ -168,7 +168,7 @@ impl NodeNetworkInterface {
 	pub fn finish_drag(&mut self, network_path: &[NodeId]) {
 		let Some(drag) = self.end_drag(network_path) else { return };
 		let finished = self.with_drag_origin(&drag, network_path, store::revision(), |origin| {
-			let (mut moved, _) = origin.drag.moved(drag.offset);
+			let moved = origin.drag.released(drag.offset);
 			let moved_placements: Vec<(NodeId, Placement)> = origin
 				.start
 				.nodes
@@ -178,10 +178,6 @@ impl NodeNetworkInterface {
 				.filter(|((before, after), _)| before.placement != after.placement)
 				.map(|((_, after), node_id)| (*node_id, after.placement))
 				.collect();
-
-			for node in &mut moved.nodes {
-				node.held = false;
-			}
 			(moved_placements, std::mem::take(&mut origin.node_ids), std::mem::take(&mut origin.indices), moved)
 		});
 		let Some((moved_placements, node_ids, indices, graph)) = finished else { return };
