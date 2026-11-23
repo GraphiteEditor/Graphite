@@ -5,15 +5,19 @@ use glam::IVec2;
 impl Mover {
 	pub(super) fn shift_step(&mut self, dragged: &[NodeIndex], shift: IVec2, keep_upstream: bool) {
 		let before = keep_upstream.then(|| self.snapshot());
-		self.shift_nodes(dragged, shift);
+		let shifted = self.shift_nodes(dragged, shift);
 		if let Some(before) = before {
-			self.restore_followers(&before, dragged);
+			let moved: Vec<NodeIndex> = dragged.iter().chain(&shifted).copied().collect();
+			self.restore_followers(&before, &moved);
 		}
 	}
 
-	fn shift_nodes(&mut self, nodes: &[NodeIndex], shift: IVec2) {
+	fn shift_nodes(&mut self, nodes: &[NodeIndex], shift: IVec2) -> Vec<NodeIndex> {
 		let mut shifted = Vec::new();
-		self.moving_on_their_own(nodes).into_iter().for_each(|node| self.shift_node(node, shift, &mut shifted));
+		for node in self.moving_on_their_own(nodes) {
+			self.shift_node(node, shift, &mut shifted);
+		}
+		shifted
 	}
 
 	fn shift_node(&mut self, node: NodeIndex, shift: IVec2, shifted: &mut Vec<NodeIndex>) {

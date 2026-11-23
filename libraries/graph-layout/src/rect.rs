@@ -20,6 +20,11 @@ impl Rect {
 
 	#[must_use]
 	pub fn intersects(&self, other: &Rect) -> bool {
-		self.min.cmplt(other.max).all() && other.min.cmplt(self.max).all()
+		!self.is_empty() && !other.is_empty() && self.min.cmplt(other.max).all() && other.min.cmplt(self.max).all()
+	}
+
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.min.cmpge(self.max).any()
 	}
 }

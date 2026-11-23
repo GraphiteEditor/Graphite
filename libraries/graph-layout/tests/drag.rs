@@ -59,3 +59,17 @@ fn the_layers_a_drag_carries_up_return_as_it_comes_back_down() {
 		start.nodes.iter().map(|node| node.placement).collect::<Vec<_>>()
 	);
 }
+
+#[test]
+fn a_layer_pushed_up_with_its_upstream_kept_carries_the_layer_above_from_the_first_row() {
+	let start = Graph {
+		nodes: vec![layer(Placement::Absolute(IVec2::new(30, 10))), layer(Placement::Stack(3)), layer(Placement::Stack(0))],
+		wires: vec![wire(1, 0, 0), wire(2, 1, 0)],
+	};
+	let before = Layout::new(&start);
+
+	let (_, layout) = Drag::new(start.clone(), Layout::new(&start), vec![at(2)], true).moved(IVec2::new(0, -2));
+
+	assert_eq!(layout.node(at(2)).position, before.node(at(2)).position + IVec2::new(0, -2));
+	assert_eq!(layout.node(at(1)).position, before.node(at(1)).position + IVec2::new(0, -2));
+}

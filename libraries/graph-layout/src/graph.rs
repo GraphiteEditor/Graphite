@@ -37,7 +37,7 @@ pub enum Placement {
 	Absolute(IVec2),
 	/// One chain width left of the node reading it through its chain input.
 	Chain,
-	/// Below the layer reading it, past that layer's height and a gap of this many rows.
+	/// Below the layer reading it, past that layer's height, the empty row it keeps below it, and a gap of this many rows.
 	Stack(u32),
 	/// At this offset from the left of the nodes reading it, level with the highest of them.
 	Relative(IVec2),

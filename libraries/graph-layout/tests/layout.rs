@@ -220,3 +220,13 @@ fn a_layers_reach_covers_its_chain() {
 	assert!(reach.contains(layout.node(at(2)).position));
 	assert!(!reach.contains(layout.node(at(3)).position));
 }
+
+#[test]
+fn an_empty_rect_intersects_nothing() {
+	let cell = graph_layout::Rect::new(IVec2::ZERO, IVec2::ONE);
+	let empty = graph_layout::Rect::new(IVec2::ZERO, IVec2::new(0, 1));
+
+	assert!(cell.intersects(&cell));
+	assert!(!cell.intersects(&empty));
+	assert!(!empty.intersects(&cell));
+}
