@@ -1,9 +1,10 @@
 //! Format step 4 to 5: every node another node reads is stored as an offset from the top left corner of its readers, which draws it where it was.
 
-use crate::v4::{Attributes, Delta, Node, NodeField, NodeId, NodeInput, Prior, Registry, RegistryDelta, Value};
+use crate::v4::{AttributeDelta, AttributeValue, Attributes, Delta, Node, NodeField, NodeId, NodeInput, Prior, Registry, RegistryDelta, Rev, TimeStamp, Value};
 use crate::{v4, v5};
-use migration_core::{DocumentPayloads, MigrationError, Upgrade, format_migration};
+use migration_core::{DocumentPayloads, MigrationError, Payload, Upgrade, format_migration};
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroU128;
 
 format_migration! {
 	4 => 5,
@@ -14,6 +15,7 @@ format_migration! {
 }
 
 const POSITION: &str = "ui::position";
+const INTERACTION_END: &str = "interaction_end";
 const CHAIN_WIDTH: i128 = 7;
 const LAYER_HEIGHT: i128 = 2;
 const LAYER_BOTTOM_GAP: i128 = 1;
@@ -105,20 +107,81 @@ fn convert_position(position: &mut Value) {
 }
 
 fn relative_to_readers(document: &mut DocumentPayloads) -> Result<(), MigrationError> {
-	let Some(record) = &mut document.registry else { return Ok(()) };
-	if !document.history.is_empty() {
+	let Some(registry_record) = document.registry.clone() else { return Ok(()) };
+	let mut registry: v5::Registry = registry_record.decode()?;
+	let mut conversions = StoredPositions::new(&registry).relative_to_readers();
+	conversions.sort_by_key(|(id, _)| *id);
+
+	if document.history.is_empty() {
+		for (id, position) in conversions {
+			if let Some(entry) = registry.node_instances.get_mut(&id).and_then(|node| node.attributes.entries.get_mut(POSITION)) {
+				entry.value = position.into_value();
+			}
+		}
+	} else if !append_as_one_interaction(document, &mut registry, &conversions)? {
 		return Ok(());
 	}
 
-	let mut registry: v5::Registry = record.decode()?;
-	let positions = StoredPositions::new(&registry).relative_to_readers();
-	for (id, position) in positions {
-		if let Some(entry) = registry.node_instances.get_mut(&id).and_then(|node| node.attributes.entries.get_mut(POSITION)) {
-			entry.value = position.into_value();
-		}
-	}
-	*record = record.encode_as(&registry)?;
+	document.registry = Some(registry_record.encode_as(&registry)?);
 	Ok(())
+}
+
+fn append_as_one_interaction(document: &mut DocumentPayloads, registry: &mut v5::Registry, conversions: &[(NodeId, Position)]) -> Result<bool, MigrationError> {
+	let (Some(session_record), Some(template)) = (document.session.clone(), document.history.first().cloned()) else {
+		return Ok(false);
+	};
+	let mut session: v5::SessionState = session_record.decode()?;
+	let history: Vec<v5::Delta> = document.history.iter().map(Payload::decode).collect::<Result<_, _>>()?;
+	let hot_ops: Vec<v5::HotOp> = document.hot_log.iter().map(Payload::decode).collect::<Result<_, _>>()?;
+
+	let latest_counter = history.iter().map(|delta| delta.timestamp).chain(hot_ops.iter().map(|hot_op| hot_op.timestamp)).map(|timestamp| timestamp.counter);
+	let mut counter = latest_counter.fold(session.clock_counter, u64::max);
+	let taken: HashSet<Rev> = history.iter().map(|delta| delta.id).collect();
+	let mut placeholders = (1..=u128::MAX).rev().filter_map(NonZeroU128::new).map(Rev).filter(|rev| !taken.contains(rev));
+	let retired_at_ms = history.iter().find(|delta| Some(delta.id) == session.head_rev).map_or(0, |delta| delta.retired_at_ms);
+
+	let mut parent = session.head_rev;
+	for (index, (id, position)) in conversions.iter().enumerate() {
+		let Some(node) = registry.node_instances.get_mut(id) else { continue };
+		counter += 1;
+		let timestamp = TimeStamp { counter, peer: session.peer_id };
+		let value = position.into_value();
+		let previous = node.attributes.entries.insert(POSITION.to_string(), AttributeValue { value: value.clone(), timestamp, deleted: false });
+
+		let mut attributes = Attributes::default();
+		if index + 1 == conversions.len() {
+			attributes.entries.insert(INTERACTION_END.to_string(), AttributeValue { value: Value::Bool(true), timestamp, deleted: false });
+		}
+		let rev = placeholders.next().ok_or_else(|| MigrationError::Encode("no placeholder revision is left".to_string()))?;
+		let delta = v5::Delta {
+			id: rev,
+			parent,
+			author: session.peer_id,
+			timestamp,
+			kind: RegistryDelta::ChangeNodeAttribute {
+				id: *id,
+				delta: AttributeDelta {
+					key: POSITION.to_string(),
+					value: Some(value),
+				},
+			},
+			reverse: vec![Prior::NodeField {
+				id: *id,
+				presence: node.presence,
+				field: NodeField::Attribute { key: POSITION.to_string(), previous },
+			}],
+			attributes,
+			retired_at_ms,
+		};
+		document.history.push(template.encode_as(&delta)?);
+		parent = Some(rev);
+	}
+
+	session.head_rev = parent;
+	session.redo_stack.clear();
+	session.clock_counter = counter;
+	document.session = Some(session_record.encode_as(&session)?);
+	Ok(true)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
