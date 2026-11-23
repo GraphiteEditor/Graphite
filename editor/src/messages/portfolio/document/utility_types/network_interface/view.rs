@@ -245,17 +245,22 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		})
 	}
 
-	pub fn is_chain(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
+	pub fn is_relative(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
 		Ok(match &self.node_metadata(node_id)?.persistent_metadata.node_type_metadata {
-			NodeTypePersistentMetadata::Node(node_metadata) => matches!(node_metadata.position, NodePosition::Chain),
-			_ => false,
+			NodeTypePersistentMetadata::Layer(layer_metadata) => matches!(layer_metadata.position, LayerPosition::Relative(_)),
+			NodeTypePersistentMetadata::Node(node_metadata) => matches!(node_metadata.position, NodePosition::Relative(_)),
 		})
 	}
 
-	pub fn is_stack(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
+	/// The rows a layer sits below the gap under the node reading it, if its position places it straight below that node.
+	pub fn stack_offset(&self, node_id: &NodeId) -> Result<Option<i32>, NetworkError> {
 		Ok(match &self.node_metadata(node_id)?.persistent_metadata.node_type_metadata {
-			NodeTypePersistentMetadata::Layer(layer_metadata) => matches!(layer_metadata.position, LayerPosition::Stack(_)),
-			_ => false,
+			NodeTypePersistentMetadata::Layer(layer_metadata) => match layer_metadata.position {
+				LayerPosition::Stack(y_offset) => Some(y_offset as i32),
+				LayerPosition::Relative(offset) if offset.x == 0 => Some(offset.y - STACK_VERTICAL_GAP),
+				_ => None,
+			},
+			NodeTypePersistentMetadata::Node(_) => None,
 		})
 	}
 
@@ -428,25 +433,6 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 			network: self.network,
 			network_metadata: self.metadata,
 			flow_type,
-		}
-	}
-
-	/// The distance in grid cells from the layer to the end of its chain, or zero for a layer with no chain.
-	pub fn chain_width(&self, node_id: &NodeId) -> u32 {
-		if self.number_of_displayed_inputs(node_id).unwrap_or_default() > 1 {
-			let mut last_chain_node_distance = 0_u32;
-			for (index, node_id) in self.upstream_flow(vec![*node_id], FlowType::HorizontalPrimaryOutputFlow).skip(1).enumerate() {
-				if self.is_chain(&node_id).unwrap_or_default() {
-					last_chain_node_distance = (index as u32) + 1;
-				} else {
-					return last_chain_node_distance * NODE_CHAIN_WIDTH as u32 + 1;
-				}
-			}
-
-			last_chain_node_distance * NODE_CHAIN_WIDTH as u32 + 1
-		} else {
-			// A layer with no secondary input has no chain
-			0
 		}
 	}
 

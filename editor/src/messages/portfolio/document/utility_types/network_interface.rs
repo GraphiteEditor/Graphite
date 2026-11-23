@@ -19,6 +19,7 @@ mod geometry;
 mod hit_tests;
 mod invalidation;
 mod layout;
+mod layout_pass;
 mod memo_network;
 mod mutations;
 mod queries;
@@ -34,6 +35,7 @@ mod validation;
 mod view;
 
 pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
+pub use layout_pass::NetworkLayout;
 pub use reconcile::{ReconcileError, Reconciled};
 use store::Guarded;
 pub use store::NodeLocator;
@@ -50,7 +52,7 @@ use crate::consts::{
 	STACK_VERTICAL_GAP,
 };
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_proto_node_definition, resolve_proto_node_type};
-use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
+use crate::messages::portfolio::document::node_graph::utility_types::{FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
 use crate::messages::portfolio::document::utility_types::text_metrics::text_width;
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_thick_wire_center_line, build_vector_wire};
@@ -100,7 +102,7 @@ pub struct NodeNetworkInterface {
 	/// the other. Transient: a snapshot clone starts empty, since the snapshot is a state rather than
 	/// a set of changes.
 	#[serde(skip)]
-	deltas: Vec<EditorDelta>,
+	deltas: store::DeltaLog,
 	/// The document network nodes the open transaction has written to, read from `deltas`, for the Layers panel to highlight during an edit like a drag.
 	#[serde(skip)]
 	transaction_edited_nodes: HashSet<NodeId>,
@@ -127,7 +129,7 @@ impl Clone for NodeNetworkInterface {
 			document_metadata: Default::default(),
 			resolved_types: Default::default(),
 			transaction_status: TransactionStatus::Finished,
-			deltas: Vec::new(),
+			deltas: store::DeltaLog::default(),
 			transaction_edited_nodes: HashSet::new(),
 			transaction_edited_nodes_scanned: 0,
 			transaction_edited_nodes_changed: false,

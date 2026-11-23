@@ -630,7 +630,7 @@ impl<'a> ModifyInputsContext<'a> {
 					{
 						let node_position = self.network_interface.position(&node_id, &[]).unwrap_or_default();
 						let desired_position = target_position + IVec2::new(-crate::consts::NODE_CHAIN_WIDTH, 2);
-						self.network_interface.shift_absolute_node_position(&node_id, desired_position - node_position, &[]);
+						self.network_interface.shift_node(&node_id, desired_position - node_position, &[]);
 					}
 				}
 
@@ -1110,7 +1110,7 @@ pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, netw
 		if *was_chain {
 			network_interface.set_chain_position(&node_id, network_path);
 		} else if let Some(position) = position {
-			network_interface.set_absolute_position(&node_id, *position, network_path);
+			network_interface.place_at(&node_id, *position, network_path);
 		}
 	}
 

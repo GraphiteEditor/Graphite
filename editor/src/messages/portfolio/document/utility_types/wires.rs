@@ -149,14 +149,15 @@ fn straight_wire_path(output_position: DVec2, input_position: DVec2, vertical_ou
 	let grid_spacing = 24;
 	let line_width = 2;
 
-	let in_x = input_position.x as i32;
-	let in_y = input_position.y as i32;
-	let out_x = output_position.x as i32;
-	let out_y = output_position.y as i32;
+	// Flooring and Euclidean division keep the wire's shape the same wherever on the grid its ends are moved together
+	let in_x = input_position.x.floor() as i32;
+	let in_y = input_position.y.floor() as i32;
+	let out_x = output_position.x.floor() as i32;
+	let out_y = output_position.y.floor() as i32;
 
-	let mid_x = (in_x + out_x) / 2 + (((in_x + out_x) / 2) % grid_spacing);
-	let mid_y = (in_y + out_y) / 2 + (((in_y + out_y) / 2) % grid_spacing);
-	let mid_y_alternate = (in_y + in_y) / 2 - (((in_y + in_y) / 2) % grid_spacing);
+	let mid_x = (in_x + out_x).div_euclid(2) + (in_x + out_x).div_euclid(2).rem_euclid(grid_spacing);
+	let mid_y = (in_y + out_y).div_euclid(2) + (in_y + out_y).div_euclid(2).rem_euclid(grid_spacing);
+	let mid_y_alternate = in_y - in_y.rem_euclid(grid_spacing);
 
 	let x1 = out_x;
 	let x2 = out_x + grid_spacing;
@@ -575,4 +576,33 @@ fn straight_wire_to_bezpath(locations: Vec<IVec2>) -> BezPath {
 	}
 	path.line_to(to_point(*locations.last().unwrap()));
 	path
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use kurbo::{Affine, Vec2};
+
+	#[test]
+	fn a_grid_aligned_wire_keeps_its_shape_when_moved_along_the_grid() {
+		// Output and input ends of node ports, layer stack ports, and ends gliding between grid cells, on both sides of the origin
+		let ends = [
+			(DVec2::new(120., 24.), DVec2::new(480., 96.), false, false),
+			(DVec2::new(-120., 48.), DVec2::new(240., -72.), false, false),
+			(DVec2::new(48., -8.), DVec2::new(48., 104.), true, true),
+			(DVec2::new(-312., 200.), DVec2::new(-24., 24.), true, false),
+			(DVec2::new(600., 24.), DVec2::new(-96., 48.), false, true),
+			(DVec2::new(130.5, 31.25), DVec2::new(-410.75, 77.5), false, false),
+		];
+		let shifts = [DVec2::new(-24. * 50., 24. * 37.), DVec2::new(24. * 13., -24. * 90.), DVec2::new(-24., -24.)];
+
+		for (output, input, vertical_out, vertical_in) in ends {
+			let wire = build_vector_wire(output, input, vertical_out, vertical_in, GraphWireStyle::GridAligned);
+			for shift in shifts {
+				let shifted = build_vector_wire(output + shift, input + shift, vertical_out, vertical_in, GraphWireStyle::GridAligned);
+				let moved = Affine::translate(Vec2::new(shift.x, shift.y)) * wire.clone();
+				assert_eq!(shifted, moved, "the wire from {output} to {input} should keep its shape when moved by {shift}");
+			}
+		}
+	}
 }

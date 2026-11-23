@@ -689,6 +689,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if self.node_graph_handler.drag_start.is_some() {
 					responses.add(DocumentMessage::AbortTransaction);
 					self.node_graph_handler.drag_start = None;
+					self.network_interface.cancel_drag(&self.selection_network_path);
 					self.node_graph_handler.select_if_not_dragged = None;
 					self.node_graph_handler.nodes_added_in_drag = false;
 					self.node_graph_handler.stop_gliding(&self.network_interface, responses);
@@ -2273,6 +2274,7 @@ impl DocumentMessageHandler {
 			self.network_interface.validate_input_metadata(node_id, node, &path);
 			self.network_interface.validate_output_names(node_id, node, &path);
 		}
+		self.network_interface.convert_positions_to_relative();
 
 		// Restoring the parallel-array invariant is how the document arrives, not an edit to it, so what the
 		// fix-ups recorded must not ride along in the first real commit. They still have to reach storage,
@@ -2679,11 +2681,9 @@ impl DocumentMessageHandler {
 
 	fn finish_remote_reconcile(&mut self, reconciled: Reconciled, resources_changed: bool, open_network_transform: Option<DAffine2>, responses: &mut VecDeque<Message>) {
 		for path in self.network_interface.paths_reaching(&reconciled.networks) {
-			self.network_interface.unload_stack_dependents(&path);
 			self.network_interface.unload_import_export_ports(&path);
 			self.network_interface.unload_all_nodes_bounding_box(&path);
 			self.network_interface.unload_outward_wires(&path);
-			self.network_interface.unload_all_nodes_click_targets(&path);
 		}
 		self.network_interface.load_structure();
 

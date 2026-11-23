@@ -44,7 +44,7 @@ impl<'a> NodeMut<'a> {
 		node: &'a mut DocumentNode,
 		metadata: &'a mut DocumentNodePersistentMetadata,
 		definition_metadata: Option<&'a mut NodeNetworkPersistentMetadata>,
-		deltas: &'a mut Vec<EditorDelta>,
+		deltas: &'a mut DeltaLog,
 		network: NetworkLocation,
 		node_id: NodeId,
 	) -> Self {
@@ -76,7 +76,7 @@ impl<'m> InterfaceMut<'m> {
 /// Where a node's writes record what they changed, carrying the node's address so each setter names
 /// what it wrote without its caller repeating it.
 struct NodeDeltas<'a> {
-	pub(super) deltas: &'a mut Vec<EditorDelta>,
+	pub(super) deltas: &'a mut DeltaLog,
 	network: NetworkLocation,
 	node_id: NodeId,
 }
@@ -125,14 +125,31 @@ impl NodeMut<'_> {
 		self.set_node_type(node_type)
 	}
 
-	/// Offsets a node that is absolutely positioned, leaving a stack or chain node where it is.
+	/// Places the node at an offset from the top left corner of the bounding box of the nodes reading it.
+	pub(crate) fn set_relative_position(&mut self, offset: IVec2) -> bool {
+		let node_type = match self.metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(_) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::Relative(offset),
+			}),
+			NodeTypePersistentMetadata::Node(_) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(offset))),
+		};
+		self.set_node_type(node_type)
+	}
+
+	/// Offsets a node that is absolutely or relatively positioned, leaving a stack or chain node where it is.
 	pub(crate) fn shift_absolute_position(&mut self, shift: IVec2) -> bool {
 		let shifted = match self.metadata.node_type_metadata {
 			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 				position: LayerPosition::Absolute(position),
 			}) => NodeTypePersistentMetadata::layer(position + shift),
+			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::Relative(offset),
+			}) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::Relative(offset + shift),
+			}),
 			NodeTypePersistentMetadata::Node(ref node) => match node.position {
 				NodePosition::Absolute(position) => NodeTypePersistentMetadata::node(position + shift),
+				NodePosition::Relative(offset) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(offset + shift))),
 				NodePosition::Chain => return false,
 			},
 			NodeTypePersistentMetadata::Layer(_) => return false,
@@ -146,16 +163,8 @@ impl NodeMut<'_> {
 			return false;
 		}
 		self.set_node_type(NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-			position: LayerPosition::Stack(y_offset),
+			position: LayerPosition::stacked(y_offset),
 		}))
-	}
-
-	/// Chains a node to the left of the layer it feeds. Layers are never chained.
-	pub(crate) fn set_chain_position(&mut self) -> bool {
-		if self.metadata.is_layer() {
-			return false;
-		}
-		self.set_node_type(NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Chain)))
 	}
 
 	/// Whether the node is displayed as a layer, which decides the kinds of position it can hold.
@@ -457,12 +466,12 @@ impl NodeMut<'_> {
 /// [`NodeNetworkInterface::set_input_slot`] like any other input.
 pub(crate) struct NetworkMut<'a> {
 	pub(super) metadata: &'a mut NodeNetworkPersistentMetadata,
-	pub(super) deltas: &'a mut Vec<EditorDelta>,
+	pub(super) deltas: &'a mut DeltaLog,
 	pub(super) network: NetworkLocation,
 }
 
 impl<'a> NetworkMut<'a> {
-	pub(super) fn new(metadata: &'a mut NodeNetworkPersistentMetadata, deltas: &'a mut Vec<EditorDelta>, network: NetworkLocation) -> Self {
+	pub(super) fn new(metadata: &'a mut NodeNetworkPersistentMetadata, deltas: &'a mut DeltaLog, network: NetworkLocation) -> Self {
 		Self { metadata, deltas, network }
 	}
 }

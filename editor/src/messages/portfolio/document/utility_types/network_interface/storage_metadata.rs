@@ -14,8 +14,8 @@ use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
 
 use super::{
-	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface, NodeNetworkMetadata,
-	NodeNetworkPersistentMetadata, NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
+	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface,
+	NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
 };
 use crate::messages::portfolio::document::node_graph::document_node_definitions::network_definition_version;
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysVisibilitySettings;
@@ -151,10 +151,12 @@ pub fn position_from_runtime(node_type: &NodeTypePersistentMetadata) -> Position
 		NodeTypePersistentMetadata::Layer(layer) => match layer.position {
 			LayerPosition::Absolute(v) => Position::Absolute([v.x, v.y]),
 			LayerPosition::Stack(offset) => Position::Stack(offset),
+			LayerPosition::Relative(offset) => Position::Relative([offset.x, offset.y]),
 		},
 		NodeTypePersistentMetadata::Node(node) => match *node.position() {
 			NodePosition::Absolute(v) => Position::Absolute([v.x, v.y]),
 			NodePosition::Chain => Position::Chain,
+			NodePosition::Relative(offset) => Position::Relative([offset.x, offset.y]),
 		},
 	}
 }
@@ -173,6 +175,10 @@ pub fn position_to_runtime(position: Position, is_layer: bool) -> NodeTypePersis
 			metadata
 		}
 		(Position::Chain, _) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Chain)),
+		(Position::Relative([x, y]), true) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+			position: LayerPosition::Relative(IVec2::new(x, y)),
+		}),
+		(Position::Relative([x, y]), false) => NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(IVec2::new(x, y)))),
 	}
 }
 
