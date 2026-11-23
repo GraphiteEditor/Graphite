@@ -109,7 +109,9 @@ fn convert_position(position: &mut Value) {
 fn relative_to_readers(document: &mut DocumentPayloads) -> Result<(), MigrationError> {
 	let Some(registry_record) = document.registry.clone() else { return Ok(()) };
 	let mut registry: v5::Registry = registry_record.decode()?;
+	let pending = repositioned_by_hot_ops(document)?;
 	let mut conversions = StoredPositions::new(&registry).relative_to_readers();
+	conversions.retain(|(id, _)| !pending.contains(id));
 	conversions.sort_by_key(|(id, _)| *id);
 
 	if document.history.is_empty() {
@@ -126,6 +128,17 @@ fn relative_to_readers(document: &mut DocumentPayloads) -> Result<(), MigrationE
 	Ok(())
 }
 
+fn repositioned_by_hot_ops(document: &DocumentPayloads) -> Result<HashSet<NodeId>, MigrationError> {
+	let hot_ops: Vec<v5::HotOp> = document.hot_log.iter().map(Payload::decode).collect::<Result<_, _>>()?;
+	Ok(hot_ops
+		.into_iter()
+		.filter_map(|hot_op| match hot_op.op {
+			RegistryDelta::ChangeNodeAttribute { id, delta } if delta.key == POSITION => Some(id),
+			_ => None,
+		})
+		.collect())
+}
+
 fn append_as_one_interaction(document: &mut DocumentPayloads, registry: &mut v5::Registry, conversions: &[(NodeId, Position)]) -> Result<bool, MigrationError> {
 	let (Some(session_record), Some(template)) = (document.session.clone(), document.history.first().cloned()) else {
 		return Ok(false);
@@ -134,7 +147,11 @@ fn append_as_one_interaction(document: &mut DocumentPayloads, registry: &mut v5:
 	let history: Vec<v5::Delta> = document.history.iter().map(Payload::decode).collect::<Result<_, _>>()?;
 	let hot_ops: Vec<v5::HotOp> = document.hot_log.iter().map(Payload::decode).collect::<Result<_, _>>()?;
 
-	let latest_counter = history.iter().map(|delta| delta.timestamp).chain(hot_ops.iter().map(|hot_op| hot_op.timestamp)).map(|timestamp| timestamp.counter);
+	let latest_counter = history
+		.iter()
+		.map(|delta| delta.timestamp)
+		.chain(hot_ops.iter().map(|hot_op| hot_op.timestamp))
+		.map(|timestamp| timestamp.counter);
 	let mut counter = latest_counter.fold(session.clock_counter, u64::max);
 	let taken: HashSet<Rev> = history.iter().map(|delta| delta.id).collect();
 	let mut placeholders = (1..=u128::MAX).rev().filter_map(NonZeroU128::new).map(Rev).filter(|rev| !taken.contains(rev));
@@ -146,11 +163,25 @@ fn append_as_one_interaction(document: &mut DocumentPayloads, registry: &mut v5:
 		counter += 1;
 		let timestamp = TimeStamp { counter, peer: session.peer_id };
 		let value = position.into_value();
-		let previous = node.attributes.entries.insert(POSITION.to_string(), AttributeValue { value: value.clone(), timestamp, deleted: false });
+		let previous = node.attributes.entries.insert(
+			POSITION.to_string(),
+			AttributeValue {
+				value: value.clone(),
+				timestamp,
+				deleted: false,
+			},
+		);
 
 		let mut attributes = Attributes::default();
 		if index + 1 == conversions.len() {
-			attributes.entries.insert(INTERACTION_END.to_string(), AttributeValue { value: Value::Bool(true), timestamp, deleted: false });
+			attributes.entries.insert(
+				INTERACTION_END.to_string(),
+				AttributeValue {
+					value: Value::Bool(true),
+					timestamp,
+					deleted: false,
+				},
+			);
 		}
 		let rev = placeholders.next().ok_or_else(|| MigrationError::Encode("no placeholder revision is left".to_string()))?;
 		let delta = v5::Delta {
@@ -272,7 +303,7 @@ impl StoredPositions {
 
 		let position = match self.stored.get(&id).copied() {
 			Some(Position::Absolute(position)) => position,
-			Some(Position::Relative([x, y])) => self.readers_top_left(id).map_or([x, y], |[left, top]| [left + x, top + y]),
+			Some(Position::Relative([x, y])) => self.readers_top_left(id).map_or([0, 0], |[left, top]| [left + x, top + y]),
 			None => [0, 0],
 		};
 		self.visiting.remove(&id);

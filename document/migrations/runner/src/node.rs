@@ -371,11 +371,15 @@ fn place_added_nodes(target: &mut Registry, anchor: NodeId, edits: &Edits) {
 
 	for added in edits.added_nodes.iter().filter(|added| !chain.contains(&added.id)) {
 		let reader = readers.iter().find(|(_, inputs)| reads(inputs, added.id)).map(|(reader, _)| *reader);
+		let downstream_consumer = edits.connections.iter().find_map(|(output, input)| match input {
+			InputConnector::Node { node, .. } if output.node == added.id => Some(*node),
+			_ => None,
+		});
 		let connected_downstream = edits.connections.iter().any(|(output, _)| output.node == added.id);
 
-		let position = match (reader, coordinates) {
-			(Some(reader), _) => {
-				let row = feeders_below.entry(reader).or_default();
+		let position = match (reader.or(downstream_consumer), coordinates) {
+			(Some(consumer), _) => {
+				let row = feeders_below.entry(consumer).or_default();
 				*row += 1;
 				Position::Relative([-CHAIN_WIDTH, FEEDER_ROW_HEIGHT * *row])
 			}

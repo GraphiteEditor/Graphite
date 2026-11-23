@@ -13,6 +13,7 @@ fn every_migration_registers_once() {
 	sources.sort();
 
 	let mut expected = vec![
+		decl!("attributes::interposed"@1),
 		decl!("attributes::outside"@1),
 		decl!("attributes::placed"@1),
 		decl!("attributes::renamed"@1),

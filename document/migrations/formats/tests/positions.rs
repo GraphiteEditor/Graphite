@@ -39,11 +39,15 @@ fn set_position(id: NodeId, position: Position) -> RegistryDelta {
 	}
 }
 
-/// A layer at (30, 10) reading a node stored at the absolute position (23, 10), each added and placed as one interaction.
-fn version_four_session(layer: NodeId, read: NodeId) -> Session {
-	let mut session = Session::with_identity(PEER, USER);
+fn reading(read: NodeId) -> Node {
 	let mut reader = Node::new(ROOT_NETWORK, Implementation::ProtoNode(ResourceId::from(1)), 2);
 	reader.inputs_mut()[1].input = NodeInput::Node { id: read, index: 0 };
+	reader
+}
+
+/// A node at `reader_position` reading a node stored at `read_position`, each added and placed as one interaction.
+fn session_at_version_four(reader: NodeId, reader_position: Position, read: NodeId, read_position: Position) -> Session {
+	let mut session = Session::with_identity(PEER, USER);
 	let network = RegistryDelta::AddNetwork {
 		id: ROOT_NETWORK,
 		network: Network::default(),
@@ -51,8 +55,8 @@ fn version_four_session(layer: NodeId, read: NodeId) -> Session {
 
 	let source = Node::new(ROOT_NETWORK, Implementation::ProtoNode(ResourceId::from(2)), 1);
 	let interactions = [
-		vec![network, RegistryDelta::AddNode { id: read, node: source }, set_position(read, Position::Absolute([23, 10]))],
-		vec![RegistryDelta::AddNode { id: layer, node: reader }, set_position(layer, Position::Absolute([30, 10]))],
+		vec![network, RegistryDelta::AddNode { id: read, node: source }, set_position(read, read_position)],
+		vec![RegistryDelta::AddNode { id: reader, node: reading(read) }, set_position(reader, reader_position)],
 	];
 	for operations in interactions {
 		session.stage_computed_ops(operations).unwrap();
@@ -60,6 +64,11 @@ fn version_four_session(layer: NodeId, read: NodeId) -> Session {
 		session.mark_interaction_end(*retired.last().unwrap());
 	}
 	session
+}
+
+/// A layer at (30, 10) reading a node stored at the absolute position (23, 10).
+fn version_four_session(layer: NodeId, read: NodeId) -> Session {
+	session_at_version_four(layer, Position::Absolute([30, 10]), read, Position::Absolute([23, 10]))
 }
 
 /// Runs the step into version 5 on `session` saved at version 4, then opens the result the way the load path does.
@@ -75,6 +84,7 @@ fn open_at_version_five(session: &Session) -> (Session, Vec<Delta>) {
 		format_version: 4,
 		registry: Some(postcard_payload(session.retired_registry())),
 		history: session.history().map(postcard_payload).collect(),
+		hot_log: session.hot_log().iter().map(postcard_payload).collect(),
 		session: Some(postcard_payload(&state)),
 		..Default::default()
 	};
@@ -83,6 +93,7 @@ fn open_at_version_five(session: &Session) -> (Session, Vec<Delta>) {
 	let step = steps.iter().find(|step| step.migrates_from() == 4).expect("the step into version 5");
 	document.registry = Some(step.migrate_registry(document.registry.as_ref().unwrap()).unwrap());
 	document.history = document.history.iter().map(|record| step.migrate_delta(record).unwrap()).collect();
+	document.hot_log = document.hot_log.iter().map(|record| step.migrate_hot_op(record).unwrap()).collect();
 	step.migrate_document(&mut document).unwrap();
 
 	let mut history: Vec<Delta> = document.history.iter().map(|record| record.decode().unwrap()).collect();
@@ -125,3 +136,22 @@ fn undo_takes_back_the_conversion_as_one_interaction() {
 	assert!(migrated.retired_registry().node_instances.contains_key(&layer), "the undo should stop at the conversion");
 }
 
+#[test]
+fn a_node_read_by_an_unread_chain_node_is_placed_from_where_that_node_was_drawn() {
+	let (chained, read) = (NodeId(1), NodeId(2));
+	let (migrated, _) = open_at_version_five(&session_at_version_four(chained, Position::Chain, read, Position::Absolute([-7, 0])));
+
+	assert_eq!(position_of(migrated.retired_registry(), chained), Some(Position::Absolute([0, 0])));
+	assert_eq!(position_of(migrated.retired_registry(), read), Some(Position::Relative([-7, 0])));
+}
+
+#[test]
+fn a_node_with_a_pending_move_keeps_its_absolute_position() {
+	let (layer, read) = (NodeId(1), NodeId(2));
+	let mut session = version_four_session(layer, read);
+	session.stage_computed_ops(vec![set_position(read, Position::Absolute([20, 10]))]).unwrap();
+
+	let (migrated, _) = open_at_version_five(&session);
+
+	assert_eq!(position_of(migrated.retired_registry(), read), Some(Position::Absolute([23, 10])));
+}

@@ -920,7 +920,7 @@ fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 ///
 /// For each group's child stack:
 /// - The top-of-stack child (last SVG child) gets an `Absolute` position at `(parent_x - LAYER_INDENT_OFFSET, parent_y + STACK_VERTICAL_GAP)`
-/// - All other children get `Stack(y_offset)` where `y_offset` accounts for the subtree extent of the sibling above them in the stack, ensuring no overlap.
+/// - All other children get `LayerPosition::stacked(y_offset)` where `y_offset` accounts for the subtree extent of the sibling above them in the stack, ensuring no overlap.
 fn set_import_child_positions(
 	network_interface: &mut NodeNetworkInterface,
 	group: LayerNodeIdentifier,

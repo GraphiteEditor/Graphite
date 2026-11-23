@@ -79,7 +79,7 @@ The function runs once per **anchor**: a node of the source declaration. The run
 
 `Inputs` operations apply in order to the target layout being built. `node.inputs()` is always the source layout. Reads through a mutable view (such as `Downstream::consumers`) also see the source state, so nodes added by the migration never appear among the anchor's consumers.
 
-The runner places added nodes from the anchor's own position. Nodes leading up to the anchor's chain input form a row, or join the chain when the anchor is chained or a layer. Each other node gets a `Position::Relative` offset, which places it below and left of the nodes reading it wherever they are drawn, so it needs no coordinates of the anchor. A node nothing reads sits on the anchor, and gets nothing placed when the anchor has no stored coordinates. A migration overrides these positions, or clears a stored name that no longer fits the anchor, through `Attributes`.
+The runner places added nodes relative to the nodes reading them. Nodes leading up to the anchor's chain input form a row one chain width apart, which joins the chain when the anchor is chained or a layer. Each other node that feeds a node, whether one this run adds or one it connects to, gets a `Position::Relative` offset in a row below the others feeding that node, so it needs no coordinates of the anchor. A node that feeds nothing sits on the anchor, and gets nothing placed when the anchor has no stored coordinates. A migration overrides these positions, or clears a stored name that no longer fits the anchor, through `Attributes`.
 
 A migration addresses declarations with `decl!`, values with a frozen mirror of the value variants it uses, and connections with plain connector types:
 
