@@ -1178,14 +1178,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Alt-click sets the clicked node as previewed
 				if alt_click
-					&& !read_only && let Some(clicked_node) = clicked_id
+					&& !read_only
+					&& let Some(clicked_node) = clicked_id
 				{
 					self.preview_on_mouse_up = Some(clicked_node);
 				}
 
 				// The second press of a double-click on a connector with wires drags a redirect dot out of it, once the pointer moves far enough to place the dot
 				if is_double_press
-					&& !read_only && let Some(source) = Self::dot_drag_out_source(clicked_input, clicked_output, network_interface, selection_network_path)
+					&& !read_only
+					&& let Some(source) = Self::dot_drag_out_source(clicked_input, clicked_output, network_interface, selection_network_path)
 				{
 					self.dot_drag_out = Some((source, node_graph_point));
 					self.double_click_used_by_press = true;
@@ -1308,7 +1310,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// The second press of a double-click on a wire splits it with a redirect dot, which the press goes on to drag
 				if is_double_press
-					&& !read_only && let Some(input_connector) = Self::wire_at_point(node_graph_point, network_interface, preferences.graph_wire_style, selection_network_path)
+					&& !read_only
+					&& let Some(input_connector) = Self::wire_at_point(node_graph_point, network_interface, preferences.graph_wire_style, selection_network_path)
 				{
 					let dot = NodeId::new();
 					let center = (node_graph_point / GRID_SIZE as f64).round().as_ivec2();
