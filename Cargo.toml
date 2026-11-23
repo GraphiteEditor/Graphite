@@ -27,6 +27,7 @@ members = [
 	"libraries/math-parser",
 	"libraries/ipsum",
 	"libraries/snapping",
+	"libraries/graph-layout",
 	"libraries/wgpu-sync",
 	"libraries/control-protocol",
 	"node-graph/libraries/graphene-hash",
@@ -134,6 +135,7 @@ control-protocol = { path = "libraries/control-protocol" }
 graphene-canvas-utils = { path = "node-graph/libraries/canvas-utils" }
 ipsum = { path = "libraries/ipsum" }
 snapping = { path = "libraries/snapping" }
+graph-layout = { path = "libraries/graph-layout" }
 
 # Workspace dependencies
 rustc-hash = "2.0"

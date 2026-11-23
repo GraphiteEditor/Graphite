@@ -2527,6 +2527,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-layout"
+version = "0.0.0"
+dependencies = [
+ "criterion",
+ "glam",
+ "smallvec",
+]
+
+[[package]]
 name = "graphene-animation"
 version = "0.0.0"
 dependencies = [
