@@ -171,6 +171,13 @@ impl PaletteMessageHandler {
 					.tooltip_description("Select a default entry or import a palette file to attach to the artwork")
 					.menu_direction(Some(MenuDirection::Top))
 					.widget_instance(),
+			]);
+
+			let right_bottom_bar = LayoutGroup::row(vec![
+				IconButton::new("Edit", 24)
+					.tooltip_label("Edit the name of Palette")
+					.on_update(|_| IngestMessage::ImportPalette.into())
+					.widget_instance(),
 				IconButton::new("Add", 24)
 					.tooltip_label("Add Palette")
 					.on_update(|_| IngestMessage::ImportPalette.into())
@@ -184,6 +191,10 @@ impl PaletteMessageHandler {
 			responses.add(LayoutMessage::SendLayout {
 				layout: Layout(vec![left_bottom_bar]),
 				layout_target: LayoutTarget::PalettePanelBottomLeftBar,
+			});
+			responses.add(LayoutMessage::SendLayout {
+				layout: Layout(vec![right_bottom_bar]),
+				layout_target: LayoutTarget::PalettePanelBottomRightBar,
 			});
 		} else {
 			// TODO: Add attached palettes instead

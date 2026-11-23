@@ -33,7 +33,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 			}),
 			IngestMessage::ImportPalette => responses.add(IngestMessage::Browse {
 				filters: vec![TypeFilter::palette()],
-				multiple: false,
+				multiple: true,
 				action: IngestAction::ImportPalette,
 			}),
 			IngestMessage::SetResourceInput {

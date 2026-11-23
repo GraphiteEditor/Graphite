@@ -5,7 +5,7 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
-	import { paletteLayout, palettePanelBottomLeftBarLayout } from "/src/stores/portfolio";
+	import { paletteLayout, palettePanelBottomLeftBarLayout, palettePanelBottomRightBarLayout } from "/src/stores/portfolio";
 	import { createAutoScroller } from "/src/utility-functions/auto-scroll";
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -240,8 +240,9 @@
 			<div class="insert-mark" style:top={`${insertMarker.top}px`} style:left={`${insertMarker.left}px`} style:width={`${insertMarker.width}px`}></div>
 		{/if}
 	</LayoutCol>
-	<LayoutRow class="bottom-bar" scrollableX={true}>
+	<LayoutRow class="bottom-bar" scrollableX={true} data-layer-bottom-bar>
 		<WidgetLayout layout={palettePanelBottomLeftBarLayout} layoutTarget="PalettePanelBottomLeftBar" />
+		<WidgetLayout layout={palettePanelBottomRightBarLayout} layoutTarget="PalettePanelBottomRightBar" />
 	</LayoutRow>
 </LayoutCol>
 
