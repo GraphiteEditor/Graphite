@@ -13,7 +13,10 @@
 <style lang="scss">
 	.collaboration-panel {
 		flex-grow: 1;
-		padding: 4px 8px;
+
+		.body {
+			padding: 4px 8px 0 8px;
+		}
 
 		.widget-span:has(.text-label.multiline) {
 			flex: 1 1 100%;
