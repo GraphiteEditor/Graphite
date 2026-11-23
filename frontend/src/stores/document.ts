@@ -75,7 +75,7 @@ export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 		patchLayout(get(store).nodeGraphControlBarLayout, data);
 	});
 
-	subscriptions.subscribeFrontendMessage("UpdateDocumentCursors", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateRemoteCursors", (data) => {
 		remoteCursorsStore.set(data.cursors);
 	});
 	subscriptions.subscribeFrontendMessage("UpdateGraphViewOverlay", (data) => {
@@ -102,7 +102,7 @@ export function destroyDocumentStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
 	subscriptions.unsubscribeFrontendMessage("UpdateRenderStatus");
-	subscriptions.unsubscribeFrontendMessage("UpdateDocumentCursors");
+	subscriptions.unsubscribeFrontendMessage("UpdateRemoteCursors");
 	subscriptions.unsubscribeLayoutUpdate("ToolOptions");
 	subscriptions.unsubscribeLayoutUpdate("DocumentBar");
 	subscriptions.unsubscribeLayoutUpdate("ToolShelf");

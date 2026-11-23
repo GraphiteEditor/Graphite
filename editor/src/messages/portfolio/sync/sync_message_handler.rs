@@ -51,8 +51,7 @@ pub struct SyncMessageHandler {
 	blocked_reason: HashMap<DocumentId, String>,
 	decoding: HashSet<(DocumentId, ResourceHash)>,
 	last_cursor: HashMap<DocumentId, Option<CursorPosition>>,
-	graph_cursors: Vec<FrontendRemoteCursor>,
-	document_cursors: Vec<FrontendRemoteCursor>,
+	remote_cursors: Vec<FrontendRemoteCursor>,
 	/// When each document next retries, since a try can convert the whole registry.
 	retry_at: HashMap<DocumentId, f64>,
 	reconnect_at: HashMap<DocumentId, f64>,
@@ -312,15 +311,10 @@ impl SyncMessageHandler {
 		}
 
 		let active_document = active_document_id.and_then(|id| documents.get(&id));
-		let graph_cursors = active_document.map(|document| graph_cursors(document, preferences)).unwrap_or_default();
-		if graph_cursors != self.graph_cursors {
-			self.graph_cursors = graph_cursors.clone();
-			responses.add(FrontendMessage::UpdateNodeGraphCursors { cursors: graph_cursors });
-		}
-		let document_cursors = active_document.map(|document| document_cursors(document, preferences)).unwrap_or_default();
-		if document_cursors != self.document_cursors {
-			self.document_cursors = document_cursors.clone();
-			responses.add(FrontendMessage::UpdateDocumentCursors { cursors: document_cursors });
+		let remote_cursors = active_document.map(|document| remote_cursors(document, preferences)).unwrap_or_default();
+		if remote_cursors != self.remote_cursors {
+			self.remote_cursors = remote_cursors.clone();
+			responses.add(FrontendMessage::UpdateRemoteCursors { cursors: remote_cursors });
 		}
 
 		self.apply_dirty(documents, active_document_id, &resources, responses);
@@ -728,10 +722,7 @@ fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMes
 	if mouse.x < 0. || mouse.y < 0. || mouse.x > size.x() || mouse.y > size.y() {
 		return None;
 	}
-	let (to_viewport, space) = match document.is_graph_overlay_open() {
-		true => (graph_to_viewport(document)?, CursorSpace::Graph { network: shown_network(document) }),
-		false => (document.metadata().document_to_viewport, CursorSpace::Document),
-	};
+	let (to_viewport, space) = shown_space(document)?;
 	let position = to_viewport.inverse().transform_point2(mouse);
 	if !position.is_finite() {
 		return None;
@@ -744,34 +735,22 @@ fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMes
 	})
 }
 
-fn document_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMessageHandler) -> Vec<FrontendRemoteCursor> {
-	if !preferences.show_remote_cursors || document.is_graph_overlay_open() {
-		return Vec::new();
-	}
-	let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return Vec::new() };
-	let to_viewport = document.metadata().document_to_viewport;
-	gdd.peers()
-		.filter_map(|remote| {
-			let cursor = remote.cursor.as_ref().filter(|cursor| matches!(cursor.space, CursorSpace::Document))?;
-			remote_cursor(remote, cursor, to_viewport, gdd.metadata())
-		})
-		.collect()
+fn shown_space(document: &DocumentMessageHandler) -> Option<(DAffine2, CursorSpace)> {
+	Some(match document.is_graph_overlay_open() {
+		true => (graph_to_viewport(document)?, CursorSpace::Graph { network: shown_network(document) }),
+		false => (document.metadata().document_to_viewport, CursorSpace::Document),
+	})
 }
 
-fn graph_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMessageHandler) -> Vec<FrontendRemoteCursor> {
-	if !preferences.show_remote_cursors || !document.is_graph_overlay_open() {
+fn remote_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMessageHandler) -> Vec<FrontendRemoteCursor> {
+	if !preferences.show_remote_cursors {
 		return Vec::new();
 	}
 	let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return Vec::new() };
-	let Some(to_viewport) = graph_to_viewport(document) else { return Vec::new() };
-	let shown = shown_network(document);
+	let Some((to_viewport, shown)) = shown_space(document) else { return Vec::new() };
 	gdd.peers()
 		.filter_map(|remote| {
-			let cursor = remote.cursor.as_ref()?;
-			let CursorSpace::Graph { network } = &cursor.space else { return None };
-			if *network != shown {
-				return None;
-			}
+			let cursor = remote.cursor.as_ref().filter(|cursor| cursor.space == shown)?;
 			remote_cursor(remote, cursor, to_viewport, gdd.metadata())
 		})
 		.collect()
