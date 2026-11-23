@@ -5977,6 +5977,7 @@ name = "regression"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "document-container",
  "document-format",
  "document-loader",
  "fern",

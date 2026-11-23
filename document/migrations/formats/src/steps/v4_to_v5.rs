@@ -1,14 +1,16 @@
-//! Format step 4 to 5: positions in a chain or a stack become offsets relative to the nodes reading them, which draw them where they were.
+//! Format step 4 to 5: every node another node reads is stored as an offset from the top left corner of its readers, which draws it where it was.
 
-use crate::v4::{Attributes, Delta, Node, NodeField, Prior, Registry, RegistryDelta, Value};
+use crate::v4::{Attributes, Delta, Node, NodeField, NodeId, NodeInput, Prior, Registry, RegistryDelta, Value};
 use crate::{v4, v5};
-use migration_core::{MigrationError, Upgrade, format_migration};
+use migration_core::{DocumentPayloads, MigrationError, Upgrade, format_migration};
+use std::collections::{HashMap, HashSet};
 
 format_migration! {
 	4 => 5,
 	registry: v4::Registry,
 	delta: v4::Delta,
 	hot_op: v4::HotOp,
+	document: relative_to_readers,
 }
 
 const POSITION: &str = "ui::position";
@@ -100,6 +102,120 @@ fn convert_position(position: &mut Value) {
 		_ => return,
 	};
 	*position = Value::Object(vec![("Relative".to_string(), Value::Array(offset.map(Value::Int).to_vec()))]);
+}
+
+fn relative_to_readers(document: &mut DocumentPayloads) -> Result<(), MigrationError> {
+	let Some(record) = &mut document.registry else { return Ok(()) };
+	if !document.history.is_empty() {
+		return Ok(());
+	}
+
+	let mut registry: v5::Registry = record.decode()?;
+	let positions = StoredPositions::new(&registry).relative_to_readers();
+	for (id, position) in positions {
+		if let Some(entry) = registry.node_instances.get_mut(&id).and_then(|node| node.attributes.entries.get_mut(POSITION)) {
+			entry.value = position.into_value();
+		}
+	}
+	*record = record.encode_as(&registry)?;
+	Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Position {
+	Absolute([i128; 2]),
+	Relative([i128; 2]),
+}
+
+impl Position {
+	fn from_value(value: &Value) -> Option<Self> {
+		let Value::Object(fields) = value else { return None };
+		let [(variant, Value::Array(coordinates))] = fields.as_slice() else { return None };
+		let [Value::Int(x), Value::Int(y)] = coordinates.as_slice() else { return None };
+		match variant.as_str() {
+			"Absolute" => Some(Self::Absolute([*x, *y])),
+			"Relative" => Some(Self::Relative([*x, *y])),
+			_ => None,
+		}
+	}
+
+	fn into_value(self) -> Value {
+		let (variant, [x, y]) = match self {
+			Self::Absolute(position) => ("Absolute", position),
+			Self::Relative(offset) => ("Relative", offset),
+		};
+		Value::Object(vec![(variant.to_string(), Value::Array(vec![Value::Int(x), Value::Int(y)]))])
+	}
+}
+
+struct StoredPositions {
+	stored: HashMap<NodeId, Position>,
+	readers: HashMap<NodeId, Vec<NodeId>>,
+	drawn: HashMap<NodeId, [i128; 2]>,
+	visiting: HashSet<NodeId>,
+}
+
+impl StoredPositions {
+	fn new(registry: &v5::Registry) -> Self {
+		let stored = registry
+			.node_instances
+			.iter()
+			.filter_map(|(id, node)| Some((*id, Position::from_value(&node.attributes.entries.get(POSITION)?.value)?)))
+			.collect();
+
+		let mut readers: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+		for (reader, node) in &registry.node_instances {
+			let read_in_the_same_network = node.inputs.iter().filter_map(|slot| match slot.input {
+				NodeInput::Node { id, .. } => registry.node_instances.get(&id).is_some_and(|source| source.network == node.network).then_some(id),
+				_ => None,
+			});
+			for source in read_in_the_same_network {
+				readers.entry(source).or_default().push(*reader);
+			}
+		}
+
+		Self {
+			stored,
+			readers,
+			drawn: HashMap::new(),
+			visiting: HashSet::new(),
+		}
+	}
+
+	fn relative_to_readers(mut self) -> Vec<(NodeId, Position)> {
+		let nodes: Vec<(NodeId, Position)> = self.stored.iter().map(|(id, position)| (*id, *position)).collect();
+		nodes
+			.into_iter()
+			.filter_map(|(id, stored)| match (stored, self.readers_top_left(id)) {
+				(Position::Absolute([x, y]), Some([left, top])) => Some((id, Position::Relative([x - left, y - top]))),
+				(Position::Relative(_), None) => Some((id, Position::Absolute([0, 0]))),
+				_ => None,
+			})
+			.collect()
+	}
+
+	fn readers_top_left(&mut self, id: NodeId) -> Option<[i128; 2]> {
+		let readers = self.readers.get(&id)?.clone();
+		readers.into_iter().map(|reader| self.drawn(reader)).reduce(|[left, top], [x, y]| [left.min(x), top.min(y)])
+	}
+
+	fn drawn(&mut self, id: NodeId) -> [i128; 2] {
+		if let Some(position) = self.drawn.get(&id) {
+			return *position;
+		}
+		if !self.visiting.insert(id) {
+			return [0, 0];
+		}
+
+		let position = match self.stored.get(&id).copied() {
+			Some(Position::Absolute(position)) => position,
+			Some(Position::Relative([x, y])) => self.readers_top_left(id).map_or([x, y], |[left, top]| [left + x, top + y]),
+			None => [0, 0],
+		};
+		self.visiting.remove(&id);
+		self.drawn.insert(id, position);
+		position
+	}
 }
 
 #[cfg(test)]
