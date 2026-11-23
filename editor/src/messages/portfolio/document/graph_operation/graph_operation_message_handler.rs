@@ -807,9 +807,6 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			// Set positions for all imported descendants in a single O(n) pass
 			let parent_pos = modify_inputs.network_interface.position(&layer.to_node(), &[]).unwrap_or(IVec2::ZERO);
 			set_import_child_positions(modify_inputs.network_interface, layer, parent_pos, &child_extents_svg_order, &group_extents_map);
-
-			// Invalidate caches once after all positions are set
-			modify_inputs.network_interface.unload_all_nodes_bounding_box(&[]);
 		}
 		usvg::Node::Path(path) => {
 			import_usvg_path(modify_inputs, node, path, layer, gradient_info);

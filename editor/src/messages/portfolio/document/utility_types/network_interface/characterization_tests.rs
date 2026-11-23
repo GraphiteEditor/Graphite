@@ -331,7 +331,6 @@ async fn a_relative_node_follows_its_readers_until_it_loses_the_last_one() {
 	}
 	let relative = NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(IVec2::new(-7, 3))));
 	network_interface.node_mut(NodeLocator::new(node, &[])).expect("the node exists").set_node_type(relative);
-	network_interface.invalidate_positions(&[]);
 
 	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(13, 7)));
 

@@ -20,6 +20,7 @@ mod hit_tests;
 mod invalidation;
 mod layout;
 mod layout_pass;
+mod node_parts;
 mod memo_network;
 mod mutations;
 mod queries;
