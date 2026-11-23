@@ -753,9 +753,7 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) import_export_clearance: TransientCache<ImportExportClearance>,
 	/// Cache for all outward wire connections
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
-	/// Where every node is drawn, laid out again on the first read after any write.
 	pub(crate) layout: TransientCache<NetworkLayout>,
-	/// The selected nodes the user is dragging, which the layout draws moved from the network as stored when the drag started.
 	pub(crate) drag: Option<super::layout_pass::DragPreview>,
 	/// All export connector click targets
 	pub(crate) import_export_ports: TransientCache<Ports>,
@@ -1092,7 +1090,6 @@ impl PartialEq for LayerPersistentMetadata {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodePersistentMetadata {
-	/// Stores the position of a non layer node, which can be Absolute or Relative
 	pub(crate) position: NodePosition,
 }
 
@@ -1122,7 +1119,6 @@ impl LayerPosition {
 	}
 }
 
-/// A layer position as older documents store it, where a stacked layer kept only its gap below the layer reading it.
 #[derive(serde::Deserialize)]
 enum LegacyLayerPosition {
 	Absolute(IVec2),
@@ -1157,7 +1153,6 @@ impl NodePosition {
 	}
 }
 
-/// A node position as older documents store it, where a chained node kept no coordinates.
 #[derive(serde::Deserialize)]
 enum LegacyNodePosition {
 	Absolute(IVec2),

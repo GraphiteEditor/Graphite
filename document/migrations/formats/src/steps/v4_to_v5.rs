@@ -90,7 +90,6 @@ fn convert_attributes(attributes: &mut Attributes) {
 	}
 }
 
-/// Rewrites a stored `Chain` or `Stack(gap)` as the `Relative` offset that draws the node at the same place below or beside its reader.
 fn convert_position(position: &mut Value) {
 	let offset = match position {
 		Value::Str(variant) if variant == "Chain" => [-CHAIN_WIDTH, 0],

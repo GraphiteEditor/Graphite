@@ -16,7 +16,6 @@ const DEMOS: [&str; 8] = [
 	"valley-of-spires.graphite",
 ];
 
-/// Each node in an editable network, by its network path and ID, with where it is drawn.
 type DrawnPositions = Vec<((Vec<NodeId>, NodeId), Option<IVec2>)>;
 
 fn editable_positions(interface: &NodeNetworkInterface) -> DrawnPositions {
@@ -30,7 +29,6 @@ fn editable_positions(interface: &NodeNetworkInterface) -> DrawnPositions {
 		.collect()
 }
 
-/// Stores every node where it is drawn as an absolute position, as an older document would.
 fn store_drawn_positions_as_absolute(interface: &mut NodeNetworkInterface, positions: &DrawnPositions) {
 	for ((network_path, node_id), position) in positions {
 		let Some(position) = position else { continue };

@@ -266,7 +266,6 @@ impl NodeNetworkInterface {
 
 	/// The distance in grid cells from the layer to the end of its chain, or zero for a layer with no chain.
 	pub fn chain_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
-		// A layer with no secondary input has no chain
 		if self.number_of_displayed_inputs(node_id, network_path) <= 1 {
 			return 0;
 		}

@@ -52,7 +52,6 @@ fn time_the_layout_click_targets_and_hit_tests() {
 
 		let start = Instant::now();
 		for _ in 0..REPETITIONS {
-			// Any recorded write makes the next read lay the network out again
 			interface.shift_node(&root, glam::IVec2::X, &[]);
 			std::hint::black_box(interface.position(&root, &[]));
 		}

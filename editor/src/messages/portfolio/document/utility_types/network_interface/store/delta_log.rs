@@ -1,10 +1,8 @@
 use super::EditorDelta;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Counts every write recorded by any interface, so a value derived from an interface can tell whether it is still current.
 static REVISION: AtomicU64 = AtomicU64::new(0);
 
-/// What the writes since the last drain changed, in write order.
 #[derive(Debug, Default)]
 pub(crate) struct DeltaLog(Vec<EditorDelta>);
 
@@ -14,7 +12,6 @@ impl DeltaLog {
 		self.0.push(delta);
 	}
 
-	/// Drops what was recorded after the first `length` writes, which still count as writes.
 	pub(crate) fn truncate(&mut self, length: usize) {
 		self.0.truncate(length);
 	}
@@ -36,7 +33,6 @@ impl std::ops::Deref for DeltaLog {
 	}
 }
 
-/// How many writes all interfaces have recorded so far.
 pub(crate) fn revision() -> u64 {
 	REVISION.load(Ordering::Relaxed)
 }

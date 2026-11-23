@@ -6,7 +6,6 @@
 use super::*;
 
 impl NodeNetworkInterface {
-	/// Where a wire attaches to the node's input, in node graph space, without building its ports.
 	pub(super) fn node_input_anchor(&self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> Option<DVec2> {
 		let top_left = self.position(node_id, network_path)?.as_dvec2() * GRID_SIZE as f64;
 		let grid = GRID_SIZE as f64;
@@ -27,12 +26,10 @@ impl NodeNetworkInterface {
 		if !inputs.get(input_index)?.is_exposed() {
 			return None;
 		}
-		// The primary input's row is always displayed, even when the input is not exposed
 		let row = inputs.iter().take(input_index).enumerate().filter(|(index, input)| *index == 0 || input.is_exposed()).count();
 		Some(top_left + DVec2::new(0., grid * (row as f64 + 1.)))
 	}
 
-	/// Where a wire attaches to the node's output, in node graph space, without building its ports.
 	pub(super) fn node_output_anchor(&self, node_id: &NodeId, output_index: usize, network_path: &[NodeId]) -> Option<DVec2> {
 		let top_left = self.position(node_id, network_path)?.as_dvec2() * GRID_SIZE as f64;
 		let grid = GRID_SIZE as f64;
@@ -49,7 +46,6 @@ impl NodeNetworkInterface {
 		(!hidden && output_index < self.number_of_outputs(node_id, network_path)).then_some(top_left + DVec2::new(5. * grid, grid * (output_index as f64 + 1.)))
 	}
 
-	/// The node's ports in node graph space, which is all a wire needs of it.
 	pub(crate) fn compute_node_ports(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<Ports> {
 		let Some(node_position) = self.position(node_id, network_path) else {
 			log::error!("Could not get node position in compute_node_ports for node {node_id}");
@@ -67,13 +63,11 @@ impl NodeNetworkInterface {
 				if input.is_exposed() {
 					ports.insert_node_input(input_index, input_row_count, node_top_left);
 				}
-				// Primary input row is always displayed, even if the input is not exposed
 				if input_index == 0 || input.is_exposed() {
 					input_row_count += 1;
 				}
 			}
 
-			// If the node has a hidden primary output, do not display the first output
 			let start_index = if self.hidden_primary_output(node_id, network_path) { 1 } else { 0 };
 			for output_index in start_index..self.number_of_outputs(node_id, network_path) {
 				ports.insert_node_output(output_index, node_top_left);

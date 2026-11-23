@@ -956,7 +956,6 @@ fn set_import_child_positions(
 			// Top of stack: set to `Absolute` position
 			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::Absolute(child_pos), &[]);
 		} else {
-			// Below top: stack it `y_offset` below its previous sibling, based on that sibling's subtree extent
 			let prev_sibling_svg_index = n - i;
 			let y_offset = child_extents_svg_order[prev_sibling_svg_index] + STACK_VERTICAL_GAP as u32;
 			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::stacked(y_offset), &[]);

@@ -332,7 +332,6 @@ async fn a_relative_node_follows_its_readers_until_it_loses_the_last_one() {
 	network_interface.node_mut(NodeLocator::new(node, &[])).expect("the node exists").set_node_type(relative);
 	network_interface.invalidate_positions(&[]);
 
-	// The offset applies from the left of the readers, level with the upper one
 	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(13, 7)));
 
 	network_interface.disconnect_input(&InputConnector::primary_input(upper_reader), &[]);
@@ -360,7 +359,6 @@ async fn a_connected_node_stays_where_it_is_drawn_and_follows_a_rewire() {
 	assert!(network_interface.is_relative(&node, &[]), "A node gaining its first reader should become relative to it");
 	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(0, 0)));
 
-	// Rewiring keeps the offset, so the node moves beside its new reader
 	network_interface.create_wire(&OutputConnector::primary_output(node), &InputConnector::primary_input(other_reader), &[]);
 	network_interface.disconnect_input(&InputConnector::primary_input(reader), &[]);
 	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(20, 20)));
@@ -1096,7 +1094,6 @@ async fn moving_a_closed_up_layer_up_closes_up_the_stack_above_it_and_then_moves
 		network_interface.move_layer_to_stack(LayerNodeIdentifier::new(layer, network_interface), artboard_layer, insert_index, &[]);
 	}
 
-	// Two rows open between the first and second layer, while the third is closed up under the second, and the first has room below the artboard
 	network_interface.shift_node(&first, IVec2::new(0, 2), &[]);
 	network_interface.shift_node(&second, IVec2::new(0, 2), &[]);
 	let positions = |network_interface: &NodeNetworkInterface| [first, second, third].map(|layer| network_interface.position(&layer, &[]).expect("every layer is drawn"));
@@ -1107,13 +1104,11 @@ async fn moving_a_closed_up_layer_up_closes_up_the_stack_above_it_and_then_moves
 	network_interface.selected_nodes_mut(&[]).expect("the root network has a selection").set_selected_nodes(vec![third]);
 	let moved_up = |rows: i32, position: IVec2| position - IVec2::new(0, rows);
 
-	// The second layer moves up in place of the third, which it carries, until it closes up under the first
 	for rows in 1..=2 {
 		network_interface.shift_selected_nodes(Direction::Up.offset(), false, &[]);
 		assert_eq!(positions(network_interface), [first_start, moved_up(rows, second_start), moved_up(rows, third_start)]);
 	}
 
-	// Then the whole stack moves up from its top
 	network_interface.shift_selected_nodes(Direction::Up.offset(), false, &[]);
 	assert_eq!(positions(network_interface), [moved_up(1, first_start), moved_up(3, second_start), moved_up(3, third_start)]);
 
@@ -1189,7 +1184,6 @@ async fn a_stack_closes_up_over_a_deleted_layer_and_a_nudge_moves_the_rest_one_r
 
 	let second_position = network_interface.position(&second, &[]);
 
-	// Deleting the middle layer leaves the one below stacked where it was
 	network_interface.delete_nodes(vec![second], false, &[]);
 	assert_eq!(network_interface.position(&third, &[]), second_position, "The layer below a deleted one should take its place");
 

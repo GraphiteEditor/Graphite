@@ -3,7 +3,6 @@ use glam::UVec2;
 use graph_layout::{Drag, Graph, Layout, Node, NodeIndex, NodeKind, Placement, Wire};
 use std::cell::RefCell;
 
-/// How far any part of a node, such as a layer's stack ports, reaches past the cells it covers, in node graph pixels.
 const REACH_MARGIN: f64 = 16.;
 
 /// Where each node of a network is drawn and which layer's chain it is drawn in, as of one revision of the interface.
@@ -81,7 +80,6 @@ pub struct DragPreview {
 	origin: RefCell<Option<DragOrigin>>,
 }
 
-/// The network as stored that a drag moves the nodes from, as of one revision, with the rows it has moved up so far.
 #[derive(Debug, Clone)]
 struct DragOrigin {
 	revision: u64,
@@ -107,7 +105,6 @@ impl DragOrigin {
 }
 
 impl NodeNetworkInterface {
-	/// Reads the layout of the network at `network_path`, laying it out again first if anything was written since.
 	pub(crate) fn with_layout<R>(&self, network_path: &[NodeId], read: impl FnOnce(&NetworkLayout) -> R) -> Option<R> {
 		let cache = &self.network_metadata(network_path)?.transient_metadata.layout;
 		let revision = store::revision();
@@ -118,7 +115,6 @@ impl NodeNetworkInterface {
 		cache.with_loaded_or(|| self.lay_out(network_path, revision), read)
 	}
 
-	/// The nodes whose drawing could cover `point`, in node graph space, each offset by how far it is drawn from its grid cell while gliding into it.
 	pub(crate) fn nodes_reaching(&self, point: DVec2, network_path: &[NodeId]) -> Vec<NodeId> {
 		let glide_offsets = self.glide_offsets(network_path);
 		self.with_layout(network_path, |layout| {
@@ -127,7 +123,6 @@ impl NodeNetworkInterface {
 		.unwrap_or_default()
 	}
 
-	/// How far the selected nodes are drawn dragged from where the drag started, and whether the nodes they carry along stay in place.
 	pub(crate) fn drag_preview(&self, network_path: &[NodeId]) -> (IVec2, bool) {
 		self.network_metadata(network_path)
 			.and_then(|network_metadata| network_metadata.transient_metadata.drag.as_ref())
@@ -196,7 +191,6 @@ impl NodeNetworkInterface {
 			stored_all &= self.store_placement(&node_id, placement, network_path);
 		}
 
-		// The network as now stored is the moved graph released, so its layout needs no reading back from the metadata
 		if stored_all && let Some(network_metadata) = self.network_metadata(network_path) {
 			let layout = Layout::new(&graph);
 			network_metadata.transient_metadata.layout.store(NetworkLayout {
@@ -222,7 +216,6 @@ impl NodeNetworkInterface {
 		Some(drag)
 	}
 
-	/// Reads where the drag moves the nodes from, starting over from the network as stored if anything was written or changed how it is dragged since.
 	fn with_drag_origin<R>(&self, drag: &DragPreview, network_path: &[NodeId], revision: u64, read: impl FnOnce(&mut DragOrigin) -> R) -> Option<R> {
 		let mut origin = drag.origin.borrow_mut();
 		if origin.as_ref().is_none_or(|origin| (origin.revision, origin.keep_upstream) != (revision, drag.keep_upstream)) {
@@ -233,7 +226,6 @@ impl NodeNetworkInterface {
 		origin.as_mut().map(read)
 	}
 
-	/// Where a drag starting now moves the nodes from, taken from the layout cached for the network as stored if it is current.
 	fn drag_origin_from_cached_layout(&self, dragged: &[NodeId], keep_upstream: bool, network_path: &[NodeId]) -> Option<DragOrigin> {
 		let revision = store::revision();
 		let cache = &self.network_metadata(network_path)?.transient_metadata.layout;
@@ -243,7 +235,6 @@ impl NodeNetworkInterface {
 		Some(DragOrigin::new(node_ids, indices, graph, layout, dragged, keep_upstream, revision))
 	}
 
-	/// Stores `placement` as the position of the node, returning whether it could.
 	fn store_placement(&mut self, node_id: &NodeId, placement: Placement, network_path: &[NodeId]) -> bool {
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node_metadata for node {node_id}");
@@ -287,7 +278,6 @@ impl NodeNetworkInterface {
 		})
 	}
 
-	/// The network as the layout pass reads it, with the ID of each node and the index of each ID.
 	pub(crate) fn layout_graph(&self, network_path: &[NodeId]) -> Option<(Vec<NodeId>, HashMap<NodeId, NodeIndex>, Graph)> {
 		let network = self.nested_network(network_path)?;
 		let node_ids: Vec<NodeId> = network.nodes.keys().copied().collect();
@@ -314,7 +304,6 @@ impl NodeNetworkInterface {
 		Some((node_ids, indices, Graph { nodes, wires }))
 	}
 
-	/// The node as the layout pass reads it, sized in grid cells.
 	fn layout_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<Node> {
 		let metadata = self.node_metadata(node_id, network_path)?;
 		let (placement, is_layer) = match &metadata.persistent_metadata.node_type_metadata {

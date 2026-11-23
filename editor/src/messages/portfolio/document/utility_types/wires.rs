@@ -149,7 +149,6 @@ fn straight_wire_path(output_position: DVec2, input_position: DVec2, vertical_ou
 	let grid_spacing = 24;
 	let line_width = 2;
 
-	// Flooring and Euclidean division keep the wire's shape the same wherever on the grid its ends are moved together
 	let in_x = input_position.x.floor() as i32;
 	let in_y = input_position.y.floor() as i32;
 	let out_x = output_position.x.floor() as i32;
@@ -585,7 +584,6 @@ mod tests {
 
 	#[test]
 	fn a_grid_aligned_wire_keeps_its_shape_when_moved_along_the_grid() {
-		// Output and input ends of node ports, layer stack ports, and ends gliding between grid cells, on both sides of the origin
 		let ends = [
 			(DVec2::new(120., 24.), DVec2::new(480., 96.), false, false),
 			(DVec2::new(-120., 48.), DVec2::new(240., -72.), false, false),

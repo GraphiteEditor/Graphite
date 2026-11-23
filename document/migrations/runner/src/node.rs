@@ -334,9 +334,6 @@ fn add_nodes(target: &mut Registry, runs: &[(NodeId, Edits)], resolver: &dyn Dec
 	Ok(())
 }
 
-/// Default positions for the nodes one run adds. The nodes leading up to the anchor's chain input form a row to its left, which
-/// joins the chain of a chained or layer anchor. Each other node sits relative to the nodes reading it, below the first one of this
-/// run that does, or on the anchor when nothing reads it.
 fn place_added_nodes(target: &mut Registry, anchor: NodeId, edits: &Edits) {
 	let Some(anchor_node) = target.node_instances.get(&anchor) else { return };
 	let stored = anchor_node.attributes().get_typed::<Position>(POSITION);

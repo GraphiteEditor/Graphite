@@ -125,7 +125,6 @@ impl NodeMut<'_> {
 		self.set_node_type(node_type)
 	}
 
-	/// Places the node at an offset from the top left corner of the bounding box of the nodes reading it.
 	pub(crate) fn set_relative_position(&mut self, offset: IVec2) -> bool {
 		let node_type = match self.metadata.node_type_metadata {
 			NodeTypePersistentMetadata::Layer(_) => NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
@@ -136,7 +135,6 @@ impl NodeMut<'_> {
 		self.set_node_type(node_type)
 	}
 
-	/// Offsets the stored position of a node.
 	pub(crate) fn shift_absolute_position(&mut self, shift: IVec2) -> bool {
 		let shifted = match self.metadata.node_type_metadata {
 			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {

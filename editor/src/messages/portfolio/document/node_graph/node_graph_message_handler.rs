@@ -88,7 +88,6 @@ pub struct NodeGraphMessageHandler {
 	pub box_selection_start: Option<(DVec2, bool)>,
 	/// Restore the selection before box selection if it is aborted
 	pub selection_before_pointer_down: Vec<NodeId>,
-	/// Whether dragging leaves the relative nodes upstream of the dragged ones where they are drawn.
 	keep_upstream_in_place: bool,
 	disconnecting: Option<InputConnector>,
 	initial_disconnecting: bool,
@@ -136,7 +135,6 @@ pub struct NodeGraphMessageHandler {
 	end_index: Option<usize>,
 	/// The nodes the frontend currently knows about
 	frontend_nodes: Vec<FrontendNode>,
-	/// The wires the frontend draws, by the node and input they lead into, so only the ones that changed are sent
 	frontend_wires: HashMap<(NodeId, usize), WirePath>,
 	evaluation_errors: Vec<NodeEvaluationError>,
 }
@@ -1804,7 +1802,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					drag_start.stored += network_interface.drag_preview(selection_network_path).0;
 					network_interface.finish_drag(selection_network_path);
 				} else {
-					// The shift reapplied below stores the nodes where the drag has come
 					network_interface.cancel_drag(selection_network_path);
 					drag_start.stored = graph_delta;
 
@@ -2182,7 +2179,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				});
 			}
 			NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, glide } => {
-				// The shift can also move the nodes placed relative to them and the imports and exports, so everything it moves glides to where it lands
 				let positions_before = (glide && graph_view_overlay_open).then(|| Self::glide_positions(network_interface, selection_network_path));
 
 				network_interface.shift_selected_nodes(graph_delta, self.keep_upstream_in_place, selection_network_path);

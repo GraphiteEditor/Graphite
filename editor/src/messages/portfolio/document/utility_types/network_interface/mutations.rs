@@ -430,7 +430,6 @@ impl NodeNetworkInterface {
 		let new_inputs = std::mem::take(&mut new_template.inputs);
 		let new_input_metadata = std::mem::take(&mut new_template.input_metadata);
 
-		// A chain whose link into this node is dropped loses the layer it's positioned against, so it leaves the chain while that layer is still reachable
 		let chain_input_index = if self.is_layer(node_id, network_path) { LAYER_SECONDARY_INPUT_INDEX } else { PRIMARY_INPUT_INDEX };
 		let disconnected_chain_node = self
 			.document_node(node_id, network_path)
@@ -770,7 +769,6 @@ impl NodeNetworkInterface {
 			..
 		} = &current_input
 		{
-			// If the node upstream from the disconnected input is in a chain, take it out of the chain where it is drawn
 			if self.is_chain(upstream_node_id, network_path) {
 				self.unchain_upstream(upstream_node_id, network_path);
 			}
@@ -1128,7 +1126,6 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		// The node taking over the removed node's place keeps its offset, so it moves into that place along with its upstream
 		let reconnected_offset = reconnect_to_input
 			.as_ref()
 			.and_then(NodeInput::as_node)
@@ -1283,7 +1280,6 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_to_node_or_layer(&mut self, node_id: &NodeId, network_path: &[NodeId], is_layer: bool) {
-		// If a layer is set to a node, take its chain out of the chain and its upstream sibling out of the stack where they are drawn
 		let child_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).nth(1) };
 		let upstream_sibling_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow).nth(1) };
 		match (self.is_layer(node_id, network_path), is_layer) {
@@ -1334,7 +1330,6 @@ impl NodeNetworkInterface {
 			.filter(|downstream_node_id| self.is_layer(downstream_node_id, network_path))
 			.and_then(|downstream_layer| self.position(&downstream_layer, network_path));
 
-		// First switch between layer and node where it is drawn
 		let absolute = match is_layer {
 			true => NodeTypePersistentMetadata::layer(position),
 			false => NodeTypePersistentMetadata::node(position),

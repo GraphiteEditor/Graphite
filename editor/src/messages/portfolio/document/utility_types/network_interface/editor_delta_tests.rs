@@ -101,7 +101,6 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 	let a = editor.create_node_by_name(rectangle_definition()).await;
 	let b = editor.create_node_by_name(rectangle_definition()).await;
 
-	// Already read by `a`, so `b` is relative and the wiring edit below doesn't also reposition it
 	editor
 		.active_document_mut()
 		.network_interface

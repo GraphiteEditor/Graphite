@@ -11,7 +11,6 @@ impl NodeNetworkInterface {
 		self.with_layout(network_path, |layout| layout.position(node_id)).flatten()
 	}
 
-	/// The positions of many nodes at once.
 	pub(crate) fn positions(&self, node_ids: impl IntoIterator<Item = NodeId>, network_path: &[NodeId]) -> Vec<(NodeId, IVec2)> {
 		self.with_layout(network_path, |layout| node_ids.into_iter().filter_map(|node_id| Some((node_id, layout.position(&node_id)?))).collect())
 			.unwrap_or_default()
@@ -27,14 +26,12 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Stores `position` as an offset from the node's anchor, the left of its readers level with the highest, or as an absolute position if no node reads it.
 	pub(crate) fn place_at(&mut self, node_id: &NodeId, position: IVec2, network_path: &[NodeId]) {
 		if self.reading_nodes(node_id, network_path).is_empty() {
 			self.set_absolute_position(node_id, position, network_path);
 			return;
 		}
 
-		// An absolute node starts a tree of its own, so it only gets an anchor once it is relative
 		if !self.is_relative(node_id, network_path) {
 			self.set_relative_position(node_id, IVec2::ZERO, network_path);
 		}
@@ -69,7 +66,6 @@ impl NodeNetworkInterface {
 			let node_ids: Vec<NodeId> = network.nodes.keys().copied().collect();
 			let positions: HashMap<NodeId, IVec2> = self.positions(node_ids.iter().copied(), &network_path).into_iter().collect();
 
-			// With every node stored where it is drawn, the highest reader is the top of its readers' bounding box, so the anchor is its top left corner
 			let offsets: Vec<(NodeId, IVec2)> = node_ids
 				.into_iter()
 				.filter(|node_id| !self.is_relative(node_id, &network_path))
@@ -85,7 +81,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// The stored offset of a relative node from its owner.
 	pub(crate) fn relative_offset(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
 		match self.node_metadata(node_id, network_path)?.persistent_metadata.node_type_metadata {
 			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
@@ -98,7 +93,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// The nodes reading any output of `node_id`.
 	pub(crate) fn reading_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
 		let output_count = self.number_of_outputs(node_id, network_path);
 		self.with_outward_wires(network_path, |outward_wires| {
@@ -111,7 +105,6 @@ impl NodeNetworkInterface {
 		.unwrap_or_default()
 	}
 
-	/// Pins a relative node at its drawn position before `leaving_reader` stops reading it, if no other node reads it.
 	pub(crate) fn pin_relative_node_losing_its_readers(&mut self, node_id: &NodeId, leaving_reader: &InputConnector, network_path: &[NodeId]) {
 		if !self.is_relative(node_id, network_path) {
 			return;
@@ -135,7 +128,6 @@ impl NodeNetworkInterface {
 		self.set_absolute_position(node_id, position, network_path);
 	}
 
-	/// Pins a relative node at `position`, where it was drawn, once no node reads it anymore.
 	pub(crate) fn pin_relative_node_without_readers(&mut self, node_id: &NodeId, position: IVec2, network_path: &[NodeId]) {
 		if self.is_relative(node_id, network_path) && self.reading_nodes(node_id, network_path).is_empty() {
 			self.set_absolute_position(node_id, position, network_path);
@@ -294,7 +286,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Takes `node_id`, the first chain node rather than the layer, and the chain nodes upstream of it out of the chain where they are drawn.
 	pub(crate) fn unchain_upstream(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		for upstream_id in &self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).collect::<Vec<_>>() {
 			let Some(previous_position) = self.position(upstream_id, network_path) else {
@@ -311,11 +302,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Places `upstream_node_id` for a connection just made to `input_connector`. A layer that is the sole
-	/// feed into the bottom of another layer stacks under it, a relative node keeps its offset from its
-	/// readers, and an absolute node becomes relative to them where it sits.
-	///
-	/// Returns whether the node could be placed, which is false only when it has no resolvable position.
 	pub(crate) fn reposition_connected_upstream(&mut self, upstream_node_id: &NodeId, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
 		if self.position(upstream_node_id, network_path).is_none() {
 			log::error!("Could not get position of node {upstream_node_id} in reposition_connected_upstream");
@@ -346,11 +332,6 @@ impl NodeNetworkInterface {
 		true
 	}
 
-	/// Places `node_id` after the connection feeding it was removed. A layer that still feeds the bottom
-	/// of a single layer stacks under it, a node joins a chain where it is eligible, and any other absolute
-	/// layer is placed at `previous_position`.
-	///
-	/// Returns whether the node could be placed, which is false only when its outward wires are missing.
 	pub(crate) fn reposition_disconnected_upstream(&mut self, node_id: &NodeId, previous_position: IVec2, network_path: &[NodeId]) -> bool {
 		let is_layer = self.is_layer(node_id, network_path);
 
@@ -384,7 +365,6 @@ impl NodeNetworkInterface {
 		Some(node_ids_with_position.into_iter().map(|(node_id, _)| node_id).collect::<Vec<_>>())
 	}
 
-	/// Moves an absolute or relative node back to `position` after an edit carried it away, along with everything relative to it.
 	pub(crate) fn keep_drawn_at(&mut self, node_id: &NodeId, position: IVec2, network_path: &[NodeId]) {
 		let Some(current_position) = self.position(node_id, network_path) else { return };
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
@@ -503,7 +483,6 @@ impl NodeNetworkInterface {
 			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
 				self.create_wire(&OutputConnector::primary_output(layer.to_node()), &post_node, network_path);
 			}
-			// The layer takes the place of what fed the post node, which moves onto the layer's output
 			NodeInput::Node { .. } => {
 				self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 				self.take_over_outward_wires(layer.to_node(), network_path);
@@ -514,7 +493,6 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		// Stacked layers start right below the layer they stack under, and drawing them moves each past the content above it
 		if inserting_into_stack {
 			self.set_stack_position(&layer.to_node(), 0, network_path);
 		} else {
@@ -634,7 +612,6 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		// Otherwise place the node where the displaced feeder was, then move the feeder's branch left to make room
 		let (Some(feeder), Some(feeder_position)) = (feeder, feeder_position) else { return };
 		let Some(node_position) = self.position(node_id, network_path) else { return };
 
@@ -646,7 +623,6 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		// A relative feeder carries its upstream along
 		if self.is_relative(&feeder, network_path) {
 			let Some(current_feeder_position) = self.position(&feeder, network_path) else { return };
 			self.shift_node(&feeder, feeder_position + IVec2::new(-NODE_CHAIN_WIDTH, 0) - current_feeder_position, network_path);
