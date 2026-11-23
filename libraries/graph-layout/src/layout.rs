@@ -94,8 +94,8 @@ impl Layout {
 	fn place(&mut self, graph: &Graph, connections: &Connections, forest: &Forest, node: NodeIndex) {
 		self.anchors[node] = forest.anchor(graph, connections, node, |reader| self.positions[reader]);
 		self.positions[node] = match forest.owner(node) {
-			Some(owner) => self.anchors[node] + graph[node].stored_offset(&graph[owner]) + self.elongations[node],
-			None => graph[node].root_position(),
+			Some(_) => self.anchors[node] + graph[node].placement.stored_offset() + self.elongations[node],
+			None => graph[node].placement.root_position(),
 		};
 	}
 

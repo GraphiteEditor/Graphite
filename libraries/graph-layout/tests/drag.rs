@@ -1,12 +1,12 @@
 mod common;
 
-use common::{at, layer, wire};
+use common::{at, layer, stacked, wire};
 use glam::IVec2;
 use graph_layout::{Drag, Graph, Layout, Placement};
 
 fn closed_up_stack() -> Graph {
 	Graph {
-		nodes: vec![layer(Placement::Absolute(IVec2::new(30, 10))), layer(Placement::Stack(0)), layer(Placement::Stack(0))],
+		nodes: vec![layer(Placement::Absolute(IVec2::new(30, 10))), layer(stacked(0)), layer(stacked(0))],
 		wires: vec![wire(1, 0, 0), wire(2, 1, 0)],
 	}
 }
@@ -63,7 +63,7 @@ fn the_layers_a_drag_carries_up_return_as_it_comes_back_down() {
 #[test]
 fn a_layer_pushed_up_with_its_upstream_kept_carries_the_layer_above_from_the_first_row() {
 	let start = Graph {
-		nodes: vec![layer(Placement::Absolute(IVec2::new(30, 10))), layer(Placement::Stack(3)), layer(Placement::Stack(0))],
+		nodes: vec![layer(Placement::Absolute(IVec2::new(30, 10))), layer(stacked(3)), layer(stacked(0))],
 		wires: vec![wire(1, 0, 0), wire(2, 1, 0)],
 	};
 	let before = Layout::new(&start);

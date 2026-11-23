@@ -47,8 +47,7 @@ impl Mover {
 		}
 
 		let shift = positions_before[node] - self.position(node);
-		if let Some(shifted) = self.graph[node].placement.shifted(shift) {
-			self.set_placement(node, shifted);
-		}
+		let shifted = self.graph[node].placement.shifted(shift);
+		self.set_placement(node, shifted);
 	}
 }
