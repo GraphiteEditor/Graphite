@@ -25,14 +25,12 @@ use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use crate::messages::viewport::Position;
 use ::graph_ui::metrics::{INPUT_CONNECTOR_LEFT, OUTPUT_CONNECTOR_RIGHT};
-use glam::{DAffine2, DVec2, IVec2};
+use glam::{DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
-use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::*;
 use kurbo::{DEFAULT_ACCURACY, Shape};
-use renderer::Quad;
 
 #[derive(Debug, ExtractField)]
 pub struct NodeGraphMessageContext<'a> {
@@ -2540,13 +2538,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						HashSet::new()
 					};
 					let all_nodes = network_metadata.persistent_metadata.node_metadata.keys().cloned().collect::<Vec<_>>();
+					let [selection_min, selection_max] = [box_selection_start.min(box_selection_end_graph), box_selection_start.max(box_selection_end_graph)];
 					for node_id in all_nodes {
-						let Some(click_targets) = network_interface.node_click_targets(&node_id, selection_network_path) else {
-							log::error!("Could not get transient metadata for node {node_id}");
+						let Some(body) = network_interface.with_layout(selection_network_path, |layout| layout.body(&node_id)).flatten() else {
+							log::error!("Could not get the body of node {node_id}");
 							continue;
 						};
-						let quad = Quad::from_box([box_selection_start, box_selection_end_graph]);
-						if click_targets.node_click_target.intersect_path(|| quad.to_lines(), DAffine2::IDENTITY) {
+						if body.overlaps(selection_min, selection_max) {
 							if alt {
 								nodes.remove(&node_id);
 							} else {

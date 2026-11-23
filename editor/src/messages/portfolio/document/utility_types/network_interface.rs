@@ -37,6 +37,7 @@ mod view;
 
 pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
 pub use layout_pass::NetworkLayout;
+pub use node_parts::{Part, PartTarget};
 pub use reconcile::{ReconcileError, Reconciled};
 use store::Guarded;
 pub use store::NodeLocator;

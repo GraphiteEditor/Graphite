@@ -399,17 +399,10 @@ impl NodeNetworkInterface {
 	}
 
 	/// The node's body, ports, and handles, built where it is drawn now.
-	pub fn node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<DocumentNodeClickTargets> {
-		self.compute_node_click_targets(node_id, network_path)
-	}
-
-	pub(crate) fn with_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
-		self.compute_node_click_targets(node_id, network_path).as_ref().map(read)
-	}
-
+	/// The box around the node's body where it sits in its grid cell, in node graph space.
 	pub fn node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		self.with_node_click_targets(node_id, network_path, |click_targets| click_targets.node_click_target.bounding_box())
-			.flatten()
+		let body = self.with_layout(network_path, |layout| layout.body(node_id)).flatten()?;
+		Some([body.min, body.max])
 	}
 }
 

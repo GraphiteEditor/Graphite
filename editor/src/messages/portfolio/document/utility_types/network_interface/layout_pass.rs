@@ -53,7 +53,7 @@ impl NetworkLayout {
 		} = self;
 		(LaidOutNodes { node_ids, indices, shapes }, graph, layout)
 	}
-.
+
 	pub fn generation(&self) -> u64 {
 		self.generation
 	}
