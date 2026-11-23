@@ -34,6 +34,8 @@
 		addEventListener("mousedown", draggingMouseDown);
 		// Capture phase so this runs before a section header's own click handler
 		addEventListener("click", suppressClickAfterDrag, true);
+		addEventListener("keydown", paletteNameKeyDown);
+		addEventListener("focusout", paletteNameFocusOut);
 	});
 
 	onDestroy(() => {
@@ -44,6 +46,8 @@
 		removeEventListener("keydown", draggingKeyDown);
 		removeEventListener("mousedown", draggingMouseDown);
 		removeEventListener("click", suppressClickAfterDrag, true);
+		removeEventListener("keydown", paletteNameKeyDown);
+		removeEventListener("focusout", paletteNameFocusOut);
 
 		autoScroller.stop();
 	});
@@ -58,7 +62,7 @@
 	function editPaletteName(e: MouseEvent) {
 		const target = e.target instanceof Element ? e.target : undefined;
 		// eslint-disable-next-line graphite/require-data-selectors
-		const label = target?.closest(".widget-span.row:has(> .text-label + .text-input + .text-button) > .text-label");
+		const label = target?.closest(".widget-span.row:has(> .text-label + .text-input) > .text-label");
 		const row = label?.parentElement;
 		if (!label || !row) return;
 		// eslint-disable-next-line graphite/require-data-selectors
@@ -75,10 +79,10 @@
 		input.select();
 	}
 
-	function finishPaletteNameEdit(target: EventTarget | undefined) {
+	function finishPaletteNameEdit(target?: EventTarget) {
 		const element = target instanceof Element ? target : undefined;
 		// eslint-disable-next-line graphite/require-data-selectors
-		const row = element?.closest(".widget-span.row.palette-name-editing");
+		const row = element?.closest(".widget-span.row.palette-name-editing") ?? sectionsCol?.div()?.querySelector(".widget-span.row.palette-name-editing");
 		// eslint-disable-next-line graphite/require-data-selectors
 		const field = row?.querySelector<HTMLElement>(":scope > .text-input");
 		// eslint-disable-next-line graphite/require-data-selectors
@@ -88,11 +92,17 @@
 		row.classList.remove("palette-name-editing");
 		field.classList.add("disabled");
 		input.disabled = true;
+		input.blur();
 	}
 
-	function paletteNameKeyDown(e: CustomEvent<KeyboardEvent>) {
-		const key = e.detail?.key;
-		if (key === "Enter") finishPaletteNameEdit(e.target instanceof Element ? e.target : undefined);
+	function paletteNameKeyDown(e: KeyboardEvent) {
+		if (e.key === "Enter" || e.key === "Escape") {
+			finishPaletteNameEdit(e.target instanceof Element ? e.target : undefined);
+		}
+	}
+
+	function paletteNameFocusOut(e: FocusEvent) {
+		finishPaletteNameEdit(e.target instanceof Element ? e.target : undefined);
 	}
 
 	function reorderableSections(): Element[] {
@@ -223,16 +233,7 @@
 </script>
 
 <LayoutCol class="palette">
-	<LayoutCol
-		class="sections"
-		classes={{ dragging }}
-		scrollableY={true}
-		bind:this={sectionsCol}
-		on:pointerdown={sectionPointerDown}
-		on:dblclick={editPaletteName}
-		on:focusout={(e) => finishPaletteNameEdit(e.target ?? undefined)}
-		on:keydown={paletteNameKeyDown}
-	>
+	<LayoutCol class="sections" classes={{ dragging }} scrollableY={true} bind:this={sectionsCol} on:pointerdown={sectionPointerDown} on:dblclick={editPaletteName}>
 		<!-- <button class="" data-tooltop-label="hello">Click Me</button> -->
 		<WidgetLayout layout={paletteLayout} layoutTarget="Palette" />
 		{#if dragging && insertMarker}
@@ -310,27 +311,27 @@
 				}
 			}
 
-			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-label),
-			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-input) {
+			:global(.widget-span.row:has(> .text-label + .text-input) > .text-label),
+			:global(.widget-span.row:has(> .text-label + .text-input) > .text-input) {
 				flex: 1 1 0;
 				min-width: 0;
 				overflow: visible;
 			}
 
-			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-input) {
+			:global(.widget-span.row:has(> .text-label + .text-input) > .text-input) {
 				display: none;
 			}
 
-			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-input.disabled) {
+			:global(.widget-span.row:has(> .text-label + .text-input) > .text-input.disabled) {
 				background: none;
 			}
 
-			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-input.disabled input) {
+			:global(.widget-span.row:has(> .text-label + .text-input) > .text-input.disabled input) {
 				color: var(--color-e-nearwhite);
 				-webkit-text-fill-color: var(--color-e-nearwhite);
 			}
 
-			:global(.widget-span.row:has(> .text-label + .text-input + .text-button) > .text-input input) {
+			:global(.widget-span.row:has(> .text-label + .text-input) > .text-input input) {
 				width: 100%;
 				min-width: 0;
 				margin: 0;
@@ -339,11 +340,11 @@
 				text-overflow: ellipsis;
 			}
 
-			:global(.widget-span.row.palette-name-editing:has(> .text-label + .text-input + .text-button) > .text-label) {
+			:global(.widget-span.row.palette-name-editing:has(> .text-label + .text-input) > .text-label) {
 				display: none;
 			}
 
-			:global(.widget-span.row.palette-name-editing:has(> .text-label + .text-input + .text-button) > .text-input) {
+			:global(.widget-span.row.palette-name-editing:has(> .text-label + .text-input) > .text-input) {
 				display: flex;
 			}
 
