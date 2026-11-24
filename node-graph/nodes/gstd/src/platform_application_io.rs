@@ -6,7 +6,7 @@ use core_types::ops::ConvertAsync;
 use core_types::transform::Footprint;
 use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, NodeError};
 use glam::{DAffine2, UVec2};
-pub use graph_craft::application_io::resource::{Resource, ResourceHash};
+pub use graph_craft::application_io::resource::{Resource, ResourceHash, ResourceId};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
@@ -308,6 +308,15 @@ async fn resource(
 
 fn pending_stored_resource(_hash: &Item<ResourceHash>, _application_io: &Item<Arc<PlatformApplicationIo>>) -> Item<Resource> {
 	Item::new_from_element(Resource::empty())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("Resource {0} is missing")]
+pub struct MissingResourceError(ResourceId);
+
+#[node_macro::node(category(""))]
+fn missing_resource(_: impl Ctx, id: Item<ResourceId>) -> Result<Item<Resource>, MissingResourceError> {
+	Err(MissingResourceError(id.into_element()))
 }
 
 #[node_macro::node(category(""), inject_scope)]

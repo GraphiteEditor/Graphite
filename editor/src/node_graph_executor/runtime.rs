@@ -935,6 +935,41 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn a_missing_resource_is_an_error_traced_through_its_node() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
+		use graph_craft::application_io::resource::ResourceId;
+		use graphene_std::platform_application_io::MissingResourceError;
+		use graphene_std::raster_nodes::std_nodes::image;
+
+		let mut editor = editor().await;
+
+		// The layer shows an 'Image' node holding an image the document has no record of
+		let image_node = NodeId::new();
+		let missing_image = NodeInput::value(TaggedValue::Resource(ResourceId::new()), false);
+		let template = resolve_proto_node_type(image::IDENTIFIER).unwrap().node_template_input_override([None, Some(missing_image)]);
+		editor.active_document_mut().network_interface.insert_node(image_node, template, &[]);
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(image_node),
+			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+		});
+
+		send_update(&mut editor);
+		editor.runtime.update();
+		editor.runtime.run().await;
+		editor.dispatch(Message::Wake);
+
+		let errors = editor.portfolio_message_handler_mut().executor.take_evaluation_errors().unwrap();
+		assert!(
+			errors
+				.iter()
+				.any(|(error, trace)| error.is::<MissingResourceError>() && trace.iter().flatten().any(|path| **path == [image_node])),
+			"{errors:?}"
+		);
+	}
+
+	#[tokio::test]
 	async fn a_raster_export_shows_the_artwork_whatever_the_render_mode() {
 		use crate::test_utils::test_prelude::{Color, Image};
 
