@@ -57,6 +57,12 @@
 {/if}
 
 <style lang="scss">
+	// Disable the spinning loading indicator
+	body:has(.main-window, .startup-error)::before,
+	body:has(.main-window, .startup-error)::after {
+		content: none !important;
+	}
+
 	.startup-error {
 		position: absolute;
 		inset: 0;
