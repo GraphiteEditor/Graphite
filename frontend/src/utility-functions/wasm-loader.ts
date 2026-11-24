@@ -6,9 +6,9 @@ import wasmBinaryUrl from "/wrapper/pkg/graphite_wasm_wrapper_bg.wasm?url";
 export async function initWasm() {
 	if (__WASM_PART_COUNT__ <= 1 && __WASM_SIZE__ === 0) return init();
 
-	// Fetch all parts in parallel (served from the service worker's precache once it is installed)
 	const partUrls = __WASM_PART_COUNT__ <= 1 ? [wasmBinaryUrl] : Array.from({ length: __WASM_PART_COUNT__ }, (_, index) => wasmBinaryUrl.replace(/\.wasm$/, `-part${index}.wasm`));
-	const partResponses = downloadParts(partUrls);
+	// Read the parts straight from the service worker's precache when it has them
+	const partResponses = (await cachedParts(partUrls)) || downloadParts(partUrls);
 
 	// eslint-disable-next-line camelcase
 	if (partResponses.length === 1) return init({ module_or_path: await partResponses[0] });
@@ -18,6 +18,16 @@ export async function initWasm() {
 	const joined = new Response(new Blob(parts), { headers: { "Content-Type": "application/wasm" } });
 	// eslint-disable-next-line camelcase
 	return init({ module_or_path: joined });
+}
+
+async function cachedParts(urls: string[]): Promise<Response[] | undefined> {
+	try {
+		const responses = await Promise.all(urls.map((url) => caches.match(url)));
+		if (responses.every((response): response is Response => response !== undefined)) return responses;
+	} catch {
+		// Cache Storage is unavailable, such as in some private windows
+	}
+	return undefined;
 }
 
 function downloadParts(urls: string[]): Promise<Response>[] {
