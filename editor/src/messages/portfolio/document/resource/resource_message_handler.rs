@@ -5,7 +5,6 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry, ResourceStorage};
 use graphene_std::text::Font;
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 use url::Url;
 
@@ -22,9 +21,6 @@ pub struct ResourceMessageHandler {
 	pub embedded: EmbeddedResources,
 	#[serde(skip)]
 	pending_resolves: HashSet<ResourceId>,
-	/// Resources that failed to load, which rendering no longer waits on, even during a retry.
-	#[serde(skip)]
-	failed_resolves: HashSet<ResourceId>,
 }
 
 #[message_handler_data]
@@ -198,7 +194,6 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 			}
 			ResourceMessage::Resolved { resource_id, source, hash } => {
 				self.pending_resolves.remove(&resource_id);
-				self.failed_resolves.remove(&resource_id);
 				if self.registry.info(&resource_id).is_none() {
 					// Resource was removed from registry after the fetch started.
 					return;
@@ -218,10 +213,6 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 			}
 			ResourceMessage::ResolveFailed { resource_id } => {
 				self.pending_resolves.remove(&resource_id);
-				self.failed_resolves.insert(resource_id);
-
-				// Rendering stops waiting on the resource and draws a fallback in its place
-				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 		}
 	}
@@ -234,20 +225,6 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 impl ResourceMessageHandler {
 	pub fn is_empty(&self) -> bool {
 		self.registry.is_empty() && self.embedded.is_empty()
-	}
-
-	/// Whether a resource lacks its data and hasn't failed to load, which rendering waits for.
-	pub fn awaiting_resources(&self) -> bool {
-		self.registry.unresolved().any(|info| !self.failed_resolves.contains(&info.id))
-	}
-
-	/// Changes whenever a resource gains, loses, or changes its data. Summed per resource since the registry's order isn't stable. O(resolved resources).
-	pub fn resolved_hash(&self) -> u64 {
-		self.registry.resolved().fold(0, |sum, info| {
-			let mut hasher = DefaultHasher::new();
-			(info.id, info.hash).hash(&mut hasher);
-			sum.wrapping_add(hasher.finish())
-		})
 	}
 
 	pub async fn embed_resources(&mut self, resources_load_handle: Box<dyn LoadResource>) {
@@ -385,33 +362,5 @@ mod tests {
 		assert!(resolve_requested(evicted), "a resource whose bytes are gone should be resolved again");
 		assert!(!resolve_requested(cached), "a resource whose bytes are in storage should be left alone");
 		assert_eq!(handler.registry.hash(&evicted), Some(evicted_hash), "the hash keeps naming the content");
-	}
-
-	#[test]
-	fn rendering_stops_waiting_on_a_resource_no_source_could_provide() {
-		let mut handler = ResourceMessageHandler::default();
-		let storage = ResourceStorageMessageHandler::default();
-		let fonts = FontsMessageHandler::default();
-		let context = || ResourceMessageContext {
-			document_id: DocumentId(0),
-			fonts: &fonts,
-			resource_storage: &storage,
-		};
-
-		let font = ResourceId::from(1);
-		let source = DataSource::Font {
-			family: "Lato".into(),
-			style: Some("Regular (400)".into()),
-		};
-		handler.registry.push_source_back(&font, source);
-		assert!(handler.awaiting_resources(), "a resource that may still load should hold back rendering");
-
-		let mut responses = VecDeque::new();
-		handler.process_message(ResourceMessage::ResolveFailed { resource_id: font }, &mut responses, context());
-		assert!(!handler.awaiting_resources(), "a resource no source could provide should no longer hold back rendering");
-		assert!(responses.contains(&Message::from(NodeGraphMessage::RunDocumentGraph)), "the graph should run to show what's missing");
-
-		handler.process_message(ResourceMessage::Resolve { resource_id: font }, &mut responses, context());
-		assert!(!handler.awaiting_resources(), "trying the resource again shouldn't hold back rendering again");
 	}
 }

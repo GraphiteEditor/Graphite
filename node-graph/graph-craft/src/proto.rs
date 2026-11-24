@@ -602,10 +602,6 @@ pub enum GraphErrorType {
 	NonConstantInput {
 		index: usize,
 	},
-	/// The input's value refers to a resource the document can't resolve to its data.
-	MissingResource {
-		index: usize,
-	},
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
@@ -654,11 +650,6 @@ impl Debug for GraphErrorType {
 				"Warning: an upstream node adapts to the visible canvas area, so this node's output changes when the view is panned or zoomed"
 			),
 			GraphErrorType::NonConstantInput { index } => write!(f, "Input {} must be a fixed value rather than computed by other nodes", index + 1),
-			GraphErrorType::MissingResource { index } => write!(
-				f,
-				"Warning: input {} needs a font, image, or other resource that can't be found, so a fallback is used in its place",
-				index + 1
-			),
 		}
 	}
 }
