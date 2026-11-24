@@ -19,6 +19,11 @@ const DEFERRED_ENTRIES = new Map(DEFERRED_CACHE_MANIFEST.map((entry) => [new URL
 // Caching strategies
 // ==================
 
+function withoutRedirect(response) {
+	if (!response.redirected) return response;
+	return new Response(response.body, { status: response.status, statusText: response.statusText, headers: response.headers });
+}
+
 function isCacheable(response) {
 	// Cache normal successful responses and opaque responses (cross-origin no-cors, e.g. <link> stylesheets)
 	return response.ok || response.type === "opaque";
@@ -47,6 +52,20 @@ async function networkFirst(request, cacheName) {
 	}
 }
 
+async function latestIndexHtml(request) {
+	const cache = await caches.open(STATIC_CACHE_NAME);
+	const cached = await cache.match("/index.html");
+	if (!cached) return fetch(request);
+	if (!navigator.onLine) return cached;
+
+	const network = fetch("/", { cache: "no-cache" }).then(
+		(response) => (response.ok ? withoutRedirect(response) : cached),
+		() => cached,
+	);
+	const timeout = new Promise((resolve) => setTimeout(() => resolve(cached), 1000));
+	return Promise.race([network, timeout]);
+}
+
 // ================
 // Lifecycle events
 // ================
@@ -60,15 +79,7 @@ self.addEventListener("install", (event) => {
 				PRECACHE_MANIFEST.map(async (entry) => {
 					const response = await fetch(entry.url);
 					if (!response.ok) throw new Error(`Precache fetch failed for ${entry.url}: ${response.status}`);
-					// Strip the `redirected` flag which causes errors when served via respondWith
-					const cleaned = response.redirected
-						? new Response(response.body, {
-								status: response.status,
-								statusText: response.statusText,
-								headers: response.headers,
-							})
-						: response;
-					await cache.put(entry.url, cleaned);
+					await cache.put(entry.url, withoutRedirect(response));
 				}),
 			);
 
@@ -148,15 +159,9 @@ self.addEventListener("fetch", (event) => {
 		return;
 	}
 
-	// Navigation requests: serve cached index.html for all routes (SPA pattern)
+	// Navigation requests: serve index.html for all routes (SPA pattern)
 	if (request.mode === "navigate") {
-		event.respondWith(
-			(async () => {
-				const cache = await caches.open(STATIC_CACHE_NAME);
-				const cached = await cache.match("/index.html");
-				return cached || fetch(request);
-			})(),
-		);
+		event.respondWith(latestIndexHtml(request));
 		return;
 	}
 

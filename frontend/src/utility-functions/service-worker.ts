@@ -1,15 +1,15 @@
 export async function registerServiceWorker() {
 	try {
-		const registration = await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
-
-		// When a new service worker is found, auto-reload once it activates
-		registration.addEventListener("updatefound", () => {
-			const newWorker = registration.installing;
-			newWorker?.addEventListener("statechange", () => {
-				// Only reload if there was a previous controller, meaning this is an update, not first install
-				if (newWorker.state === "activated" && navigator.serviceWorker.controller) window.location.reload();
-			});
+		navigator.serviceWorker.addEventListener("controllerchange", () => {
+			const controller = navigator.serviceWorker.controller;
+			const reloadIfRemoved = async () => {
+				if (controller?.state === "activated" && !(await caches.match(import.meta.url))) window.location.reload();
+			};
+			reloadIfRemoved();
+			controller?.addEventListener("statechange", reloadIfRemoved);
 		});
+
+		const registration = await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
 
 		const activeWorker = registration.active || registration.waiting || registration.installing;
 		if (!activeWorker) return;

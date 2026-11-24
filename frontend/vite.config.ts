@@ -18,11 +18,12 @@ export default defineConfig(({ mode }) => {
 			wasmEditorReload(),
 			staticAssets(),
 			mode !== "native" && thirdPartyLicenses(),
+			mode !== "native" && wasmSize(),
 			mode !== "native" && wasmSplitting(),
 			mode !== "native" && serviceWorker(),
 		],
 		// Default for builds that exclude the `wasmSplitting` plugin, which overrides this when active
-		define: { __WASM_PART_COUNT__: "1" },
+		define: { __WASM_SIZE__: "0", __WASM_PART_COUNT__: "1" },
 		resolve: {
 			alias: [
 				...(mode === "native" ? [{ find: /^\/wrapper\/pkg\//, replacement: "/wrapper/pkg-native/" }] : []),
@@ -173,6 +174,20 @@ function thirdPartyLicenses(): PluginOption {
 		},
 		writeBundle(options) {
 			copyFileSync(path.resolve(projectRootDir, "third-party-licenses.txt"), path.join(options.dir || "dist", "third-party-licenses.txt"));
+		},
+	};
+}
+
+function wasmSize(): PluginOption {
+	return {
+		name: "wasm-size",
+		config(_, { command }) {
+			if (command !== "build") return;
+
+			const wasmPath = path.resolve(projectRootDir, "wrapper/pkg/graphite_wasm_wrapper_bg.wasm");
+			if (!existsSync(wasmPath)) return;
+
+			return { define: { __WASM_SIZE__: String(statSync(wasmPath).size) } };
 		},
 	};
 }

@@ -82,12 +82,6 @@
 <MainWindow />
 
 <style lang="scss">
-	// Disable the spinning loading indicator
-	body::before,
-	body::after {
-		content: none !important;
-	}
-
 	:root {
 		--color-0-black: #000;
 		--color-1-nearblack: #111;

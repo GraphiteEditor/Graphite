@@ -5,6 +5,7 @@
 	import type { MessageName, SubscriptionsRouter } from "/src/subscriptions-router";
 	import { joinSessionFromUrl, loadDemoArtwork } from "/src/utility-functions/network";
 	import { operatingSystem } from "/src/utility-functions/platform";
+	import { registerServiceWorker } from "/src/utility-functions/service-worker";
 	import { initWasm } from "/src/utility-functions/wasm-loader";
 	import { EditorWrapper, receiveNativeMessage } from "/wrapper/pkg/graphite_wasm_wrapper";
 	import type { FrontendMessage } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -18,6 +19,10 @@
 		try {
 			// Initialize the editor wrapper
 			const wrapper = await initWasm();
+
+			// Register the service worker, except in dev mode and native builds
+			if (!import.meta.env.DEV && import.meta.env.MODE !== "native" && "serviceWorker" in navigator) registerServiceWorker();
+
 			for (const [name, f] of Object.entries(wrapper)) {
 				if (name.startsWith("__node_registry") || name.startsWith("__migration_registry")) f();
 			}
@@ -57,6 +62,12 @@
 {/if}
 
 <style lang="scss">
+	// Disable the loading indicator
+	body:has(.main-window, .startup-error)::before,
+	body:has(.main-window, .startup-error)::after {
+		content: none !important;
+	}
+
 	.startup-error {
 		position: absolute;
 		inset: 0;
