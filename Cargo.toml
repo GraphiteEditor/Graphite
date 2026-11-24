@@ -165,7 +165,7 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1.0"
 chrono = "0.4"
 ron = "0.12"
-fastnoise-lite = "1.1"
+fastnoise-lite = "1.2"
 wgpu = { version = "30.0", default-features = false, features = [
 	"std",
 	"parking_lot",
@@ -312,6 +312,7 @@ debug = true
 
 [patch.crates-io]
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
+fastnoise-lite = { git = "https://github.com/Keavon/FastNoiseLite.git", rev = "26c1ac62e124d68ff970c2423dcda2ef24344060" } # TODO: Remove this once the WGSL port is upstreamed and released in version 1.2
 # TODO: Remove these once the fork's fixes are upstreamed and released
 vello_gpu = { git = "https://github.com/Keavon/vello.git", rev = "9d032e642c1480c92e45889524db69a7b6a3dc07" }
 vello_common = { git = "https://github.com/Keavon/vello.git", rev = "9d032e642c1480c92e45889524db69a7b6a3dc07" }

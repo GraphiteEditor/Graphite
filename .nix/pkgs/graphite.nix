@@ -36,6 +36,13 @@ let
         cargoLockList = [
           "${info.src}/Cargo.lock"
         ];
+        # FastNoise Lite's WGSL port sits outside its crate folder, so place it beside Cargo.toml like its publish workflow does
+        overrideVendorGitCheckout =
+          packages: checkout:
+          if lib.any (package: package.name == "fastnoise-lite") packages then
+            checkout.overrideAttrs { preInstall = "cp WGSL/FastNoiseLite.wgsl Rust/"; }
+          else
+            checkout;
       }
     );
     buildInputs = libs;

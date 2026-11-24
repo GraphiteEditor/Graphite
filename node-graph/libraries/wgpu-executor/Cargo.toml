@@ -36,6 +36,7 @@ vello_gpu = { workspace = true }
 bytemuck = { workspace = true }
 half = { workspace = true }
 thiserror = { workspace = true }
+fastnoise-lite = { workspace = true, features = ["wgsl"] }
 
 [dev-dependencies]
 # Local dependencies
