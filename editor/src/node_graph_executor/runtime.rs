@@ -881,6 +881,60 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn a_resource_that_loads_recompiles_the_unchanged_network() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
+		use crate::test_utils::test_prelude::{Color, Image};
+		use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
+		use graphene_std::raster_nodes::std_nodes::image;
+
+		/// Handles the message, lets the runtime compile and evaluate whatever it queued, and gives back whether it drew an image.
+		async fn image_drawn_after(editor: &mut EditorTestUtils, message: impl Into<Message>) -> bool {
+			editor.dispatch(message);
+			editor.runtime.update();
+			editor.runtime.run().await;
+			let messages = editor.dispatch(Message::Wake);
+			messages
+				.iter()
+				.any(|message| matches!(message, FrontendMessage::UpdateImageData { canvas_ids_in_use, .. } if !canvas_ids_in_use.is_empty()))
+		}
+
+		let mut editor = editor().await;
+		let document_id = editor.portfolio_message_handler().active_document_id.unwrap();
+		editor.dispatch(ViewportMessage::Update {
+			x: 0.,
+			y: 0.,
+			width: 100.,
+			height: 100.,
+			scale: 1.,
+		});
+
+		// The layer shows an 'Image' node whose image is known only by where to load it from
+		let resource_id = ResourceId::new();
+		let source = DataSource::Url("https://example.com/image.png".parse().unwrap());
+		editor.active_document_mut().resources.registry.push_source_back(&resource_id, source.clone());
+		let image_node = NodeId::new();
+		let input = NodeInput::value(TaggedValue::Resource(resource_id), false);
+		let template = resolve_proto_node_type(image::IDENTIFIER).unwrap().node_template_input_override([None, Some(input)]);
+		editor.active_document_mut().network_interface.insert_node(image_node, template, &[]);
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(image_node),
+			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+		});
+
+		// Failing to load sends the network while the image has no data
+		let failed = ResourceMessage::ResolveFailed { resource_id }.into();
+		image_drawn_after(&mut editor, PortfolioMessage::DocumentPassMessage { document_id, message: failed }).await;
+
+		let data: Arc<[u8]> = Image::new(2, 2, Color::BLACK).to_png().into();
+		let hash = ResourceHash::from(data.as_ref());
+		editor.dispatch(ResourceStorageMessage::Store { data });
+		let resolved = ResourceMessage::Resolved { resource_id, source, hash }.into();
+		assert!(image_drawn_after(&mut editor, PortfolioMessage::DocumentPassMessage { document_id, message: resolved }).await);
+	}
+
+	#[tokio::test]
 	async fn a_raster_export_shows_the_artwork_whatever_the_render_mode() {
 		use crate::test_utils::test_prelude::{Color, Image};
 

@@ -5,6 +5,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry, ResourceStorage};
 use graphene_std::text::Font;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 use url::Url;
 
@@ -232,10 +233,6 @@ impl ResourceMessageHandler {
 		self.registry.is_empty() && self.embedded.is_empty()
 	}
 
-	pub fn awaiting_resources(&self) -> bool {
-		self.registry.unresolved().any(|info| !self.failed_resolves.contains(&info.id))
-	}
-
 	pub async fn embed_resources(&mut self, resources_load_handle: Box<dyn LoadResource>) {
 		let embedded = self
 			.registry
@@ -260,6 +257,18 @@ impl ResourceMessageHandler {
 		unused.into_iter().for_each(|id| {
 			self.registry.delete(&id);
 		});
+	}
+
+	pub fn awaiting_resources(&self) -> bool {
+		self.registry.unresolved().any(|info| !self.failed_resolves.contains(&info.id))
+	}
+
+	pub fn resolved_hash(&self) -> u64 {
+		self.registry.resolved().fold(0, |sum, info| {
+			let mut hasher = DefaultHasher::new();
+			(info.id, info.hash).hash(&mut hasher);
+			sum.wrapping_add(hasher.finish())
+		})
 	}
 }
 
