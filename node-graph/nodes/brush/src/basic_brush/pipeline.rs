@@ -96,7 +96,8 @@ impl WgpuPipeline for BasicBrushPipeline {
 }
 
 struct Scatter {
-	pipeline: wgpu::RenderPipeline,
+	density: wgpu::RenderPipeline,
+	stamp: wgpu::RenderPipeline,
 	layout: wgpu::BindGroupLayout,
 	sampler: wgpu::Sampler,
 }
@@ -179,7 +180,7 @@ impl Scatter {
 			constants: &[("CUTOFF_SIGMA", SIGMA_CUTOFF as f64), ("LUT_SIZE", LUT_SIZE as f64), ("LUT_V_MAX", LUT_V_MAX), ("LUT_T_MAX", LUT_T_MAX)],
 			..Default::default()
 		};
-		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+		let mut descriptor = wgpu::RenderPipelineDescriptor {
 			label: Some("basic_brush_density_pipeline"),
 			layout: Some(&pipeline_layout),
 			vertex: wgpu::VertexState {
@@ -198,11 +199,7 @@ impl Scatter {
 						blend: Some(wgpu::BlendState { color: additive, alpha: additive }),
 						write_mask: wgpu::ColorWrites::ALL,
 					}),
-					Some(wgpu::ColorTargetState {
-						format: DENSITY_FORMAT,
-						blend: Some(wgpu::BlendState { color: union, alpha: union }),
-						write_mask: wgpu::ColorWrites::ALL,
-					}),
+					None,
 				],
 			}),
 			primitive: wgpu::PrimitiveState {
@@ -213,8 +210,22 @@ impl Scatter {
 			multisample: wgpu::MultisampleState::default(),
 			multiview_mask: None,
 			cache: None,
-		});
-		Self { pipeline, layout, sampler }
+		};
+		let density = device.create_render_pipeline(&descriptor);
+		let stamp_targets = [
+			None,
+			Some(wgpu::ColorTargetState {
+				format: DENSITY_FORMAT,
+				blend: Some(wgpu::BlendState { color: union, alpha: union }),
+				write_mask: wgpu::ColorWrites::ALL,
+			}),
+		];
+		descriptor.label = Some("basic_brush_stamp_pipeline");
+		if let Some(fragment) = &mut descriptor.fragment {
+			fragment.targets = &stamp_targets;
+		}
+		let stamp = device.create_render_pipeline(&descriptor);
+		Self { density, stamp, layout, sampler }
 	}
 
 	fn bind(&self, device: &wgpu::Device, globals: &wgpu::Buffer, kernel: &wgpu::TextureView) -> wgpu::BindGroup {
@@ -250,15 +261,21 @@ impl Scatter {
 				depth_slice: None,
 			})
 		};
-		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("basic_brush_density_pass"),
-			color_attachments: &[attachment(&target.density), attachment(&target.stamp)],
-			..Default::default()
-		});
-		pass.set_pipeline(&self.pipeline);
-		pass.set_bind_group(0, bind, &[]);
-		pass.set_vertex_buffer(0, buffer.slice(..));
-		pass.draw(0..4, 0..instances);
+		let passes = [
+			("basic_brush_density_pass", &self.density, [attachment(&target.density), None]),
+			("basic_brush_stamp_pass", &self.stamp, [None, attachment(&target.stamp)]),
+		];
+		for (label, pipeline, attachments) in passes {
+			let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+				label: Some(label),
+				color_attachments: &attachments,
+				..Default::default()
+			});
+			pass.set_pipeline(pipeline);
+			pass.set_bind_group(0, bind, &[]);
+			pass.set_vertex_buffer(0, buffer.slice(..));
+			pass.draw(0..4, 0..instances);
+		}
 	}
 }
 
