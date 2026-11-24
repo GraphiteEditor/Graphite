@@ -220,7 +220,7 @@ fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Result<Item<Raster<CPU>>
 }
 
 /// Renders a view of the input graphics within an area defined by the *Footprint*, producing a raster image.
-#[node_macro::node(category("Raster"), icon("NodeRasterize"), placeholder = pending_raster, keep_previous)]
+#[node_macro::node(category("Raster"), icon("NodeRasterize"), placeholder = pending_raster, keep_previous, version(2))]
 async fn rasterize(
 	_: impl Ctx,
 	/// The graphics to render as an image.
