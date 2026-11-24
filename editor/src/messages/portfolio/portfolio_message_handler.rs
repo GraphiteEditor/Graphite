@@ -1025,10 +1025,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 
-				// Skip rendering while any resource is still unresolved — the preprocessor would otherwise fail with
-				// `ResourceNotFound`. `ResourceMessage::Resolved` queues `RunDocumentGraph` once each id resolves,
-				// so the render fires automatically once the registry is complete.
-				if document.resources.registry.unresolved().next().is_some() {
+				// Skip rendering while a resource is still loading, so its error isn't shown in the meantime.
+				// Each load queues `RunDocumentGraph` when it succeeds or fails, so the render goes ahead once none are left.
+				if document.resources.awaiting_resources() {
 					return;
 				}
 

@@ -21,6 +21,8 @@ pub struct ResourceMessageHandler {
 	pub embedded: EmbeddedResources,
 	#[serde(skip)]
 	pending_resolves: HashSet<ResourceId>,
+	#[serde(skip)]
+	failed_resolves: HashSet<ResourceId>,
 }
 
 #[message_handler_data]
@@ -194,6 +196,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 			}
 			ResourceMessage::Resolved { resource_id, source, hash } => {
 				self.pending_resolves.remove(&resource_id);
+				self.failed_resolves.remove(&resource_id);
 				if self.registry.info(&resource_id).is_none() {
 					// Resource was removed from registry after the fetch started.
 					return;
@@ -213,6 +216,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 			}
 			ResourceMessage::ResolveFailed { resource_id } => {
 				self.pending_resolves.remove(&resource_id);
+				self.failed_resolves.insert(resource_id);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 		}
 	}
@@ -225,6 +230,10 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 impl ResourceMessageHandler {
 	pub fn is_empty(&self) -> bool {
 		self.registry.is_empty() && self.embedded.is_empty()
+	}
+
+	pub fn awaiting_resources(&self) -> bool {
+		self.registry.unresolved().any(|info| !self.failed_resolves.contains(&info.id))
 	}
 
 	pub async fn embed_resources(&mut self, resources_load_handle: Box<dyn LoadResource>) {
@@ -362,5 +371,33 @@ mod tests {
 		assert!(resolve_requested(evicted), "a resource whose bytes are gone should be resolved again");
 		assert!(!resolve_requested(cached), "a resource whose bytes are in storage should be left alone");
 		assert_eq!(handler.registry.hash(&evicted), Some(evicted_hash), "the hash keeps naming the content");
+	}
+
+	#[test]
+	fn rendering_stops_waiting_on_a_resource_no_source_could_provide() {
+		let mut handler = ResourceMessageHandler::default();
+		let storage = ResourceStorageMessageHandler::default();
+		let fonts = FontsMessageHandler::default();
+		let context = || ResourceMessageContext {
+			document_id: DocumentId(0),
+			fonts: &fonts,
+			resource_storage: &storage,
+		};
+
+		let font = ResourceId::from(1);
+		let source = DataSource::Font {
+			family: "Lato".into(),
+			style: Some("Regular (400)".into()),
+		};
+		handler.registry.push_source_back(&font, source);
+		assert!(handler.awaiting_resources(), "a resource that may still load should hold back rendering");
+
+		let mut responses = VecDeque::new();
+		handler.process_message(ResourceMessage::ResolveFailed { resource_id: font }, &mut responses, context());
+		assert!(!handler.awaiting_resources(), "a resource no source could provide should no longer hold back rendering");
+		assert!(responses.contains(&Message::from(NodeGraphMessage::RunDocumentGraph)), "the graph should run to show what's missing");
+
+		handler.process_message(ResourceMessage::Resolve { resource_id: font }, &mut responses, context());
+		assert!(!handler.awaiting_resources(), "trying the resource again shouldn't hold back rendering again");
 	}
 }
