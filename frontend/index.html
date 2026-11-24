@@ -40,6 +40,7 @@
 				position: absolute;
 				left: 50%;
 				top: 50%;
+				transform: translate(-50%, -50%);
 				width: 60px;
 				height: 60px;
 				border-radius: 50%;
@@ -50,6 +51,8 @@
 				@media (prefers-reduced-motion) {
 					border: none;
 					animation: none;
+					width: auto;
+					height: auto;
 					content: "Loading…";
 					font-family: Arial, sans-serif;
 					font-size: 24px;
@@ -58,10 +61,10 @@
 
 			@keyframes spinning-loading-indicator {
 				0% {
-					transform: translate(-30px, -30px) rotate(0deg);
+					transform: translate(-50%, -50%) rotate(0deg);
 				}
 				100% {
-					transform: translate(-30px, -30px) rotate(360deg);
+					transform: translate(-50%, -50%) rotate(360deg);
 				}
 			}
 		</style>
