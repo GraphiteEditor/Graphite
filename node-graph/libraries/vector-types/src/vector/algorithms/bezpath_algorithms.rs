@@ -1,12 +1,12 @@
 use super::consts::MAX_ABSOLUTE_DIFFERENCE;
 use super::intersection::{bezpath_intersections, filtered_all_segment_intersections, pathseg_self_intersections};
-use super::poisson_disk::poisson_disk_sample;
+pub use super::poisson_disk::{PoissonDiskError, PoissonDiskSampler, poisson_disk_points};
 use super::util::pathseg_tangent;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
 use core_types::FallibleVec2Operations;
 use core_types::math::polynomial::pathseg_to_parametric_polynomial;
 use glam::{DMat2, DVec2};
-use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
+use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Point, QuadBez, Shape, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI};
 
 /// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
@@ -352,64 +352,6 @@ fn eval_bezpath(bezpath: &BezPath, t: TValue, precomputed_segments_length: Optio
 			(segment_index, t)
 		}
 	}
-}
-
-/// Randomly places points across the filled surface of this subpath (which is assumed to be closed).
-/// The `separation_disk_diameter` determines the minimum distance between all points from one another.
-/// Conceptually, this works by "throwing a dart" at the subpath's bounding box and keeping the dart only if:
-/// - It's inside the shape
-/// - It's not closer than `separation_disk_diameter` to any other point from a previous accepted dart throw
-///
-/// This repeats until accepted darts fill all possible areas between one another.
-///
-/// While the conceptual process described above asymptotically slows down and is never guaranteed to produce a maximal set in finite time,
-/// this is implemented with an algorithm that produces a maximal set in O(n) time. The slowest part is actually checking if points are inside the subpath shape.
-pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], separation_disk_diameter: f64, rng: impl FnMut() -> f64) -> Vec<DVec2> {
-	let (this_bezpath, this_bbox) = bezpaths[bezpath_index].clone();
-
-	if this_bezpath.elements().is_empty() {
-		return Vec::new();
-	}
-
-	let point_in_shape_checker = |point: DVec2| {
-		// Check against all paths the point is contained in to compute the correct winding number
-		let mut number = 0;
-
-		for (i, (shape, bbox)) in bezpaths.iter().enumerate() {
-			if bbox.x0 > point.x || bbox.y0 > point.y || bbox.x1 < point.x || bbox.y1 < point.y {
-				continue;
-			}
-
-			let winding = shape.winding(dvec2_to_point(point));
-			if winding == 0 && i == bezpath_index {
-				return false;
-			}
-			number += winding;
-		}
-
-		// Non-zero fill rule
-		number != 0
-	};
-
-	let line_intersect_shape_checker = |p0: (f64, f64), p1: (f64, f64)| {
-		for segment in this_bezpath.segments() {
-			if !segment.intersect_line(Line::new(p0, p1)).is_empty() {
-				return true;
-			}
-		}
-
-		false
-	};
-
-	let offset = DVec2::new(this_bbox.x0, this_bbox.y0);
-	let width = this_bbox.width();
-	let height = this_bbox.height();
-
-	if width.is_infinite() || height.is_infinite() {
-		return Vec::new();
-	}
-
-	poisson_disk_sample(offset, width, height, separation_disk_diameter, point_in_shape_checker, line_intersect_shape_checker, rng)
 }
 
 // TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that should be trimmed. This could cause the subpaths to be clipped

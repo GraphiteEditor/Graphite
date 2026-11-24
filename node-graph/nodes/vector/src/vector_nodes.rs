@@ -28,7 +28,8 @@ use vector_types::GradientForm;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::vector::SetVectorPaths;
 use vector_types::vector::algorithms::bezpath_algorithms::{
-	self, SampleCountError, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
+	self, PoissonDiskError, PoissonDiskSampler, SampleCountError, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath,
+	tangent_on_bezpath,
 };
 use vector_types::vector::algorithms::concave_hull::concave_hull_of_geometry;
 use vector_types::vector::algorithms::offset_bezpath::{OffsetPathError, offset_bezpath};
@@ -2553,7 +2554,7 @@ fn evaluate_path(
 	})
 }
 
-#[node_macro::node(category("Vector: Point"), icon("NodeScatterPoints"), path(core_types::vector), memoize)]
+#[node_macro::node(category("Vector: Point"), icon("NodeScatterPoints"), path(core_types::vector), version(2), memoize)]
 fn scatter_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
@@ -2564,36 +2565,23 @@ fn scatter_points<V: MapVectorItems + Send>(
 	#[soft(1..100)]
 	separation: Item<f64>,
 	#[hard(0..)] seed: Item<i64>,
-) -> Item<V> {
-	V::map_vector_items(content, |content| {
+) -> Result<Item<V>, PoissonDiskError> {
+	// One sampler for every vector in the content holds them all together to its limits on work
+	let mut sampler = PoissonDiskSampler::default();
+
+	V::try_map_vector_items(content, |content| {
 		let mut content = content;
 		let (separation, seed) = (*separation.element(), *seed.element());
 
-		let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
-
-		let mut cloud = List::new();
-
 		let content_paths = shared_paths_from_item_attributes(&content);
-		let path_with_bounding_boxes: Vec<_> = content
-			.element()
-			.stroke_bezpath_iter(&content_paths)
-			.map(|mut bezpath| {
-				// TODO: apply transform to points instead of modifying the paths
-				bezpath.close_path();
-				let bbox = bezpath.bounding_box();
-				(bezpath, bbox)
-			})
+		let bezpaths: Vec<_> = content.element().stroke_bezpath_iter(&content_paths).collect();
+
+		// Each point's ID comes from the dart that placed it, so a point keeps its ID while edits elsewhere in the shape leave it in place
+		let cloud = sampler
+			.points(&bezpaths, separation, seed as u64)?
+			.into_iter()
+			.map(|(point, hash)| Item::new_from_element(point).with_attribute(ATTR_ID, PointId::ZERO.generate_from_hash(hash)))
 			.collect();
-
-		for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
-			if subpath.segments().count() < 2 {
-				continue;
-			}
-
-			for point in bezpath_algorithms::poisson_disk_points(i, &path_with_bounding_boxes, separation, || rng.random::<f64>()) {
-				cloud.push(Item::new_from_element(point).with_attribute(ATTR_ID, PointId::generate()));
-			}
-		}
 
 		// The scattered points replace the source shape entirely, leaving no paths
 		drop(content_paths);
@@ -2602,7 +2590,7 @@ fn scatter_points<V: MapVectorItems + Send>(
 			*paths = List::new();
 		});
 
-		content
+		Ok(content)
 	})
 }
 
@@ -4498,7 +4486,8 @@ mod test {
 			vector_item_from_bezpath(ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.))),
 			Item::new_from_element(10. * std::f64::consts::SQRT_2),
 			Item::new_from_element(0),
-		);
+		)
+		.expect("the separation should fit the circle");
 		let positions = poisson_points.element().anchor_positions(item_paths(&poisson_points));
 		assert!((20..=40).contains(&positions.len()), "actual len {}", positions.len());
 		for point in positions {
@@ -5198,14 +5187,128 @@ mod test {
 
 	#[test]
 	fn scatter_points_skips_an_infinite_subpath() {
-		let mut bezpath = ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.));
+		let ellipse = || ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.));
+		let mut bezpath = ellipse();
 		bezpath.move_to((0., 0.));
 		bezpath.line_to((f64::INFINITY, 0.));
 		bezpath.line_to((0., 10.));
 		bezpath.close_path();
 
-		let scattered = super::scatter_points((), vector_item_from_bezpath(bezpath), item(10.), item(0));
-		assert!(scattered.element().point_count() > 0);
+		let points = scattered_points(bezpath, 10., 0);
+		assert!(!points.is_empty());
+		assert_eq!(points, scattered_points(ellipse(), 10., 0));
+	}
+
+	#[test]
+	fn scatter_points_samples_each_vector_in_graphic_content() {
+		let shapes = [ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.)), ellipse_bezpath(DVec2::new(200., -40.), DVec2::new(300., 40.))];
+		let vectors: List<Vector> = shapes.iter().cloned().map(vector_item_from_bezpath).collect();
+		let scattered = super::scatter_points((), Item::new_from_element(Graphic::VectorList(vectors)), item(10.), item(0)).expect("the shapes should scatter");
+
+		let Graphic::VectorList(vectors) = scattered.element() else {
+			panic!("the content should stay a vector list")
+		};
+		assert_eq!(vectors.len(), shapes.len());
+		for (vector, shape) in vectors.iter_element_values().zip(shapes) {
+			let alone: Vec<_> = scattered_points(shape, 10., 0).into_iter().map(|(position, _)| position).collect();
+			assert_eq!(vector.0.iter_element_values().copied().collect::<Vec<_>>(), alone);
+		}
+	}
+
+	#[test]
+	fn scatter_points_on_empty_content_gives_no_points() {
+		let scattered = super::scatter_points((), vector_item_from_bezpath(BezPath::new()), item(10.), item(0)).expect("empty content should scatter nothing");
+		assert_eq!(scattered.element().point_count(), 0);
+	}
+
+	fn scattered_points(bezpath: BezPath, separation: f64, seed: i64) -> Vec<(DVec2, PointId)> {
+		let scattered = super::scatter_points((), vector_item_from_bezpath(bezpath), item(separation), item(seed)).expect("the separation should fit the shape");
+		let points = &scattered.element().0;
+		points.iter_element_values().copied().zip(points.iter_attribute_values::<PointId>(ATTR_ID).unwrap().copied()).collect()
+	}
+
+	#[test]
+	fn scatter_points_changes_only_points_near_an_edit() {
+		// A square with a vertex partway down its right side, which the edit pushes outward
+		let pentagon = |bulge: f64| {
+			let mut bezpath = BezPath::new();
+			bezpath.move_to((0., 0.));
+			bezpath.line_to((400., 0.));
+			bezpath.line_to((400. + bulge, 200.));
+			bezpath.line_to((400., 400.));
+			bezpath.line_to((0., 400.));
+			bezpath.close_path();
+			scattered_points(bezpath, 10., 0)
+		};
+		let (before, after) = (pentagon(0.), pentagon(40.));
+
+		// Points over ten separations from the edit keep their positions and IDs, while the bulge gains points of its own
+		let far_from_edit = |points: &[(DVec2, PointId)]| points.iter().copied().filter(|(position, _)| position.x < 300.).collect::<Vec<_>>();
+		assert_eq!(far_from_edit(&before), far_from_edit(&after));
+		assert!(after.iter().any(|(position, _)| position.x > 405.));
+
+		let unchanged = before.iter().filter(|point| after.contains(point)).count();
+		assert!(unchanged as f64 > before.len() as f64 * 0.95, "only {unchanged} of {} points are unchanged", before.len());
+	}
+
+	#[test]
+	fn scatter_points_ignores_distant_geometry() {
+		let circle = || ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.));
+		let alone = scattered_points(circle(), 7., 3);
+
+		// Distant shapes on opposite sides, plus a frame around the circle that shares its grid while staying too far away to affect its points
+		let mut with_distant_shapes = circle();
+		with_distant_shapes.extend(ellipse_bezpath(DVec2::new(500., -900.), DVec2::new(700., -600.)));
+		with_distant_shapes.extend(ellipse_bezpath(DVec2::new(-800., 300.), DVec2::new(-600., 700.)));
+		with_distant_shapes.extend(Rect::new(-400., -400., 400., 400.).to_path(DEFAULT_ACCURACY));
+		with_distant_shapes.extend(Rect::new(-200., -200., 200., 200.).to_path(DEFAULT_ACCURACY).reverse_subpaths());
+		let with_distant_shapes = scattered_points(with_distant_shapes, 7., 3);
+		let near_first_circle: Vec<_> = with_distant_shapes.iter().copied().filter(|(position, _)| position.length() < 60.).collect();
+
+		assert_eq!(alone, near_first_circle);
+		assert!(with_distant_shapes.len() > alone.len() * 2, "the distant shapes should get points of their own");
+		assert!(
+			with_distant_shapes.iter().any(|(position, _)| position.x.abs().max(position.y.abs()) > 200.),
+			"the frame should get points of its own"
+		);
+	}
+
+	#[test]
+	fn scatter_points_keeps_its_separation_across_overlapping_subpaths() {
+		let mut bezpath = ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.));
+		bezpath.extend(ellipse_bezpath(DVec2::new(-20., -50.), DVec2::new(80., 50.)));
+		let points = scattered_points(bezpath, 10., 0);
+		assert!(points.iter().any(|(position, _)| position.x > 55.), "the second ellipse should get points of its own");
+
+		for (i, (a, _)) in points.iter().enumerate() {
+			for (b, _) in &points[i + 1..] {
+				assert!(a.distance(*b) > 10. * (1. - 1e-9), "{a} and {b} are closer than the separation");
+			}
+		}
+	}
+
+	#[test]
+	fn scatter_points_reports_a_separation_too_small_for_the_shape() {
+		let circle = |center: DVec2, radius: f64| vector_item_from_bezpath(ellipse_bezpath(center - radius, center + radius));
+		let scatter = |content, separation| super::scatter_points((), content, item(separation), item(0));
+
+		assert!(matches!(scatter(circle(DVec2::ZERO, 100.), 0.15), Err(PoissonDiskError::SeparationTooSmall { .. })));
+		assert!(matches!(scatter(circle(DVec2::ZERO, 100.), 0.01), Err(PoissonDiskError::ExtentTooLarge)));
+		assert!(matches!(scatter(circle(DVec2::new(1e10, 0.), 10.), 1.), Err(PoissonDiskError::TooFarFromOrigin)));
+
+		let scattered = scatter(circle(DVec2::ZERO, 100.), 1.).expect("a 1 px separation should fit a 200 px circle");
+		assert!(scattered.element().point_count() > 10_000);
+	}
+
+	#[test]
+	fn scatter_points_samples_small_shapes_spread_far_apart() {
+		// The empty space between the shapes doesn't count toward the limit on points
+		let mut bezpath = ellipse_bezpath(DVec2::splat(-10.), DVec2::splat(10.));
+		bezpath.extend(ellipse_bezpath(DVec2::splat(4990.), DVec2::splat(5010.)));
+		let points = scattered_points(bezpath, 1., 0);
+
+		assert!(points.iter().any(|(position, _)| position.length() < 10.));
+		assert!(points.iter().any(|(position, _)| position.distance(DVec2::splat(5000.)) < 10.));
 	}
 
 	// The axis a collapsed transform keeps is too long to square, but still gives the perpendicular one a direction
