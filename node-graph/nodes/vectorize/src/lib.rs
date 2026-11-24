@@ -38,7 +38,7 @@ const BROWSER_MAX_MEGABYTES: f64 = 1000.;
 /// Traces an image into a stack of filled and stroked shapes, drawn bottom to top as an artist would layer them.
 ///
 /// The trace runs in slices, one per evaluation, showing the shapes traced so far until it is done.
-#[node_macro::node(category("Raster"), icon("NodeVectorize"), memoize)]
+#[node_macro::node(category("Raster"), icon("NodeVectorize"), memoize, footprint_invariant)]
 fn vectorize(
 	_: impl Ctx,
 	/// The image to trace.

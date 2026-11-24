@@ -1,6 +1,6 @@
 use core_types::Ctx;
 use core_types::color::SRGBA8;
-use core_types::list::{Item, List};
+use core_types::list::{Item, List, NodeIdPath};
 use core_types::math::bbox::Bbox;
 use core_types::ops::ConvertAsync;
 use core_types::transform::Footprint;
@@ -11,6 +11,7 @@ pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
+use graphene_core::context::RecordFootprintArea;
 use graphic_types::Graphic;
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::raster_types::{Image, ImageError};
@@ -219,7 +220,7 @@ fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Result<Item<Raster<CPU>>
 }
 
 /// Renders a view of the input graphics within an area defined by the *Footprint*, producing a raster image.
-#[node_macro::node(category("Raster"), icon("NodeRasterize"), placeholder = pending_raster)]
+#[node_macro::node(category("Raster"), icon("NodeRasterize"), placeholder = pending_raster, keep_previous)]
 async fn rasterize(
 	_: impl Ctx,
 	/// The graphics to render as an image.
@@ -228,8 +229,13 @@ async fn rasterize(
 	#[default(0., 0., 1000., 1000.)]
 	footprint: Item<Footprint>,
 	#[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>,
+	#[node_path] node_path: Item<NodeIdPath>,
 ) -> Result<List<Raster<CPU>>, NodeError> {
-	rasterize_with_vello(data, footprint.into_element(), executor.into_element()).await
+	let footprint = footprint.into_element();
+	let mut raster = rasterize_with_vello(data, footprint, executor.into_element()).await?;
+
+	raster.record_footprint_area(node_path.element(), footprint.transform);
+	Ok(raster)
 }
 
 async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executor: ::wgpu_executor::WgpuExecutor) -> Result<List<Raster<CPU>>, NodeError> {
@@ -259,7 +265,7 @@ async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executo
 	))
 }
 
-fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<::wgpu_executor::WgpuExecutor>) -> List<Raster<CPU>> {
+fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<::wgpu_executor::WgpuExecutor>, _node_path: &Item<NodeIdPath>) -> List<Raster<CPU>> {
 	List::new()
 }
 

@@ -1914,6 +1914,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_text_frames(layer_text_frames);
 			}
+			DocumentMessage::UpdateFootprintAreas { footprint_areas } => {
+				self.network_interface.update_footprint_areas(footprint_areas);
+			}
 			DocumentMessage::UpdateClipTargets { clip_targets } => {
 				self.network_interface.update_clip_targets(clip_targets);
 			}

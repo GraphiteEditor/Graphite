@@ -459,6 +459,9 @@ fn validate_async(parsed: &ParsedNodeFn) {
 	if parsed.attributes.placeholder.is_some() && !parsed.is_async {
 		emit_error!(parsed.fn_name.span(), "Only an async node can have a `placeholder`");
 	}
+	if parsed.attributes.flags.keep_previous && !parsed.is_async {
+		emit_error!(parsed.fn_name.span(), "Only an async node can have `keep_previous`");
+	}
 }
 
 /// The arguments that aren't parameters, which are `#[data]` state and the inputs the compiler fills in, go after the parameters.

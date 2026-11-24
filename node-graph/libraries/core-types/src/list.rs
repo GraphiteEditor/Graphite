@@ -40,6 +40,10 @@ pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
 /// glyph origin so it survives `Index Elements` filtering. The Text tool reads this to position
 /// its drag cage. Stored as an affine to allow non-axis-aligned frames in the future.
 pub const ATTR_EDITOR_TEXT_FRAME: &str = "editor:text_frame";
+/// `List<NodeIdPath>` of the nodes with a footprint input, like 'Bake Footprint' and 'Rasterize', this item passed
+/// through. Each row's transform maps the unit square onto that node's area in this item's local space.
+/// The Select tool reads this to position its footprint cage.
+pub const ATTR_EDITOR_FOOTPRINT_AREAS: &str = "editor:footprint_areas";
 /// `u64` byte offset where a regex match begins ('Regex Find All', 'Regex Capture' text nodes).
 pub const ATTR_START: &str = "start";
 /// `u64` byte offset where a regex match ends ('Regex Find All', 'Regex Capture' text nodes).

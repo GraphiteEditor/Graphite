@@ -113,7 +113,28 @@ impl RuntimeInner {
 	}
 }
 
-pub struct Slots<T>(Arc<Mutex<HashMap<u64, Slot<T>>>>);
+pub struct Slots<T>(Arc<Mutex<SlotTable<T>>>);
+
+struct SlotTable<T> {
+	slots: HashMap<u64, Slot<T>>,
+	/// The value of the evaluation that landed most recently, which can stand in while another one is pending.
+	latest: Option<T>,
+}
+
+impl<T: Clone> SlotTable<T> {
+	fn land(&mut self, key: u64, state: Poll<T>) {
+		if let Poll::Final(value) | Poll::Partial(value) = &state {
+			self.latest = Some(value.clone());
+		}
+		self.slots.insert(key, Slot::Ready(state));
+	}
+
+	/// What a pending evaluation returns, preferring the latest landed value if `keep_previous` is set.
+	fn stand_in(&self, placeholder: Option<T>, keep_previous: bool) -> Poll<T> {
+		let previous = if keep_previous { self.latest.clone() } else { None };
+		previous.or(placeholder).map_or(Poll::Pending, Poll::Partial)
+	}
+}
 
 enum Slot<T> {
 	Ready(Poll<T>),
@@ -130,7 +151,7 @@ impl<T> Drop for Slot<T> {
 
 impl<T> Default for Slots<T> {
 	fn default() -> Self {
-		Self(Arc::default())
+		Self(Arc::new(Mutex::new(SlotTable { slots: HashMap::new(), latest: None })))
 	}
 }
 
@@ -147,42 +168,46 @@ impl<T> std::fmt::Debug for Slots<T> {
 }
 
 impl<T: Clone + WasmNotSend + 'static> Slots<T> {
-	pub fn resolve<F>(&self, key: u64, runtime: &dyn Runtime, source: SourceId, placeholder: Option<T>, future: impl FnOnce() -> F) -> Poll<T>
+	/// The landed state for `key`, or else starts its evaluation and stands in the placeholder, or the latest landed value if `keep_previous` is set.
+	pub fn resolve<F>(&self, key: u64, runtime: &dyn Runtime, source: SourceId, placeholder: Option<T>, keep_previous: bool, future: impl FnOnce() -> F) -> Poll<T>
 	where
 		F: Future<Output = Poll<T>> + WasmNotSend + 'static,
 	{
-		match self.0.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
-			Some(Slot::Ready(landed)) => return landed.clone(),
-			Some(Slot::Pending(_)) => return placeholder.map_or(Poll::Pending, Poll::Partial),
-			None => {}
+		{
+			let table = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+			match table.slots.get(&key) {
+				Some(Slot::Ready(landed)) => return landed.clone(),
+				Some(Slot::Pending(_)) => return table.stand_in(placeholder, keep_previous),
+				None => {}
+			}
 		}
 
 		// Fast path for futures that are ready immediately
 		// TODO(Timon): check if this would ever cause a problem; running a future on the graph executor thread might also be a bit wierd
 		let mut future = Box::pin(future());
 		if let std::task::Poll::Ready(state) = future.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
-			self.0.lock().unwrap_or_else(PoisonError::into_inner).insert(key, Slot::Ready(state.clone()));
+			self.0.lock().unwrap_or_else(PoisonError::into_inner).land(key, state.clone());
 			return state;
 		}
 
 		let (handle, registration) = AbortHandle::new_pair();
-		let slots = Arc::downgrade(&self.0);
+		let table = Arc::downgrade(&self.0);
 		runtime.spawn(
 			source,
 			Box::pin(async move {
 				if let Ok(state) = Abortable::new(future, registration).await
-					&& let Some(slots) = slots.upgrade()
+					&& let Some(table) = table.upgrade()
 				{
-					slots.lock().unwrap_or_else(PoisonError::into_inner).insert(key, Slot::Ready(state));
+					table.lock().unwrap_or_else(PoisonError::into_inner).land(key, state);
 				}
 			}),
 		);
-		let mut slots = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-		match slots.get(&key) {
+		let mut table = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+		match table.slots.get(&key) {
 			Some(Slot::Ready(landed)) => landed.clone(),
 			_ => {
-				slots.insert(key, Slot::Pending(handle));
-				placeholder.map_or(Poll::Pending, Poll::Partial)
+				table.slots.insert(key, Slot::Pending(handle));
+				table.stand_in(placeholder, keep_previous)
 			}
 		}
 	}
@@ -276,7 +301,7 @@ mod tests {
 		runtime.update_sources(&[SOURCE]);
 
 		let slots = Slots::default();
-		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, || async { Poll::Final(1u32) }), Poll::Final(1));
+		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, false, || async { Poll::Final(1u32) }), Poll::Final(1));
 		assert_eq!(spawner.drain(), 0);
 		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 0)]);
 
@@ -297,11 +322,37 @@ mod tests {
 			Poll::Final(42u32)
 		};
 
-		assert_eq!(slots.resolve(1, &runtime, SOURCE, Some(0), fetch), Poll::Partial(0));
-		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, fetch), Poll::Pending);
+		assert_eq!(slots.resolve(1, &runtime, SOURCE, Some(0), false, fetch), Poll::Partial(0));
+		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, false, fetch), Poll::Pending);
 		assert_eq!(spawner.drain(), 1, "an in-flight slot is not spawned twice");
-		assert_eq!(slots.resolve(1, &runtime, SOURCE, Some(0), fetch), Poll::Final(42));
-		assert_eq!(slots.resolve(2, &runtime, SOURCE, None, || async { Poll::Final(1u32) }), Poll::Final(1));
+		assert_eq!(slots.resolve(1, &runtime, SOURCE, Some(0), false, fetch), Poll::Final(42));
+		assert_eq!(slots.resolve(2, &runtime, SOURCE, None, false, || async { Poll::Final(1u32) }), Poll::Final(1));
+	}
+
+	#[test]
+	fn a_slot_keeping_the_previous_value_serves_it_until_the_next_response_lands() {
+		let spawner = Arc::new(CollectSpawner::default());
+		let runtime = AsyncRuntime::new(spawner.clone());
+		runtime.update_sources(&[SOURCE]);
+		let slots = Slots::default();
+		let fetch = |value: u32| {
+			move || async move {
+				YieldOnce(false).await;
+				Poll::Final(value)
+			}
+		};
+
+		assert_eq!(
+			slots.resolve(1, &runtime, SOURCE, Some(0), true, fetch(1)),
+			Poll::Partial(0),
+			"nothing landed yet, so the placeholder stands in"
+		);
+		spawner.drain();
+		assert_eq!(slots.resolve(1, &runtime, SOURCE, Some(0), true, fetch(1)), Poll::Final(1));
+
+		assert_eq!(slots.resolve(2, &runtime, SOURCE, Some(0), true, fetch(2)), Poll::Partial(1), "the previous value stands in");
+		spawner.drain();
+		assert_eq!(slots.resolve(2, &runtime, SOURCE, Some(0), true, fetch(2)), Poll::Final(2));
 	}
 
 	#[test]
@@ -314,7 +365,7 @@ mod tests {
 			Poll::Final(42u32)
 		};
 
-		assert_eq!(slots.resolve(1, &runtime, SOURCE, Some(0), fetch), Poll::Final(42));
+		assert_eq!(slots.resolve(1, &runtime, SOURCE, Some(0), false, fetch), Poll::Final(42));
 		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 1)]);
 	}
 
@@ -328,11 +379,11 @@ mod tests {
 			Poll::Final(42u32)
 		};
 
-		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, fetch), Poll::Pending);
+		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, false, fetch), Poll::Pending);
 		let clone = slots.clone();
 		drop(slots);
 		assert_eq!(spawner.drain(), 1);
-		assert_eq!(clone.resolve(1, &runtime, SOURCE, None, fetch), Poll::Final(42));
+		assert_eq!(clone.resolve(1, &runtime, SOURCE, None, false, fetch), Poll::Final(42));
 	}
 
 	#[test]
@@ -350,7 +401,7 @@ mod tests {
 			}
 		};
 
-		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, fetch), Poll::Pending);
+		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, false, fetch), Poll::Pending);
 		drop(slots);
 		assert_eq!(spawner.drain(), 1);
 		assert!(!finished.load(Ordering::Relaxed));

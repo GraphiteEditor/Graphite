@@ -17,9 +17,9 @@ use core_types::math::quad::Quad;
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME,
-	ATTR_EFFECTS, ATTR_FONT, ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY,
-	ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_FOOTPRINT_AREAS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS,
+	ATTR_EDITOR_TEXT_FRAME, ATTR_EFFECTS, ATTR_FONT, ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH,
+	ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -148,6 +148,58 @@ impl<'a, T> ItemRef<'a, T> {
 	/// The last layer ID of the item's `editor:layer_path` tag, if any.
 	fn layer(self) -> Option<NodeId> {
 		self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).and_then(|path| path.0.iter_element_values().next_back().copied())
+	}
+
+	/// Records the viewport placement of each footprint area this item carries, with `footprint` being that of the space the item is placed in.
+	fn collect_footprint_areas(self, metadata: &mut RenderMetadata, footprint: Footprint) {
+		let Some(footprint_areas) = self.attribute::<List<NodeIdPath>>(ATTR_EDITOR_FOOTPRINT_AREAS) else {
+			return;
+		};
+		let item_to_viewport = footprint.transform * self.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+
+		for index in 0..footprint_areas.len() {
+			let Some(node_id) = footprint_areas.element(index).and_then(|node_path| node_path.0.iter_element_values().next_back().copied()) else {
+				continue;
+			};
+			let area: DAffine2 = footprint_areas.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+
+			metadata.footprint_areas.entry(node_id).or_insert(item_to_viewport * area);
+		}
+	}
+}
+
+/// Records the footprint areas each item of a non-graphic content run carries, since its items aren't visited one by one elsewhere.
+fn collect_leaf_footprint_areas(graphic: &Graphic, metadata: &mut RenderMetadata, footprint: Footprint) {
+	fn item<T>(item: &Item<T>, metadata: &mut RenderMetadata, footprint: Footprint) {
+		ItemRef::Item(item).collect_footprint_areas(metadata, footprint);
+	}
+
+	fn list<T>(list: &List<T>, metadata: &mut RenderMetadata, footprint: Footprint) {
+		for index in 0..list.len() {
+			ItemRef::ListItem(list, index).collect_footprint_areas(metadata, footprint);
+		}
+	}
+
+	match graphic {
+		// Graphic items are visited one by one as their content is recursed
+		Graphic::Graphic(_) | Graphic::GraphicList(_) => {}
+		Graphic::None(content) => item(content, metadata, footprint),
+		Graphic::Vector(content) => item(content, metadata, footprint),
+		Graphic::RasterCPU(content) => item(content, metadata, footprint),
+		Graphic::RasterGPU(content) => item(content, metadata, footprint),
+		Graphic::Color(content) => item(content, metadata, footprint),
+		Graphic::Gradient(content) => item(content, metadata, footprint),
+		Graphic::Generator(content) => item(content, metadata, footprint),
+		Graphic::Text(content) => item(content, metadata, footprint),
+		Graphic::NoneList(content) => list(content, metadata, footprint),
+		Graphic::VectorList(content) => list(content, metadata, footprint),
+		Graphic::RasterCPUList(content) => list(content, metadata, footprint),
+		Graphic::RasterGPUList(content) => list(content, metadata, footprint),
+		Graphic::ColorList(content) => list(content, metadata, footprint),
+		Graphic::GradientList(content) => list(content, metadata, footprint),
+		Graphic::GeneratorList(content) => list(content, metadata, footprint),
+		Graphic::TextList(content) => list(content, metadata, footprint),
+		Graphic::StrokeList(content) => list(content, metadata, footprint),
 	}
 }
 
@@ -1570,6 +1622,8 @@ pub struct RenderMetadata {
 	/// Per-layer text frame from item 0's `editor:text_frame` attribute.
 	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
 	pub text_frames: HashMap<NodeId, DAffine2>,
+	/// Per node with a footprint input, the unit square mapped onto its area in viewport space, from the first item it passed through.
+	pub footprint_areas: HashMap<NodeId, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	/// Per-layer source geometry as the holder item, carrying the pool element and its paths attribute.
 	#[cfg_attr(feature = "serde", serde(skip))]
@@ -1587,6 +1641,9 @@ impl RenderMetadata {
 		for value in self.upstream_footprints.values_mut() {
 			value.transform = transform * value.transform;
 		}
+		for footprint_area in self.footprint_areas.values_mut() {
+			*footprint_area = transform * *footprint_area;
+		}
 	}
 
 	/// Merge another RenderMetadata into this one.
@@ -1601,6 +1658,7 @@ impl RenderMetadata {
 			outlines,
 			group_layers,
 			text_frames,
+			footprint_areas,
 			clip_targets,
 			vector_data,
 			appearance_attributes,
@@ -1614,6 +1672,7 @@ impl RenderMetadata {
 		outlines.extend(other.outlines.iter().map(|(k, v)| (*k, v.clone())));
 		group_layers.extend(other.group_layers.iter());
 		text_frames.extend(other.text_frames.iter());
+		footprint_areas.extend(other.footprint_areas.iter());
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
 		appearance_attributes.extend(other.appearance_attributes.iter().map(|(id, data)| (*id, data.clone())));
@@ -1891,6 +1950,8 @@ fn collect_graphic_item_metadata(item: ItemRef<'_, Graphic>, metadata: &mut Rend
 	// This item's appearance (if any) cascades to descendants lacking their own
 	let child_appearance = Appearance::cascade(item.attribute::<Appearance>(ATTR_APPEARANCE), inherited_appearance);
 
+	item.collect_footprint_areas(metadata, footprint);
+
 	let mut footprint = footprint;
 	footprint.transform *= item_transform;
 
@@ -2041,6 +2102,8 @@ impl Render for Graphic {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>, inherited_appearance: Option<&Appearance>) {
+		collect_leaf_footprint_areas(self, metadata, footprint);
+
 		if let Some(element_id) = element_id {
 			// The footprint always lands; the transform (and for vectors the source layer) comes from the first item when one exists
 			let first_item_inserts = |metadata: &mut RenderMetadata, transform: DAffine2| {

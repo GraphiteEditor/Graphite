@@ -52,6 +52,8 @@ pub(crate) struct NodeFlags {
 	pub(crate) skip_impl: bool,
 	/// Whether the node refuses placeholder data.
 	pub(crate) no_partial: bool,
+	/// Whether the node's latest landed output stands in while a newer evaluation is pending, before its placeholder.
+	pub(crate) keep_previous: bool,
 	/// Set on the `Destructure` derive's generated extractor nodes, which take the struct rather than an `Item` or `List`. Not parsed from source.
 	pub(crate) destructure_extractor: bool,
 }
@@ -598,13 +600,18 @@ impl Parse for NodeFnAttributes {
 				// Example usage:
 				// #[node_macro::node(..., no_partial, ...)]
 				"no_partial" => set_flag(&mut flags.no_partial, meta, "no_partial")?,
+				// Stands in the latest landed output while a newer evaluation is pending, for async nodes whose output should not blink.
+				//
+				// Example usage:
+				// #[node_macro::node(..., keep_previous, ...)]
+				"keep_previous" => set_flag(&mut flags.keep_previous, meta, "keep_previous")?,
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', 'no_partial', and 'version'.
+							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', 'no_partial', 'keep_previous', and 'version'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#

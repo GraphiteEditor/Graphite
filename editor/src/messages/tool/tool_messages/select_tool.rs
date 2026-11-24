@@ -15,6 +15,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, has_paintable_selection, swap_fill_and_stroke, sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
+use crate::messages::tool::common_functionality::gizmos::footprint_cage::FootprintCage;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::pivot::{Pivot, PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
@@ -505,6 +506,7 @@ enum SelectToolFsmState {
 	},
 	RotatingBounds,
 	DraggingPivot,
+	DraggingFootprintCage,
 }
 
 impl Default for SelectToolFsmState {
@@ -545,6 +547,7 @@ struct SelectToolData {
 	axis_align: bool,
 	non_duplicated_layers: Option<Vec<LayerNodeIdentifier>>,
 	bounding_box_manager: Option<BoundingBoxManager>,
+	footprint_cage: FootprintCage,
 	cursor: MouseCursorIcon,
 	pivot_gizmo: PivotGizmo,
 	/// The pivot as it was when a drag of it began, restored if the drag is aborted.
@@ -953,6 +956,9 @@ impl Fsm for SelectToolFsmState {
 		match (self, event) {
 			(_, SelectToolMessage::Overlays { context: mut overlay_context }) => {
 				crate::messages::tool::common_functionality::layer_origin_cross::draw_for_selected_layers(&mut overlay_context, document);
+
+				tool_data.footprint_cage.refresh(document);
+				tool_data.footprint_cage.overlays(&mut overlay_context);
 
 				let selected_layers_count = document.network_interface.selected_nodes().selected_unlocked_layers(&document.network_interface).count();
 				let paintable_layers_selected = has_paintable_selection(document);
@@ -1388,6 +1394,10 @@ impl Fsm for SelectToolFsmState {
 				tool_data.drag_current = input.mouse.position;
 				tool_data.selection_mode = None;
 
+				if tool_data.footprint_cage.begin_drag(input.mouse.position, responses) {
+					return SelectToolFsmState::DraggingFootprintCage;
+				}
+
 				let mut selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 				let intersection_list = document.click_list(input, viewport).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
@@ -1620,6 +1630,12 @@ impl Fsm for SelectToolFsmState {
 					remove,
 				}
 			}
+			(SelectToolFsmState::DraggingFootprintCage, SelectToolMessage::PointerMove { modifier_keys }) => {
+				let (centered, constrain) = (input.keyboard.key(modifier_keys.center), input.keyboard.key(modifier_keys.axis_align));
+				tool_data.footprint_cage.update_drag(input.mouse.position, centered, constrain, responses);
+
+				SelectToolFsmState::DraggingFootprintCage
+			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { modifier_keys }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					resize_bounds(
@@ -1724,6 +1740,11 @@ impl Fsm for SelectToolFsmState {
 				// Dragging the pivot overrules the other operations
 				if tool_data.state_from_pivot_gizmo(input.mouse.position).is_some() {
 					cursor = MouseCursorIcon::Move;
+				}
+
+				// A press on the footprint cage drags it before anything else
+				if let Some(footprint_cage_cursor) = tool_data.footprint_cage.cursor(input) {
+					cursor = footprint_cage_cursor;
 				}
 
 				// Generate the hover outline
@@ -1917,6 +1938,14 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
+			(SelectToolFsmState::DraggingFootprintCage, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
+				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
+				tool_data.footprint_cage.end_drag(drag_too_small, responses);
+				responses.add(OverlaysMessage::Draw);
+
+				let selection = tool_data.nested_selection_behavior;
+				SelectToolFsmState::Ready { selection }
+			}
 			(SelectToolFsmState::Drawing { selection_shape, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				let quad = tool_data.selection_quad();
 
@@ -2002,6 +2031,13 @@ impl Fsm for SelectToolFsmState {
 						responses.add(TextToolMessage::EditSelected);
 					}
 				}
+
+				let selection = tool_data.nested_selection_behavior;
+				SelectToolFsmState::Ready { selection }
+			}
+			(SelectToolFsmState::DraggingFootprintCage, SelectToolMessage::Abort) => {
+				tool_data.footprint_cage.end_drag(true, responses);
+				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -2172,6 +2208,13 @@ impl Fsm for SelectToolFsmState {
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
 					snapping_hints(),
+				]);
+				hint_data.send_layout(responses);
+			}
+			SelectToolFsmState::DraggingFootprintCage => {
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::keys([Key::Alt], "From Center"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
 				]);
 				hint_data.send_layout(responses);
 			}
