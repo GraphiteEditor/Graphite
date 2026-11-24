@@ -8,29 +8,34 @@ export async function initWasm() {
 
 	// Fetch all parts in parallel (served from the service worker's precache once it is installed)
 	const partUrls = __WASM_PART_COUNT__ <= 1 ? [wasmBinaryUrl] : Array.from({ length: __WASM_PART_COUNT__ }, (_, index) => wasmBinaryUrl.replace(/\.wasm$/, `-part${index}.wasm`));
-	const partResponses = await Promise.all(partUrls.map((url) => fetch(url)));
-
-	const failedResponse = partResponses.find((response) => !response.ok);
-	if (failedResponse) throw new Error(`Failed to fetch Wasm binary part (status ${failedResponse.status}): ${failedResponse.url}`);
-
-	const trackedResponses = trackDownloadProgress(partResponses);
+	const partResponses = downloadParts(partUrls);
 
 	// eslint-disable-next-line camelcase
-	if (trackedResponses.length === 1) return init({ module_or_path: trackedResponses[0] });
+	if (partResponses.length === 1) return init({ module_or_path: await partResponses[0] });
 
 	// Rejoin the parts and hand them to wasm-bindgen as a single response, with the MIME type needed for streaming compilation
-	const parts = await Promise.all(trackedResponses.map((response) => response.blob()));
+	const parts = await Promise.all(partResponses.map(async (response) => (await response).blob()));
 	const joined = new Response(new Blob(parts), { headers: { "Content-Type": "application/wasm" } });
 	// eslint-disable-next-line camelcase
 	return init({ module_or_path: joined });
 }
 
-function trackDownloadProgress(responses: Response[]): Response[] {
+function downloadParts(urls: string[]): Promise<Response>[] {
+	const trackProgress = trackDownloadProgress();
+
+	return urls.map(async (url) => {
+		const response = await fetch(url);
+		if (!response.ok) throw new Error(`Failed to fetch Wasm binary part (status ${response.status}): ${response.url}`);
+		return trackProgress(response);
+	});
+}
+
+function trackDownloadProgress(): (response: Response) => Response {
 	let loadedBytes = 0;
 	document.body.style.setProperty("--loading-progress", "0");
 	document.body.classList.add("loading-progress");
 
-	return responses.map((response) => {
+	return (response) => {
 		if (!response.body) return response;
 
 		const counter = new TransformStream<Uint8Array, Uint8Array>({
@@ -41,5 +46,5 @@ function trackDownloadProgress(responses: Response[]): Response[] {
 			},
 		});
 		return new Response(response.body.pipeThrough(counter), { status: response.status, statusText: response.statusText, headers: response.headers });
-	});
+	};
 }
