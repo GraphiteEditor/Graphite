@@ -7172,6 +7172,7 @@ dependencies = [
  "glam",
  "graphic-types",
  "kurbo",
+ "linesweeper",
  "usvg",
 ]
 

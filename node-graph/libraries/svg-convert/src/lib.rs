@@ -5,6 +5,7 @@
 
 mod blend_mode;
 mod clip;
+mod even_odd;
 mod gradient;
 mod raster;
 mod stroke;
@@ -56,7 +57,8 @@ fn group_item(group: &usvg::Group) -> Item<Graphic> {
 }
 
 fn path_item(path: &usvg::Path) -> Item<Graphic> {
-	let mut vector = Vector::item_from_bezpath(&bezpath(path.data()));
+	let geometry = bezpath(path.data());
+	let mut vector = Vector::item_from_bezpath(&geometry);
 	if let Some(fill) = path.fill()
 		&& let Some(fill_paint) = paint(fill.paint(), fill.opacity())
 	{
@@ -72,7 +74,11 @@ fn path_item(path: &usvg::Path) -> Item<Graphic> {
 		stamp_coverage(&mut vector, Coverage::new_stroke(&stroke::style(stroke)), stroke_paint, placement);
 	}
 
-	Item::new_from_element(Graphic::VectorList(List::new_from_item(vector)))
+	let vectors = match path.fill().map(usvg::Fill::rule) {
+		Some(usvg::FillRule::EvenOdd) => even_odd::nonzero_vectors(vector, &geometry),
+		Some(usvg::FillRule::NonZero) | None => List::new_from_item(vector),
+	};
+	Item::new_from_element(Graphic::VectorList(vectors))
 }
 
 fn image_item(image: &usvg::Image) -> Option<Item<Graphic>> {

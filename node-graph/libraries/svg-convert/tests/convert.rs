@@ -2,9 +2,11 @@ use core_types::list::{ATTR_APPEARANCE, Item, List};
 use core_types::{ATTR_BLEND_MODE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::raster_types::{Image, Raster};
+use graphic_types::vector_types::vector::paths_from_list_row_attributes;
 use graphic_types::vector_types::vector::style::{StrokeCap, StrokeJoin};
 use graphic_types::vector_types::{Gradient, GradientForm, GradientSpace, GradientSpread};
-use graphic_types::{Appearance, Cover, Graphic};
+use graphic_types::{Appearance, Cover, Coverage, Graphic};
+use kurbo::{BezPath, Point, Shape};
 use svg_convert::{Error, Options, convert};
 
 fn converted(content: &str) -> Result<List<Graphic>, Error> {
@@ -218,6 +220,51 @@ fn a_clip_path_with_its_own_clip_path_clips_the_content_once_more() -> Result<()
 	assert!(clipped_twice.and_then(|clipped_twice| clipped_twice.element(1)).is_some_and(Graphic::had_clip_enabled));
 	let clipped_once = clipped_twice.and_then(|clipped_twice| group(clipped_twice, 1));
 	assert!(clipped_once.and_then(|clipped_once| clipped_once.element(1)).is_some_and(Graphic::had_clip_enabled));
+	Ok(())
+}
+
+fn contours(content: &List<Graphic>, index: usize) -> Vec<BezPath> {
+	match content.element(0) {
+		Some(Graphic::VectorList(vectors)) => (vectors.element(index).zip(paths_from_list_row_attributes(vectors, index)))
+			.map(|(vector, paths)| vector.stroke_bezpath_iter(paths).collect())
+			.unwrap_or_default(),
+		_ => Vec::new(),
+	}
+}
+
+#[test]
+fn an_even_odd_hole_stays_empty_under_the_nonzero_fill() -> Result<(), Error> {
+	let content = converted(r#"<path d="M0 0H8V8H0Z M2 2H6V6H2Z" fill-rule="evenodd"/>"#)?;
+
+	let winding_at = |point: Point| contours(&content, 0).iter().map(|contour| contour.winding(point)).sum::<i32>();
+	assert_eq!(winding_at(Point::new(4., 4.)), 0);
+	assert_ne!(winding_at(Point::new(1., 1.)), 0);
+	Ok(())
+}
+
+#[test]
+fn an_even_odd_path_filling_the_same_under_nonzero_converts_unchanged() -> Result<(), Error> {
+	let ring = r#"d="M0 0H8V8H0Z M2 2V6H6V2Z""#;
+
+	assert_eq!(converted(&format!(r#"<path {ring} fill-rule="evenodd"/>"#))?, converted(&format!("<path {ring}/>"))?);
+	Ok(())
+}
+
+#[test]
+fn a_stroked_even_odd_path_strokes_its_original_outline_above_the_converted_fill() -> Result<(), Error> {
+	let rings = r#"d="M0 0H8V8H0Z M2 2H6V6H2Z" stroke="red""#;
+	let even_odd = converted(&format!(r#"<path {rings} fill-rule="evenodd"/>"#))?;
+	let nonzero = converted(&format!("<path {rings}/>"))?;
+
+	let covers: Vec<Vec<Cover>> = match even_odd.element(0) {
+		Some(Graphic::VectorList(vectors)) => vectors
+			.iter_attribute_values_or_default::<Appearance>(ATTR_APPEARANCE)
+			.map(|appearance| appearance.covers().map(Coverage::cover).collect())
+			.collect(),
+		_ => Vec::new(),
+	};
+	assert_eq!(covers, vec![vec![Cover::Fill], vec![Cover::Stroke]]);
+	assert_eq!(contours(&even_odd, 1), contours(&nonzero, 0));
 	Ok(())
 }
 

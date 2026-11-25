@@ -19,4 +19,5 @@ core-types = { workspace = true }
 graphic-types = { workspace = true }
 glam = { workspace = true }
 kurbo = { workspace = true }
+linesweeper = { workspace = true }
 usvg = { workspace = true }
