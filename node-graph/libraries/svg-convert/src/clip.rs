@@ -8,7 +8,7 @@ pub fn clipped(group: &usvg::Group, content: List<Graphic>) -> List<Graphic> {
 	std::iter::successors(group.clip_path(), |clip_path| clip_path.clip_path()).fold(content, |content, clip_path| clipped_to(clipper(clip_path), content))
 }
 
-fn clipped_to(clipper: Item<Graphic>, mut content: List<Graphic>) -> List<Graphic> {
+pub fn clipped_to(clipper: Item<Graphic>, mut content: List<Graphic>) -> List<Graphic> {
 	content.set_attribute_values(ATTR_CLIPPING_MASK, vec![true; content.len()]);
 	[clipper.with_attribute(ATTR_OPACITY_FILL, 0.), Item::new_from_element(Graphic::GraphicList(content))]
 		.into_iter()

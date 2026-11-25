@@ -269,6 +269,30 @@ fn a_stroked_even_odd_path_strokes_its_original_outline_above_the_converted_fill
 }
 
 #[test]
+fn a_luminance_mask_masks_by_the_luminance_of_its_paints_as_alpha() -> Result<(), Error> {
+	let content = converted(r##"<mask id="mask"><rect width="8" height="8" fill="#808080"/></mask><g mask="url(#mask)"><rect width="8" height="8"/></g>"##)?;
+
+	let masker = group(&content, 0).and_then(|masked| group(masked, 0));
+	let masker_paint = masker.and_then(appearance_of).and_then(|appearance| appearance.first_paint_of(Cover::Fill));
+	assert!(matches!(masker_paint, Some(Graphic::Color(color)) if color.element().with_alpha(1.) == Color::BLACK && (color.element().a() - 128. / 255.).abs() < 1e-5));
+	Ok(())
+}
+
+#[test]
+fn a_mask_region_that_cuts_its_content_clips_the_masked_content() -> Result<(), Error> {
+	let content = converted(
+		r#"<mask id="mask" mask-type="alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="4" height="8"><rect width="8" height="8"/></mask><g mask="url(#mask)"><rect width="8" height="8"/></g>"#,
+	)?;
+
+	let within_region = group(&content, 0).and_then(|masked| masked.element(1));
+	assert!(within_region.is_some_and(Graphic::had_clip_enabled));
+	let clipped = within_region.and_then(Graphic::as_graphic_list);
+	assert!(clipped.and_then(|clipped| clipped.element(0)).is_some_and(Graphic::can_reduce_to_clip_path));
+	assert!(clipped.and_then(|clipped| clipped.element(1)).is_some_and(Graphic::had_clip_enabled));
+	Ok(())
+}
+
+#[test]
 fn malformed_input_is_an_error() {
 	assert!(convert("<svg", &Options::default()).is_err());
 }
