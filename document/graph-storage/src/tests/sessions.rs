@@ -1033,6 +1033,33 @@ fn deleting_a_node_without_inputs_gives_the_input_it_fed_its_earlier_value() {
 	assert_eq!(registry.node_instances[&consumer].inputs()[1].input, earlier_value);
 }
 
+/// Bringing back a step that writes to a node the line never had reconnects an input naming that node to what history
+/// holds as its primary input, though the write leaves only a placeholder of it.
+#[test]
+fn bringing_back_a_step_reconnects_past_a_node_the_line_never_had() {
+	let (source, consumer) = (NodeId(1), NodeId(2));
+	let source_value = NodeInput::Value {
+		value: Value::from(serde_json::json!("under the source")),
+		exposed: false,
+	};
+	let mut source_node = Node::new(NetworkId(5), Implementation::ProtoNode(ResourceId::new()), 1);
+	source_node.inputs[0].input = source_value.clone();
+	let mut consumer_node = Node::new(NetworkId(5), Implementation::ProtoNode(ResourceId::new()), 1);
+	consumer_node.inputs[0].input = NodeInput::Node { id: source, index: 0 };
+
+	let mut session = Session::with_peer(PeerId(1));
+	let base = step(&mut session, add_network(5));
+	step(&mut session, RegistryDelta::AddNode { id: source, node: source_node });
+	session.commit_op_for_test(RegistryDelta::AddNode { id: consumer, node: consumer_node }).expect("commit");
+	let consumed = step(&mut session, change_node_attribute(source, "position", serde_json::json!(1)));
+	session.move_head_to(base).expect("go back to before the source");
+
+	session.restore_interaction(consumed).expect("bring the consumer back");
+	let registry = session.retired_registry();
+	assert!(registry.removed_nodes.get(&source).is_some_and(|tombstone| tombstone.placeholder));
+	assert_eq!(registry.node_instances[&consumer].inputs()[0].input, source_value);
+}
+
 /// Undo of a retired step names the person's latest step, not the device's. A fresh copy of the document under a new
 /// peer id still undoes what its user did from the old one, and nobody else's.
 #[test]

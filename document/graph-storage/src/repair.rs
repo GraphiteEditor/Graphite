@@ -382,7 +382,8 @@ fn reconnect(registry: &Registry, removed: NodeId, network: Option<NetworkId>, k
 		if !visited.insert(current) {
 			return None;
 		}
-		let (in_network, input) = match registry.removed_nodes.get(&current) {
+		// A placeholder knows nothing of the node's network or primary input, so what history kept decides instead
+		let (in_network, input) = match registry.removed_nodes.get(&current).filter(|tombstone| !tombstone.placeholder) {
 			Some(tombstone) => (tombstone.content.network, tombstone.content.inputs.first()?.input.clone()),
 			None => known.primary.get(&current).cloned()?,
 		};
