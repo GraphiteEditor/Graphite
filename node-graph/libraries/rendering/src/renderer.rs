@@ -150,7 +150,7 @@ impl<'a, T> ItemRef<'a, T> {
 		self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).and_then(|path| path.0.iter_element_values().next_back().copied())
 	}
 
-	/// Records the viewport placement of each footprint area this item carries, with `footprint` being that of the space the item is placed in.
+	/// Records the viewport placement of each footprint area this item carries. `footprint` belongs to the space the item is placed in.
 	fn collect_footprint_areas(self, metadata: &mut RenderMetadata, footprint: Footprint) {
 		let Some(footprint_areas) = self.attribute::<List<NodeIdPath>>(ATTR_EDITOR_FOOTPRINT_AREAS) else {
 			return;
@@ -168,7 +168,7 @@ impl<'a, T> ItemRef<'a, T> {
 	}
 }
 
-/// Records the footprint areas each item of a non-graphic content run carries, since its items aren't visited one by one elsewhere.
+/// Records the footprint areas of each item in non-graphic content.
 fn collect_leaf_footprint_areas(graphic: &Graphic, metadata: &mut RenderMetadata, footprint: Footprint) {
 	fn item<T>(item: &Item<T>, metadata: &mut RenderMetadata, footprint: Footprint) {
 		ItemRef::Item(item).collect_footprint_areas(metadata, footprint);
@@ -181,7 +181,7 @@ fn collect_leaf_footprint_areas(graphic: &Graphic, metadata: &mut RenderMetadata
 	}
 
 	match graphic {
-		// Graphic items are visited one by one as their content is recursed
+		// Graphic items record their areas when their content is visited
 		Graphic::Graphic(_) | Graphic::GraphicList(_) => {}
 		Graphic::None(content) => item(content, metadata, footprint),
 		Graphic::Vector(content) => item(content, metadata, footprint),
@@ -1622,7 +1622,7 @@ pub struct RenderMetadata {
 	/// Per-layer text frame from item 0's `editor:text_frame` attribute.
 	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
 	pub text_frames: HashMap<NodeId, DAffine2>,
-	/// Per node with a footprint input, the unit square mapped onto its area in viewport space, from the first item it passed through.
+	/// Per node with a footprint input, the unit square mapped onto its area in viewport space, from the first item carrying it.
 	pub footprint_areas: HashMap<NodeId, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	/// Per-layer source geometry as the holder item, carrying the pool element and its paths attribute.

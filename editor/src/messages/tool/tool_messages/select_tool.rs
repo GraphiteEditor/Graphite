@@ -957,7 +957,7 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Overlays { context: mut overlay_context }) => {
 				crate::messages::tool::common_functionality::layer_origin_cross::draw_for_selected_layers(&mut overlay_context, document);
 
-				tool_data.footprint_cage.refresh(document);
+				tool_data.footprint_cage.refresh(document, overlay_context.visibility_settings.transform_cage());
 				tool_data.footprint_cage.overlays(&mut overlay_context);
 
 				let selected_layers_count = document.network_interface.selected_nodes().selected_unlocked_layers(&document.network_interface).count();
@@ -1394,7 +1394,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.drag_current = input.mouse.position;
 				tool_data.selection_mode = None;
 
-				if tool_data.footprint_cage.begin_drag(input.mouse.position, responses) {
+				if tool_data.state_from_pivot_gizmo(input.mouse.position).is_none() && tool_data.footprint_cage.begin_drag(input.mouse.position, responses) {
 					return SelectToolFsmState::DraggingFootprintCage;
 				}
 
@@ -1634,6 +1634,12 @@ impl Fsm for SelectToolFsmState {
 				let (centered, constrain) = (input.keyboard.key(modifier_keys.center), input.keyboard.key(modifier_keys.axis_align));
 				tool_data.footprint_cage.update_drag(input.mouse.position, centered, constrain, responses);
 
+				let messages = [
+					SelectToolMessage::PointerOutsideViewport { modifier_keys: modifier_keys.clone() }.into(),
+					SelectToolMessage::PointerMove { modifier_keys }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
+
 				SelectToolFsmState::DraggingFootprintCage
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { modifier_keys }) => {
@@ -1737,14 +1743,13 @@ impl Fsm for SelectToolFsmState {
 					.as_ref()
 					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true, dragging_bounds, Some(tool_data.skew_edge)));
 
+				if let Some(footprint_cage_cursor) = tool_data.footprint_cage.cursor(input) {
+					cursor = footprint_cage_cursor;
+				}
+
 				// Dragging the pivot overrules the other operations
 				if tool_data.state_from_pivot_gizmo(input.mouse.position).is_some() {
 					cursor = MouseCursorIcon::Move;
-				}
-
-				// A press on the footprint cage drags it before anything else
-				if let Some(footprint_cage_cursor) = tool_data.footprint_cage.cursor(input) {
-					cursor = footprint_cage_cursor;
 				}
 
 				// Generate the hover outline
@@ -1789,6 +1794,14 @@ impl Fsm for SelectToolFsmState {
 				{
 					bounds.center_of_transformation += shift;
 					bounds.original_bound_transform.translation += shift;
+				}
+
+				self
+			}
+			(SelectToolFsmState::DraggingFootprintCage, SelectToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
+					tool_data.footprint_cage.pan(shift);
 				}
 
 				self

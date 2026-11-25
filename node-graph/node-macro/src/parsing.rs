@@ -52,7 +52,7 @@ pub(crate) struct NodeFlags {
 	pub(crate) skip_impl: bool,
 	/// Whether the node refuses placeholder data.
 	pub(crate) no_partial: bool,
-	/// Whether the node's latest landed output stands in while a newer evaluation is pending, before its placeholder.
+	/// Whether a pending evaluation returns the latest landed output instead of the placeholder.
 	pub(crate) keep_previous: bool,
 	/// Set on the `Destructure` derive's generated extractor nodes, which take the struct rather than an `Item` or `List`. Not parsed from source.
 	pub(crate) destructure_extractor: bool,
@@ -600,7 +600,7 @@ impl Parse for NodeFnAttributes {
 				// Example usage:
 				// #[node_macro::node(..., no_partial, ...)]
 				"no_partial" => set_flag(&mut flags.no_partial, meta, "no_partial")?,
-				// Stands in the latest landed output while a newer evaluation is pending, for async nodes whose output should not blink.
+				// Makes a pending evaluation return the latest landed output instead of the placeholder
 				//
 				// Example usage:
 				// #[node_macro::node(..., keep_previous, ...)]

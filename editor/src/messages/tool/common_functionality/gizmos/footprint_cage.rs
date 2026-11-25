@@ -12,7 +12,7 @@ use graphene_std::platform_application_io::rasterize;
 use graphene_std::renderer::Quad;
 use graphene_std::transform::Footprint;
 
-/// A transform cage over the area of the selected node with a footprint input, like 'Bake Footprint' or 'Rasterize', which resizes and moves that area.
+/// A transform cage that resizes and moves the area of the selected node with a footprint input.
 #[derive(Clone, Debug, Default)]
 pub struct FootprintCage {
 	target: Option<CageTarget>,
@@ -23,7 +23,7 @@ pub struct FootprintCage {
 struct CageTarget {
 	footprint_input: InputConnector,
 	area: Footprint,
-	/// Spans the unit square of the area, which is the space its bounds are in.
+	/// Spans the area, with the unit square as its bounds.
 	bounding_box: BoundingBoxManager,
 }
 
@@ -42,9 +42,9 @@ enum CageDragKind {
 }
 
 impl FootprintCage {
-	/// Places the cage on the area of the selected node with a footprint input, or removes it if there is none to show.
-	pub fn refresh(&mut self, document: &DocumentMessageHandler) {
-		self.target = Self::find_target(document);
+	/// Places the cage on the area of the selected node with a footprint input, or removes it if it is hidden or there is none.
+	pub fn refresh(&mut self, document: &DocumentMessageHandler, visible: bool) {
+		self.target = visible.then(|| Self::find_target(document)).flatten();
 	}
 
 	fn find_target(document: &DocumentMessageHandler) -> Option<CageTarget> {
@@ -78,10 +78,6 @@ impl FootprintCage {
 	}
 
 	pub fn overlays(&mut self, overlay_context: &mut OverlayContext) {
-		if !overlay_context.visibility_settings.transform_cage() {
-			return;
-		}
-
 		if let Some(target) = &mut self.target {
 			target.bounding_box.render_overlays(overlay_context, true);
 		}
@@ -126,7 +122,7 @@ impl FootprintCage {
 		true
 	}
 
-	/// Sets the area to follow the pointer, keeping its density of pixels.
+	/// Moves or resizes the area to follow the pointer, keeping its pixel density.
 	pub fn update_drag(&mut self, mouse: DVec2, centered: bool, constrain: bool, responses: &mut VecDeque<Message>) {
 		let Some(drag) = &self.drag else { return };
 
@@ -143,6 +139,9 @@ impl FootprintCage {
 		};
 
 		let original_area = drag.original_area;
+		let one_pixel = original_area.resolution.as_dvec2().recip();
+		let size = size.max(one_pixel);
+
 		let area = Footprint {
 			transform: original_area.transform * DAffine2::from_scale_angle_translation(size, 0., position),
 			resolution: (original_area.resolution.as_dvec2() * size).round().as_uvec2().max(UVec2::ONE),
@@ -154,6 +153,13 @@ impl FootprintCage {
 			input: NodeInput::value(TaggedValue::Footprint(area), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	/// Keeps the drag in place on the document while the viewport pans by `shift`.
+	pub fn pan(&mut self, shift: DVec2) {
+		if let Some(drag) = &mut self.drag {
+			drag.unit_square_to_viewport.translation += shift;
+		}
 	}
 
 	/// Finishes the drag, undoing its changes if it was aborted.
@@ -259,8 +265,8 @@ mod tests {
 		assert!(transformed.abs_diff_eq(expected, 1e-9), "{transformed:?} should be {expected:?}");
 	}
 
-	#[tokio::test]
-	async fn dragging_the_right_edge_of_the_cage_widens_the_area_and_its_resolution() {
+	/// Drags the cage of a 'Bake Footprint' node in a layer between two points of its unit square, giving its area before and after.
+	async fn drag_cage(from: DVec2, to: DVec2) -> (Footprint, Footprint) {
 		use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 		use crate::messages::tool::utility_types::ToolType;
 
@@ -289,9 +295,7 @@ mod tests {
 
 		let metadata = editor.active_document().metadata();
 		let unit_square_to_viewport = metadata.document_to_viewport * *metadata.footprint_areas.get(&node_id).expect("the area should be reported");
-		let from = unit_square_to_viewport.transform_point2(DVec2::new(1., 0.5));
-		let to = from + DVec2::new(50., 0.);
-		let new_right_edge = unit_square_to_viewport.inverse().transform_point2(to).x;
+		let (from, to) = (unit_square_to_viewport.transform_point2(from), unit_square_to_viewport.transform_point2(to));
 
 		editor.select_tool(ToolType::Select).await;
 		editor.handle_message(SelectToolMessage::Overlays { context: OverlayContext::default() }).await;
@@ -304,8 +308,25 @@ mod tests {
 		let Some(&TaggedValue::Footprint(dragged)) = input.and_then(NodeInput::as_non_exposed_value) else {
 			panic!("the node should have a footprint value")
 		};
-		let expected_transform = area.transform * DAffine2::from_scale(DVec2::new(new_right_edge, 1.));
+		(area, dragged)
+	}
+
+	#[tokio::test]
+	async fn dragging_the_right_edge_of_the_cage_widens_the_area_and_its_resolution() {
+		let (area, dragged) = drag_cage(DVec2::new(1., 0.5), DVec2::new(1.5, 0.5)).await;
+
+		let expected_transform = area.transform * DAffine2::from_scale(DVec2::new(1.5, 1.));
 		assert!(dragged.transform.abs_diff_eq(expected_transform, 1e-9), "{:?} should be {expected_transform:?}", dragged.transform);
-		assert_eq!(dragged.resolution, (area.resolution.as_dvec2() * DVec2::new(new_right_edge, 1.)).round().as_uvec2());
+		assert_eq!(dragged.resolution, UVec2::new(300, 200));
+	}
+
+	#[tokio::test]
+	async fn dragging_the_right_edge_onto_the_left_one_keeps_one_pixel_of_width() {
+		let (area, dragged) = drag_cage(DVec2::new(1., 0.5), DVec2::new(0., 0.5)).await;
+
+		let one_pixel = 1. / area.resolution.x as f64;
+		let expected_transform = area.transform * DAffine2::from_scale(DVec2::new(one_pixel, 1.));
+		assert!(dragged.transform.abs_diff_eq(expected_transform, 1e-9), "{:?} should be {expected_transform:?}", dragged.transform);
+		assert_eq!(dragged.resolution, UVec2::new(1, 200));
 	}
 }

@@ -152,9 +152,9 @@ where
 	Ok(content)
 }
 
-/// Content whose items can carry the footprint areas they were evaluated in, so the editor can place a cage over each.
+/// Content whose items can record the footprint areas they were evaluated in.
 pub trait RecordFootprintArea {
-	/// Appends the area, which maps the unit square into the space the items are placed in, to each item.
+	/// Appends the area of the node at `node_path` to each item. `area` maps the unit square into the space the items are placed in.
 	fn record_footprint_area(&mut self, node_path: &NodeIdPath, area: DAffine2);
 }
 
@@ -178,7 +178,7 @@ impl<T> RecordFootprintArea for List<T> {
 	}
 }
 
-/// The row recording a footprint area relative to an item, so it moves along with the transforms later applied to the item.
+/// The row recording the area relative to the item, so it follows the transforms later applied to the item.
 fn footprint_area_row(node_path: &NodeIdPath, item_transform: DAffine2, area: DAffine2) -> Option<Item<NodeIdPath>> {
 	if item_transform.matrix2.determinant() == 0. {
 		return None;

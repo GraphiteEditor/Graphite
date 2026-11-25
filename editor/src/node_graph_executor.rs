@@ -632,6 +632,7 @@ impl NodeGraphExecutor {
 							document.network_interface.update_click_targets(HashMap::new(), HashSet::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
+							document.network_interface.update_footprint_areas(HashMap::new());
 							if let Some(message) = &message {
 								log::error!("Node graph evaluation failed:\n{message}");
 							}
@@ -708,6 +709,7 @@ impl NodeGraphExecutor {
 							document.network_interface.update_click_targets(HashMap::new(), HashSet::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
+							document.network_interface.update_footprint_areas(HashMap::new());
 
 							// The graph only shows errors tied to nodes, so the console gets the others
 							if node_graph_errors.is_empty() {
