@@ -1,4 +1,4 @@
-use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
+use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, MandelbrotExterior, MandelbrotFractal, MandelbrotInterior, NoiseType};
 use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, LinearChannel, Luminance, RGBMut};
@@ -9,7 +9,7 @@ use core_types::transform::Transform;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, UVec2};
 use graphene_resource::Resource;
-use graphic_types::generator::{Generator, NoiseSettings};
+use graphic_types::generator::{Generator, MandelbrotSettings, NoiseSettings};
 use raster_kernels::evaluate_raster_effects;
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{Bitmap, BitmapMut};
@@ -307,9 +307,66 @@ fn noise_pattern(
 	generator
 }
 
-#[node_macro::node(category("Raster"), icon("NodeMandelbrot"), version(2))]
-fn mandelbrot(_: impl Ctx, _primary: ()) -> Item<Generator> {
-	Item::new_from_element(Generator::Mandelbrot)
+/// Generates a Mandelbrot-style fractal filling the plane, as brightness for a 'Gradient Map' node to color. The origin is the complex plane's, where the Mandelbrot set's main body lies just left of it.
+#[node_macro::node(category("Raster"), icon("NodeMandelbrot"), version(3))]
+#[allow(clippy::too_many_arguments)]
+fn mandelbrot(
+	_: impl Ctx,
+	_primary: (),
+	/// Which fractal is iterated, the Mandelbrot set or one of its variations.
+	fractal: Item<MandelbrotFractal>,
+	/// What the brightness outside the set comes from.
+	exterior: Item<MandelbrotExterior>,
+	/// What the brightness inside the set comes from.
+	interior: Item<MandelbrotInterior>,
+	/// How many tendrils or rays appear for each turn around the set with the Tendrils or Rays exterior, or around each bulb's center with the Rays interior.
+	#[widget(ParsedWidgetOverride::Custom = "mandelbrot_inspector_frequency")]
+	#[default(1)]
+	#[hard(1..64)]
+	frequency: Item<i64>,
+	/// How many units span one unit of the complex plane. The Mandelbrot set is about 2.5 of the plane's units across.
+	#[default(100.)]
+	#[hard(0..)]
+	scale: Item<f64>,
+	/// The most iterations before a point counts as inside the set. Higher values resolve finer detail along its edge, especially when zoomed in, but take longer to render.
+	#[default(256)]
+	#[hard(1..10000)]
+	iterations: Item<i64>,
+	/// The exponent each iteration raises a point's value to, which changes the fractal's shape. Powers that aren't integers tear the set along a seam, and render more slowly when zoomed in far.
+	#[default(2.)]
+	#[hard(1..32)]
+	#[soft(2..8)]
+	power: Item<f64>,
+	/// How far the slice through the fractal turns from the Mandelbrot end, the selected fractal's own set at 0%, to the Julia end, the Julia set chosen by the Julia Slice at 100%, passing through hybrid shapes between them.
+	#[name("Mandelbrot-to-Julia")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	mandelbrot_to_julia: Item<f64>,
+	/// Which slice of the fractal the Mandelbrot end shows, chosen by where each point's orbit starts. Moved off the origin, it bends the selected fractal's set away from its classic shape. Its effect fades out as Mandelbrot-to-Julia rises.
+	#[widget(ParsedWidgetOverride::Custom = "mandelbrot_inspector_mandelbrot_slice")]
+	mandelbrot_slice: Item<DVec2>,
+	/// Which slice of the fractal the Julia end shows, chosen by the point added each iteration. A point of the selected fractal's set gives that point's Julia set, and points near the set's edge often give intricate ones. Its effect fades in as Mandelbrot-to-Julia rises.
+	#[widget(ParsedWidgetOverride::Custom = "mandelbrot_inspector_julia_slice")]
+	#[default(-0.8, 0.156)]
+	julia_slice: Item<DVec2>,
+) -> Item<Generator> {
+	let settings = MandelbrotSettings {
+		fractal: fractal.into_element(),
+		exterior: exterior.into_element(),
+		interior: interior.into_element(),
+		frequency: frequency.into_element(),
+		scale: scale.into_element(),
+		iterations: iterations.into_element(),
+		power: power.into_element(),
+		mandelbrot_to_julia: mandelbrot_to_julia.into_element(),
+		mandelbrot_slice: mandelbrot_slice.into_element(),
+		julia_slice: julia_slice.into_element(),
+	};
+
+	let mut generator = Item::new_from_element(Generator::Mandelbrot);
+	settings.stamp(&mut generator);
+	generator
 }
 
 #[cfg(test)]

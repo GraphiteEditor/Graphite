@@ -1,13 +1,11 @@
 //! The kernels rendering each [`GeneratorPattern`] across any area of its space at any resolution.
 
+use crate::mandelbrot::{MandelbrotSetup, resolves_in_32_bits};
 use core_types::Color;
-use glam::{DVec2, IVec2, Vec2};
+use glam::{DVec2, IVec2};
 use graphic_types::generator::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, GeneratorPattern, NoiseSettings, NoiseType};
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{Image, ImageError};
-
-/// The most iterations a point is tested for escaping the Mandelbrot set, beyond which it counts as inside.
-const MANDELBROT_ITERATIONS: u32 = 255;
 
 /// The pattern across `area` of its own space, from its minimum to its maximum corner, sampled at the centers of a `width` by `height` grid of pixels.
 /// Fails where an image of that size can't be allocated.
@@ -24,18 +22,30 @@ pub fn render_pattern(pattern: &GeneratorPattern, area: [DVec2; 2], width: u32, 
 				row.iter_mut().enumerate().for_each(|(x, pixel)| *pixel = Color::from_luminance(noise.sample(pixel_center(x, y))));
 			});
 		}
-		GeneratorPattern::Mandelbrot => {
+		GeneratorPattern::Mandelbrot(settings) => {
+			let setup = MandelbrotSetup::new(settings);
+			let (plane_area, plane_texel) = (area.map(|point| setup.plane_point(point)), (pixel_size / setup.scale).min_element());
+			let reference = setup.reference_orbit(plane_area, plane_texel);
+			let interior_test = setup.has_interior_test() && resolves_in_32_bits(plane_area, plane_texel);
+			// The brightness is gamma-encoded, so a Gradient Map takes it as the position along its gradient
 			fill_rows(&mut image.data, width as usize, |y, row| {
 				row.iter_mut().enumerate().for_each(|(x, pixel)| {
-					let c = pixel_center(x, y) * 3. - DVec2::new(2., 1.5);
-					let value = mandelbrot_escape_iterations(c) as f32 / MANDELBROT_ITERATIONS as f32;
-					*pixel = Color::from_rgbaf32_unchecked(value, value, value, 1.);
+					let value = setup.sample(setup.plane_point(pixel_center(x, y)), reference.as_ref(), interior_test).clamp(0., 1.);
+					*pixel = Color::from_gamma_srgb_channels(value, value, value, 1.);
 				});
 			});
 		}
 	}
 
 	Ok(image)
+}
+
+/// The area of the pattern's own space that a thumbnail frames, for a pattern with a part worth framing rather than one alike across the whole plane.
+pub fn thumbnail_area(pattern: &GeneratorPattern) -> Option<[DVec2; 2]> {
+	match pattern {
+		GeneratorPattern::Noise(_) => None,
+		GeneratorPattern::Mandelbrot(settings) => Some(MandelbrotSetup::new(settings).thumbnail_area()),
+	}
 }
 
 /// Samples a noise pattern's luminance, from 0 to 1, at positions in its space.
@@ -153,19 +163,6 @@ fn pcg3d(input: [u32; 3]) -> [u32; 3] {
 
 	let v = mix(input.map(|value| value.wrapping_mul(1_664_525).wrapping_add(1_013_904_223)));
 	mix(v.map(|value| value ^ (value >> 16)))
-}
-
-/// How many iterations `c` takes to escape the Mandelbrot set, or the iteration limit if it doesn't. In f32, which a GPU can match near the boundary.
-fn mandelbrot_escape_iterations(c: DVec2) -> u32 {
-	let c = c.as_vec2();
-	let mut z = Vec2::ZERO;
-	for iteration in 0..MANDELBROT_ITERATIONS {
-		z = Vec2::new(z.x * z.x - z.y * z.y, 2. * z.x * z.y) + c;
-		if z.length_squared() > 4. {
-			return iteration;
-		}
-	}
-	MANDELBROT_ITERATIONS
 }
 
 #[cfg(test)]

@@ -23,8 +23,8 @@ use graph_craft::{Type, concrete, item};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::{
-	AdjustmentChannel, BlendMode, CellularDistanceFunction, CellularReturnType, Color, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RelativeAbsolute,
-	SelectiveColorChoice, TonalRange,
+	AdjustmentChannel, BlendMode, CellularDistanceFunction, CellularReturnType, Color, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, MandelbrotExterior, MandelbrotFractal,
+	MandelbrotInterior, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice, TonalRange,
 };
 use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::text::{Font, TextAlign};
@@ -384,7 +384,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 					true => text_area_widget(default_info).into(),
 					false => text_widget(default_info).into(),
 				},
-				Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", unit.unwrap_or(""), None, false),
+				Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", unit.unwrap_or(""), None, false, false),
 				Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
 				Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
 				Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
@@ -419,6 +419,9 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<CellularDistanceFunction>(x) => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).inspector_row(),
 				Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).inspector_row(),
 				Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).inspector_row(),
+				Some(x) if id_is::<MandelbrotFractal>(x) => enum_choice::<MandelbrotFractal>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<MandelbrotExterior>(x) => enum_choice::<MandelbrotExterior>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<MandelbrotInterior>(x) => enum_choice::<MandelbrotInterior>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).inspector_row(),
 				Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).inspector_row(),
 				Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).inspector_row(),
@@ -877,7 +880,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	}
 }
 
-pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool) -> LayoutGroup {
+pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(&parameter_widgets_info);
 
 	let Some(input) = parameter_widgets_info.input() else {
@@ -894,6 +897,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
+					.disabled(disabled)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y))))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -904,6 +908,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
+					.disabled(disabled)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap()))))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -918,6 +923,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
+					.disabled(disabled)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), value))))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -928,6 +934,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
+					.disabled(disabled)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(value, input.value.unwrap()))))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -1635,6 +1642,38 @@ pub fn query_node_and_input_info<'a>(node_id: NodeId, input_index: usize, contex
 	let document_node = get_document_node(node_id, context)?;
 
 	Ok((document_node, name, description))
+}
+
+/// Whether a Mandelbrot node's exterior or interior has tendrils or rays for Frequency to set, which a wired one may.
+pub fn query_mandelbrot_tendrils_or_rays(node_id: NodeId, context: &NodeInspectorContext) -> Result<bool, String> {
+	let document_node = get_document_node(node_id, context)?;
+
+	let exterior = document_node.inputs.iter().find_map(|input| match input.as_value() {
+		Some(&TaggedValue::MandelbrotExterior(exterior)) => Some(exterior),
+		_ => None,
+	});
+	let interior = document_node.inputs.iter().find_map(|input| match input.as_value() {
+		Some(&TaggedValue::MandelbrotInterior(interior)) => Some(interior),
+		_ => None,
+	});
+
+	let exterior_uses_frequency = matches!(exterior, None | Some(MandelbrotExterior::Tendrils | MandelbrotExterior::Rays));
+	let interior_uses_frequency = matches!(interior, None | Some(MandelbrotInterior::Rays));
+	Ok(exterior_uses_frequency || interior_uses_frequency)
+}
+
+/// A Mandelbrot node's Mandelbrot-to-Julia percentage, unless it's wired.
+pub fn query_mandelbrot_to_julia(node_id: NodeId, context: &NodeInspectorContext) -> Result<Option<f64>, String> {
+	let document_node = get_document_node(node_id, context)?;
+	Ok(
+		match document_node
+			.input(graphene_std::raster_nodes::std_nodes::mandelbrot::MandelbrotToJuliaInput)
+			.and_then(|input| input.as_value())
+		{
+			Some(&TaggedValue::Number(percent)) => Some(percent),
+			_ => None,
+		},
+	)
 }
 
 pub fn query_noise_pattern_state(node_id: NodeId, context: &NodeInspectorContext) -> Result<(bool, bool, bool, bool, bool, bool), String> {
@@ -2721,10 +2760,10 @@ pub(crate) fn grid_inspector(node_id: NodeId, context: &mut NodeInspectorContext
 				ParameterWidgetsInfo::new(node_id, SpacingInput, true, context),
 				NumberInput::default().label("H").min(0.).unit(" px"),
 			));
-			let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false);
+			let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false, false);
 			widgets.extend([spacing, angles]);
 		} else {
-			let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false);
+			let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false, false);
 			widgets.push(spacing);
 		}
 	}

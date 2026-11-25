@@ -16,8 +16,8 @@ use graphene_std::gradient::Gradient;
 use graphene_std::list::{INTERNAL_ATTRIBUTE_PREFIX, Item, List, NodeIdPath};
 use graphene_std::math::float_noise::round_away_float_noise;
 use graphene_std::raster::{
-	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RelativeAbsolute,
-	SelectiveColorChoice, TonalRange,
+	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, MandelbrotExterior, MandelbrotFractal, MandelbrotInterior,
+	NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice, TonalRange,
 };
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::text::TextAlign;
@@ -436,6 +436,9 @@ macro_rules! inspectable_types {
 			List<CellularDistanceFunction>,
 			List<CellularReturnType>,
 			List<DomainWarpType>,
+			List<MandelbrotFractal>,
+			List<MandelbrotExterior>,
+			List<MandelbrotInterior>,
 			List<RealTimeMode>,
 			List<GridType>,
 			List<GridTopology>,
@@ -493,6 +496,9 @@ macro_rules! inspectable_types {
 			Item<CellularDistanceFunction>,
 			Item<CellularReturnType>,
 			Item<DomainWarpType>,
+			Item<MandelbrotFractal>,
+			Item<MandelbrotExterior>,
+			Item<MandelbrotInterior>,
 			Item<RealTimeMode>,
 			Item<GridType>,
 			Item<GridTopology>,
@@ -1291,6 +1297,9 @@ impl_table_item_layout_for_choice_enum!(
 	CellularDistanceFunction,
 	CellularReturnType,
 	DomainWarpType,
+	MandelbrotFractal,
+	MandelbrotExterior,
+	MandelbrotInterior,
 	RealTimeMode,
 	GridType,
 	GridTopology,
@@ -1472,6 +1481,9 @@ macro_rules! known_item_types {
 			CellularDistanceFunction,
 			CellularReturnType,
 			DomainWarpType,
+			MandelbrotFractal,
+			MandelbrotExterior,
+			MandelbrotInterior,
 			RealTimeMode,
 			GridType,
 			GridTopology,

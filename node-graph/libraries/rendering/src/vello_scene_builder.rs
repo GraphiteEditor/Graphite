@@ -2,7 +2,7 @@ use glam::{DAffine2, DMat2, DVec2, UVec2};
 use graphene_hash::CacheHash;
 use graphic_types::effects::EffectCapture;
 use graphic_types::generator::GeneratorPattern;
-use graphic_types::raster_types::{CPU, ImageError, Raster, Texture};
+use graphic_types::raster_types::{CPU, Raster, Texture};
 use graphic_types::{Adjustment, EffectOperation, Effects};
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape, Stroke};
 use std::borrow::Cow;
@@ -79,7 +79,7 @@ pub enum SceneImage {
 	Texture(Texture),
 	/// Premultiplied pixels of an effects group's result, rendered for this scene.
 	Rendered(wgpu::Texture),
-	/// One tile of a generator's pattern, rendered on the CPU the first time it's drawn.
+	/// One tile of a generator's pattern, rendered the first time it's drawn.
 	GeneratorTile { pattern: GeneratorPattern, tile: GeneratorTile },
 }
 
@@ -106,12 +106,6 @@ pub struct GeneratorTile {
 impl GeneratorTile {
 	/// The samples across and down the tile and its border.
 	pub const SAMPLES: u32 = GENERATOR_TILE_PIXELS + 2 * GENERATOR_TILE_BORDER;
-
-	/// The pattern's pixels across the tile and its border, rendered on the CPU.
-	pub fn render(&self, pattern: &GeneratorPattern) -> Result<Raster<CPU>, ImageError> {
-		let (corner, texel) = self.corner_and_texel();
-		raster_kernels::generators::render_pattern(pattern, [corner, corner + DVec2::splat(Self::SAMPLES as f64 * texel)], Self::SAMPLES, Self::SAMPLES).map(Raster::new_cpu)
-	}
 
 	/// The corner of the tile's samples, including its border, in the pattern's space, and the span of one sample.
 	pub fn corner_and_texel(&self) -> (DVec2, f64) {

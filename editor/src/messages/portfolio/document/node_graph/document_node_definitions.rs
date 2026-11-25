@@ -924,6 +924,7 @@ fn static_input_inspector() -> InputInspector {
 				&unit,
 				min,
 				is_integer,
+				false,
 			)])
 		}),
 	);
@@ -1078,6 +1079,49 @@ fn static_input_inspector() -> InputInspector {
 		}),
 	);
 	map.insert(
+		"mandelbrot_inspector_frequency".to_string(),
+		Box::new(|node_id, index, context| {
+			let tendrils_or_rays = node_inspector::query_mandelbrot_tendrils_or_rays(node_id, context)?;
+			let frequency = node_inspector::number_widget(
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
+				NumberInput::default().min(1.).max(64.).is_integer(true).disabled(!tendrils_or_rays),
+			);
+			Ok(vec![frequency.into()])
+		}),
+	);
+	map.insert(
+		"mandelbrot_inspector_mandelbrot_slice".to_string(),
+		Box::new(|node_id, index, context| {
+			let mandelbrot_to_julia = node_inspector::query_mandelbrot_to_julia(node_id, context)?;
+			let mandelbrot_slice = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![node_inspector::vec2_widget(
+				mandelbrot_slice,
+				"X",
+				"Y",
+				"",
+				None,
+				false,
+				mandelbrot_to_julia.is_some_and(|percent| percent >= 100.),
+			)])
+		}),
+	);
+	map.insert(
+		"mandelbrot_inspector_julia_slice".to_string(),
+		Box::new(|node_id, index, context| {
+			let mandelbrot_to_julia = node_inspector::query_mandelbrot_to_julia(node_id, context)?;
+			let julia_slice = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![node_inspector::vec2_widget(
+				julia_slice,
+				"X",
+				"Y",
+				"",
+				None,
+				false,
+				mandelbrot_to_julia.is_some_and(|percent| percent <= 0.),
+			)])
+		}),
+	);
+	map.insert(
 		"noise_inspector_cellular_jitter".to_string(),
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_inspector::query_noise_pattern_state(node_id, context)?;
@@ -1179,6 +1223,7 @@ fn static_input_inspector() -> InputInspector {
 				" px",
 				None,
 				false,
+				false,
 			)])
 		}),
 	);
@@ -1192,6 +1237,7 @@ fn static_input_inspector() -> InputInspector {
 				"H",
 				"x",
 				None,
+				false,
 				false,
 			)])
 		}),
@@ -1311,7 +1357,7 @@ fn static_input_inspector() -> InputInspector {
 		"vec2_uv".to_string(),
 		Box::new(|node_id, index, context| {
 			let parameter_widgets_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
-			Ok(vec![node_inspector::vec2_widget(parameter_widgets_info, "U", "V", "", None, false)])
+			Ok(vec![node_inspector::vec2_widget(parameter_widgets_info, "U", "V", "", None, false, false)])
 		}),
 	);
 	map

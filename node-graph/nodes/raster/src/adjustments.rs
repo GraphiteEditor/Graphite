@@ -12,7 +12,7 @@ use graphic_types::adjustment::{
 	LevelsRecord, LevelsSettings, SelectiveColorInks, SelectiveColorSettings,
 };
 pub use graphic_types::adjustment::{DesaturateMethod, RelativeAbsolute};
-pub use graphic_types::generator::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
+pub use graphic_types::generator::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, MandelbrotExterior, MandelbrotFractal, MandelbrotInterior, NoiseType};
 use graphic_types::{Effect, EffectOperation, Generator, Graphic, Vector, stamp_effect};
 use raster_kernels::{evaluate_color_effects, evaluate_gradient_effects};
 use raster_types::{CPU, GPU, Image, Raster};

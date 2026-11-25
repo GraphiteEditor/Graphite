@@ -638,6 +638,73 @@ fn overlay_scene(viewport: &ViewportMessageHandler) -> VelloSceneBuilder<'static
 	VelloSceneBuilder::new(size.x as u16, size.y as u16, Affine::IDENTITY, MAX_TEXTURE_SIZE)
 }
 
+/// How closely the segments that [`pieces_in_view`] walks follow an overlay's curves, in logical pixels.
+const OVERLAY_SHAPE_TOLERANCE: f64 = 0.1;
+
+/// Whether `outer` contains all of `inner`.
+fn rect_contains(outer: kurbo::Rect, inner: kurbo::Rect) -> bool {
+	inner.x0 >= outer.x0 && inner.y0 >= outer.y0 && inner.x1 <= outer.x1 && inner.y1 <= outer.y1
+}
+
+/// The parts of `path` that may show within `visible`, each with how far along its subpath it starts.
+/// A segment crossing the edge of `visible` is split in half until each half lies inside or outside it, so one far larger than the viewport costs only the log of its size.
+fn pieces_in_view(path: &BezPath, visible: kurbo::Rect) -> Vec<(f64, BezPath)> {
+	// Halves this small are kept whole, as are those split this many times
+	const SMALLEST_SPLIT: f64 = 1.;
+	const MAX_SPLITS: u32 = 64;
+	const ARC_LENGTH_ACCURACY: f64 = 1e-3;
+
+	let overlaps = |bounds: kurbo::Rect| bounds.x0 <= visible.x1 && bounds.x1 >= visible.x0 && bounds.y0 <= visible.y1 && bounds.y1 >= visible.y0;
+
+	let mut pieces: Vec<(f64, BezPath)> = Vec::new();
+	let (mut previous, mut subpath_start) = (kurbo::Point::ZERO, kurbo::Point::ZERO);
+	let mut distance = 0.;
+	// Whether the last piece ends where the next kept segment starts, so that segment extends it
+	let mut continuing = false;
+
+	for element in path.elements() {
+		let segment = match *element {
+			kurbo::PathEl::MoveTo(point) => {
+				(previous, subpath_start, distance, continuing) = (point, point, 0., false);
+				continue;
+			}
+			kurbo::PathEl::LineTo(point) => PathSeg::Line(kurbo::Line::new(previous, point)),
+			kurbo::PathEl::QuadTo(control, point) => PathSeg::Quad(kurbo::QuadBez::new(previous, control, point)),
+			kurbo::PathEl::CurveTo(control_start, control_end, point) => PathSeg::Cubic(kurbo::CubicBez::new(previous, control_start, control_end, point)),
+			kurbo::PathEl::ClosePath => PathSeg::Line(kurbo::Line::new(previous, subpath_start)),
+		};
+		previous = segment.end();
+
+		// Halves wait on a stack, the second beneath the first, so they're visited in order along the path
+		let mut pending = vec![(segment, 0)];
+		while let Some((segment, splits)) = pending.pop() {
+			let bounds = kurbo::Shape::bounding_box(&segment);
+			let kept = overlaps(bounds);
+			if kept && !rect_contains(visible, bounds) && bounds.width().max(bounds.height()) > SMALLEST_SPLIT && splits < MAX_SPLITS {
+				let (first, second) = segment.subdivide();
+				pending.push((second, splits + 1));
+				pending.push((first, splits + 1));
+				continue;
+			}
+
+			if kept {
+				if !continuing {
+					let mut piece = BezPath::new();
+					piece.move_to(segment.start());
+					pieces.push((distance, piece));
+				}
+				if let Some((_, piece)) = pieces.last_mut() {
+					piece.push(segment.as_path_el());
+				}
+			}
+			continuing = kept;
+			distance += kurbo::ParamCurveArclen::arclen(&segment, ARC_LENGTH_ACCURACY);
+		}
+	}
+
+	pieces
+}
+
 impl OverlayContextInternal {
 	fn new(viewport: ViewportMessageHandler) -> Self {
 		Self {
@@ -715,7 +782,7 @@ impl OverlayContextInternal {
 			stroke = stroke.with_dashes(dash_offset.unwrap_or(0.), [dash_width, dash_gap]);
 		}
 
-		self.scene.stroke(&stroke, transform, Self::parse_color(stroke_color), None, &path);
+		self.stroke_in_view(&stroke, Self::parse_color(stroke_color), &path);
 	}
 
 	fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>) {
@@ -724,8 +791,6 @@ impl OverlayContextInternal {
 
 	#[allow(clippy::too_many_arguments)]
 	fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		let transform = self.get_transform();
-
 		let start = self.snap_to_physical_pixel_center(start);
 		let end = self.snap_to_physical_pixel_center(end);
 
@@ -740,7 +805,7 @@ impl OverlayContextInternal {
 			stroke = stroke.with_dashes(dash_offset.unwrap_or(0.), [dash_width, dash_gap]);
 		}
 
-		self.scene.stroke(&stroke, transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &path);
+		self.stroke_in_view(&stroke, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), &path);
 	}
 
 	fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
@@ -860,6 +925,26 @@ impl OverlayContextInternal {
 		kurbo::Affine::scale(self.viewport.scale())
 	}
 
+	/// Strokes `shape`, given in logical pixels, dashing only the parts near the viewport when the stroke is dashed, since a shape reaching far past it
+	/// (as deep zoom makes them) would have more dashes than memory holds. Each part keeps the dash phase it has along the whole shape.
+	fn stroke_in_view(&mut self, stroke: &kurbo::Stroke, color: peniko::Color, shape: &impl kurbo::Shape) {
+		let transform = self.get_transform();
+
+		let margin = stroke.width + 1.;
+		let size = self.viewport.size().into_dvec2();
+		let visible = kurbo::Rect::new(-margin, -margin, size.x + margin, size.y + margin);
+
+		if stroke.dash_pattern.is_empty() || rect_contains(visible, shape.bounding_box()) {
+			self.scene.stroke(stroke, transform, color, None, shape);
+			return;
+		}
+
+		for (distance, piece) in pieces_in_view(&shape.to_path(OVERLAY_SHAPE_TOLERANCE), visible) {
+			let piece_stroke = stroke.clone().with_dashes(stroke.dash_offset + distance, stroke.dash_pattern.iter().copied());
+			self.scene.stroke(&piece_stroke, transform, color, None, &piece);
+		}
+	}
+
 	fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
 		let size = size.unwrap_or(MANIPULATOR_GROUP_MARKER_SIZE);
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
@@ -940,7 +1025,7 @@ impl OverlayContextInternal {
 		if let Some(dash_width) = dash_width {
 			stroke = stroke.with_dashes(dash_offset.unwrap_or(0.), [dash_width, dash_gap_width.unwrap_or(1.)]);
 		}
-		self.scene.stroke(&stroke, transform, Self::parse_color(color_stroke.unwrap_or(COLOR_OVERLAY_BLUE)), None, &arc);
+		self.stroke_in_view(&stroke, Self::parse_color(color_stroke.unwrap_or(COLOR_OVERLAY_BLUE)), &arc);
 	}
 
 	fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
@@ -1429,5 +1514,41 @@ impl OverlayContextInternal {
 		let physical_size = (size * scale).round().max(1.);
 		let physical_corner = (position * scale - physical_size / 2.).round();
 		(physical_corner / scale, physical_size / scale)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	const VISIBLE: kurbo::Rect = kurbo::Rect::new(0., 0., 800., 600.);
+
+	#[test]
+	fn a_huge_line_keeps_only_its_part_in_view_at_its_distance_along_the_line() {
+		let mut path = BezPath::new();
+		path.move_to((-1e12, 300.));
+		path.line_to((1e12, 300.));
+
+		let pieces = pieces_in_view(&path, VISIBLE);
+		assert_eq!(pieces.len(), 1);
+
+		// The piece starts as far along as its start lies from the line's, so its dashes line up with the whole line's
+		let (distance, piece) = &pieces[0];
+		let start = piece.elements()[0].end_point().unwrap_or_default();
+		assert!((-2.0..=0.).contains(&start.x), "the piece starts at {start:?}");
+		assert!((distance - (start.x + 1e12)).abs() < 1e-3, "the piece starts {distance} along the line");
+	}
+
+	#[test]
+	fn a_huge_circle_through_the_view_keeps_a_few_short_pieces() {
+		let radius = 1e12;
+		let circle = kurbo::Circle::new((400. - radius, 300.), radius);
+
+		// The circle's path starts at its rightmost point, in view, so the part in view is split between its start and end
+		let pieces = pieces_in_view(&kurbo::Shape::to_path(&circle, OVERLAY_SHAPE_TOLERANCE), VISIBLE);
+		assert!((1..=2).contains(&pieces.len()), "{} pieces", pieces.len());
+
+		let elements: usize = pieces.iter().map(|(_, piece)| piece.elements().len()).sum();
+		assert!(elements < 1000, "{elements} elements");
 	}
 }
