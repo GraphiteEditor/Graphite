@@ -23,6 +23,8 @@ pub enum RenderIntermediateType {
 	Svg(Arc<SvgRenderOutput>),
 	/// The content itself, for content that draws only the part of it in view, drawn as SVG at each render for its view
 	SvgInView(Arc<dyn Render + Send + Sync>),
+	/// The content itself, drawn onto a PDF page sized at each render
+	Pdf(Arc<dyn Render + Send + Sync>),
 }
 #[derive(Clone, dyn_any::DynAny)]
 pub struct RenderIntermediate {
@@ -60,6 +62,10 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 	let intermediate = match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => RenderIntermediate {
 			ty: RenderIntermediateType::Vello(Arc::new(data)),
+			metadata,
+		},
+		RenderOutputTypeRequest::Pdf => RenderIntermediate {
+			ty: RenderIntermediateType::Pdf(Arc::new(data)),
 			metadata,
 		},
 		RenderOutputTypeRequest::Svg => {
@@ -169,6 +175,15 @@ fn render(
 				(false, None) => Poll::Final(texture),
 			}
 		}
+		(RenderOutputTypeRequest::Pdf, RenderIntermediateType::Pdf(data)) => {
+			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
+			let logical_resolution = footprint.resolution.as_dvec2() / render_params.scale;
+
+			match rendering::pdf::render_pdf_document(data.as_ref(), logical_resolution, logical_transform, &render_params) {
+				Ok(data) => Poll::Final(RenderOutputType::Pdf { data }),
+				Err(error) => Poll::error(error),
+			}
+		}
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 
@@ -189,6 +204,7 @@ fn create_context(
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
 		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
+		ExportFormat::Pdf => RenderOutputTypeRequest::Pdf,
 	};
 
 	let logical_viewport = render_config.viewport;
@@ -200,12 +216,14 @@ fn create_context(
 	// Rounded up so no image is sent below its on-screen resolution, with a tolerance for float noise at exact powers of two
 	let canvas_image_scale = match render_output_type {
 		RenderOutputTypeRequest::Svg => (footprint.scale_magnitudes().max_element().log2() - 1e-9).ceil().exp2(),
-		RenderOutputTypeRequest::Vello => 0.,
+		RenderOutputTypeRequest::Vello | RenderOutputTypeRequest::Pdf => 0.,
 	};
 
 	let render_params = RenderParams {
 		render_mode: render_config.render_mode,
 		for_export: render_config.for_export,
+		// Exported SVG files keep their text as text, while the canvas and other SVG renders draw it as outlines
+		embed_fonts: render_config.for_export && matches!(render_output_type, RenderOutputTypeRequest::Svg),
 		render_output_type,
 		scale: render_config.scale,
 		viewport_zoom: Some(logical_viewport.scale_magnitudes().x),

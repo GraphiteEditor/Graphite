@@ -29,6 +29,7 @@ graphic-types = { workspace = true }
 raster-kernels = { workspace = true }
 node-macro = { workspace = true }
 repeat-nodes = { workspace = true }
+text-nodes = { workspace = true }
 
 # Workspace dependencies
 dyn-any = { workspace = true }

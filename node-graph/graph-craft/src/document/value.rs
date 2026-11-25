@@ -924,6 +924,8 @@ pub enum RenderOutputType {
 		/// The images the SVG draws to canvases, by the canvas ID their placeholders name.
 		image_data: Vec<(u64, CanvasImage)>,
 	},
+	/// A PDF document's file contents.
+	Pdf { data: Vec<u8> },
 	#[cfg(target_family = "wasm")]
 	CanvasFrame { canvas_id: u64, resolution: DVec2 },
 }
@@ -942,6 +944,7 @@ impl CacheHash for RenderOutputType {
 				svg.cache_hash(state);
 				image_data.cache_hash(state);
 			}
+			Self::Pdf { data } => data.cache_hash(state),
 			#[cfg(target_family = "wasm")]
 			Self::CanvasFrame { canvas_id, resolution } => {
 				canvas_id.cache_hash(state);

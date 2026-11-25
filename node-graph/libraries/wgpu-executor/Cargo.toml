@@ -41,6 +41,7 @@ fastnoise-lite = { workspace = true, features = ["wgsl"] }
 [dev-dependencies]
 # Local dependencies
 graphene-resource = { workspace = true }
+text-nodes = { workspace = true }
 
 # Required dependencies
 # Turns on the shader translators of every backend for the tests, whichever of them the platform's own backends build with

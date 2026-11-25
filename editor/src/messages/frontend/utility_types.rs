@@ -78,6 +78,7 @@ pub enum FileType {
 	Tga,
 	Ico,
 	Svg,
+	Pdf,
 }
 
 impl FileType {
@@ -91,7 +92,13 @@ impl FileType {
 			FileType::Tga => "tga",
 			FileType::Ico => "ico",
 			FileType::Svg => "svg",
+			FileType::Pdf => "pdf",
 		}
+	}
+
+	/// Whether the file holds vector content, which doesn't depend on an export scale.
+	pub fn is_vector(self) -> bool {
+		matches!(self, FileType::Svg | FileType::Pdf)
 	}
 
 	pub fn file_filter(self) -> FileFilter {
@@ -104,6 +111,7 @@ impl FileType {
 			FileType::Tga => "TGA Image",
 			FileType::Ico => "ICO Image",
 			FileType::Svg => "SVG Image",
+			FileType::Pdf => "PDF Document",
 		};
 		FileFilter {
 			name: name.into(),
@@ -129,7 +137,7 @@ impl FileType {
 			FileType::Bmp => ImageFormat::Bmp,
 			FileType::Tga => ImageFormat::Tga,
 			FileType::Ico => ImageFormat::Ico,
-			FileType::Svg => return Err("SVG cannot be exported from an image buffer".to_string()),
+			FileType::Svg | FileType::Pdf => return Err(format!("{} cannot be exported from an image buffer", self.extension().to_uppercase())),
 		};
 		if self == FileType::Ico && (width > 256 || height > 256) {
 			return Err("An ICO image can be at most 256 pixels wide and tall. Lower the scale factor or choose a smaller export area.".to_string());
@@ -228,6 +236,7 @@ mod tests {
 	#[test]
 	fn file_types_that_cannot_hold_the_image_say_so() {
 		assert!(FileType::Svg.encode(1, 1, vec![0; 4]).is_err());
+		assert!(FileType::Pdf.encode(1, 1, vec![0; 4]).is_err());
 		assert!(FileType::Png.encode(2, 2, vec![0; 4]).is_err());
 
 		let too_large = FileType::Ico.encode(257, 1, vec![0; 257 * 4]).unwrap_err();

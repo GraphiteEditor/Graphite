@@ -1081,6 +1081,26 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn a_pdf_export_saves_a_pdf_document() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		send_export(&mut editor, FileType::Pdf);
+		editor.runtime.update();
+		editor.runtime.run().await;
+
+		let saved = editor.dispatch(Message::Wake).into_iter().find_map(|message| match message {
+			FrontendMessage::TriggerSaveFile { name, content, .. } => Some((name, content)),
+			_ => None,
+		});
+		let Some((name, content)) = saved else { panic!("the export should save a file") };
+
+		assert!(name.ends_with(".pdf"), "the file should be named as a PDF: {name}");
+		assert!(content.starts_with(b"%PDF-"), "the file should hold a PDF document");
+	}
+
+	#[tokio::test]
 	async fn an_svg_export_draws_effects_svg_filters_cannot_carry_out_as_images_the_gpu_renders() {
 		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 		use graphene_std::blending_nodes::effects::drop_shadow;

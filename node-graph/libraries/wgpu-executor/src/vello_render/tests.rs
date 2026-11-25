@@ -2541,3 +2541,98 @@ fn new_generator_tiles_take_over_the_textures_of_freed_ones() {
 		"the third pattern's tiles render into the textures of the first's"
 	);
 }
+
+#[test]
+fn native_glyph_runs_match_outlined_text() {
+	use core_types::list::{ATTR_APPEARANCE, Item, List};
+	use core_types::{ATTR_FONT_SIZE, ATTR_LETTER_TILT, ATTR_MAX_WIDTH, ATTR_TEXT_ALIGN, ATTR_TRANSFORM};
+	use graphic_types::{Appearance, Coverage, Graphic};
+	use rendering::{Render, RenderParams};
+
+	let size = UVec2::new(320, 120);
+
+	// Tilted, and wrapped into a justified last line so blank glyphs take the extra spacing
+	let text = Item::new_from_element("Glyph runs\nspace out".to_string())
+		.with_attribute(ATTR_FONT_SIZE, 36.)
+		.with_attribute(ATTR_LETTER_TILT, 12.)
+		.with_attribute(ATTR_MAX_WIDTH, 300.)
+		.with_attribute(ATTR_TEXT_ALIGN, text_nodes::TextAlign::JustifyAll)
+		.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glam::DVec2::new(10., 10.)));
+
+	let mut outlined = text_nodes::shape_text_item(&text, false).expect("the fallback font shapes the text");
+	let black_fill = Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(core_types::Color::BLACK)));
+	for index in 0..outlined.len() {
+		outlined.set_attribute(ATTR_APPEARANCE, index, black_fill.clone());
+	}
+	let text = List::new_from_item(text);
+
+	let render_params = RenderParams::default();
+	let Some(native) = render(size, |scene| {
+		assert!(scene.can_draw_glyphs(), "renders through the executor draw glyph runs natively");
+		text.render_to_vello(scene, DAffine2::IDENTITY, &render_params);
+	}) else {
+		return;
+	};
+	let Some(reference) = render(size, |scene| outlined.render_to_vello(scene, DAffine2::IDENTITY, &render_params)) else {
+		return;
+	};
+
+	let coverage = |pixels: &[[u8; 4]]| pixels.iter().filter(|pixel| pixel[3] > 127).count();
+	assert!(coverage(&reference) > 500, "the reference draws the text");
+
+	// Both fill the same outlines, so only antialiasing along their edges may differ
+	let differing = native.iter().zip(&reference).filter(|(a, b)| a[3].abs_diff(b[3]) > 64).count();
+	assert!(differing * 50 < coverage(&reference), "{differing} pixels differ out of {} covered", coverage(&reference));
+}
+
+#[test]
+fn native_glyph_runs_paint_like_outlined_text() {
+	use core_types::list::{ATTR_APPEARANCE, Item, List};
+	use core_types::{ATTR_FONT_SIZE, ATTR_TRANSFORM};
+	use graphic_types::appearance::{CoverPlacement, stamp_coverage};
+	use graphic_types::vector_types::gradient::Gradient;
+	use graphic_types::vector_types::vector::style::Stroke as VectorStroke;
+	use graphic_types::{Appearance, Coverage, Graphic};
+	use rendering::{Render, RenderParams};
+
+	let size = UVec2::new(320, 120);
+
+	// Scaled evenly, so the stroke's width is measured in a space the glyphs reach by a uniform scale
+	let mut text = Item::new_from_element("Painted".to_string())
+		.with_attribute(ATTR_FONT_SIZE, 40.)
+		.with_attribute(ATTR_TRANSFORM, DAffine2::from_scale_angle_translation(glam::DVec2::splat(1.5), 0.1, glam::DVec2::new(10., 5.)));
+
+	let gradient_placement = DAffine2::from_scale_angle_translation(glam::DVec2::new(160., 50.), 0., glam::DVec2::ZERO);
+	let gradient = Item::new_from_element(Gradient::from(vec![
+		core_types::Color::from_rgbaf32_unchecked(1., 0., 0., 1.),
+		core_types::Color::from_rgbaf32_unchecked(0., 0., 1., 1.),
+	]))
+	.with_attribute(ATTR_TRANSFORM, gradient_placement);
+	stamp_coverage(&mut text, Coverage::new_fill(), Graphic::Gradient(gradient), CoverPlacement::Above);
+
+	let stroke = VectorStroke { weight: 3., ..Default::default() };
+	let stroke_paint = Graphic::ColorList(List::new_from_element(core_types::Color::from_rgbaf32_unchecked(0., 0.6, 0., 1.)));
+	stamp_coverage(&mut text, Coverage::new_stroke(&stroke), stroke_paint, CoverPlacement::Above);
+
+	let appearance: Appearance = text.attribute_cloned_or_default(ATTR_APPEARANCE);
+	let mut outlined = text_nodes::shape_text_item(&text, false).expect("the fallback font shapes the text");
+	for index in 0..outlined.len() {
+		outlined.set_attribute(ATTR_APPEARANCE, index, appearance.clone());
+	}
+	let text = List::new_from_item(text);
+
+	let render_params = RenderParams::default();
+	let Some(native) = render(size, |scene| text.render_to_vello(scene, DAffine2::IDENTITY, &render_params)) else {
+		return;
+	};
+	let Some(reference) = render(size, |scene| outlined.render_to_vello(scene, DAffine2::IDENTITY, &render_params)) else {
+		return;
+	};
+
+	let covered = reference.iter().filter(|pixel| pixel[3] > 127).count();
+	assert!(covered > 500, "the reference draws the text");
+
+	// Strokes expand per glyph rather than along the compound outline, so only antialiasing along their edges may differ
+	let differing = (native.iter().zip(&reference)).filter(|(a, b)| a.iter().zip(b.iter()).any(|(a, b)| a.abs_diff(*b) > 64)).count();
+	assert!(differing * 50 < covered, "{differing} pixels differ out of {covered} covered");
+}

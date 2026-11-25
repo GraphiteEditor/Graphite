@@ -163,6 +163,48 @@ impl VectorItemMut for Item<Graphic> {
 	}
 }
 
+/// Content a paint can cover, which a gradient without its own placement spans the bounds of.
+trait PaintTarget {
+	/// The union of the content's bounds in its own space, before its transform.
+	fn content_bounds(&mut self) -> Option<[DVec2; 2]>;
+}
+
+/// The union of the bounds of the vector content `content` reaches, or `None` without any measurable geometry.
+fn vector_content_bounds(content: &mut impl VectorItemMut) -> Option<[DVec2; 2]> {
+	let mut bounds: Option<[DVec2; 2]> = None;
+	content.for_each_vector_mut(|vector, vector_paths, _| {
+		if let Some([min, max]) = vector.bounding_box(vector_paths) {
+			bounds = Some(match bounds {
+				Some([bounds_min, bounds_max]) => [bounds_min.min(min), bounds_max.max(max)],
+				None => [min, max],
+			});
+		}
+	});
+
+	bounds
+}
+
+impl PaintTarget for Item<Vector> {
+	fn content_bounds(&mut self) -> Option<[DVec2; 2]> {
+		vector_content_bounds(self)
+	}
+}
+
+impl PaintTarget for Item<Graphic> {
+	fn content_bounds(&mut self) -> Option<[DVec2; 2]> {
+		match self.element() {
+			Graphic::Text(text) => text_nodes::text_item_layout_bounds(text),
+			_ => vector_content_bounds(self),
+		}
+	}
+}
+
+impl PaintTarget for Item<String> {
+	fn content_bounds(&mut self) -> Option<[DVec2; 2]> {
+		text_nodes::text_item_layout_bounds(self)
+	}
+}
+
 /// Geometry counterpart to [`VectorItemMut`] for the element-wise modifier nodes, running a per-item transformation over
 /// every vector reachable from the content. Geometry is never inherited, so this recurses into nested groups.
 trait MapVectorItems: Sized {
@@ -408,12 +450,12 @@ fn vary_cover_colors<T: VectorListIterMut>(
 	Ok(content)
 }
 
-/// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
+/// Applies a fill style to the vector or text content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), icon("NodeFill"), path(graphene_core::vector), inspector("fill_inspector"))]
 fn fill<V>(
 	_: impl Ctx,
-	/// The content with vector paths to apply the fill style to.
-	#[implementations(Vector, Graphic)]
+	/// The vector paths or text to apply the fill style to.
+	#[implementations(Vector, Graphic, String)]
 	content: Item<V>,
 	#[default(Color::BLACK)] paint: Item<Graphic>,
 	_backup_color: Item<Color>,
@@ -423,7 +465,7 @@ fn fill<V>(
 	_transform: Item<DAffine2>,
 ) -> Item<V>
 where
-	Item<V>: VectorItemMut + Send,
+	Item<V>: PaintTarget + Send,
 {
 	let _gradient_form = _gradient_form.into_element();
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
@@ -448,18 +490,8 @@ where
 			return _transform;
 		}
 
-		let mut bounds: Option<[DVec2; 2]> = None;
-		content.for_each_vector_mut(|vector, vector_paths, _| {
-			if let Some([min, max]) = vector.bounding_box(vector_paths) {
-				bounds = Some(match bounds {
-					Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
-					None => [min, max],
-				});
-			}
-		});
-
 		// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
-		let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		let [min, mut max] = content.content_bounds().unwrap_or([DVec2::ZERO, DVec2::ONE]);
 		if max.x - min.x < 1e-10 {
 			max.x = min.x + 1.;
 		}
@@ -498,12 +530,12 @@ where
 	content
 }
 
-/// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
+/// Applies a stroke style to the vector or text content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), icon("NodeStroke"), path(graphene_core::vector), inspector("stroke_inspector"))]
 fn stroke<V>(
 	_: impl Ctx,
-	/// The content with vector paths to apply the stroke style to.
-	#[implementations(Vector, Graphic)]
+	/// The vector paths or text to apply the stroke style to.
+	#[implementations(Vector, Graphic, String)]
 	content: Item<V>,
 	/// The stroke paint.
 	#[default(Color::BLACK)]
@@ -530,7 +562,7 @@ fn stroke<V>(
 	dash_offset: Item<f64>,
 ) -> Item<V>
 where
-	Item<V>: VectorItemMut + Send,
+	Item<V>: PaintTarget + Send,
 {
 	let mut content = content;
 	let (weight, align, cap, join, miter_limit, dash_offset) = (

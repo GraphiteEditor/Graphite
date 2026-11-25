@@ -28,16 +28,8 @@ fn typography_attribute<T: Clone + 'static>(item: &Item<String>, key: &'static s
 	value.downcast_ref::<T>().cloned().map(Some).ok_or(TextToVectorError::MistypedAttribute(key))
 }
 
-/// Shapes a single styled string item into vector geometry, reading its font and typesetting from the item's
-/// attributes (as set by the 'Text' node) and re-applying its transform and blending attributes onto the produced
-/// paths. With `separate_glyphs`, each glyph becomes its own item; otherwise a single compound path is produced.
-pub fn shape_text_item(item: &Item<String>, separate_glyphs: bool) -> Result<List<Vector>, TextToVectorError> {
-	let text = item.element();
-	if text.is_empty() {
-		return Ok(List::new());
-	}
-
-	// Use fallback font when none is explicitly attached.
+/// The font and typesetting a styled string item's attributes set, falling back to the default font when none is attached.
+fn item_font_and_typesetting(item: &Item<String>) -> Result<(Resource, TypesettingConfig), TextToVectorError> {
 	let font = typography_attribute::<Resource>(item, ATTR_FONT)?.filter(|font| !font.is_empty());
 	let font = font.unwrap_or_else(|| super::FALLBACK_FONT_RESOURCE.clone());
 
@@ -52,6 +44,30 @@ pub fn shape_text_item(item: &Item<String>, separate_glyphs: bool) -> Result<Lis
 		align: typography_attribute(item, ATTR_TEXT_ALIGN)?.unwrap_or(defaults.align),
 	};
 
+	Ok((font, typesetting))
+}
+
+/// The box a styled string item lays out in, in its own space before its transform, or `None` for empty or unreadable text.
+pub fn text_item_layout_bounds(item: &Item<String>) -> Option<[DVec2; 2]> {
+	if item.element().is_empty() {
+		return None;
+	}
+
+	let (font, typesetting) = item_font_and_typesetting(item).ok()?;
+	let size = bounding_box(item.element(), &font, typesetting, false);
+	(size != DVec2::ZERO).then_some([DVec2::ZERO, size])
+}
+
+/// Shapes a single styled string item into vector geometry, reading its font and typesetting from the item's
+/// attributes (as set by the 'Text' node) and re-applying its transform and blending attributes onto the produced
+/// paths. With `separate_glyphs`, each glyph becomes its own item; otherwise a single compound path is produced.
+pub fn shape_text_item(item: &Item<String>, separate_glyphs: bool) -> Result<List<Vector>, TextToVectorError> {
+	let text = item.element();
+	if text.is_empty() {
+		return Ok(List::new());
+	}
+
+	let (font, typesetting) = item_font_and_typesetting(item)?;
 	let vectors = to_path(text, &font, typesetting, separate_glyphs)?;
 	let transform = item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 	let layer_path = item.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).cloned();

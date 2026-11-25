@@ -18,6 +18,7 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileType {
 	Svg,
+	Pdf,
 	Png,
 	Jpg,
 	Webp,
@@ -29,7 +30,7 @@ pub enum FileType {
 }
 
 impl FileType {
-	/// The image format of a file type encoded from a single image, which excludes SVG and GIF.
+	/// The image format of a file type encoded from a single image, which excludes SVG, PDF, and GIF.
 	fn raster_format(self) -> Option<ImageFormat> {
 		match self {
 			FileType::Png => Some(ImageFormat::Png),
@@ -39,7 +40,7 @@ impl FileType {
 			FileType::Bmp => Some(ImageFormat::Bmp),
 			FileType::Tga => Some(ImageFormat::Tga),
 			FileType::Ico => Some(ImageFormat::Ico),
-			FileType::Svg | FileType::Gif => None,
+			FileType::Svg | FileType::Pdf | FileType::Gif => None,
 		}
 	}
 }
@@ -47,6 +48,7 @@ impl FileType {
 pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 	match path.extension().and_then(|s| s.to_str()) {
 		Some("svg") => Ok(FileType::Svg),
+		Some("pdf") => Ok(FileType::Pdf),
 		Some("png") => Ok(FileType::Png),
 		Some("jpg" | "jpeg") => Ok(FileType::Jpg),
 		Some("webp") => Ok(FileType::Webp),
@@ -55,13 +57,14 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 		Some("tga") => Ok(FileType::Tga),
 		Some("ico") => Ok(FileType::Ico),
 		Some("gif") => Ok(FileType::Gif),
-		_ => Err("Unsupported file extension. Supported formats: .svg, .png, .jpg, .webp, .tiff, .bmp, .tga, .ico, .gif".to_string()),
+		_ => Err("Unsupported file extension. Supported formats: .svg, .pdf, .png, .jpg, .webp, .tiff, .bmp, .tga, .ico, .gif".to_string()),
 	}
 }
 
-/// One rendered frame of the document, as SVG text or as 8-bit RGBA pixels with straight alpha.
+/// One rendered frame of the document, as SVG text, a PDF document, or 8-bit RGBA pixels with straight alpha.
 pub enum RenderedFrame {
 	Svg(String),
+	Pdf(Vec<u8>),
 	Raster { data: Vec<u8>, width: u32, height: u32 },
 }
 
@@ -165,7 +168,11 @@ pub(crate) async fn render_frame(
 		size: (width, height),
 		..
 	} = settings;
-	let export_format = if file_type == FileType::Svg { ExportFormat::Svg } else { ExportFormat::Raster };
+	let export_format = match file_type {
+		FileType::Svg => ExportFormat::Svg,
+		FileType::Pdf => ExportFormat::Pdf,
+		_ => ExportFormat::Raster,
+	};
 
 	// Create render config with export settings and the animation time
 	let mut render_config = RenderConfig {
@@ -190,6 +197,7 @@ pub(crate) async fn render_frame(
 	match execute_until_settled(executor, runtime, spawner, render_config).await? {
 		TaggedValue::RenderOutput(output) => match output.data {
 			RenderOutputType::Svg { svg, .. } => Ok(RenderedFrame::Svg(svg)),
+			RenderOutputType::Pdf { data } => Ok(RenderedFrame::Pdf(data)),
 			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
 				let gpu_raster = Raster::<GPU>::new_gpu(texture);
@@ -199,7 +207,7 @@ pub(crate) async fn render_frame(
 			}
 			RenderOutputType::Buffer { data, width, height } => Ok(RenderedFrame::Raster { data, width, height }),
 			#[cfg(target_family = "wasm")]
-			other => Err(format!("Unexpected render output type: {other:?}. Expected Texture, Buffer for raster export or Svg for SVG export.").into()),
+			other => Err(format!("Unexpected render output type: {other:?}. Expected Texture or Buffer for raster export, Svg for SVG export, or Pdf for PDF export.").into()),
 		},
 		other => Err(format!("Expected RenderOutput, got: {other:?}").into()),
 	}
@@ -209,6 +217,7 @@ pub(crate) async fn render_frame(
 fn write_frame(path: &Path, settings: ExportSettings, frame: RenderedFrame) -> Result<(), Box<dyn Error>> {
 	let contents = match frame {
 		RenderedFrame::Svg(svg) => svg.into_bytes(),
+		RenderedFrame::Pdf(pdf) => pdf,
 		RenderedFrame::Raster { data, width, height } => encode_raster(settings.file_type, data, width, height, settings.transparent)?,
 	};
 	std::fs::write(path, contents)?;
@@ -469,6 +478,7 @@ mod tests {
 		assert_eq!(detect_file_type(Path::new("frame.tif")), Ok(FileType::Tiff));
 		assert_eq!(detect_file_type(Path::new("frame.jpeg")), Ok(FileType::Jpg));
 		assert_eq!(detect_file_type(Path::new("frame.webp")), Ok(FileType::Webp));
+		assert_eq!(detect_file_type(Path::new("frame.pdf")), Ok(FileType::Pdf));
 		assert!(detect_file_type(Path::new("frame.exr")).is_err());
 		assert!(detect_file_type(Path::new("frame")).is_err());
 	}
