@@ -57,7 +57,11 @@ fn path_item(path: &usvg::Path) -> Item<Graphic> {
 	if let Some(stroke) = path.stroke()
 		&& let usvg::Paint::Color(color) = stroke.paint()
 	{
-		stamp_coverage(&mut vector, Coverage::new_stroke(&stroke::style(stroke)), solid_paint(*color, stroke.opacity()), CoverPlacement::Above);
+		let placement = match path.paint_order() {
+			usvg::PaintOrder::FillAndStroke => CoverPlacement::Above,
+			usvg::PaintOrder::StrokeAndFill => CoverPlacement::Below,
+		};
+		stamp_coverage(&mut vector, Coverage::new_stroke(&stroke::style(stroke)), solid_paint(*color, stroke.opacity()), placement);
 	}
 
 	Item::new_from_element(Graphic::VectorList(List::new_from_item(vector)))

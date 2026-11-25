@@ -98,6 +98,15 @@ fn a_stroke_in_a_scaled_group_is_measured_in_the_paths_own_space() -> Result<(),
 }
 
 #[test]
+fn paint_order_stroke_puts_the_stroke_coverage_below_the_fill() -> Result<(), Error> {
+	let content = converted(r#"<rect width="4" height="4" stroke="red" paint-order="stroke"/>"#)?;
+
+	let stroke_below = appearance_of(&content).map(|appearance| appearance.fill_and_stroke().stroke_below);
+	assert_eq!(stroke_below, Some(true));
+	Ok(())
+}
+
+#[test]
 fn malformed_input_is_an_error() {
 	assert!(convert("<svg", &Options::default()).is_err());
 }
