@@ -13,6 +13,10 @@ fn appearance_of(content: &List<Graphic>) -> Option<&Appearance> {
 	vectors.attribute(ATTR_APPEARANCE, 0)
 }
 
+fn group(content: &List<Graphic>, index: usize) -> Option<&List<Graphic>> {
+	content.element(index)?.as_graphic_list()
+}
+
 #[test]
 fn a_filled_path_becomes_a_vector_whose_fill_coverage_carries_its_color() -> Result<(), Error> {
 	let content = converted(r#"<rect width="4" height="4" fill="red" fill-opacity="0.5"/>"#)?;
@@ -51,6 +55,17 @@ fn text_becomes_a_group_of_glyph_outlines_when_its_font_is_given() -> Result<(),
 	)?;
 
 	assert!(matches!(content.element(0), Some(Graphic::GraphicList(glyphs)) if matches!(glyphs.element(0), Some(Graphic::VectorList(_)))));
+	Ok(())
+}
+
+#[test]
+fn a_nested_svg_image_becomes_a_group_of_its_content() -> Result<(), Error> {
+	let content = converted(
+		r#"<image width="4" height="4" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%224%22%20height=%224%22%3E%3Crect%20width=%224%22%20height=%224%22/%3E%3C/svg%3E"/>"#,
+	)?;
+
+	let nested_root = group(&content, 0).and_then(|placement| placement.element(0));
+	assert!(matches!(nested_root, Some(Graphic::GraphicList(nested)) if matches!(nested.element(0), Some(Graphic::VectorList(_)))));
 	Ok(())
 }
 

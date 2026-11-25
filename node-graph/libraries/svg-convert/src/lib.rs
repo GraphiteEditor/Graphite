@@ -25,6 +25,7 @@ fn graphic_item(node: &usvg::Node) -> Option<Item<Graphic>> {
 	match node {
 		usvg::Node::Group(group) => Some(group_item(group)),
 		usvg::Node::Path(path) if path.is_visible() => Some(path_item(path)),
+		usvg::Node::Image(image) if image.is_visible() => image_item(image),
 		usvg::Node::Text(text) => Some(group_item(text.flattened())),
 		usvg::Node::Path(_) | usvg::Node::Image(_) => None,
 	}
@@ -54,6 +55,13 @@ fn path_item(path: &usvg::Path) -> Item<Graphic> {
 	}
 
 	Item::new_from_element(Graphic::VectorList(List::new_from_item(vector)))
+}
+
+fn image_item(image: &usvg::Image) -> Option<Item<Graphic>> {
+	match image.kind() {
+		usvg::ImageKind::SVG(tree) => Some(group_item(tree.root())),
+		usvg::ImageKind::PNG(_) | usvg::ImageKind::JPEG(_) | usvg::ImageKind::GIF(_) | usvg::ImageKind::WEBP(_) => None,
+	}
 }
 
 fn bezpath(path: &tiny_skia_path::Path) -> BezPath {
