@@ -1,11 +1,12 @@
 use core_types::list::{ATTR_APPEARANCE, Item, List};
-use core_types::{ATTR_BLEND_MODE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color};
+use core_types::{ATTR_BLEND_MODE, ATTR_EFFECTS, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color};
 use glam::{DAffine2, DVec2};
+use graphic_types::effects::shadow_offset;
 use graphic_types::raster_types::{Image, Raster};
 use graphic_types::vector_types::vector::paths_from_list_row_attributes;
 use graphic_types::vector_types::vector::style::{StrokeCap, StrokeJoin};
 use graphic_types::vector_types::{Gradient, GradientForm, GradientSpace, GradientSpread};
-use graphic_types::{Appearance, Cover, Coverage, Graphic};
+use graphic_types::{Appearance, Cover, Coverage, EffectOperation, Effects, Graphic};
 use kurbo::{BezPath, Point, Shape};
 use svg_convert::{Error, Options, convert};
 
@@ -289,6 +290,49 @@ fn a_mask_region_that_cuts_its_content_clips_the_masked_content() -> Result<(), 
 	let clipped = within_region.and_then(Graphic::as_graphic_list);
 	assert!(clipped.and_then(|clipped| clipped.element(0)).is_some_and(Graphic::can_reduce_to_clip_path));
 	assert!(clipped.and_then(|clipped| clipped.element(1)).is_some_and(Graphic::had_clip_enabled));
+	Ok(())
+}
+
+#[test]
+fn a_gaussian_blur_filter_becomes_a_blur_of_the_geometric_mean_of_its_standard_deviations() -> Result<(), Error> {
+	let content = converted(
+		r#"<filter id="blur" filterUnits="userSpaceOnUse" x="-4" y="-4" width="16" height="16" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="1 4" color-interpolation-filters="linearRGB" result="effect-1"/><feOffset in="effect-1" result="effect-2"/></filter><g filter="url(#blur)"><rect width="8" height="8"/></g>"#,
+	)?;
+
+	let effects = group(&content, 0).and_then(|filtered| filtered.attribute::<Effects>(ATTR_EFFECTS, 0));
+	assert_eq!(
+		effects,
+		Some(&Effects::from_operations([EffectOperation::Blur {
+			radius: 2.,
+			box_blur: false,
+			gamma: false
+		}]))
+	);
+	Ok(())
+}
+
+#[test]
+fn a_drop_shadow_falls_by_its_offset_in_its_color() -> Result<(), Error> {
+	let content = converted(r#"<g filter="drop-shadow(3px 4px 0 red)"><rect width="4" height="4"/></g>"#)?;
+
+	let shadow = group(&content, 0)
+		.and_then(|filtered| filtered.attribute::<Effects>(ATTR_EFFECTS, 0))
+		.and_then(|effects| effects.operations().next());
+	let (offset, color) = match shadow {
+		Some(EffectOperation::DropShadow { color, angle, distance, .. }) => (Some(shadow_offset(angle, distance)), Some(color)),
+		_ => (None, None),
+	};
+	assert!(offset.is_some_and(|offset| offset.abs_diff_eq(DVec2::new(3., 4.), 1e-9)));
+	assert_eq!(color, Some(Color::from_gamma_srgb_channels(1., 0., 0., 1.)));
+	Ok(())
+}
+
+#[test]
+fn a_filter_on_a_clipped_group_applies_to_the_content_before_the_clip() -> Result<(), Error> {
+	let content = converted(r#"<clipPath id="clip"><rect width="4" height="4"/></clipPath><g clip-path="url(#clip)" filter="blur(1)"><rect width="8" height="8"/></g>"#)?;
+
+	let clipped_content = group(&content, 0).and_then(|clipped| group(clipped, 1));
+	assert!(clipped_content.and_then(|filtered| filtered.attribute::<Effects>(ATTR_EFFECTS, 0)).is_some());
 	Ok(())
 }
 

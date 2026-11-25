@@ -6,6 +6,7 @@
 mod blend_mode;
 mod clip;
 mod even_odd;
+mod filter;
 mod gradient;
 mod mask;
 mod raster;
@@ -41,6 +42,7 @@ fn graphic_item(node: &usvg::Node) -> Option<Item<Graphic>> {
 
 fn group_item(group: &usvg::Group) -> Item<Graphic> {
 	let content = graphic_list(group);
+	let content = filter::filtered(group, content);
 	let content = clip::clipped(group, content);
 	let content = mask::masked(group, content);
 
