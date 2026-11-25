@@ -1,6 +1,7 @@
 use core_types::list::{ATTR_APPEARANCE, Item, List};
 use core_types::{ATTR_BLEND_MODE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_TRANSFORM, BlendMode, Color};
 use glam::{DAffine2, DVec2};
+use graphic_types::raster_types::{Image, Raster};
 use graphic_types::vector_types::vector::style::{StrokeCap, StrokeJoin};
 use graphic_types::vector_types::{Gradient, GradientForm, GradientSpace, GradientSpread};
 use graphic_types::{Appearance, Cover, Graphic};
@@ -78,6 +79,22 @@ fn a_nested_svg_image_becomes_a_group_of_its_content() -> Result<(), Error> {
 
 	let nested_root = group(&content, 0).and_then(|placement| placement.element(0));
 	assert!(matches!(nested_root, Some(Graphic::GraphicList(nested)) if matches!(nested.element(0), Some(Graphic::VectorList(_)))));
+	Ok(())
+}
+
+#[test]
+fn a_raster_image_becomes_a_raster_scaled_to_its_pixel_size() -> Result<(), Error> {
+	let png = Raster::new_cpu(Image::new(2, 1, Color::RED)).png_data_url();
+	let content = converted(&format!(r#"<image href="{png}"/>"#))?;
+
+	let rasters = match group(&content, 0).and_then(|image| image.element(0)) {
+		Some(Graphic::RasterCPUList(rasters)) => Some(rasters),
+		_ => None,
+	};
+	assert_eq!(
+		rasters.and_then(|rasters| rasters.attribute::<DAffine2>(ATTR_TRANSFORM, 0)),
+		Some(&DAffine2::from_scale(DVec2::new(2., 1.)))
+	);
 	Ok(())
 }
 

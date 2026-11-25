@@ -5,6 +5,7 @@
 
 mod blend_mode;
 mod gradient;
+mod raster;
 mod stroke;
 
 use core_types::list::{Item, List};
@@ -74,7 +75,7 @@ fn path_item(path: &usvg::Path) -> Item<Graphic> {
 fn image_item(image: &usvg::Image) -> Option<Item<Graphic>> {
 	match image.kind() {
 		usvg::ImageKind::SVG(tree) => Some(group_item(tree.root())),
-		usvg::ImageKind::PNG(_) | usvg::ImageKind::JPEG(_) | usvg::ImageKind::GIF(_) | usvg::ImageKind::WEBP(_) => None,
+		usvg::ImageKind::PNG(data) | usvg::ImageKind::JPEG(data) | usvg::ImageKind::GIF(data) | usvg::ImageKind::WEBP(data) => raster::raster_item(data, image.size()),
 	}
 }
 
