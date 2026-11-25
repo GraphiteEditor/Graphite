@@ -6,7 +6,7 @@ use graphic_types::raster_types::{Image, Raster};
 use graphic_types::vector_types::vector::paths_from_list_row_attributes;
 use graphic_types::vector_types::vector::style::{StrokeCap, StrokeJoin};
 use graphic_types::vector_types::{Gradient, GradientForm, GradientSpace, GradientSpread};
-use graphic_types::{Appearance, Cover, Coverage, EffectOperation, Effects, Graphic};
+use graphic_types::{Appearance, Cover, Coverage, EffectOperation, Effects, Graphic, Vector};
 use kurbo::{BezPath, Point, Shape};
 use svg_convert::{Error, Options, convert};
 
@@ -333,6 +333,50 @@ fn a_filter_on_a_clipped_group_applies_to_the_content_before_the_clip() -> Resul
 
 	let clipped_content = group(&content, 0).and_then(|clipped| group(clipped, 1));
 	assert!(clipped_content.and_then(|filtered| filtered.attribute::<Effects>(ATTR_EFFECTS, 0)).is_some());
+	Ok(())
+}
+
+fn paint_of(content: &List<Graphic>, cover: Cover) -> Option<&Graphic> {
+	appearance_of(content)?.first_paint_of(cover)
+}
+
+fn tiles_of(paint: &Graphic) -> Option<&List<Vector>> {
+	paint.as_graphic_list()?.element(0)?.as_vector_list()
+}
+
+#[test]
+fn a_pattern_fill_paints_copies_of_its_tile_over_the_path_at_the_fill_opacity() -> Result<(), Error> {
+	let content =
+		converted(r#"<pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="5" height="5"/></pattern><rect width="40" height="20" fill="url(#p)" fill-opacity="0.5"/>"#)?;
+
+	let paint = paint_of(&content, Cover::Fill);
+	let tiles = paint.and_then(tiles_of);
+	assert_eq!(tiles.map(List::len), Some(8));
+	assert_eq!(
+		tiles.and_then(|tiles| tiles.attribute::<DAffine2>(ATTR_TRANSFORM, 7)),
+		Some(&DAffine2::from_translation(DVec2::new(30., 10.)))
+	);
+	assert_eq!(paint.and_then(Graphic::as_graphic_list).and_then(|paint| paint.attribute::<f64>(ATTR_OPACITY, 0)), Some(&0.5));
+	Ok(())
+}
+
+#[test]
+fn a_pattern_stroke_paints_tiles_over_the_outer_half_of_the_stroke() -> Result<(), Error> {
+	let content = converted(
+		r#"<pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="5" height="5"/></pattern><rect width="10" height="10" fill="url(#p)" stroke="url(#p)" stroke-width="4"/>"#,
+	)?;
+
+	let tile_count = |cover| paint_of(&content, cover).and_then(tiles_of).map(List::len);
+	assert_eq!(tile_count(Cover::Fill), Some(1));
+	assert_eq!(tile_count(Cover::Stroke), Some(9));
+	Ok(())
+}
+
+#[test]
+fn a_pattern_needing_too_many_tiles_leaves_the_fill_unpainted() -> Result<(), Error> {
+	let content = converted(r#"<pattern id="p" width="1" height="1" patternUnits="userSpaceOnUse"><rect width="1" height="1"/></pattern><rect width="1000" height="1000" fill="url(#p)"/>"#)?;
+
+	assert_eq!(paint_of(&content, Cover::Fill), None);
 	Ok(())
 }
 

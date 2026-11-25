@@ -9,6 +9,7 @@ mod even_odd;
 mod filter;
 mod gradient;
 mod mask;
+mod pattern;
 mod raster;
 mod stroke;
 
@@ -64,12 +65,12 @@ fn path_item(path: &usvg::Path) -> Item<Graphic> {
 	let geometry = bezpath(path.data());
 	let mut vector = Vector::item_from_bezpath(&geometry);
 	if let Some(fill) = path.fill()
-		&& let Some(fill_paint) = paint(fill.paint(), fill.opacity())
+		&& let Some(fill_paint) = paint(fill.paint(), fill.opacity(), path.bounding_box())
 	{
 		stamp_coverage(&mut vector, Coverage::new_fill(), fill_paint, CoverPlacement::Above);
 	}
 	if let Some(stroke) = path.stroke()
-		&& let Some(stroke_paint) = paint(stroke.paint(), stroke.opacity())
+		&& let Some(stroke_paint) = paint(stroke.paint(), stroke.opacity(), path.stroke_bounding_box())
 	{
 		let placement = match path.paint_order() {
 			usvg::PaintOrder::FillAndStroke => CoverPlacement::Above,
@@ -92,12 +93,12 @@ fn image_item(image: &usvg::Image) -> Option<Item<Graphic>> {
 	}
 }
 
-fn paint(paint: &usvg::Paint, opacity: usvg::Opacity) -> Option<Graphic> {
+fn paint(paint: &usvg::Paint, opacity: usvg::Opacity, covered: usvg::Rect) -> Option<Graphic> {
 	match paint {
 		usvg::Paint::Color(rgb) => Some(Graphic::from(color(*rgb, opacity.get()))),
 		usvg::Paint::LinearGradient(linear) => Some(gradient::linear(linear, opacity)),
 		usvg::Paint::RadialGradient(radial) => Some(gradient::radial(radial, opacity)),
-		usvg::Paint::Pattern(_) => None,
+		usvg::Paint::Pattern(pattern) => pattern::tiled(pattern, covered, opacity),
 	}
 }
 
