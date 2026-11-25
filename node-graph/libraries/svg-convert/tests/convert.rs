@@ -162,6 +162,17 @@ fn a_linear_gradient_is_placed_along_its_vector_and_interpolates_in_gamma() -> R
 }
 
 #[test]
+fn a_zero_length_linear_gradient_paints_the_color_of_its_last_stop() -> Result<(), Error> {
+	let content = converted(
+		r#"<linearGradient id="g" gradientUnits="userSpaceOnUse" x1="4" y1="4" x2="4" y2="4"><stop stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient><rect width="8" height="8" fill="url(#g)" fill-opacity="0.5"/>"#,
+	)?;
+
+	let fill = appearance_of(&content).and_then(|appearance| appearance.first_paint_of(Cover::Fill));
+	assert_eq!(fill, Some(&Graphic::from(Color::from_gamma_srgb_channels(0., 0., 1., 0.5))));
+	Ok(())
+}
+
+#[test]
 fn a_bounding_box_radial_gradient_on_a_wide_shape_is_placed_as_an_ellipse() -> Result<(), Error> {
 	let content = converted(r#"<radialGradient id="g"><stop stop-color="red"/><stop offset="1" stop-color="blue"/></radialGradient><rect width="8" height="4" fill="url(#g)"/>"#)?;
 

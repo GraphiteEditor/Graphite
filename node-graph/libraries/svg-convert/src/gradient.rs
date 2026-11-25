@@ -8,6 +8,11 @@ use graphic_types::vector_types::{Gradient, GradientForm, GradientSpace, Gradien
 pub fn linear(gradient: &usvg::LinearGradient, opacity: usvg::Opacity) -> Graphic {
 	let start = DVec2::new(gradient.x1().into(), gradient.y1().into());
 	let direction = DVec2::new(gradient.x2().into(), gradient.y2().into()) - start;
+	if direction == DVec2::ZERO
+		&& let Some(last) = gradient.stops().last()
+	{
+		return Graphic::from(color(last.color(), last.opacity().get() * opacity.get()));
+	}
 	paint(gradient, GradientForm::Linear, DAffine2::from_cols(direction, direction.perp(), start), opacity)
 }
 
