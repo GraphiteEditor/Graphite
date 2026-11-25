@@ -176,6 +176,7 @@ pub enum DocumentMessage {
 	SaveDocumentAs,
 	SavedDocument {
 		path: Option<PathBuf>,
+		hash: u64,
 	},
 	MarkAsSaved,
 	SelectParentLayer,

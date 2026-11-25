@@ -1,3 +1,4 @@
+import { fileHandlesSupported } from "/src/utility-functions/files";
 import type { DocumentInfo, EditorWrapper, PersistedState } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const PERSISTENCE_DB = "graphite";
@@ -53,7 +54,22 @@ export async function writePersistedState(state: PersistedState, writtenDocument
 		request.onsuccess = () => {
 			const stored: PersistedState | undefined = request.result;
 			const others = (stored?.documents ?? []).filter((entry) => !writtenDocuments.has(entry.id));
-			store.put({ ...state, documents: [...state.documents, ...others] }, "state");
+			const documents = [...state.documents, ...others];
+			store.put({ ...state, documents }, "state");
+
+			// Drop handles no document uses anymore
+			const paths = new Set(documents.map((entry) => entry.path));
+			const unused = (stored?.documents ?? []).flatMap((entry) => (entry.path && !paths.has(entry.path) ? [entry.path] : []));
+			if (unused.length === 0) return;
+
+			const handlesRequest = store.get("file_handles");
+			handlesRequest.onsuccess = () => {
+				const handles: Record<string, FileSystemFileHandle> | undefined = handlesRequest.result;
+				if (!handles) return;
+
+				unused.forEach((path) => delete handles[path]);
+				store.put(handles, "file_handles");
+			};
 		};
 		transaction.oncomplete = () => resolve();
 		transaction.onerror = () => reject(transaction.error);
@@ -64,8 +80,9 @@ export async function readPersistedState(editor: EditorWrapper) {
 	await migrateToNewFormat();
 	await migrateDocumentsToStore();
 
+	// A failed cleanup only leaves unused handles behind, so it doesn't block restoring the session
+	if (fileHandlesSupported()) await fileHandlesPrune().catch(() => undefined);
 	const state = await databaseGet<PersistedState>("state");
-	await fileHandlesPrune(state?.documents ?? []);
 	editor.loadPersistedState(state ?? emptyPersistedState());
 }
 
@@ -100,9 +117,29 @@ export async function fileHandleStore(handle: FileSystemFileHandle): Promise<str
 	return path;
 }
 
-async function fileHandlesPrune(documents: DocumentInfo[]) {
-	const paths = new Set(documents.map((entry) => entry.path));
-	await databaseUpdate<Record<string, FileSystemFileHandle>>("file_handles", (current) => Object.fromEntries(Object.entries(current ?? {}).filter(([path]) => paths.has(path))));
+// Drops handles no listed document uses, e.g. from a failed open
+async function fileHandlesPrune() {
+	const db = await databaseOpen();
+	await new Promise<void>((resolve, reject) => {
+		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
+		const store = transaction.objectStore(PERSISTENCE_STORE);
+		const stateRequest = store.get("state");
+		const handlesRequest = store.get("file_handles");
+		handlesRequest.onsuccess = () => {
+			const stored: PersistedState | undefined = stateRequest.result;
+			const handles: Record<string, FileSystemFileHandle> | undefined = handlesRequest.result;
+			if (!handles) return;
+
+			const paths = new Set((stored?.documents ?? []).map((entry) => entry.path));
+			const unused = Object.keys(handles).filter((path) => !paths.has(path));
+			if (unused.length === 0) return;
+
+			unused.forEach((path) => delete handles[path]);
+			store.put(handles, "file_handles");
+		};
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = () => reject(transaction.error);
+	});
 }
 
 // =========================

@@ -134,8 +134,8 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 				.filter(|_| context.document_open);
 
 				let name = path.as_ref().and_then(|path| path.file_stem()).map(|stem| stem.to_string_lossy().into_owned());
-				// Not `is_absolute`, which is always false on wasm
-				let document_path = path.filter(|path| path.has_root());
+				// On wasm, `is_absolute` is always false, so the web's made-up file handle paths only need a root
+				let document_path = path.filter(|path| path.is_absolute() || (cfg!(target_family = "wasm") && path.has_root()));
 
 				let (mouse, parent_and_insert_index) = placement.unwrap_or_default();
 				let place_at_origin = placement.is_none();

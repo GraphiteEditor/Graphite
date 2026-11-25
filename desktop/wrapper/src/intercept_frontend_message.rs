@@ -24,11 +24,13 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::TriggerSaveDocument {
 			document_id,
+			save_id: _,
 			name,
 			path,
 			folder,
 			filters,
 			content,
+			hash,
 		} => {
 			let content = content.into_vec();
 			if let Some(path) = path {
@@ -39,7 +41,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 					default_filename: name,
 					default_folder: folder,
 					filters,
-					context: SaveFileDialogContext::Document { document_id, content },
+					context: SaveFileDialogContext::Document { document_id, content, hash },
 				});
 			}
 		}

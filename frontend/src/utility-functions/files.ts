@@ -89,14 +89,6 @@ export function fileHandlesSupported(): boolean {
 	return "showOpenFilePicker" in window && "showSaveFilePicker" in window;
 }
 
-// Matches the editor's `FILE_EXTENSION` and `GDD_FILE_EXTENSION`
-const DOCUMENT_EXTENSIONS = ["graphite", "gdd"];
-
-export function isDocumentFilename(filename: string): boolean {
-	const extension = filename.includes(".") ? filename.split(".").pop()?.toLowerCase() : undefined;
-	return extension !== undefined && DOCUMENT_EXTENSIONS.includes(extension);
-}
-
 function pickerTypes(filters: FileFilter[]): FilePickerAcceptType[] {
 	return filters.map((filter) => {
 		const extensions = filter.extensions.map((extension) => `.${extension}`);
@@ -123,12 +115,17 @@ export async function saveFileHandle(suggestedName: string, filters: FileFilter[
 	return picked(window.showSaveFilePicker({ suggestedName, types: pickerTypes(filters) }));
 }
 
-// Returns false if the user denies permission, which handles from earlier sessions ask for again
-export async function writeFileHandle(handle: FileSystemFileHandle, content: Uint8Array): Promise<boolean> {
-	if ((await handle.requestPermission({ mode: "readwrite" })) !== "granted" || !(content.buffer instanceof ArrayBuffer)) return false;
+// Write permission must already be granted
+export async function writeFileHandle(handle: FileSystemFileHandle, content: Uint8Array) {
+	if (!(content.buffer instanceof ArrayBuffer)) throw new TypeError("Document content is not backed by an ArrayBuffer");
 
 	const writable = await handle.createWritable();
-	await writable.write(new Uint8Array(content.buffer, content.byteOffset, content.byteLength));
-	await writable.close();
-	return true;
+	try {
+		await writable.write(new Uint8Array(content.buffer, content.byteOffset, content.byteLength));
+		await writable.close();
+	} catch (error) {
+		// Discards the partial write and releases the file
+		await writable.abort();
+		throw error;
+	}
 }

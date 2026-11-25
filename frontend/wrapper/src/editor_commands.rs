@@ -216,8 +216,8 @@ mod editor_commands {
 	}
 
 	/// Confirms that `TriggerSaveDocument` wrote the document
-	fn saved_document(document_id: u64, path: Option<String>) -> Message {
-		let message = DocumentMessage::SavedDocument { path: path.map(PathBuf::from) };
+	fn saved_document(document_id: u64, path: Option<String>, hash: u64) -> Message {
+		let message = DocumentMessage::SavedDocument { path: path.map(PathBuf::from), hash };
 		PortfolioMessage::DocumentPassMessage {
 			document_id: DocumentId(document_id),
 			message,

@@ -1,4 +1,4 @@
-use crate::application::{DEFAULT_ENVIRONMENT, Editor};
+use crate::application::{DEFAULT_ENVIRONMENT, Editor, Environment};
 use crate::builder::{Builder, EditorBuilder, RuntimeBuilder};
 use crate::messages::frontend::utility_types::RenderStatus;
 use crate::messages::input_mapper::utility_types::keyboard::ModifierKeys;
@@ -30,6 +30,10 @@ pub struct EditorTestUtils {
 
 impl EditorTestUtils {
 	pub fn create() -> Self {
+		Self::create_with_environment(DEFAULT_ENVIRONMENT)
+	}
+
+	pub fn create_with_environment(environment: Environment) -> Self {
 		init_test_logger();
 
 		let woken = Arc::new(AtomicBool::new(false));
@@ -38,7 +42,7 @@ impl EditorTestUtils {
 			.with_editor(
 				EditorBuilder::new()
 					.with_wake(move || wake.store(true, Ordering::Relaxed))
-					.with_environment(DEFAULT_ENVIRONMENT)
+					.with_environment(environment)
 					.with_resource_storage(Arc::new(HashMapResourceStorage::new()))
 					.with_document_store(Arc::new(MemoryStore::default())),
 			)

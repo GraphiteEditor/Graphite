@@ -1292,8 +1292,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				let path = match message {
 					DocumentMessage::SaveDocumentAs => None,
-					// On web, the path keys the file handle to write back to
-					_ if environment.is_web() => self.path.clone(),
+					// On web, the path keys the file handle to write back to, so a document opened from another file type (like `.gdd`) asks where to save its `.graphite` file
+					_ if environment.is_web() => self.path.clone().filter(|path| path.extension().is_some_and(|extension| extension == FILE_EXTENSION)),
 					// A document opened from a `.gdd` file is saved back under the `.graphite` extension
 					_ => self.path.clone().map(|path| path.with_extension(FILE_EXTENSION)),
 				};
@@ -1301,7 +1301,24 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if path.is_some() && !environment.is_web() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
+				let hash = self.current_hash();
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
+				let filters = vec![FileFilter {
+					name: "Graphite Document".into(),
+					extensions: vec![FILE_EXTENSION.into()],
+					mime_types: Vec::new(),
+				}];
+
+				let save_id = generate_uuid();
+				if environment.is_web() {
+					responses.add(FrontendMessage::TriggerPrepareSaveDocument {
+						document_id,
+						save_id,
+						name: name.clone(),
+						path: path.clone(),
+						filters: filters.clone(),
+					});
+				}
 
 				// The clone shares the working-copy container (Arc), so it reads the state the queued
 				// AutoSaveActiveDocument just committed.
@@ -1343,23 +1360,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 					Message::Frontend(FrontendMessage::TriggerSaveDocument {
 						document_id,
+						save_id,
 						name,
 						path,
 						folder,
-						filters: vec![FileFilter {
-							name: "Graphite Document".into(),
-							extensions: vec![FILE_EXTENSION.into()],
-							mime_types: Vec::new(),
-						}],
+						filters,
 						content: content.into(),
+						hash,
 					})
 				});
 			}
-			DocumentMessage::SavedDocument { path } => {
+			DocumentMessage::SavedDocument { path, hash } => {
 				self.path = path;
 
-				responses.add(PortfolioMessage::AutoSaveActiveDocument);
-				responses.add(DocumentMessage::MarkAsSaved);
+				// Not `MarkAsSaved`, which would go to the active document
+				self.saved_hash = Some(hash);
+				responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {
@@ -1371,9 +1388,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 				if let Some(name) = document_name_from_path {
 					self.name = name;
-
-					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-					responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 				}
 			}
 			DocumentMessage::MarkAsSaved => {
