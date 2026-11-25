@@ -82,7 +82,11 @@ fn chamfer_length(offset: vec2<f32>) -> f32 {
 // Jump flooding keeps each texel's offset from the nearest seed found so far (xy) and whether one is found (z). The `content` input holds the seeds' values.
 // With `values.y` 0, the seeds are the covered texels and a distance runs to the edge within the seed, placed by its coverage.
 // With `values.y` 1, the seeds are the texels past a grow of `values.z` texels and a distance runs to that grown edge, matching `distances_through_seeds`.
+// With `values.y` 2, every texel seeds with its value as a head start, matching `distances_through_seeds` of values that are all finite.
 fn is_seed(value: f32) -> bool {
+	if parameters.values.y > 1.5 {
+		return true;
+	}
 	if parameters.values.y > 0.5 {
 		// Only those up to 3 texels past it, a band any path in from farther crosses
 		return value > parameters.values.z && value <= parameters.values.z + 3.;
@@ -92,6 +96,9 @@ fn is_seed(value: f32) -> bool {
 
 fn seed_distance(pixel: vec2<i32>, offset: vec2<f32>) -> f32 {
 	let value = textureLoad(content, pixel - vec2<i32>(offset), 0).r;
+	if parameters.values.y > 1.5 {
+		return chamfer_length(offset) + value;
+	}
 	if parameters.values.y > 0.5 {
 		return chamfer_length(offset) + parameters.values.z - value;
 	}
@@ -105,12 +112,14 @@ fn jump_flood_seed(@builtin(position) position: vec4<f32>) -> @location(0) vec4<
 	return vec4<f32>(0., 0., select(0., 1., seed), 0.);
 }
 
-// Takes the nearest of the seeds that the texel and its eight neighbors `values.x` texels away have found so far
+// Takes the nearest of the seeds that the texel and its eight neighbors `values.x` texels away have found so far,
+// or with `values.w` 1 its neighbors one chamfer step away (a texel straight or diagonally, or a knight's move), settling jump flooding's near misses
 @fragment
 fn jump_flood_step(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let pixel = vec2<i32>(position.xy);
 	let size = vec2<i32>(textureDimensions(source));
 	let step = i32(parameters.values.x);
+	let radius = select(1, 2, parameters.values.w > 0.5);
 
 	var best = textureLoad(source, pixel, 0);
 	var best_distance = FAR;
@@ -118,8 +127,15 @@ fn jump_flood_step(@builtin(position) position: vec4<f32>) -> @location(0) vec4<
 		best_distance = seed_distance(pixel, best.xy);
 	}
 
-	for (var neighbor_y = -1; neighbor_y <= 1; neighbor_y++) {
-		for (var neighbor_x = -1; neighbor_x <= 1; neighbor_x++) {
+	// By rows from the top, the order the CPU visits them in too
+	for (var neighbor_y = -radius; neighbor_y <= radius; neighbor_y++) {
+		for (var neighbor_x = -radius; neighbor_x <= radius; neighbor_x++) {
+			let long = max(abs(neighbor_x), abs(neighbor_y));
+			let short = min(abs(neighbor_x), abs(neighbor_y));
+			if long == 0 || (long == 2 && short != 1) {
+				continue;
+			}
+
 			let direction = vec2<i32>(neighbor_x, neighbor_y) * step;
 			let neighbor = pixel + direction;
 			if any(neighbor < vec2<i32>(0)) || any(neighbor >= size) {
@@ -217,6 +233,12 @@ fn invert_coverage(@builtin(position) position: vec4<f32>) -> @location(0) vec4<
 	return vec4<f32>(1. - textureLoad(source, vec2<i32>(position.xy), 0).r);
 }
 
+// A soft chisel bevel's slope-limited matte: the coverage away from half scaled by `amount` (positive inward, negative outward), each texel's head start across the edge
+@fragment
+fn slope_limited_matte(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	return vec4<f32>(max((textureLoad(source, vec2<i32>(position.xy), 0).r - 0.5) * parameters.amount, 0.));
+}
+
 // Satin's shading from two casts of the silhouette: how much one covers without the other, or how much they agree with `amount` 1
 @fragment
 fn satin(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
@@ -257,8 +279,8 @@ fn accumulate(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> 
 	return tinted + beneath * (1. - tinted.a);
 }
 
-// Places a tinted silhouette over the image, within the content at full strength so it stays visible over a faded fill.
-// With `values.y` 1, `secondary` is already tinted.
+// Places a tinted silhouette over the image, within the content at full strength so it stays visible over a faded fill. With `values.y` 1, `secondary` is already tinted.
+// Otherwise the tint is the color mixed with the content's own by the blend mode numbered `values.x`, in gamma, matching the CPU's `composite_within_by_mode`.
 @fragment
 fn composite_within(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let pixel = vec2<i32>(position.xy);
@@ -269,7 +291,53 @@ fn composite_within(@builtin(position) position: vec4<f32>) -> @location(0) vec4
 	}
 	let full_content = textureLoad(content, pixel, 0);
 
+	let mode = u32(parameters.values.x);
+	if mode != 0u && full_content.a > 0. && parameters.color.a > 0. {
+		tinted = vec4<f32>(blend_gamma(full_content.rgb / full_content.a, parameters.color.rgb / parameters.color.a, mode) * tinted.a, tinted.a);
+	}
 	return tinted * full_content.a + image * (1. - tinted.a);
+}
+
+// A chiseled bevel's height from 0 to 1, from the distances in from the edge (`source`) and out from it (`secondary`), matching the CPU's `bevel_height`.
+// It rises from `values.x` to `values.y` texels, and with `values.z` 1 (a soft chisel, given distances through its slope-limited matte) by their difference alone.
+@fragment
+fn chisel_height(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let inward = textureLoad(source, pixel, 0).r;
+	let outward = textureLoad(secondary, pixel, 0).r;
+
+	var rise = max(inward - 0.5, 0.) - max(outward - 0.5, 0.) + 0.5;
+	if parameters.values.z > 0.5 {
+		rise = inward - outward;
+	}
+	let low = parameters.values.x;
+	let high = parameters.values.y;
+	return vec4<f32>((clamp(rise, low, high) - low) / (high - low));
+}
+
+// The bevel's height at a texel offset from `pixel`, holding the edge texels beyond the edges
+fn height_at(pixel: vec2<i32>, offset: vec2<i32>) -> f32 {
+	let last = vec2<i32>(textureDimensions(source)) - 1;
+	return textureLoad(source, clamp(pixel + offset, vec2<i32>(0), last), 0).r;
+}
+
+// How much a bevel's surface rising `values.w` texels for each unit of height is lit by the light toward `values.xyz` past a flat surface's brightness,
+// or with `amount` 1 how much it falls short, its slope the difference across its neighbors averaged over three rows or columns, matching the CPU's `bevel_shading`
+@fragment
+fn bevel_shading(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let across = height_at(pixel, vec2<i32>(1, -1)) + height_at(pixel, vec2<i32>(1, 0)) + height_at(pixel, vec2<i32>(1, 1))
+		- height_at(pixel, vec2<i32>(-1, -1)) - height_at(pixel, vec2<i32>(-1, 0)) - height_at(pixel, vec2<i32>(-1, 1));
+	let down = height_at(pixel, vec2<i32>(-1, 1)) + height_at(pixel, vec2<i32>(0, 1)) + height_at(pixel, vec2<i32>(1, 1))
+		- height_at(pixel, vec2<i32>(-1, -1)) - height_at(pixel, vec2<i32>(0, -1)) - height_at(pixel, vec2<i32>(1, -1));
+	let gradient = vec2<f32>(across, down) * parameters.values.w / 6.;
+
+	let light = parameters.values.xyz;
+	let lit = dot(normalize(vec3<f32>(-gradient, 1.)), light);
+	if parameters.amount > 0.5 {
+		return vec4<f32>(select(0., clamp((light.z - lit) / light.z, 0., 1.), light.z > 0.));
+	}
+	return vec4<f32>(select(0., clamp((lit - light.z) / (1. - light.z), 0., 1.), light.z < 1.));
 }
 
 // Places the shadows and glows beneath the image
@@ -322,6 +390,14 @@ fn blend(backdrop: vec3<f32>, paint: vec3<f32>, mode: u32) -> vec3<f32> {
 			return vec3<f32>(blend_channel(backdrop.r, paint.r, mode), blend_channel(backdrop.g, paint.g, mode), blend_channel(backdrop.b, paint.b, mode));
 		}
 	}
+}
+
+// The blend mode's mix of straight gamma-encoded colors, matching the CPU's `blend_gamma`
+fn blend_gamma(backdrop: vec3<f32>, paint: vec3<f32>, mode: u32) -> vec3<f32> {
+	if mode >= 22u && mode <= 25u {
+		return blend_components(clamp(backdrop, vec3<f32>(0.), vec3<f32>(1.)), clamp(paint, vec3<f32>(0.), vec3<f32>(1.)), mode);
+	}
+	return blend(backdrop, paint, mode);
 }
 
 // One channel mixed by a separable blend mode, clamped to 0 to 1

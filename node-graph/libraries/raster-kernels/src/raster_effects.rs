@@ -7,16 +7,17 @@ use crate::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, Plane};
 use crate::generators::pattern_sampler;
 use crate::value_effects::evaluate_gradient_effects;
 use core_types::FallibleVec2Operations;
-use core_types::blending::BlendMode;
+use core_types::blending::{BlendMode, apply_blend_mode};
 use core_types::color::{linear_to_srgb, srgb_to_linear};
 use core_types::list::{ATTR_EFFECTS, ATTR_GRADIENT_FORM, Item};
 use core_types::transfer_curve::TransferCurve;
 use core_types::{ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2, DVec3};
 use graphic_types::Graphic;
 use graphic_types::adjustment::Adjustment;
 use graphic_types::effects::{
-	EffectOperation, Effects, GlowFill, GlowSource, GlowTechnique, effect_space, fitted_paint, grow_and_tent, outline_extents, precise_falloff, shadow_offset, shape_strength, spans_along_axes,
+	BevelDirection, BevelStyle, BevelTechnique, EffectOperation, Effects, GlowFill, GlowSource, GlowTechnique, bevel_light, bevel_lighting, effect_space, fitted_paint, grow_and_tent, outline_extents,
+	precise_falloff, shadow_offset, shape_strength, spans_along_axes,
 };
 use graphic_types::generator::GeneratorPattern;
 use raster_types::parallel_rows::fill_rows;
@@ -269,6 +270,56 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 					full = composite_within(&full, &band, &full, color);
 				}
 			}
+			EffectOperation::BevelAndEmboss {
+				style,
+				technique,
+				depth,
+				direction,
+				size,
+				soften,
+				angle,
+				altitude,
+				highlight_color,
+				highlight_blend_mode,
+				shadow_color,
+				shadow_blend_mode,
+			} => {
+				// Straight-line distances can't stretch along one axis, so an image scaled unevenly takes the mean of its two scales
+				let mean_scale = (pixels_per_length.x * pixels_per_length.y).sqrt();
+				let size = size * mean_scale;
+				if size < NEGLIGIBLE_LENGTH {
+					continue;
+				}
+
+				// The surface's height, lit from the light's direction into its highlights and shadows
+				let (height, rise) = bevel_height(&full.map(|[_, _, _, alpha]| alpha), style, technique, size);
+				let rise = rise * depth / 100. * if direction == BevelDirection::Down { -1. } else { 1. };
+				let lit = bevel_shading(&height, rise, bevel_light(angle, altitude, effect_to_pixels));
+				let (_, soften) = grow_and_tent(soften * mean_scale, 0.);
+				let softened = |amounts: [Plane<f32>; 2]| {
+					amounts.map(|amount| match soften >= NEGLIGIBLE_LENGTH {
+						true => amount.blurred(BlurKernel::Tent { radius: soften }, BlurKernel::Tent { radius: soften }),
+						false => amount,
+					})
+				};
+
+				// The slopes inside the content are lit over it, and those outside lie beneath it
+				let inside = (style != BevelStyle::OuterBevel).then(|| softened(lit.clone()));
+				let outside = match style {
+					BevelStyle::InnerBevel => None,
+					BevelStyle::OuterBevel | BevelStyle::Emboss => Some(inside.clone().unwrap_or_else(|| softened(lit))),
+					// A pillow's slopes outside are lit mirrored, so they rise away from the edge
+					BevelStyle::PillowEmboss => Some(softened(bevel_shading(&height, -rise, bevel_light(angle, altitude, effect_to_pixels)))),
+				};
+				let colors = [(highlight_color, highlight_blend_mode), (shadow_color, shadow_blend_mode)];
+				for (amount, (color, blend_mode)) in inside.into_iter().flatten().zip(colors) {
+					filled = filled.map(|filled| composite_within_by_mode(&filled, &amount, &full, color, blend_mode));
+					full = composite_within_by_mode(&full, &amount, &full, color, blend_mode);
+				}
+				for (amount, (color, _)) in outside.into_iter().flatten().zip(colors) {
+					beneath = Some(accumulate(beneath, &amount, color, true, &full, run_fill));
+				}
+			}
 			EffectOperation::PaintOverlay { ref paint, blend_mode, opacity } => {
 				let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|corner| transform.transform_point2(corner));
 				let content_bounds = [corners.into_iter().reduce(DVec2::min).unwrap(), corners.into_iter().reduce(DVec2::max).unwrap()];
@@ -500,6 +551,116 @@ fn merge_beneath(full: &mut Plane<[f32; 4]>, filled: &mut Option<Plane<[f32; 4]>
 /// The image with the shadows and glows `beneath` placed under it.
 fn composite_beneath(image: &Plane<[f32; 4]>, beneath: &Plane<[f32; 4]>) -> Plane<[f32; 4]> {
 	image.zip(beneath, |image, beneath| std::array::from_fn(|channel| image[channel] + beneath[channel] * (1. - image[3])))
+}
+
+/// A bevel's height from 0 to 1 over the `style`'s slopes `size` pixels wide, shaped by the `technique`, with how many pixels a height of 1 rises.
+/// Smooth slopes are a tent blur of the silhouette, and chiseled ones rise evenly with the distance from its edge.
+fn bevel_height(silhouette: &Plane<f32>, style: BevelStyle, technique: BevelTechnique, size: f64) -> (Plane<f32>, f64) {
+	// Embossed slopes span half the size on each side of the edge
+	let span = match style {
+		BevelStyle::InnerBevel | BevelStyle::OuterBevel => size,
+		BevelStyle::Emboss | BevelStyle::PillowEmboss => size / 2.,
+	};
+
+	match technique {
+		BevelTechnique::Smooth => {
+			let (_, tent) = grow_and_tent(span, 0.);
+			(silhouette.clone().blurred(BlurKernel::Tent { radius: tent }, BlurKernel::Tent { radius: tent }), span)
+		}
+		BevelTechnique::ChiselHard | BevelTechnique::ChiselSoft => {
+			// For PSD interop, the slope continues through the edge from 0 at the first pixel outside, and levels off a pixel past its span having risen half the span.
+			// The height spans only the part across the edge the style lights, which keeps its precision.
+			let near = if technique == BevelTechnique::ChiselSoft { 3. } else { 2. };
+			let (low, high) = match style {
+				BevelStyle::InnerBevel => (-near, span + 1.),
+				BevelStyle::OuterBevel => (-span - 1., near),
+				BevelStyle::Emboss | BevelStyle::PillowEmboss => (-span - 1., span + 1.),
+			};
+
+			let field = match technique {
+				// For PSD interop, a soft chisel measures from a slope-limited matte, where a pixel's coverage away from half gives its distance across the edge a head start scaled to span the slope
+				BevelTechnique::ChiselSoft => {
+					let reach = (span + 1.) as f32;
+					let matte = silhouette.map(|alpha| (alpha - 0.5) * 2. * reach);
+					let inward = matte.map(|matte| matte.max(0.)).distances_through_seeds(high + 1.);
+					let outward = matte.map(|matte| (-matte).max(0.)).distances_through_seeds(-low + 1.);
+					inward.zip(&outward, |inward, outward| inward - outward)
+				}
+				_ => {
+					let inward = silhouette.map(|alpha| 1. - alpha).distances_to_silhouette(high + 1.);
+					let outward = silhouette.distances_to_silhouette(-low + 1.);
+					inward.zip(&outward, |inward, outward| (inward - 0.5).max(0.) - (outward - 0.5).max(0.) + 0.5)
+				}
+			};
+
+			let (low, high) = (low as f32, high as f32);
+			let height = field.map(|field| (field.clamp(low, high) - low) / (high - low));
+			(height, span / (2. * (span + 1.)) * (high - low) as f64)
+		}
+	}
+}
+
+/// How much each pixel of a bevel's surface is lit by the `light` past a flat surface's brightness (its highlight), and how much it falls short (its shadow), each from 0 to 1.
+/// The surface's height rises `rise` pixels for each unit of `height`, and for PSD interop, its slope at each pixel is the difference across its neighbors averaged over the three rows or columns they span. O(width × height).
+fn bevel_shading(height: &Plane<f32>, rise: f64, light: DVec3) -> [Plane<f32>; 2] {
+	let (columns, rows) = (height.width as isize, height.height as isize);
+	let at = |x: isize, y: isize| height.data[(y.clamp(0, rows - 1) * columns + x.clamp(0, columns - 1)) as usize] as f64;
+
+	let mut lighting = Plane::<[f32; 4]>::new(height.width, height.height);
+	fill_rows(&mut lighting.data, height.width, |y, row| {
+		let y = y as isize;
+		for (x, lit) in row.iter_mut().enumerate() {
+			let x = x as isize;
+			let across = at(x + 1, y - 1) + at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - at(x - 1, y) - at(x - 1, y + 1);
+			let down = at(x - 1, y + 1) + at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - at(x, y - 1) - at(x + 1, y - 1);
+
+			let (highlight, shadow) = bevel_lighting(DVec2::new(across, down) * rise / 6., light);
+			*lit = [highlight as f32, shadow as f32, 0., 0.];
+		}
+	});
+	[lighting.map(|[highlight, ..]| highlight), lighting.map(|[_, shadow, ..]| shadow)]
+}
+
+/// The image with a coverage, tinted by `color` mixed with the full-strength content's colors by the blend mode in gamma, placed over it within the full-strength content.
+fn composite_within_by_mode(image: &Plane<[f32; 4]>, coverage: &Plane<f32>, full_content: &Plane<[f32; 4]>, color: Color, blend_mode: BlendMode) -> Plane<[f32; 4]> {
+	if blend_mode == BlendMode::Normal {
+		return composite_within(image, coverage, full_content, color);
+	}
+	let [red, green, blue, opacity] = color.to_gamma_srgb_channels();
+
+	let mut result = Plane::<[f32; 4]>::new(image.width, image.height);
+	fill_rows(&mut result.data, image.width, |y, row| {
+		for (x, composited) in row.iter_mut().enumerate() {
+			let index = y * image.width + x;
+			let (pixel, content) = (image.data[index], full_content.data[index]);
+			let (strength, alpha) = (opacity * coverage.data[index], content[3]);
+
+			let [tint_red, tint_green, tint_blue] = match alpha > 0. {
+				true => blend_gamma([content[0] / alpha, content[1] / alpha, content[2] / alpha], [red, green, blue], blend_mode),
+				false => [0.; 3],
+			};
+			let tinted = [tint_red * alpha, tint_green * alpha, tint_blue * alpha, alpha].map(|channel| channel * strength);
+			*composited = std::array::from_fn(|channel| tinted[channel] + pixel[channel] * (1. - strength));
+		}
+	});
+	result
+}
+
+/// The blend mode's mix of straight gamma-encoded `backdrop` and `paint` colors.
+fn blend_gamma(backdrop: [f32; 3], paint: [f32; 3], blend_mode: BlendMode) -> [f32; 3] {
+	match blend_mode {
+		// The component modes encode the colors they're given themselves
+		BlendMode::Hue | BlendMode::Saturation | BlendMode::Color | BlendMode::Luminosity => {
+			let color = |[red, green, blue]: [f32; 3]| Color::from_gamma_srgb_channels(red, green, blue, 1.);
+			let [red, green, blue, _] = apply_blend_mode(color(paint), color(backdrop), blend_mode).to_gamma_srgb_channels();
+			[red, green, blue]
+		}
+		_ => {
+			let color = |[red, green, blue]: [f32; 3]| Color::from_rgbaf32_unchecked(red, green, blue, 1.);
+			let blended = apply_blend_mode(color(paint), color(backdrop), blend_mode);
+			[blended.r(), blended.g(), blended.b()]
+		}
+	}
 }
 
 /// Mixes the paint's color at each premultiplied gamma-encoded pixel over it by the blend mode, keeping the pixel's alpha.
