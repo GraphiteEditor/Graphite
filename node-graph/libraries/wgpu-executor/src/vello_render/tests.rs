@@ -6,7 +6,7 @@
 use crate::WgpuExecutor;
 use glam::{DAffine2, UVec2};
 use rendering::vello_scene_builder::VelloSceneBuilder;
-use vello_gpu::kurbo::{Affine, BezPath, Line, Rect, Stroke};
+use vello_gpu::kurbo::{Affine, BezPath, Line, ParamCurve, PathSeg, Point, Rect, Stroke, Vec2};
 use vello_gpu::peniko::{self, Color, Fill};
 
 /// The executor every test shares, or `None` without a GPU.
@@ -157,6 +157,79 @@ fn infinite_line_renders() {
 
 	let Some(pixels) = render(size, draw) else { return };
 	assert_eq!(pixel(&pixels, size, 128, 128)[3], 255);
+}
+
+/// A view at `zoom` and `tilt` that places the document point `target` at the pixel `pixel`.
+fn deep_view(zoom: f64, tilt: f64, target: Point, pixel: Point) -> Affine {
+	Affine::translate(pixel.to_vec2()) * Affine::rotate(tilt) * Affine::scale(zoom) * Affine::translate(-target.to_vec2())
+}
+
+#[test]
+fn deep_zoomed_edges_land_on_the_right_pixel() {
+	let size = UVec2::new(256, 256);
+	let middle = Point::new(128., 128.);
+	let (center, radius) = ((1234.5678, -987.6543), 100.);
+	let path = circle(center, radius);
+
+	// The middle of a segment, where a stroke's fitted outline strays furthest, and outward from the circle by the segment's symmetry
+	let Some(PathSeg::Cubic(segment)) = path.get_seg(2) else {
+		panic!("The circle's second segment is a cubic")
+	};
+	let on_curve = segment.eval(0.5);
+	let outward = (on_curve - Point::from(center)).normalize();
+
+	for zoom in [1e4, 1e7, 1e10] {
+		for tilt in [0., 0.3, std::f64::consts::FRAC_PI_2, 2.4] {
+			// The edge belongs at the middle pixel, with the shape covering what's inward of it
+			for (label, target, stroke) in [("fill", on_curve, None), ("stroke", on_curve + outward, Some(Stroke::new(2.)))] {
+				let view = deep_view(zoom, tilt, target, middle);
+				let Some(pixels) = render(size, |scene| match &stroke {
+					Some(stroke) => scene.stroke(stroke, view, RED, None, &path),
+					None => scene.fill(Fill::NonZero, view, RED, None, &path),
+				}) else {
+					return;
+				};
+
+				// Walking inward from outside to the first mostly covered pixel
+				let screen_outward = (view * (target + outward / zoom)) - middle;
+				let covered_at = (-40..=40_i32).rev().find(|&distance| {
+					let point = middle + screen_outward * distance as f64;
+					pixel(&pixels, size, point.x as u32, point.y as u32)[3] >= 128
+				});
+				assert!(
+					covered_at.is_some_and(|distance| distance.abs() <= 2),
+					"the {label} edge at zoom {zoom} and tilt {tilt} lands {covered_at:?} pixels outward"
+				);
+			}
+		}
+	}
+}
+
+#[test]
+fn deep_zoomed_images_blend_their_texels_precisely() {
+	let size = UVec2::new(256, 256);
+
+	// A red texel beside a blue one, sampled as Graphite draws images, viewed a quarter texel past the edge between them
+	let image = peniko::ImageBrush::new(peniko::ImageData {
+		data: [255, 0, 0, 255, 0, 0, 255, 255].to_vec().into(),
+		format: peniko::ImageFormat::Rgba8,
+		alpha_type: peniko::ImageAlphaType::Alpha,
+		width: 2,
+		height: 1,
+	})
+	.with_extend(peniko::Extend::Pad);
+	let origin = Point::new(1234.5678, -987.6543);
+	let target = origin + Vec2::new(1.25, 0.5);
+
+	for zoom in [1e6, 1e8, 1e10] {
+		let view = deep_view(zoom, 0., target, Point::new(128., 128.)) * Affine::translate(origin.to_vec2());
+		let Some(pixels) = render(size, |scene| scene.draw_image(&image, view)) else { return };
+
+		for x in [0, 128, 255] {
+			let red = pixel(&pixels, size, x, 128)[0];
+			assert!(red.abs_diff(64) <= 2, "the image at zoom {zoom} blends to red {red} rather than 64 at pixel {x}");
+		}
+	}
 }
 
 #[test]

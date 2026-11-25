@@ -18,7 +18,8 @@ pub const NODE_GLIDE_TIME_CONSTANT_MILLISECONDS: f64 = 30.;
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
 pub const VIEWPORT_ZOOM_MOUSE_RATE: f64 = 1. / 400.;
 pub const VIEWPORT_ZOOM_SCALE_MIN: f64 = 0.000_000_1;
-pub const VIEWPORT_ZOOM_SCALE_MAX: f64 = 10_000.;
+/// Deep enough to reach the limits of 64-bit precision, which still places each pixel precisely around document coordinates in the thousands.
+pub const VIEWPORT_ZOOM_SCALE_MAX: f64 = 10_000_000_000.;
 pub const VIEWPORT_ZOOM_MIN_FRACTION_COVER: f64 = 0.01;
 pub const VIEWPORT_ZOOM_LEVELS: [f64; 74] = [
 	0.0001, 0.000125, 0.00016, 0.0002, 0.00025, 0.00032, 0.0004, 0.0005, 0.00064, 0.0008, 0.001, 0.0016, 0.002, 0.0025, 0.0032, 0.004, 0.005, 0.0064, 0.008, 0.01, 0.01125, 0.015, 0.02, 0.025, 0.03,

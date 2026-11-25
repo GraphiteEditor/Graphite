@@ -2156,15 +2156,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				} else {
 					self.network_interface.document_bounds_document_space(true)
 				};
-				if let Some(bounds) = bounds {
-					if self.document_ptz.flip {
-						responses.add(NavigationMessage::CanvasFlip);
-					}
-					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
-					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
-				} else {
-					warn!("Cannot zoom due to no bounds")
+				// With nothing to frame, like a generator's pattern filling the plane, a tiny area at the origin is framed, which centers the origin at 100%
+				let bounds = bounds.unwrap_or([DVec2::splat(-1.), DVec2::splat(1.)]);
+
+				if self.document_ptz.flip {
+					responses.add(NavigationMessage::CanvasFlip);
 				}
+				responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
+				responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 			}
 			DocumentMessage::Noop => (),
 		}
@@ -4727,8 +4726,8 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 	vec![
 		NumberInput::new(Some(navigation_handler.snapped_zoom(ptz.zoom()) * 100.))
 			.unit("%")
-			.min(0.000001)
-			.max(1000000.)
+			.min(crate::consts::VIEWPORT_ZOOM_SCALE_MIN * 100.)
+			.max(crate::consts::VIEWPORT_ZOOM_SCALE_MAX * 100.)
 			.tooltip_label(if node_graph { "Node Graph Zoom" } else { "Canvas Zoom" })
 			.sizing(WidgetSizing::default().min_width(80))
 			.on_update(|number_input: &NumberInput| {
@@ -4794,6 +4793,25 @@ mod document_message_handler_tests {
 	use crate::messages::frontend::utility_types::RenderStatus;
 	use crate::messages::portfolio::document::utility_types::misc::GridType;
 	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn zooming_to_fit_nothing_centers_the_origin_at_100_percent() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.set_viewport_size(DVec2::ZERO, DVec2::new(800., 600.)).await;
+
+		// Zoomed, panned, and tilted away in a document with nothing to frame
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 7. }).await;
+		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(300., -200.) }).await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 0.5 }).await;
+
+		editor.handle_message(DocumentMessage::ZoomCanvasToFitAll).await;
+
+		let ptz = editor.active_document().document_ptz;
+		assert_eq!(ptz.zoom(), 1.);
+		assert_eq!(ptz.tilt(), 0.);
+		assert!(ptz.pan.length() < 1e-9, "the view is panned by {}", ptz.pan);
+	}
 
 	#[tokio::test]
 	async fn deleting_the_bottom_layer_leaves_the_layer_above_it_the_empty_stack_value() {

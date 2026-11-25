@@ -215,7 +215,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					return;
 				};
 
-				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < ptz.zoom()).unwrap_or(&ptz.zoom());
+				let new_scale = zoom_levels().take_while(|&scale| scale < ptz.zoom()).last().unwrap_or(ptz.zoom());
 				if center_on_mouse {
 					responses.add(self.center_zoom(viewport.size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
@@ -226,7 +226,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					return;
 				};
 
-				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom()).unwrap_or(&ptz.zoom());
+				let new_scale = zoom_levels().find(|&scale| scale > ptz.zoom()).unwrap_or(ptz.zoom());
 				if center_on_mouse {
 					responses.add(self.center_zoom(viewport.size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
@@ -591,8 +591,31 @@ impl NavigationMessageHandler {
 
 pub fn snapped_zoom(navigation_operation: &NavigationOperation, zoom: f64) -> f64 {
 	if matches!(navigation_operation, NavigationOperation::Zoom { snap: true, .. }) {
-		*VIEWPORT_ZOOM_LEVELS.iter().min_by(|a, b| (**a - zoom).abs().partial_cmp(&(**b - zoom).abs()).unwrap()).unwrap_or(&zoom)
+		zoom_levels().min_by(|a, b| (a - zoom).abs().total_cmp(&(b - zoom).abs())).unwrap_or(zoom)
 	} else {
 		zoom
+	}
+}
+
+/// The preset zoom levels, ascending: the listed ones, then 1, 1.25, and 1.5625 times each power of two (as the list ends with) up to the deepest zoom.
+fn zoom_levels() -> impl Iterator<Item = f64> {
+	let last_listed = VIEWPORT_ZOOM_LEVELS[VIEWPORT_ZOOM_LEVELS.len() - 1];
+	let doubling_steps = (0..).flat_map(|power| [1., 1.25, 1.5625].map(|step| 2_f64.powi(power) * step));
+
+	VIEWPORT_ZOOM_LEVELS
+		.into_iter()
+		.chain(doubling_steps.skip_while(move |&level| level <= last_listed).take_while(|&level| level < VIEWPORT_ZOOM_SCALE_MAX))
+		.chain([VIEWPORT_ZOOM_SCALE_MAX])
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn the_zoom_levels_step_up_evenly_to_the_deepest_zoom() {
+		let levels: Vec<f64> = zoom_levels().collect();
+		assert!(levels.windows(2).all(|pair| pair[1] > pair[0] && pair[1] / pair[0] <= 1.6), "{levels:?}");
+		assert_eq!(levels.last(), Some(&VIEWPORT_ZOOM_SCALE_MAX));
 	}
 }
