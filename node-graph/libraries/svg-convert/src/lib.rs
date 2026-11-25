@@ -3,10 +3,11 @@
 //! Parsing and style resolution are left to `usvg`. This crate maps the resulting tree onto Graphene's graphic types.
 //! The conversion is best effort: what has no counterpart is left out.
 
+mod blend_mode;
 mod stroke;
 
 use core_types::list::{Item, List};
-use core_types::{ATTR_OPACITY, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_BLEND_MODE, ATTR_OPACITY, ATTR_TRANSFORM, Color};
 use glam::DAffine2;
 use graphic_types::{CoverPlacement, Coverage, Graphic, Vector, stamp_coverage};
 use kurbo::{BezPath, PathEl, Point};
@@ -43,6 +44,9 @@ fn group_item(group: &usvg::Group) -> Item<Graphic> {
 	}
 	if group.opacity() != usvg::Opacity::ONE {
 		item.set_attribute(ATTR_OPACITY, f64::from(group.opacity().get()));
+	}
+	if let Some(blend_mode) = blend_mode::blend_mode(group) {
+		item.set_attribute(ATTR_BLEND_MODE, blend_mode);
 	}
 	item
 }

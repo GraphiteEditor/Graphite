@@ -1,5 +1,5 @@
 use core_types::list::{ATTR_APPEARANCE, List};
-use core_types::{ATTR_OPACITY, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_BLEND_MODE, ATTR_OPACITY, ATTR_TRANSFORM, BlendMode, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::vector::style::{StrokeCap, StrokeJoin};
 use graphic_types::{Appearance, Cover, Graphic};
@@ -43,6 +43,16 @@ fn a_group_item_carries_its_opacity_only_when_below_one() -> Result<(), Error> {
 
 	assert_eq!(half.attribute::<f64>(ATTR_OPACITY, 0), Some(&0.5));
 	assert_eq!(full.attribute::<f64>(ATTR_OPACITY, 0), None);
+	Ok(())
+}
+
+#[test]
+fn a_group_item_carries_its_blend_mode_unless_it_is_plus_lighter() -> Result<(), Error> {
+	let multiply = converted(r#"<g style="mix-blend-mode: multiply"><rect width="4" height="4"/></g>"#)?;
+	let plus_lighter = converted(r#"<g style="mix-blend-mode: plus-lighter"><rect width="4" height="4"/></g>"#)?;
+
+	assert_eq!(multiply.attribute::<BlendMode>(ATTR_BLEND_MODE, 0), Some(&BlendMode::Multiply));
+	assert_eq!(plus_lighter.attribute::<BlendMode>(ATTR_BLEND_MODE, 0), None);
 	Ok(())
 }
 
