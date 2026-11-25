@@ -1726,7 +1726,8 @@ fn blend_channel(mode: u32, c_b: f32, c_s: f32) -> f32 {
 			return c_b - c_s;
 		}
 		case BLEND_DIVIDE: {
-			return select(c_b / c_s, 1., abs(c_b) <= BLEND_EDGE_TOLERANCE);
+			// A black backdrop stays black, and any other turns white when divided by black
+			return select(select(c_b / c_s, 1., c_s <= BLEND_EDGE_TOLERANCE), 0., c_b <= BLEND_EDGE_TOLERANCE);
 		}
 		case BLEND_NORMAL, default: {
 			return c_s;
@@ -1781,7 +1782,8 @@ fn apply_blend_mode(foreground: vec4<f32>, background: vec4<f32>, mode: u32) -> 
 // The blend mode (x) and opacity (y), then the color
 fn color_overlay(color: vec4<f32>, at: u32) -> vec4<f32> {
 	let settings = step_texel(at);
-	let overlay = apply_blend_mode(step_texel(at + 1u), color, u32(settings.x));
+	let paint = step_texel(at + 1u);
+	let overlay = apply_blend_mode(paint, color, u32(settings.x));
 
-	return vec4<f32>(color.rgb + (overlay.rgb - color.rgb) * settings.y, color.a);
+	return vec4<f32>(color.rgb + (overlay.rgb - color.rgb) * (settings.y * paint.a), color.a);
 }

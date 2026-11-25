@@ -51,10 +51,10 @@ pub trait EffectsRenderer: Send {
 	/// Whether the GPU can carry out effects, without which effects groups draw their content faded by their fill.
 	fn renders_effects(&self) -> bool;
 
-	/// Renders the content `draw` draws, placed by `view`, into a premultiplied texture of `size`, returning a texture of the same size with `effects` carried out on it.
+	/// Renders the content `draw` draws, and each paint overlay's paint `draw_paint` draws by index, placed by `view` in premultiplied textures of `size`, returning one with `effects` carried out.
 	/// `effect_to_pixels` places the effects' space on the texture's pixels, and `fill` fades the content but not the shadows and glows cast from it.
 	/// With a `capture`, the texture instead holds that effect's coverage, as black with it in alpha.
-	#[allow(clippy::too_many_arguments)]
+	#[expect(clippy::too_many_arguments)]
 	fn render_effects(
 		&mut self,
 		size: UVec2,
@@ -63,6 +63,7 @@ pub trait EffectsRenderer: Send {
 		fill: f32,
 		effect_to_pixels: DAffine2,
 		capture: Option<EffectCapture>,
+		draw_paint: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
 		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
 	) -> wgpu::Texture;
 }
@@ -367,9 +368,17 @@ impl<'a> VelloSceneBuilder<'a> {
 		}
 	}
 
-	/// Draws the content `draw` draws with `effects` carried out on it in their `effect_space` (placed in the drawn content's space), given the area it covers in that space, or `None` if unbounded.
-	/// `fill` fades the content but not the shadows and glows cast from it. Rendering a split scene calls `draw` again for each part.
-	pub fn draw_effects(&mut self, effects: &Effects, fill: f32, bounds: Option<Rect>, effect_space: DAffine2, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) {
+	/// Draws the content `draw` draws with `effects` carried out on it in their `effect_space` (placed in the space of the drawn content), within `bounds` in that space (or everywhere for `None`),
+	/// drawing again for each part of a split render. `draw_paint` draws each paint overlay's paint by its index among them, and `fill` fades the content but not the shadows and glows cast from it.
+	pub fn draw_effects(
+		&mut self,
+		effects: &Effects,
+		fill: f32,
+		bounds: Option<Rect>,
+		effect_space: DAffine2,
+		draw_paint: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
+		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
+	) {
 		let capture = self.effect_capture.take();
 		let effect_to_device = DAffine2::from_cols_array(&self.view.as_coeffs()) * effect_space;
 		if !self.effects_renderer.as_ref().is_some_and(|renderer| renderer.renders_effects()) || !effect_to_device.matrix2.determinant().is_normal() {
@@ -417,7 +426,7 @@ impl<'a> VelloSceneBuilder<'a> {
 		let content_view = Affine::scale(resolution) * Affine::translate(-origin) * document_to_frame;
 		let effect_to_pixels = DAffine2::from_cols_array(&content_view.as_coeffs()) * effect_space;
 		let Some(renderer) = self.effects_renderer.as_deref_mut() else { return };
-		let result = renderer.render_effects(size, content_view, effects, fill, effect_to_pixels, capture, draw);
+		let result = renderer.render_effects(size, content_view, effects, fill, effect_to_pixels, capture, draw_paint, draw);
 
 		// Draw the result where the content was
 		self.images.push(SceneImage::Rendered(result));

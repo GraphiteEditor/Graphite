@@ -261,12 +261,15 @@ mod tests {
 			assert_eq!(Color::blend_color_burn(0.5, source), 0., "a source of {source}");
 		}
 
-		// Color Dodge gives white for a white source, and Divide for a black backdrop
+		// Color Dodge gives white for a white source, and Divide keeps a black backdrop black and turns any other white under a black source
 		for source in [1., 1. - 1e-7, 1. + 2e-7] {
 			assert_eq!(Color::blend_color_dodge(0., source), 1., "a source of {source}");
 		}
 		for backdrop in [0., 1e-7, -1e-7] {
-			assert_eq!(Color::blend_divide(backdrop, 0.5), 1., "a backdrop of {backdrop}");
+			assert_eq!(Color::blend_divide(backdrop, 0.5), 0., "a backdrop of {backdrop}");
+		}
+		for source in [0., 1e-7, -1e-7] {
+			assert_eq!(Color::blend_divide(0.5, source), 1., "a source of {source}");
 		}
 
 		// Past the tolerance the modes follow their formulas

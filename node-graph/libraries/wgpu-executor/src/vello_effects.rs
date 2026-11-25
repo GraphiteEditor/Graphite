@@ -196,6 +196,7 @@ impl EffectPasses {
 
 	/// Carries out `effects` on `content`, a texture of premultiplied pixels, returning the result in a pooled texture of [`WORKING_FORMAT`] the same size.
 	/// `lengths_to_pixels` maps the effects' lengths onto the texture's pixels, and `fill` fades the content but not the shadows and glows cast from it.
+	/// `paints` holds the paint overlays' paints that aren't solid colors, in order, each rendered over the same pixels as the content.
 	/// With a `capture`, the result is instead that effect's coverage, as black with it in alpha, and the effects after it are left out.
 	#[expect(clippy::too_many_arguments)]
 	pub(crate) fn apply(
@@ -207,6 +208,7 @@ impl EffectPasses {
 		effects: &Effects,
 		fill: f32,
 		lengths_to_pixels: DMat2,
+		paints: &[wgpu::Texture],
 		capture: Option<EffectCapture>,
 	) -> wgpu::Texture {
 		let mut recorder = PassRecorder {
@@ -228,6 +230,7 @@ impl EffectPasses {
 
 		// Each operation with its index, for a capture to name, leaving out those that change nothing so they don't split the runs of adjustments around them
 		let operations: Vec<(usize, EffectOperation)> = effects.operations().enumerate().filter(|(_, operation)| !changes_nothing(operation, length_scale)).collect();
+		let mut paints = paints.iter();
 		for (position, (index, operation)) in operations.iter().enumerate() {
 			let index = *index;
 			// A captured coverage ends the passes in place of the effects' result
@@ -327,6 +330,21 @@ impl EffectPasses {
 					let composited = recorder.composite_within(full_content, &strength, full_content, color);
 					recorder.replace_or_fill(&mut full, composited);
 					recorder.textures.release(strength);
+				}
+				EffectOperation::PaintOverlay { blend_mode, opacity, .. } => {
+					let Some(paint) = paints.next() else { continue };
+					let parameters = Parameters {
+						amount: (opacity / 100.) as f32,
+						values: [blend_mode as u32 as f32, 0., 0., 0.],
+						..Default::default()
+					};
+
+					let overlaid = recorder.run("paint_overlay", WORKING_FORMAT, recorder.size, full.as_ref().unwrap_or(content), Some(paint), None, parameters);
+					recorder.replace_or_fill(&mut full, overlaid);
+					if let Some(filled) = &mut filled {
+						let overlaid = recorder.run("paint_overlay", WORKING_FORMAT, recorder.size, filled, Some(paint), None, parameters);
+						recorder.replace(filled, overlaid);
+					}
 				}
 				EffectOperation::Adjustment(_) => {
 					// A run of adjustments is carried out from its first row, in a pass for each standalone step and one for the steps between them
@@ -1092,7 +1110,7 @@ mod tests {
 		let queue = context.queue.lock();
 		let draw = |textures: &mut EffectTextures| {
 			textures.drawn_passes.clear();
-			let result = passes.apply(&context.device, &queue, textures, &content, &effects, 1., DMat2::IDENTITY, None);
+			let result = passes.apply(&context.device, &queue, textures, &content, &effects, 1., DMat2::IDENTITY, &[], None);
 			textures.release(result);
 			textures.drawn_passes.iter().filter(|&&label| label == "adjust").count()
 		};
@@ -1109,7 +1127,17 @@ mod tests {
 		// A run reading the content first does so straight from the content's own format, without copying it beforehand
 		let mut drawn = |operations: Vec<EffectOperation>, fill| {
 			textures.drawn_passes.clear();
-			let result = passes.apply(&context.device, &queue, &mut textures, &content, &Effects::from_operations(operations), fill, DMat2::IDENTITY, None);
+			let result = passes.apply(
+				&context.device,
+				&queue,
+				&mut textures,
+				&content,
+				&Effects::from_operations(operations),
+				fill,
+				DMat2::IDENTITY,
+				&[],
+				None,
+			);
 			textures.release(result);
 			textures.drawn_passes.clone()
 		};
