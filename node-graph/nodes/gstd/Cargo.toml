@@ -46,6 +46,7 @@ core-types = { workspace = true }
 vector-types = { workspace = true }
 graphic-types = { workspace = true }
 raster-kernels = { workspace = true }
+svg-convert = { workspace = true }
 blending-nodes = { workspace = true }
 text-nodes = { workspace = true }
 transform-nodes = { workspace = true }
