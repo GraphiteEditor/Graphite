@@ -42,6 +42,19 @@ fn a_group_item_carries_its_opacity_only_when_below_one() -> Result<(), Error> {
 }
 
 #[test]
+fn text_becomes_a_group_of_glyph_outlines_when_its_font_is_given() -> Result<(), Error> {
+	let mut options = Options::default();
+	options.fontdb_mut().load_font_data(include_bytes!("../../../nodes/text/src/source-sans-pro-regular.ttf").to_vec());
+	let content = convert(
+		r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><text x="2" y="15" font-family="Source Sans Pro" font-size="12">Hi</text></svg>"#,
+		&options,
+	)?;
+
+	assert!(matches!(content.element(0), Some(Graphic::GraphicList(glyphs)) if matches!(glyphs.element(0), Some(Graphic::VectorList(_)))));
+	Ok(())
+}
+
+#[test]
 fn malformed_input_is_an_error() {
 	assert!(convert("<svg", &Options::default()).is_err());
 }

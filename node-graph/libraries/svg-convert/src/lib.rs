@@ -25,7 +25,8 @@ fn graphic_item(node: &usvg::Node) -> Option<Item<Graphic>> {
 	match node {
 		usvg::Node::Group(group) => Some(group_item(group)),
 		usvg::Node::Path(path) if path.is_visible() => Some(path_item(path)),
-		usvg::Node::Path(_) | usvg::Node::Image(_) | usvg::Node::Text(_) => None,
+		usvg::Node::Text(text) => Some(group_item(text.flattened())),
+		usvg::Node::Path(_) | usvg::Node::Image(_) => None,
 	}
 }
 
