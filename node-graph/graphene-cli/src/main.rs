@@ -198,14 +198,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			let settings = renderer.frame(settings).await?;
 			let animation = export::AnimationParams::new(fps, frames, duration);
 			if file_type == export::FileType::Gif {
-				export::export_gif(executor, wgpu_executor, output, settings, animation, runtime, spawner).await?;
+				export::export_gif(executor, &renderer.output, wgpu_executor, output, settings, animation, runtime, spawner).await?;
 			} else if animation.frames > 1 {
 				if file_type == export::FileType::Ico {
 					return Err("ICO can't be exported as an image sequence".into());
 				}
-				export::export_image_sequence(executor, wgpu_executor, output, settings, animation, runtime, spawner).await?;
+				export::export_image_sequence(executor, &renderer.output, wgpu_executor, output, settings, animation, runtime, spawner).await?;
 			} else {
-				export::export_document(executor, wgpu_executor, output, settings, runtime, spawner).await?;
+				export::export_document(executor, &renderer.output, wgpu_executor, output, settings, runtime, spawner).await?;
 			}
 		}
 		Command::ListNodeIdentifiers | Command::ExtractLegacyDoc { .. } | Command::Host { .. } | Command::Join { .. } | Command::Watch { .. } => unreachable!("Handled before compiling"),

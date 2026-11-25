@@ -2,7 +2,6 @@ mod benchmark_util;
 
 use benchmark_util::{bench_for_each_demo, setup_network};
 use criterion::{Criterion, criterion_group, criterion_main};
-use graph_craft::proto::ProtoNetwork;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 fn update_executor(c: &mut Criterion) {
@@ -11,10 +10,8 @@ fn update_executor(c: &mut Criterion) {
 		g.bench_function(name, |b| {
 			b.iter_batched(
 				|| {
-					let (_, proto_network) = setup_network(name);
-					let empty = ProtoNetwork::default();
-					let executor = DynamicExecutor::new(empty).unwrap();
-					(executor, proto_network)
+					let (_, _, proto_network) = setup_network(name);
+					(DynamicExecutor::default(), proto_network)
 				},
 				|(mut executor, network)| executor.update(std::hint::black_box(network)),
 				criterion::BatchSize::SmallInput,

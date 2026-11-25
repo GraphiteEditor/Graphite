@@ -18,7 +18,7 @@ use graphene_std::raster_types::Raster;
 use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::style::RenderMode;
 use graphene_std::{Context, NodeError, Poll};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
+use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::layer_paths::write_layer_paths;
 use interpreted_executor::util::wrap_network_in_scope;
 use observer::Observer;
@@ -43,6 +43,7 @@ pub struct NodeRuntime {
 	pub(super) executor: DynamicExecutor,
 	#[cfg(not(test))]
 	executor: DynamicExecutor,
+	output: OutputHandle,
 	receiver: Receiver<GraphRuntimeRequest>,
 	sender: Sender<NodeGraphUpdate>,
 	editor_wake: Wake,
@@ -170,6 +171,7 @@ impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>, editor_wake: Wake) -> Self {
 		Self {
 			executor: DynamicExecutor::default(),
+			output: OutputHandle::default(),
 			receiver,
 			sender,
 			editor_wake,
@@ -485,7 +487,7 @@ impl NodeRuntime {
 		}
 
 		let context = render_config.into_context_with_generations(self.async_runtime().snapshot());
-		let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.tree().eval_tagged_value(self.executor.output(), &context))) {
+		let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.tree().eval_tagged_value(self.output.node(), &context))) {
 			Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
 			Ok(Ok(Poll::Partial(_))) if render_config.for_export => ExecutionResult::Pending,
 			Ok(Ok(Poll::Partial(value))) => ExecutionResult::Partial(value),
@@ -575,7 +577,11 @@ impl NodeRuntime {
 		self.node_graph_warnings.extend(warnings);
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		let result = self.executor.update(proto_network).map_err(|(types, e)| {
+		let updated = self.executor.update(proto_network).map(|(output, types)| {
+			self.output = output;
+			types
+		});
+		let result = updated.map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
 		});
@@ -591,7 +597,7 @@ impl NodeRuntime {
 			paths.into()
 		};
 		let mut errors = Vec::new();
-		let output = self.executor.output();
+		let output = self.output.node();
 		let mut pending = vec![(vec![paths(output)], output, error)];
 		while let Some((mut trace, node, error)) = pending.pop() {
 			let passed = self.executor.trace_error(node, error);

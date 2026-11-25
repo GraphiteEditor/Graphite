@@ -20,7 +20,7 @@ use graphene_std::uuid::NodeId;
 use graphene_std::{Color, Context};
 use gungraun::prelude::*;
 use gungraun::{Callgrind, EntryPoint};
-use interpreted_executor::dynamic_executor::DynamicExecutor;
+use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle};
 use interpreted_executor::util::wrap_network_in_scope;
 use std::hint::black_box;
 use std::sync::Arc;
@@ -43,6 +43,7 @@ pub struct Session {
 	runtime: AsyncRuntime,
 	preprocessor: preprocessor::Preprocessor,
 	executor: DynamicExecutor,
+	output: OutputHandle,
 	/// The document graph for the measured update.
 	document: NodeNetwork,
 }
@@ -60,6 +61,7 @@ impl Session {
 			runtime: AsyncRuntime::new(Arc::new(BlockingSpawner)),
 			preprocessor: preprocessor::Preprocessor::new(),
 			executor: DynamicExecutor::default(),
+			output: OutputHandle::default(),
 			document: NodeNetwork::default(),
 		};
 		session.update(brush_layer(&BrushCache::default(), after));
@@ -71,7 +73,7 @@ impl Session {
 		let mut network = wrap_network_in_scope(document, self.editor_api.clone(), self.runtime.handle());
 		self.preprocessor.preprocess(&mut network, &|_| None).expect("Failed to preprocess the document");
 		let proto_network = Compiler {}.compile_single(network).expect("Failed to compile the document").network;
-		self.executor.update(proto_network).expect("Failed to update the executor");
+		(self.output, _) = self.executor.update(proto_network).expect("Failed to update the executor");
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
@@ -82,7 +84,7 @@ impl Session {
 			scale: 1.,
 			..Default::default()
 		};
-		let output = self.executor.tree().eval_tagged_value(self.executor.output(), &render_config.into_context());
+		let output = self.executor.tree().eval_tagged_value(self.output.node(), &render_config.into_context());
 		assert!(matches!(output, Ok(graphene_std::Poll::Final(_))), "Failed to render the document: {output:?}");
 		// Waiting for the device puts its rasterization inside the measurement, rather than only the encoding of its commands
 		let _ = self.gpu.context().device.poll(wgpu::PollType::wait_indefinitely());

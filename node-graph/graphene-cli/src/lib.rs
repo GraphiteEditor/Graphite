@@ -12,7 +12,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graphene_std::application_io::ApplicationIo;
 use graphene_std::runtime::{AsyncRuntime, RuntimeHandle, Spawn, Task};
-use interpreted_executor::dynamic_executor::DynamicExecutor;
+use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle};
 use interpreted_executor::layer_paths::write_layer_paths;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::collections::HashMap;
@@ -111,11 +111,13 @@ pub fn compile_graph(mut network: NodeNetwork, layers: &[Vec<NodeId>], editor_ap
 	Ok(compiled_network.network)
 }
 
-pub fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
-	DynamicExecutor::new(proto_network).map_err(|errors| {
+pub fn create_executor(proto_network: ProtoNetwork) -> Result<(DynamicExecutor, OutputHandle), Box<dyn Error>> {
+	let mut executor = DynamicExecutor::default();
+	let (output, _) = executor.update(proto_network).map_err(|(_, errors)| {
 		let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
-		messages.join("\n").into()
-	})
+		messages.join("\n")
+	})?;
+	Ok((executor, output))
 }
 
 pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocument, Box<dyn Error>> {
@@ -134,7 +136,7 @@ pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocume
 
 impl CompiledDocument {
 	pub fn into_renderer(self) -> Result<Renderer, Box<dyn Error>> {
-		let executor = create_executor(self.proto_network)?;
+		let (executor, output) = create_executor(self.proto_network)?;
 		self.runtime.update_sources(executor.sources());
 
 		let device = self.application_io.gpu_executor().ok_or("No GPU executor is available")?.context().device.clone();
@@ -151,6 +153,7 @@ impl CompiledDocument {
 
 		Ok(Renderer {
 			executor,
+			output,
 			application_io: self.application_io,
 			runtime: self.runtime,
 			spawner: self.spawner,
@@ -162,6 +165,7 @@ impl CompiledDocument {
 /// Executes a compiled document, polling its GPU device until dropped.
 pub struct Renderer {
 	pub executor: DynamicExecutor,
+	pub output: OutputHandle,
 	pub runtime: AsyncRuntime,
 	pub spawner: Arc<TokioSpawner>,
 	application_io: Arc<PlatformApplicationIo>,
@@ -175,12 +179,12 @@ impl Renderer {
 
 	/// Fit `settings` to the artwork, unless they give a size.
 	pub async fn frame(&self, settings: export::ExportSettings) -> Result<export::ExportSettings, Box<dyn Error>> {
-		settings.framed(&self.executor, &self.runtime, &self.spawner).await
+		settings.framed(&self.executor, &self.output, &self.runtime, &self.spawner).await
 	}
 
 	/// Render one frame at `animation_time`.
 	pub async fn render(&self, settings: export::ExportSettings, animation_time: std::time::Duration) -> Result<export::RenderedFrame, Box<dyn Error>> {
-		export::render_frame(&self.executor, self.wgpu_executor(), settings, animation_time, &self.runtime, &self.spawner).await
+		export::render_frame(&self.executor, &self.output, self.wgpu_executor(), settings, animation_time, &self.runtime, &self.spawner).await
 	}
 }
 
