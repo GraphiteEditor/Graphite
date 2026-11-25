@@ -218,6 +218,17 @@ fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Result<Item<Raster<CPU>>
 	Ok(Item::new_from_element(Raster::new_cpu(image)))
 }
 
+/// Converts SVG to graphics.
+#[node_macro::node(category("Graphic"), icon("NodeBytesToImage"), name("SVG to Graphic"))]
+fn svg_to_graphic(_: impl Ctx, #[name("SVG")] svg: Item<String>) -> Result<List<Graphic>, svg_convert::Error> {
+	let svg = svg.into_element();
+	if svg.trim().is_empty() {
+		return Ok(List::new());
+	}
+
+	svg_convert::convert(&svg, &svg_convert::Options::default())
+}
+
 /// Renders a view of the input graphics within an area defined by the *Footprint*, producing a raster image.
 #[node_macro::node(category("Raster"), icon("NodeRasterize"), placeholder = pending_raster)]
 async fn rasterize(

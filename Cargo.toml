@@ -99,6 +99,7 @@ graphic-types = { path = "node-graph/libraries/graphic-types" }
 raster-kernels = { path = "node-graph/libraries/raster-kernels" }
 brush-types = { path = "node-graph/libraries/brush-types" }
 rendering = { path = "node-graph/libraries/rendering" }
+svg-convert = { path = "node-graph/libraries/svg-convert" }
 brush-nodes = { path = "node-graph/nodes/brush" }
 blending-nodes = { path = "node-graph/nodes/blending" }
 graphene-core = { path = "node-graph/nodes/gcore" }

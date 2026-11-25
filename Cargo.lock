@@ -2679,6 +2679,7 @@ dependencies = [
  "rendering",
  "repeat-nodes",
  "reqwest",
+ "svg-convert",
  "text-nodes",
  "thiserror 2.0.21",
  "tokio",
