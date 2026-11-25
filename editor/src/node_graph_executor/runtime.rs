@@ -1101,6 +1101,40 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn a_pdf_export_draws_effects_as_images_the_gpu_renders() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+		use graphene_std::blending_nodes::effects::drop_shadow;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let node_type = DefinitionIdentifier::ProtoNode(drop_shadow::IDENTIFIER);
+		editor.handle_message(NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type, layer }).await;
+
+		// The export waits for the render node to read the image of the shadowed rectangle back into the PDF
+		send_export(&mut editor, FileType::Pdf);
+		let mut saved = None;
+		for _ in 0..100 {
+			editor.runtime.update();
+			editor.runtime.run().await;
+			saved = editor.dispatch(Message::Wake).into_iter().find_map(|message| match message {
+				FrontendMessage::TriggerSaveFile { content, .. } => Some(content),
+				_ => None,
+			});
+			if saved.is_some() {
+				break;
+			}
+		}
+		let Some(saved) = saved else { panic!("the export never finished") };
+
+		assert!(saved.starts_with(b"%PDF-"), "the file should hold a PDF document");
+		let embeds_image = saved.windows(b"/Subtype/Image".len()).any(|window| window == b"/Subtype/Image");
+		assert!(embeds_image, "the shadowed rectangle should be an image the GPU rendered");
+	}
+
+	#[tokio::test]
 	async fn an_svg_export_draws_effects_svg_filters_cannot_carry_out_as_images_the_gpu_renders() {
 		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 		use graphene_std::blending_nodes::effects::drop_shadow;

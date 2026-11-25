@@ -2111,10 +2111,10 @@ impl Render for Graphic {
 			Graphic::Graphic(item) => pdf::draw_graphic_item(ItemRef::Item(item), canvas, render_params),
 			Graphic::Vector(item) => pdf::draw_vector_item(ItemRef::Item(item), canvas, render_params),
 			Graphic::RasterCPU(item) => pdf::draw_raster_item(ItemRef::Item(item), canvas, render_params),
-			Graphic::RasterGPU(_) => canvas.leave_out("GPU images"),
+			Graphic::RasterGPU(item) => pdf::draw_raster_gpu_item(ItemRef::Item(item), canvas, render_params),
 			Graphic::Color(item) => pdf::draw_color_item(ItemRef::Item(item), canvas, render_params),
 			Graphic::Gradient(item) => pdf::draw_gradient_item(ItemRef::Item(item), canvas, render_params),
-			Graphic::Generator(_) => canvas.leave_out("generated patterns"),
+			Graphic::Generator(item) => pdf::draw_generator_item(ItemRef::Item(item), canvas, render_params),
 			Graphic::Text(item) => pdf::draw_text_item(ItemRef::Item(item), canvas, render_params),
 			Graphic::GraphicList(list) => list.render_pdf(canvas, render_params),
 			Graphic::VectorList(list) => list.render_pdf(canvas, render_params),
@@ -3775,9 +3775,9 @@ fn render_generator_item_to_vello(item: ItemRef<'_, Generator>, scene: &mut Vell
 }
 
 impl Render for List<Generator> {
-	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, _render_params: &RenderParams) {
-		if !self.is_empty() {
-			canvas.leave_out("generated patterns");
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			pdf::draw_generator_item(ItemRef::ListItem(self, index), canvas, render_params);
 		}
 	}
 
@@ -3860,9 +3860,9 @@ impl Render for List<Raster<CPU>> {
 }
 
 impl Render for List<Raster<GPU>> {
-	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, _render_params: &RenderParams) {
-		if !self.is_empty() {
-			canvas.leave_out("GPU images");
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			pdf::draw_raster_gpu_item(ItemRef::ListItem(self, index), canvas, render_params);
 		}
 	}
 
@@ -5670,6 +5670,15 @@ mod tests {
 		content
 	}
 
+	/// A page of `size` points showing the document at its origin.
+	fn test_pdf_page(size: DVec2) -> pdf::PdfPage {
+		pdf::PdfPage {
+			size,
+			transform: DAffine2::IDENTITY,
+			raster_scale: 1.,
+		}
+	}
+
 	fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
 		haystack.windows(needle.len()).any(|window| window == needle)
 	}
@@ -5677,7 +5686,9 @@ mod tests {
 	#[test]
 	fn pdf_export_keeps_text_as_embedded_glyphs() {
 		let content = pdf_test_content(Some(graphic_types::vector_types::vector::style::Stroke { weight: 1., ..Default::default() }));
-		let pdf = pdf::render_pdf_document(&content, DVec2::new(200., 100.), DAffine2::IDENTITY, &RenderParams::default()).expect("the PDF is written");
+		let pdf = pdf::render_pdf_document(&content, &test_pdf_page(DVec2::new(200., 100.)), &RenderParams::default(), pdf::PdfRasters::new())
+			.expect("the PDF is written")
+			.0;
 
 		assert!(pdf.starts_with(b"%PDF-"), "the document is a PDF");
 		assert!(contains_bytes(&pdf, b"/FontFile"), "the text's font is embedded");
@@ -5691,7 +5702,14 @@ mod tests {
 			dash_lengths: vec![2., 1.],
 			..Default::default()
 		};
-		let pdf = pdf::render_pdf_document(&pdf_test_content(Some(dashed)), DVec2::new(200., 100.), DAffine2::IDENTITY, &RenderParams::default()).expect("the PDF is written");
+		let pdf = pdf::render_pdf_document(
+			&pdf_test_content(Some(dashed)),
+			&test_pdf_page(DVec2::new(200., 100.)),
+			&RenderParams::default(),
+			pdf::PdfRasters::new(),
+		)
+		.expect("the PDF is written")
+		.0;
 
 		assert!(!contains_bytes(&pdf, b"/FontFile"), "dashed text strokes are drawn as outlines, without embedding the font");
 	}
@@ -5720,7 +5738,9 @@ mod tests {
 
 	#[test]
 	fn pdf_export_clips_content_to_the_masker_before_it() {
-		let pdf = pdf::render_pdf_document(&clipped_pdf_test_content(), DVec2::new(200., 100.), DAffine2::IDENTITY, &RenderParams::default()).expect("the PDF is written");
+		let pdf = pdf::render_pdf_document(&clipped_pdf_test_content(), &test_pdf_page(DVec2::new(200., 100.)), &RenderParams::default(), pdf::PdfRasters::new())
+			.expect("the PDF is written")
+			.0;
 		assert!(contains_bytes(&pdf, b"/SMask"), "the clipped square is drawn within a soft mask of the circle");
 	}
 
@@ -5734,7 +5754,9 @@ mod tests {
 		));
 		let content = List::new_from_item(Item::new_from_element(Graphic::Vector(Box::new(filled_vector(kurbo::Circle::new((50., 50.), 40.), paint)))));
 
-		let pdf = pdf::render_pdf_document(&content, DVec2::new(100., 100.), DAffine2::IDENTITY, &RenderParams::default()).expect("the PDF is written");
+		let pdf = pdf::render_pdf_document(&content, &test_pdf_page(DVec2::new(100., 100.)), &RenderParams::default(), pdf::PdfRasters::new())
+			.expect("the PDF is written")
+			.0;
 		assert!(contains_bytes(&pdf, b"/Subtype/Image"), "the image filling the circle is embedded");
 	}
 

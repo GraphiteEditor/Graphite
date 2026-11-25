@@ -34,9 +34,9 @@ impl WgpuExecutor {
 		}
 	}
 
-	/// Renders images of the content an SVG of the view `footprint` describes defers to the GPU, with where the SVG draws each.
-	/// Content out of view, or that fails to render, keeps the markup standing in for it.
-	pub fn render_deferred_svg_images(&self, deferred_images: &[DeferredImage], footprint: Footprint) -> Vec<(DeferredImagePlacement, Texture)> {
+	/// Renders images of the content an SVG or PDF of the view `footprint` defers to the GPU, with where each is drawn.
+	/// Content out of view, or that fails to render, gets no image.
+	pub fn render_deferred_images(&self, deferred_images: &[DeferredImage], footprint: Footprint) -> Vec<(DeferredImagePlacement, Texture)> {
 		let max_pixels = MAX_DEFERRED_IMAGE_PIXELS.min(self.context().device.limits().max_texture_dimension_2d);
 
 		deferred_images
@@ -56,9 +56,17 @@ impl WgpuExecutor {
 
 	/// Reads back the images of deferred content, putting each in `svg` in place of the markup standing in for its content.
 	pub async fn resolve_deferred_svg_images(&self, svg: &mut String, image_data: &mut Vec<(u64, CanvasImage)>, images: Vec<(DeferredImagePlacement, Texture)>) {
-		for (placement, texture) in images {
-			let image: Raster<CPU> = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, self.clone()).await;
+		for (placement, image) in self.read_back_deferred_images(images).await {
 			substitute_deferred_image(svg, image_data, &placement, &image);
 		}
+	}
+
+	/// Reads back the images of deferred content into CPU memory, each with where it goes.
+	pub async fn read_back_deferred_images(&self, images: Vec<(DeferredImagePlacement, Texture)>) -> Vec<(DeferredImagePlacement, Raster<CPU>)> {
+		let mut read_back = Vec::with_capacity(images.len());
+		for (placement, texture) in images {
+			read_back.push((placement, Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, self.clone()).await));
+		}
+		read_back
 	}
 }

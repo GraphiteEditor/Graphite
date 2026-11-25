@@ -1,33 +1,35 @@
+use core_types::WasmNotSend;
 use core_types::runtime::Runtime;
 use core_types::transform::Footprint;
 use core_types::{CacheHash, Poll, RuntimeHandle, SourceId};
 use futures::future::{AbortHandle, Abortable};
 use graph_craft::document::value::RenderOutputType;
-use rendering::SvgRenderOutput;
+use rendering::pdf::{PdfPage, PdfRasters, render_pdf_document};
+use rendering::{Render, RenderParams, SvgRenderOutput};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use wgpu_executor::WgpuExecutor;
 
-/// The latest SVG render that needs maps and images from the GPU, kept across the render node's evaluations while a task reads them back.
+/// The latest SVG or PDF render that needs maps and images from the GPU, kept across the render node's evaluations while a task reads them back.
 /// A render of other content or for another view replaces it, cancelling the readback still underway for the one it replaced.
 #[derive(Clone, Debug, Default)]
-pub struct SvgReadbackSlot(Arc<Mutex<Option<SvgReadback>>>);
+pub struct ReadbackSlot(Arc<Mutex<Option<Readback>>>);
 
 #[derive(Debug)]
-struct SvgReadback {
+struct Readback {
 	key: u64,
 	finished: Option<RenderOutputType>,
 	task: AbortHandle,
 }
 
-impl Drop for SvgReadback {
+impl Drop for Readback {
 	fn drop(&mut self) {
 		self.task.abort();
 	}
 }
 
-impl SvgReadbackSlot {
-	fn lock(&self) -> MutexGuard<'_, Option<SvgReadback>> {
+impl ReadbackSlot {
+	fn lock(&self) -> MutexGuard<'_, Option<Readback>> {
 		self.0.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 
@@ -53,33 +55,102 @@ impl SvgReadbackSlot {
 		footprint.cache_hash(&mut hasher);
 		let key = hasher.finish();
 
-		if self.lock().as_ref().is_none_or(|readback| readback.key != key) {
-			let Some(executor) = executor else {
-				return Poll::Final(RenderOutputType::Svg { svg, image_data });
-			};
+		let partial = RenderOutputType::Svg {
+			svg: svg.clone(),
+			image_data: image_data.clone(),
+		};
+		self.poll_readback(key, partial, runtime, source, || {
+			let executor = executor?;
 			let effect_maps = executor.render_effect_maps(&output.effect_maps, footprint);
-			let deferred_images = executor.render_deferred_svg_images(&output.deferred_images, footprint);
+			let deferred_images = executor.render_deferred_images(&output.deferred_images, footprint);
 			if effect_maps.is_empty() && deferred_images.is_empty() {
-				self.clear();
-				return Poll::Final(RenderOutputType::Svg { svg, image_data });
+				return None;
 			}
 
-			let (task, registration) = AbortHandle::new_pair();
-			*self.lock() = Some(SvgReadback { key, finished: None, task });
-
-			let (mut svg, mut image_data) = (svg.clone(), image_data.clone());
-			let readback = async move {
+			let (mut svg, mut image_data) = (svg, image_data);
+			Some(async move {
 				executor.resolve_effect_maps(&mut svg, effect_maps).await;
 				executor.resolve_deferred_svg_images(&mut svg, &mut image_data, deferred_images).await;
 				RenderOutputType::Svg { svg, image_data }
+			})
+		})
+	}
+
+	/// The PDF of `content` with the images the GPU renders of what the PDF can't draw itself, partial without them while a task reads them back.
+	/// The task landing evaluates the render node again through its `source`.
+	pub fn poll_pdf(
+		&self,
+		content: Arc<dyn Render + Send + Sync>,
+		page: PdfPage,
+		render_params: RenderParams,
+		executor: Option<WgpuExecutor>,
+		runtime: &RuntimeHandle,
+		source: SourceId,
+	) -> Poll<RenderOutputType> {
+		let (pdf, deferred) = match render_pdf_document(content.as_ref(), &page, &render_params, PdfRasters::new()) {
+			Ok(rendered) => rendered,
+			Err(error) => return Poll::error(error),
+		};
+		if deferred.is_empty() {
+			self.clear();
+			return Poll::Final(RenderOutputType::Pdf { data: pdf });
+		}
+
+		// The document without its images stands for its content, which sets the key apart from other renders
+		let mut hasher = DefaultHasher::new();
+		pdf.hash(&mut hasher);
+		page.size.to_array().map(f64::to_bits).hash(&mut hasher);
+		page.transform.to_cols_array().map(f64::to_bits).hash(&mut hasher);
+		page.raster_scale.to_bits().hash(&mut hasher);
+		let key = hasher.finish();
+
+		let partial = RenderOutputType::Pdf { data: pdf.clone() };
+		self.poll_readback(key, partial, runtime, source, || {
+			let executor = executor?;
+			let images = executor.render_deferred_images(&deferred, page.deferred_image_view());
+			if images.is_empty() {
+				return None;
+			}
+
+			Some(async move {
+				let rasters: PdfRasters = (executor.read_back_deferred_images(images).await.into_iter())
+					.map(|(placement, raster)| (placement.id, (placement, raster)))
+					.collect();
+
+				match render_pdf_document(content.as_ref(), &page, &render_params, rasters) {
+					Ok((data, _)) => RenderOutputType::Pdf { data },
+					// The document without the images is the most there is to export
+					Err(error) => {
+						log::error!("{error}");
+						RenderOutputType::Pdf { data: pdf }
+					}
+				}
+			})
+		})
+	}
+
+	/// The finished output of the render `key` names, starting its readback with `start` the first time it's polled, and `partial` until the readback lands.
+	/// Without a readback to start, `partial` is all there is to the render.
+	fn poll_readback<F>(&self, key: u64, partial: RenderOutputType, runtime: &RuntimeHandle, source: SourceId, start: impl FnOnce() -> Option<F>) -> Poll<RenderOutputType>
+	where
+		F: Future<Output = RenderOutputType> + WasmNotSend + 'static,
+	{
+		if self.lock().as_ref().is_none_or(|readback| readback.key != key) {
+			let Some(readback) = start() else {
+				self.clear();
+				return Poll::Final(partial);
 			};
+
+			let (task, registration) = AbortHandle::new_pair();
+			*self.lock() = Some(Readback { key, finished: None, task });
+
 			// Held weakly, the slot is dropped along with the render node, which cancels the readback
 			let slot = Arc::downgrade(&self.0);
 			runtime.spawn(
 				source,
 				Box::pin(async move {
 					if let Ok(finished) = Abortable::new(readback, registration).await
-						&& let Some(slot) = slot.upgrade().map(SvgReadbackSlot)
+						&& let Some(slot) = slot.upgrade().map(ReadbackSlot)
 						&& let Some(readback) = slot.lock().as_mut().filter(|readback| readback.key == key)
 					{
 						readback.finished = Some(finished);
@@ -91,7 +162,7 @@ impl SvgReadbackSlot {
 		let finished = self.lock().as_ref().filter(|readback| readback.key == key).and_then(|readback| readback.finished.clone());
 		match finished {
 			Some(finished) => Poll::Final(finished),
-			None => Poll::Partial(RenderOutputType::Svg { svg, image_data }),
+			None => Poll::Partial(partial),
 		}
 	}
 }
@@ -173,7 +244,7 @@ mod tests {
 		let Some(executor) = futures::executor::block_on(WgpuExecutor::new()) else { return };
 		let tasks = Arc::new(HeldTasks::default());
 		let runtime = AsyncRuntime::new(tasks.clone());
-		let slot = SvgReadbackSlot::default();
+		let slot = ReadbackSlot::default();
 		let output = deferred_svg();
 		let poll = || slot.poll(again(&output), view(32), Some(executor.clone()), &runtime.handle(), SourceId(1));
 
@@ -195,11 +266,52 @@ mod tests {
 	}
 
 	#[test]
+	fn a_pdf_render_embeds_images_of_effects_once_its_readback_lands() {
+		let Some(executor) = futures::executor::block_on(WgpuExecutor::new()) else { return };
+		let tasks = Arc::new(HeldTasks::default());
+		let runtime = AsyncRuntime::new(tasks.clone());
+		let slot = ReadbackSlot::default();
+
+		// The orange square casting a shadow, which no PDF can draw itself
+		let shadow = EffectOperation::DropShadow {
+			color: Color::BLACK,
+			angle: 180.,
+			distance: 4.,
+			spread: 0.,
+			size: 0.,
+			contour: Default::default(),
+			knockout: true,
+		};
+		let mut item =
+			Item::new_from_element(Raster::new_cpu(Image::new(2, 2, Color::from_gamma_srgb_channels(1., 0.5, 0., 1.)))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(10.)));
+		stamp_effect(&mut item, Effect::new(&shadow));
+		let content: Arc<dyn Render + Send + Sync> = Arc::new(List::new_from_item(item));
+
+		let page = PdfPage::new(DVec2::splat(32.), DAffine2::IDENTITY, 1.);
+		let poll = || slot.poll_pdf(content.clone(), page, RenderParams::default(), Some(executor.clone()), &runtime.handle(), SourceId(1));
+		let embeds_image = |pdf: &[u8]| pdf.windows(b"/Subtype/Image".len()).any(|window| window == b"/Subtype/Image");
+
+		// Until the readback lands, the PDF lacks the image, and evaluating the same render again doesn't read it back again
+		for _ in 0..2 {
+			let Poll::Partial(RenderOutputType::Pdf { data }) = poll() else {
+				panic!("expected a partial PDF")
+			};
+			assert!(!embeds_image(&data), "the partial PDF shouldn't have the image yet");
+		}
+		let spawned = tasks.take();
+		assert_eq!(spawned.len(), 1, "the readback should be spawned once");
+
+		spawned.into_iter().for_each(futures::executor::block_on);
+		let Poll::Final(RenderOutputType::Pdf { data }) = poll() else { panic!("expected a finished PDF") };
+		assert!(embeds_image(&data), "the finished PDF should embed the image of the square and its shadow");
+	}
+
+	#[test]
 	fn a_render_for_another_view_cancels_the_readback_of_the_one_it_replaces() {
 		let Some(executor) = futures::executor::block_on(WgpuExecutor::new()) else { return };
 		let tasks = Arc::new(HeldTasks::default());
 		let runtime = AsyncRuntime::new(tasks.clone());
-		let slot = SvgReadbackSlot::default();
+		let slot = ReadbackSlot::default();
 		let output = deferred_svg();
 		let poll = |size| slot.poll(again(&output), view(size), Some(executor.clone()), &runtime.handle(), SourceId(1));
 
@@ -224,7 +336,7 @@ mod tests {
 		let Some(executor) = futures::executor::block_on(WgpuExecutor::new()) else { return };
 		let tasks = Arc::new(HeldTasks::default());
 		let runtime = AsyncRuntime::new(tasks.clone());
-		let slot = SvgReadbackSlot::default();
+		let slot = ReadbackSlot::default();
 
 		let render = slot.poll(deferred_svg(), view(32), Some(executor), &runtime.handle(), SourceId(1));
 		assert!(matches!(render, Poll::Partial(_)));

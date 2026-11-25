@@ -1,4 +1,4 @@
-mod svg_readback;
+mod readback;
 
 use core_types::list::{Item, List};
 use core_types::transform::{Footprint, Transform};
@@ -9,10 +9,10 @@ use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::Generator;
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
+use readback::ReadbackSlot;
 use rendering::vello_scene_builder::VelloSceneBuilder;
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
-use svg_readback::SvgReadbackSlot;
 use vector_types::Gradient;
 use wgpu_executor::WgpuExecutor;
 
@@ -96,7 +96,7 @@ fn render(
 	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: impl Node<Context<'static>, Output = Item<WgpuExecutor>>,
 	#[scope("runtime")] runtime: Item<RuntimeHandle>,
 	#[source_id] source: Item<SourceId>,
-	#[data] svg_readback: SvgReadbackSlot,
+	#[data] readback: ReadbackSlot,
 ) -> Poll<Item<RenderOutput>> {
 	let footprint = ctx.footprint();
 	let render_params = ctx
@@ -137,11 +137,11 @@ fn render(
 			assert!(output.svg_defs.is_empty());
 
 			let executor = executor.eval(&Context::default()).value().map(Item::into_element);
-			svg_readback.poll(output, *footprint, executor, runtime.element(), *source.element())
+			readback.poll(output, *footprint, executor, runtime.element(), *source.element())
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
 			// The latest SVG render isn't needed anymore, and a finished one holds a whole SVG export
-			svg_readback.clear();
+			readback.clear();
 
 			let (executor, executor_partial, executor_error) = match executor.eval(&Context::default()) {
 				Poll::Final(executor) => (executor.into_element(), false, None),
@@ -175,14 +175,13 @@ fn render(
 				(false, None) => Poll::Final(texture),
 			}
 		}
-		(RenderOutputTypeRequest::Pdf, RenderIntermediateType::Pdf(data)) => {
+		(RenderOutputTypeRequest::Pdf, RenderIntermediateType::Pdf(content)) => {
 			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
 			let logical_resolution = footprint.resolution.as_dvec2() / render_params.scale;
+			let page = rendering::pdf::PdfPage::new(logical_resolution, logical_transform, render_params.scale);
 
-			match rendering::pdf::render_pdf_document(data.as_ref(), logical_resolution, logical_transform, &render_params) {
-				Ok(data) => Poll::Final(RenderOutputType::Pdf { data }),
-				Err(error) => Poll::error(error),
-			}
+			let executor = executor.eval(&Context::default()).value().map(Item::into_element);
+			readback.poll_pdf(content, page, render_params.clone(), executor, runtime.element(), *source.element())
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};

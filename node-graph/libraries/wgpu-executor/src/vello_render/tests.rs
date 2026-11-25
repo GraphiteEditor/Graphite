@@ -2192,7 +2192,7 @@ fn svgs_draw_content_with_effects_svg_cannot_express_as_images_the_gpu_renders()
 		resolution: UVec2::splat(32),
 		..Default::default()
 	};
-	let rendered = executor.render_deferred_svg_images(&render.deferred_images, footprint);
+	let rendered = executor.render_deferred_images(&render.deferred_images, footprint);
 
 	// The square comes out gray, with the shadow beside it
 	let [(_, texture)] = &rendered[..] else { panic!("expected one image, got {}", rendered.len()) };

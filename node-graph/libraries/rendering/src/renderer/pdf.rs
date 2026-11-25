@@ -1,6 +1,7 @@
 //! Draws graphic content into a PDF document with krilla, keeping vector geometry, gradients, and text as such.
 
 use super::*;
+use crate::deferred_image::DeferredImagePlacement;
 use graphic_types::vector_types::gradient::GradientSpread;
 use graphic_types::vector_types::vector::style::Stroke as VectorStroke;
 use krilla::color::rgb;
@@ -14,36 +15,87 @@ use krilla::surface::Surface;
 use krilla::text::{Font, GlyphId, KrillaGlyph};
 use std::collections::BTreeSet;
 
-/// Renders `content`, placed on the page by `transform`, into a PDF document of one page of `size`.
-pub fn render_pdf_document(content: &(impl Render + ?Sized), size: DVec2, transform: DAffine2, render_params: &RenderParams) -> Result<Vec<u8>, String> {
-	let Some(page_size) = Size::from_wh(size.x as f32, size.y as f32) else {
-		return Err(format!("A PDF page can't be {} by {} points", size.x, size.y));
+/// The resolution, in pixels per inch, of the images the GPU renders of content the PDF can't draw itself, at an export scale of 1.
+pub const DEFERRED_IMAGE_DPI: f64 = 300.;
+
+const POINTS_PER_INCH: f64 = 72.;
+
+/// How the content of a PDF goes onto its page.
+#[derive(Clone, Copy, Debug)]
+pub struct PdfPage {
+	/// The page's size in points.
+	pub size: DVec2,
+	/// Places the content on the page.
+	pub transform: DAffine2,
+	/// The pixels per point of the images the GPU renders of content the PDF can't draw itself, like effects.
+	pub raster_scale: f64,
+}
+
+impl PdfPage {
+	/// A page of `size` points with `transform` placing the content on it, whose images of deferred content have [`DEFERRED_IMAGE_DPI`] times `export_scale` pixels per inch.
+	pub fn new(size: DVec2, transform: DAffine2, export_scale: f64) -> Self {
+		Self {
+			size,
+			transform,
+			raster_scale: export_scale * DEFERRED_IMAGE_DPI / POINTS_PER_INCH,
+		}
+	}
+
+	/// The view the GPU renders the images of deferred content in, mapping the page into their pixels.
+	pub fn deferred_image_view(&self) -> Footprint {
+		Footprint {
+			transform: DAffine2::from_scale(DVec2::splat(self.raster_scale)),
+			resolution: (self.size * self.raster_scale).ceil().max(DVec2::ONE).as_uvec2(),
+			..Default::default()
+		}
+	}
+}
+
+/// The images the GPU rendered of the content a PDF can't draw itself, with where each goes, by the IDs of their [`DeferredImage`]s.
+pub type PdfRasters = HashMap<u64, (DeferredImagePlacement, Raster<CPU>)>;
+
+/// Renders `content` into a PDF document of one page, drawing the `rasters` in place of the content they're images of.
+/// Also gives back the content the PDF can't draw itself that `rasters` lacks images of, for the GPU to render before rendering the document again.
+/// Content is met in the same order each time, so the IDs of that content name the same content then.
+pub fn render_pdf_document(content: &(impl Render + ?Sized), page: &PdfPage, render_params: &RenderParams, rasters: PdfRasters) -> Result<(Vec<u8>, Vec<DeferredImage>), String> {
+	let Some(page_size) = Size::from_wh(page.size.x as f32, page.size.y as f32) else {
+		return Err(format!("A PDF page can't be {} by {} points", page.size.x, page.size.y));
 	};
 
 	let mut document = krilla::Document::new();
-	let mut page = document.start_page_with(PageSettings::new(page_size));
-	let mut surface = page.surface();
+	let mut pdf_page = document.start_page_with(PageSettings::new(page_size));
+	let mut surface = pdf_page.surface();
 
-	let mut canvas = PdfCanvas {
-		surface: &mut surface,
-		page_size: size,
-		base_transform: DAffine2::IDENTITY,
-		pushed: Vec::new(),
+	let mut state = DocumentState {
 		fonts: HashMap::new(),
 		left_out: BTreeSet::new(),
+		rasters,
+		deferred: Vec::new(),
+		next_deferred_id: 0,
 	};
-	canvas.push_transform(transform);
+	let mut canvas = PdfCanvas {
+		surface: &mut surface,
+		document: &mut state,
+		page_size: page.size,
+		base_transform: DAffine2::IDENTITY,
+		pushed: Vec::new(),
+	};
+	canvas.push_transform(page.transform);
 	content.render_pdf(&mut canvas, render_params);
 	canvas.pop();
 
-	if !canvas.left_out.is_empty() {
-		let left_out: Vec<_> = canvas.left_out.iter().copied().collect();
+	if !state.left_out.is_empty() {
+		let left_out: Vec<_> = state.left_out.iter().copied().collect();
 		log::warn!("The PDF leaves out content it can't draw yet: {}", left_out.join(", "));
 	}
 
 	surface.finish();
-	page.finish();
-	document.finish().map_err(|error| format!("The PDF could not be written: {error:?}"))
+	pdf_page.finish();
+	let pdf = document.finish().map_err(|error| format!("The PDF could not be written: {error:?}"))?;
+
+	// The content still without an image is what the GPU renders before the document is drawn again
+	let missing = state.deferred.into_iter().filter(|deferred| !state.rasters.contains_key(&deferred.id)).collect();
+	Ok((pdf, missing))
 }
 
 /// What one [`PdfCanvas::pop`] ends.
@@ -54,23 +106,32 @@ enum Pushed {
 	States(usize),
 }
 
-/// The page being drawn, which tracks its transforms so content filling the page knows where its edges are.
-pub struct PdfCanvas<'a, 'b> {
-	surface: &'a mut Surface<'b>,
-	page_size: DVec2,
-	/// The transform from the space the surface starts in to the page, which a stream drawn for part of the page starts in.
-	base_transform: DAffine2,
-	pushed: Vec<Pushed>,
+/// What drawing every part of a document shares, including the streams drawn for its masks.
+struct DocumentState {
 	/// The fonts the document embeds, by the IDs of their data, or `None` for one krilla can't read.
 	fonts: HashMap<u64, Option<Font>>,
 	/// The kinds of content left out because the PDF can't draw them yet, reported once the document is done.
 	left_out: BTreeSet<&'static str>,
+	rasters: PdfRasters,
+	/// The content drawn as images the GPU renders, in the order it's met, which numbers it the same each time the document is drawn.
+	deferred: Vec<DeferredImage>,
+	next_deferred_id: u64,
+}
+
+/// The page being drawn, which tracks its transforms so content filling the page knows where its edges are.
+pub struct PdfCanvas<'a, 'b> {
+	surface: &'a mut Surface<'b>,
+	document: &'a mut DocumentState,
+	page_size: DVec2,
+	/// The transform from the space the surface starts in to the page, which a stream drawn for part of the page starts in.
+	base_transform: DAffine2,
+	pushed: Vec<Pushed>,
 }
 
 impl PdfCanvas<'_, '_> {
 	/// Notes that some kind of content is left out of the document.
 	pub(super) fn leave_out(&mut self, kind: &'static str) {
-		self.left_out.insert(kind);
+		self.document.left_out.insert(kind);
 	}
 
 	/// The transform from the space content is drawn in to the page.
@@ -86,28 +147,51 @@ impl PdfCanvas<'_, '_> {
 	/// Draws what `draw` draws into a stream of its own, in the current space, like the content of a mask.
 	fn draw_stream(&mut self, draw: impl FnOnce(&mut PdfCanvas)) -> Stream {
 		let base_transform = self.current_transform();
-		let page_size = self.page_size;
-		let (fonts, left_out) = (std::mem::take(&mut self.fonts), std::mem::take(&mut self.left_out));
 
 		let mut builder = self.surface.stream_builder();
 		let mut surface = builder.surface();
 		let mut stream_canvas = PdfCanvas {
 			surface: &mut surface,
-			page_size,
+			document: &mut *self.document,
+			page_size: self.page_size,
 			base_transform,
 			pushed: Vec::new(),
-			fonts,
-			left_out,
 		};
 		draw(&mut stream_canvas);
 
-		// The fonts embedded and the content left out while drawing the stream count for the whole document
-		let PdfCanvas { fonts, left_out, .. } = stream_canvas;
 		surface.finish();
-		let stream = builder.finish();
-		(self.fonts, self.left_out) = (fonts, left_out);
+		builder.finish()
+	}
 
-		stream
+	/// Draws the image the GPU rendered of `content`, which covers `bounds` in the current space, or notes it for the GPU to render if there isn't one yet.
+	/// The image takes the content's `opacity` and `blend_mode`, which `content` leaves out.
+	fn draw_deferred(&mut self, content: impl FnOnce() -> Graphic, bounds: [DVec2; 2], opacity: f32, blend_mode: BlendMode, render_params: &RenderParams) {
+		let id = self.document.next_deferred_id;
+		self.document.next_deferred_id += 1;
+
+		let user_to_document = self.current_transform();
+		self.document.deferred.push(DeferredImage {
+			id,
+			content: content(),
+			render_params: render_params.clone(),
+			user_to_document,
+			bounds,
+			margin: 0.,
+			opacity,
+			blend_mode,
+		});
+
+		let Some((placement, raster)) = self.document.rasters.get(&id) else { return };
+		let (pixels, width, height) = raster.to_flat_u8();
+		let image = krilla::image::Image::from_rgba8(pixels, width, height);
+		let Some(unit_size) = Size::from_wh(1., 1.) else { return };
+		let placement = placement.transform;
+
+		self.push_compositing(opacity, blend_mode);
+		self.push_transform(placement);
+		self.surface.draw_image(image, unit_size);
+		self.pop();
+		self.pop();
 	}
 
 	/// Shows the content drawn until the matching [`Self::pop`] only where `mask`, drawn in the current space, has alpha.
@@ -174,7 +258,7 @@ impl PdfCanvas<'_, '_> {
 	fn font(&mut self, font: &peniko::FontData) -> Option<Font> {
 		let blob = font.data.clone();
 		let index = font.index;
-		let entry = self.fonts.entry(blob.id()).or_insert_with(|| {
+		let entry = self.document.fonts.entry(blob.id()).or_insert_with(|| {
 			let data: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(blob);
 			Font::new(data.into(), index)
 		});
@@ -333,6 +417,16 @@ fn pdf_gradient(item: ItemRef<'_, Gradient>, item_transform: DAffine2, element_t
 pub(super) fn draw_graphic_item(item: ItemRef<'_, Graphic>, canvas: &mut PdfCanvas, render_params: &RenderParams) {
 	let Some(element) = item.element() else { return };
 	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+
+	let compositing = item.compositing(render_params, item_transform);
+	if compositing.effects.is_some() {
+		if let Some(bounds) = deferred_bounds(canvas, drawn_bounding_box(element, item_transform), compositing.reach()) {
+			let content = || Graphic::Graphic(Box::new(without_opacity_and_blend_mode(item, element.clone())));
+			canvas.draw_deferred(content, bounds, compositing.opacity, blend_mode, render_params);
+		}
+		return;
+	}
 
 	// This item's declared appearance cascades to descendants lacking their own
 	let child_render_params = (item.attribute::<Appearance>(ATTR_APPEARANCE))
@@ -340,13 +434,8 @@ pub(super) fn draw_graphic_item(item: ItemRef<'_, Graphic>, canvas: &mut PdfCanv
 		.map(|appearance| render_params.for_child_item(appearance));
 	let render_params = child_render_params.as_ref().unwrap_or(render_params);
 
-	let compositing = item.compositing(render_params, item_transform);
-	if compositing.effects.is_some() {
-		canvas.leave_out("effects");
-	}
-
 	canvas.push_transform(item_transform);
-	canvas.push_compositing(compositing.opacity_without_effects(), item.attribute_cloned_or_default(ATTR_BLEND_MODE));
+	canvas.push_compositing(compositing.opacity, blend_mode);
 	element.render_pdf(canvas, render_params);
 	canvas.pop();
 	canvas.pop();
@@ -469,8 +558,14 @@ pub(super) fn draw_vector_item(item: ItemRef<'_, Vector>, canvas: &mut PdfCanvas
 		Some(folded) => (folded.fill.as_ref(), folded.stroke.as_ref(), compositing.with_remaining_effects(&folded.remaining_effects)),
 		None => (fill_paint, stroke_paint, compositing),
 	};
+	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	if compositing.effects.is_some() {
-		canvas.leave_out("effects");
+		let bounds = (vector.stroke_inclusive_bounding_box_with_transform(paths, item_transform, stroke.as_ref())).map_or(RenderBoundingBox::None, RenderBoundingBox::Rectangle);
+		if let Some(bounds) = deferred_bounds(canvas, bounds, compositing.reach()) {
+			let content = || Graphic::Vector(Box::new(without_opacity_and_blend_mode(item, vector.clone())));
+			canvas.draw_deferred(content, bounds, compositing.opacity, blend_mode, render_params);
+		}
+		return;
 	}
 
 	// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
@@ -523,7 +618,7 @@ pub(super) fn draw_vector_item(item: ItemRef<'_, Vector>, canvas: &mut PdfCanvas
 		});
 	};
 
-	canvas.push_compositing(compositing.opacity_without_effects(), item.attribute_cloned_or_default(ATTR_BLEND_MODE));
+	canvas.push_compositing(compositing.opacity, blend_mode);
 	canvas.push_transform(element_transform);
 	if stroke_below {
 		draw_stroke(canvas);
@@ -576,6 +671,16 @@ pub(super) fn draw_raster_item(item: ItemRef<'_, Raster<CPU>>, canvas: &mut PdfC
 	// Leading adjustments are carried out on the image's pixels, as SVG does
 	let mut remaining_effects = Effects::default();
 	let (leading_adjustments, compositing) = compositing.split_leading_adjustments(&mut remaining_effects);
+	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+	if compositing.effects.is_some() {
+		let bounds = RenderBoundingBox::Rectangle((item_transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
+		if let Some(bounds) = deferred_bounds(canvas, bounds, compositing.reach()) {
+			let content = || Graphic::RasterCPU(Box::new(without_opacity_and_blend_mode(item, raster.clone())));
+			canvas.draw_deferred(content, bounds, compositing.opacity, blend_mode, render_params);
+		}
+		return;
+	}
+
 	let adjusted;
 	let raster = match leading_adjustments.is_empty() {
 		true => raster,
@@ -584,19 +689,51 @@ pub(super) fn draw_raster_item(item: ItemRef<'_, Raster<CPU>>, canvas: &mut PdfC
 			&adjusted
 		}
 	};
-	if compositing.effects.is_some() {
-		canvas.leave_out("effects");
-	}
-
 	let (pixels, width, height) = raster.to_flat_u8();
 	let image = krilla::image::Image::from_rgba8(pixels, width, height);
 	let Some(unit_size) = Size::from_wh(1., 1.) else { return };
 
-	canvas.push_compositing(compositing.opacity_without_effects(), item.attribute_cloned_or_default(ATTR_BLEND_MODE));
+	canvas.push_compositing(compositing.opacity, blend_mode);
 	canvas.push_transform(item_transform);
 	canvas.surface.draw_image(image, unit_size);
 	canvas.pop();
 	canvas.pop();
+}
+
+/// The area deferred content's image covers in the current space, its `bounds` grown by how far its effects `reach`, or the page for content without bounds.
+fn deferred_bounds(canvas: &PdfCanvas, bounds: RenderBoundingBox, reach: DVec2) -> Option<[DVec2; 2]> {
+	match bounds {
+		RenderBoundingBox::Rectangle([min, max]) => Some([min - reach, max + reach]),
+		RenderBoundingBox::Infinite => {
+			let page = canvas.page_area().bounding_box();
+			Some([DVec2::new(page.x0, page.y0), DVec2::new(page.x1, page.y1)])
+		}
+		RenderBoundingBox::None => None,
+	}
+}
+
+/// Draws a generator's pattern, which the PDF has no way to describe, as an image the GPU renders of the page it covers.
+pub(super) fn draw_generator_item(item: ItemRef<'_, Generator>, canvas: &mut PdfCanvas, render_params: &RenderParams) {
+	let Some(&generator) = item.element() else { return };
+	let compositing = item.compositing(render_params, item.attribute_cloned_or_default(ATTR_TRANSFORM));
+
+	let Some(bounds) = deferred_bounds(canvas, RenderBoundingBox::Infinite, DVec2::ZERO) else {
+		return;
+	};
+	let content = || Graphic::Generator(without_opacity_and_blend_mode(item, generator));
+	canvas.draw_deferred(content, bounds, compositing.opacity, item.attribute_cloned_or_default(ATTR_BLEND_MODE), render_params);
+}
+
+/// Draws a GPU raster, whose pixels only the GPU holds, as an image the GPU renders of it.
+pub(super) fn draw_raster_gpu_item(item: ItemRef<'_, Raster<GPU>>, canvas: &mut PdfCanvas, render_params: &RenderParams) {
+	let Some(raster) = item.element() else { return };
+	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let compositing = item.compositing(render_params, item_transform);
+
+	let bounds = RenderBoundingBox::Rectangle((item_transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
+	let Some(bounds) = deferred_bounds(canvas, bounds, compositing.reach()) else { return };
+	let content = || Graphic::RasterGPU(without_opacity_and_blend_mode(item, raster.clone()));
+	canvas.draw_deferred(content, bounds, compositing.opacity, item.attribute_cloned_or_default(ATTR_BLEND_MODE), render_params);
 }
 
 /// Paints the whole page with a color item, as content filling the plane.
@@ -696,7 +833,17 @@ pub(super) fn draw_text_item(item: ItemRef<'_, String>, canvas: &mut PdfCanvas, 
 	}
 	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
+	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let drawn = with_text_paints(item, render_params, item_transform, |paints| {
+		if paints.compositing.effects.is_some() {
+			let mut bounds = None;
+			accumulate_text_item_bounds(item, DAffine2::IDENTITY, true, &mut bounds);
+			if let Some(bounds) = deferred_bounds(canvas, bounds.map_or(RenderBoundingBox::None, RenderBoundingBox::Rectangle), paints.compositing.reach()) {
+				let content = || Graphic::Text(without_opacity_and_blend_mode(item, text.clone()));
+				canvas.draw_deferred(content, bounds, paints.compositing.opacity, blend_mode, render_params);
+			}
+			return true;
+		}
 		if !paints.draw_natively() {
 			return false;
 		}
@@ -722,10 +869,6 @@ pub(super) fn draw_text_item(item: ItemRef<'_, String>, canvas: &mut PdfCanvas, 
 		let fonts: Option<Vec<Font>> = runs.iter().map(|run| canvas.font(&run.font)).collect();
 		let Some(fonts) = fonts else { return false };
 
-		if paints.compositing.effects.is_some() {
-			canvas.leave_out("effects");
-		}
-
 		// The text sits in its layout space, which its paints are placed relative to
 		let fill = pdf_paint(paints.fill_paint, item_transform, item_transform, render_params.for_mask);
 		let stroke_paint = pdf_paint(paints.stroke_paint, item_transform, item_transform, render_params.for_mask);
@@ -750,7 +893,7 @@ pub(super) fn draw_text_item(item: ItemRef<'_, String>, canvas: &mut PdfCanvas, 
 			(fill, stroke) => vec![(fill, stroke)],
 		};
 
-		canvas.push_compositing(paints.compositing.opacity_without_effects(), item.attribute_cloned_or_default(ATTR_BLEND_MODE));
+		canvas.push_compositing(paints.compositing.opacity, blend_mode);
 		canvas.push_transform(item_transform);
 		for (fill, stroke) in passes {
 			canvas.surface.set_fill(fill);
