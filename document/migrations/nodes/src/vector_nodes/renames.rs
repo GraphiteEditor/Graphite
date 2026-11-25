@@ -6,3 +6,5 @@ rename!("vector_nodes::vector_modification_nodes::PathModifyNode"@1 => "vector_n
 // Version 2 only adds `InjectFootprint` to the context bounds, so stored nodes keep their layout
 rename!("core_types::vector::AreaNode"@1 => @2);
 rename!("core_types::vector::CentroidNode"@1 => @2);
+// Version 2 only lets its output carry an error, so stored nodes keep their layout
+rename!("core_types::vector::ScatterPointsNode"@1 => @2);
