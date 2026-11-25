@@ -65,6 +65,17 @@ impl DynamicExecutor {
 	/// Adds the [`ProtoNetwork`] to the existing [`BorrowTree`], reusing nodes where possible.
 	#[cfg_attr(debug_assertions, inline(never))]
 	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<(OutputHandle, ResolvedDocumentNodeTypesDelta), (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
+		let (output, add) = self.insert_nodes(proto_network)?;
+		let remove = self.free_orphaned_nodes();
+		Ok((output, ResolvedDocumentNodeTypesDelta { add, remove }))
+	}
+
+	pub fn update_without_freeing(&mut self, proto_network: ProtoNetwork) -> Result<(OutputHandle, ResolvedDocumentNodeTypesDelta), (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
+		let (output, add) = self.insert_nodes(proto_network)?;
+		Ok((output, ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }))
+	}
+
+	fn insert_nodes(&mut self, proto_network: ProtoNetwork) -> Result<(OutputHandle, Vec<(Path, NodeTypes)>), (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
 		self.typing_context.update(&proto_network).map_err(|e| {
 			// If there is an error then get types that have been resolved before the error
 			let add = proto_network
@@ -86,11 +97,21 @@ impl DynamicExecutor {
 			(ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }, e)
 		})?;
 
-		let output = Arc::new(proto_network.output);
+		let output = proto_network.output;
 		let add = self.tree.update(proto_network, &self.typing_context).map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
 		self.outputs.retain(|output| output.strong_count() > 0);
-		self.outputs.push(Arc::downgrade(&output));
+		let held = self.outputs.iter().filter_map(Weak::upgrade).find(|held| **held == output);
+		let output = held.unwrap_or_else(|| {
+			let output = Arc::new(output);
+			self.outputs.push(Arc::downgrade(&output));
+			output
+		});
 
+		let add = self.document_node_types(add.into_iter()).collect();
+		Ok((OutputHandle(output), add))
+	}
+
+	fn free_orphaned_nodes(&mut self) -> Vec<Path> {
 		let mut kept = HashSet::new();
 		let mut pending: Vec<NodeId> = self.outputs.iter().filter_map(Weak::upgrade).map(|output| *output).collect();
 		while let Some(node) = pending.pop() {
@@ -112,15 +133,7 @@ impl DynamicExecutor {
 				}
 			}
 		}
-		let add = self.document_node_types(add.into_iter()).collect();
-		Ok((OutputHandle(output), ResolvedDocumentNodeTypesDelta { add, remove }))
-	}
-
-	pub fn update_without_freeing(&mut self, proto_network: ProtoNetwork) -> Result<(OutputHandle, ResolvedDocumentNodeTypesDelta), (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
-		let orphaned_nodes = std::mem::take(&mut self.orphaned_nodes);
-		let result = self.update(proto_network);
-		self.orphaned_nodes = orphaned_nodes;
-		result
+		remove
 	}
 
 	pub fn execute<I: 'static + WasmNotSend>(&self, output: &OutputHandle, input: I) -> Result<Poll<TaggedValue>, Box<dyn Error>> {

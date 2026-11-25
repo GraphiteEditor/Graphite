@@ -2,7 +2,7 @@ use document_live::{Event, LiveDocument};
 use graph_craft::application_io::resource::ResourceHash;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue, UVec2};
-use graphene_cli::{TokioSpawner, compile_graph, create_executor, editor_api, export};
+use graphene_cli::{TokioSpawner, compile_graph, editor_api, export};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphene_std::runtime::AsyncRuntime;
 use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle};
@@ -132,13 +132,17 @@ impl Viewer {
 			Ok(proto) => proto,
 			Err(error) => return log::error!("Compile failed: {error}"),
 		};
-		match create_executor(proto) {
-			Ok((executor, output)) => {
+		let mut executor = DynamicExecutor::default();
+		match executor.update(proto) {
+			Ok((output, _)) => {
 				self.graph_runtime.update_sources(executor.sources());
 				log::info!("Document compiled");
 				self.executor = Some((executor, output));
 			}
-			Err(error) => log::error!("Executor creation failed: {error}"),
+			Err((_, errors)) => {
+				let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
+				log::error!("Executor creation failed: {}", messages.join("\n"));
+			}
 		}
 	}
 

@@ -111,15 +111,6 @@ pub fn compile_graph(mut network: NodeNetwork, layers: &[Vec<NodeId>], editor_ap
 	Ok(compiled_network.network)
 }
 
-pub fn create_executor(proto_network: ProtoNetwork) -> Result<(DynamicExecutor, OutputHandle), Box<dyn Error>> {
-	let mut executor = DynamicExecutor::default();
-	let (output, _) = executor.update(proto_network).map_err(|(_, errors)| {
-		let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
-		messages.join("\n")
-	})?;
-	Ok((executor, output))
-}
-
 pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocument, Box<dyn Error>> {
 	let (application_io, editor_api) = editor_api(document.gdd.as_ref()).await;
 	let spawner = Arc::new(TokioSpawner::default());
@@ -136,7 +127,11 @@ pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocume
 
 impl CompiledDocument {
 	pub fn into_renderer(self) -> Result<Renderer, Box<dyn Error>> {
-		let (executor, output) = create_executor(self.proto_network)?;
+		let mut executor = DynamicExecutor::default();
+		let (output, _) = executor.update(self.proto_network).map_err(|(_, errors)| {
+			let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
+			messages.join("\n")
+		})?;
 		self.runtime.update_sources(executor.sources());
 
 		let device = self.application_io.gpu_executor().ok_or("No GPU executor is available")?.context().device.clone();

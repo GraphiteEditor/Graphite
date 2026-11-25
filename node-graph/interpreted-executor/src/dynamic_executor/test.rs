@@ -1217,6 +1217,17 @@ fn networks_are_executed_side_by_side_by_their_handles() {
 }
 
 #[test]
+fn an_output_that_is_already_held_shares_its_handle() {
+	let mut executor = DynamicExecutor::default();
+	let (first, _) = executor.update(source_network(0)).unwrap();
+	let (second, _) = executor.update(source_network(0)).unwrap();
+	let (other, _) = executor.update(source_network(1)).unwrap();
+
+	assert!(Arc::ptr_eq(&first.0, &second.0));
+	assert!(!Arc::ptr_eq(&first.0, &other.0));
+}
+
+#[test]
 fn a_handle_keeps_its_output_and_the_nodes_that_feed_it() {
 	let mut executor = DynamicExecutor::default();
 	let (output, _) = executor.update(bounding_box_network(TaggedValue::TypeDefault(item!(Vector)))).unwrap();
