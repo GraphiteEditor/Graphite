@@ -4,6 +4,7 @@
 //! The conversion is best effort: what has no counterpart is left out.
 
 mod blend_mode;
+mod gradient;
 mod stroke;
 
 use core_types::list::{Item, List};
@@ -35,8 +36,7 @@ fn graphic_item(node: &usvg::Node) -> Option<Item<Graphic>> {
 }
 
 fn group_item(group: &usvg::Group) -> Item<Graphic> {
-	let usvg::Transform { sx, kx, ky, sy, tx, ty } = group.transform();
-	let transform = DAffine2::from_cols_array(&[sx, ky, kx, sy, tx, ty].map(f64::from));
+	let transform = affine(group.transform());
 
 	let mut item = Item::new_from_element(Graphic::GraphicList(graphic_list(group)));
 	if transform != DAffine2::IDENTITY {
@@ -54,18 +54,18 @@ fn group_item(group: &usvg::Group) -> Item<Graphic> {
 fn path_item(path: &usvg::Path) -> Item<Graphic> {
 	let mut vector = Vector::item_from_bezpath(&bezpath(path.data()));
 	if let Some(fill) = path.fill()
-		&& let usvg::Paint::Color(color) = fill.paint()
+		&& let Some(fill_paint) = paint(fill.paint(), fill.opacity())
 	{
-		stamp_coverage(&mut vector, Coverage::new_fill(), solid_paint(*color, fill.opacity()), CoverPlacement::Above);
+		stamp_coverage(&mut vector, Coverage::new_fill(), fill_paint, CoverPlacement::Above);
 	}
 	if let Some(stroke) = path.stroke()
-		&& let usvg::Paint::Color(color) = stroke.paint()
+		&& let Some(stroke_paint) = paint(stroke.paint(), stroke.opacity())
 	{
 		let placement = match path.paint_order() {
 			usvg::PaintOrder::FillAndStroke => CoverPlacement::Above,
 			usvg::PaintOrder::StrokeAndFill => CoverPlacement::Below,
 		};
-		stamp_coverage(&mut vector, Coverage::new_stroke(&stroke::style(stroke)), solid_paint(*color, stroke.opacity()), placement);
+		stamp_coverage(&mut vector, Coverage::new_stroke(&stroke::style(stroke)), stroke_paint, placement);
 	}
 
 	Item::new_from_element(Graphic::VectorList(List::new_from_item(vector)))
@@ -78,9 +78,23 @@ fn image_item(image: &usvg::Image) -> Option<Item<Graphic>> {
 	}
 }
 
-fn solid_paint(color: usvg::Color, opacity: usvg::Opacity) -> Graphic {
+fn paint(paint: &usvg::Paint, opacity: usvg::Opacity) -> Option<Graphic> {
+	match paint {
+		usvg::Paint::Color(rgb) => Some(Graphic::from(color(*rgb, opacity.get()))),
+		usvg::Paint::LinearGradient(linear) => Some(gradient::linear(linear, opacity)),
+		usvg::Paint::RadialGradient(radial) => Some(gradient::radial(radial, opacity)),
+		usvg::Paint::Pattern(_) => None,
+	}
+}
+
+fn color(color: usvg::Color, alpha: f32) -> Color {
 	let [red, green, blue] = [color.red, color.green, color.blue].map(|channel| channel as f32 / 255.);
-	Graphic::from(Color::from_gamma_srgb_channels(red, green, blue, opacity.get()))
+	Color::from_gamma_srgb_channels(red, green, blue, alpha)
+}
+
+fn affine(transform: usvg::Transform) -> DAffine2 {
+	let usvg::Transform { sx, kx, ky, sy, tx, ty } = transform;
+	DAffine2::from_cols_array(&[sx, ky, kx, sy, tx, ty].map(f64::from))
 }
 
 fn bezpath(path: &tiny_skia_path::Path) -> BezPath {

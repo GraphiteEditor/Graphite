@@ -1,7 +1,8 @@
-use core_types::list::{ATTR_APPEARANCE, List};
-use core_types::{ATTR_BLEND_MODE, ATTR_OPACITY, ATTR_TRANSFORM, BlendMode, Color};
+use core_types::list::{ATTR_APPEARANCE, Item, List};
+use core_types::{ATTR_BLEND_MODE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_TRANSFORM, BlendMode, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::vector::style::{StrokeCap, StrokeJoin};
+use graphic_types::vector_types::{Gradient, GradientForm, GradientSpace, GradientSpread};
 use graphic_types::{Appearance, Cover, Graphic};
 use svg_convert::{Error, Options, convert};
 
@@ -113,6 +114,57 @@ fn paint_order_stroke_puts_the_stroke_coverage_below_the_fill() -> Result<(), Er
 
 	let stroke_below = appearance_of(&content).map(|appearance| appearance.fill_and_stroke().stroke_below);
 	assert_eq!(stroke_below, Some(true));
+	Ok(())
+}
+
+fn gradient_of(content: &List<Graphic>, cover: Cover) -> Option<&Item<Gradient>> {
+	match appearance_of(content)?.first_paint_of(cover)? {
+		Graphic::Gradient(gradient) => Some(gradient),
+		_ => None,
+	}
+}
+
+#[test]
+fn a_linear_gradient_is_placed_along_its_vector_and_interpolates_in_gamma() -> Result<(), Error> {
+	let content = converted(
+		r#"<linearGradient id="g" gradientUnits="userSpaceOnUse" x1="1" y1="2" x2="5" y2="2" spreadMethod="reflect"><stop offset="0.25" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient><rect width="8" height="8" fill="url(#g)"/>"#,
+	)?;
+
+	let gradient = gradient_of(&content, Cover::Fill);
+	assert_eq!(
+		gradient.and_then(|gradient| gradient.attribute::<DAffine2>(ATTR_TRANSFORM)),
+		Some(&DAffine2::from_cols(DVec2::new(4., 0.), DVec2::new(0., 4.), DVec2::new(1., 2.)))
+	);
+	assert_eq!(gradient.and_then(|gradient| gradient.attribute::<GradientSpace>(ATTR_GRADIENT_SPACE)), Some(&GradientSpace::RgbGamma));
+	assert_eq!(gradient.and_then(|gradient| gradient.attribute::<GradientSpread>(ATTR_GRADIENT_SPREAD)), Some(&GradientSpread::Reflect));
+	assert_eq!(gradient.map(|gradient| gradient.element().positions(false)), Some(vec![0.25, 1.]));
+	Ok(())
+}
+
+#[test]
+fn a_bounding_box_radial_gradient_on_a_wide_shape_is_placed_as_an_ellipse() -> Result<(), Error> {
+	let content = converted(r#"<radialGradient id="g"><stop stop-color="red"/><stop offset="1" stop-color="blue"/></radialGradient><rect width="8" height="4" fill="url(#g)"/>"#)?;
+
+	let gradient = gradient_of(&content, Cover::Fill);
+	assert_eq!(gradient.and_then(|gradient| gradient.attribute::<GradientForm>(ATTR_GRADIENT_FORM)), Some(&GradientForm::Radial));
+	assert_eq!(
+		gradient.and_then(|gradient| gradient.attribute::<DAffine2>(ATTR_TRANSFORM)),
+		Some(&DAffine2::from_cols(DVec2::new(4., 0.), DVec2::new(0., 2.), DVec2::new(4., 2.)))
+	);
+	Ok(())
+}
+
+#[test]
+fn a_gradient_stroke_carries_the_stroke_opacity_in_its_stop_alphas() -> Result<(), Error> {
+	let content = converted(
+		r#"<linearGradient id="g"><stop stop-color="red"/><stop offset="1" stop-color="blue" stop-opacity="0.5"/></linearGradient><rect x="2" y="2" width="4" height="4" fill="none" stroke="url(#g)" stroke-opacity="0.5"/>"#,
+	)?;
+
+	let stops = gradient_of(&content, Cover::Stroke).map(|gradient| [gradient.element().0.element(0), gradient.element().0.element(1)]);
+	assert_eq!(
+		stops,
+		Some([Some(&Color::from_gamma_srgb_channels(1., 0., 0., 0.5)), Some(&Color::from_gamma_srgb_channels(0., 0., 1., 0.25))])
+	);
 	Ok(())
 }
 
