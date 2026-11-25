@@ -3322,9 +3322,7 @@ fn add_vector_item_outline_targets(item: ItemRef<'_, Vector>, outlines: &mut Vec
 
 impl Render for List<Vector> {
 	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
-		for index in 0..self.len() {
-			pdf::draw_vector_item(ItemRef::ListItem(self, index), canvas, render_params);
-		}
+		pdf::draw_vector_list(self, canvas, render_params);
 	}
 
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
@@ -5696,6 +5694,48 @@ mod tests {
 		let pdf = pdf::render_pdf_document(&pdf_test_content(Some(dashed)), DVec2::new(200., 100.), DAffine2::IDENTITY, &RenderParams::default()).expect("the PDF is written");
 
 		assert!(!contains_bytes(&pdf, b"/FontFile"), "dashed text strokes are drawn as outlines, without embedding the font");
+	}
+
+	/// A vector item of `shape` filled with `paint`.
+	fn filled_vector(shape: impl Shape, paint: Graphic) -> Item<Vector> {
+		use graphic_types::appearance::{CoverPlacement, stamp_coverage};
+
+		let mut item = Vector::item_from_bezpath(&shape.to_path(kurbo::DEFAULT_ACCURACY));
+		stamp_coverage(&mut item, Coverage::new_fill(), paint, CoverPlacement::Above);
+		item
+	}
+
+	/// A red circle that the blue square drawn after it is clipped to.
+	fn clipped_pdf_test_content() -> List<Graphic> {
+		let red = Graphic::ColorList(List::new_from_element(Color::from_rgbaf32_unchecked(1., 0., 0., 1.)));
+		let blue = Graphic::ColorList(List::new_from_element(Color::from_rgbaf32_unchecked(0., 0., 1., 1.)));
+		let masker = filled_vector(kurbo::Circle::new((100., 50.), 40.), red);
+		let clipped = filled_vector(kurbo::Rect::new(0., 0., 200., 100.), blue).with_attribute(ATTR_CLIPPING_MASK, true);
+
+		let mut content = List::new();
+		content.push(Item::new_from_element(Graphic::Vector(Box::new(masker))));
+		content.push(Item::new_from_element(Graphic::Vector(Box::new(clipped))));
+		content
+	}
+
+	#[test]
+	fn pdf_export_clips_content_to_the_masker_before_it() {
+		let pdf = pdf::render_pdf_document(&clipped_pdf_test_content(), DVec2::new(200., 100.), DAffine2::IDENTITY, &RenderParams::default()).expect("the PDF is written");
+		assert!(contains_bytes(&pdf, b"/SMask"), "the clipped square is drawn within a soft mask of the circle");
+	}
+
+	#[test]
+	fn pdf_export_fills_shapes_with_images() {
+		use graphic_types::raster_types::Image;
+
+		let image = Raster::new_cpu(Image::new(4, 4, Color::from_rgbaf32_unchecked(0., 1., 0., 1.)));
+		let paint = Graphic::RasterCPUList(List::new_from_item(
+			Item::new_from_element(image).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(100.))),
+		));
+		let content = List::new_from_item(Item::new_from_element(Graphic::Vector(Box::new(filled_vector(kurbo::Circle::new((50., 50.), 40.), paint)))));
+
+		let pdf = pdf::render_pdf_document(&content, DVec2::new(100., 100.), DAffine2::IDENTITY, &RenderParams::default()).expect("the PDF is written");
+		assert!(contains_bytes(&pdf, b"/Subtype/Image"), "the image filling the circle is embedded");
 	}
 
 	#[test]

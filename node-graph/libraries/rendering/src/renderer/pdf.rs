@@ -5,9 +5,11 @@ use graphic_types::vector_types::gradient::GradientSpread;
 use graphic_types::vector_types::vector::style::Stroke as VectorStroke;
 use krilla::color::rgb;
 use krilla::geom::{PathBuilder, Point, Size, Transform};
+use krilla::mask::{Mask, MaskType};
 use krilla::num::NormalizedF32;
 use krilla::page::PageSettings;
 use krilla::paint::{FillRule, LineCap, LineJoin, LinearGradient, Paint, RadialGradient, SpreadMethod, Stop, StrokeDash};
+use krilla::stream::Stream;
 use krilla::surface::Surface;
 use krilla::text::{Font, GlyphId, KrillaGlyph};
 use std::collections::BTreeSet;
@@ -25,6 +27,7 @@ pub fn render_pdf_document(content: &(impl Render + ?Sized), size: DVec2, transf
 	let mut canvas = PdfCanvas {
 		surface: &mut surface,
 		page_size: size,
+		base_transform: DAffine2::IDENTITY,
 		pushed: Vec::new(),
 		fonts: HashMap::new(),
 		left_out: BTreeSet::new(),
@@ -55,6 +58,8 @@ enum Pushed {
 pub struct PdfCanvas<'a, 'b> {
 	surface: &'a mut Surface<'b>,
 	page_size: DVec2,
+	/// The transform from the space the surface starts in to the page, which a stream drawn for part of the page starts in.
+	base_transform: DAffine2,
 	pushed: Vec<Pushed>,
 	/// The fonts the document embeds, by the IDs of their data, or `None` for one krilla can't read.
 	fonts: HashMap<u64, Option<Font>>,
@@ -75,7 +80,40 @@ impl PdfCanvas<'_, '_> {
 				Pushed::Transform(transform) => Some(*transform),
 				Pushed::States(_) => None,
 			})
-			.fold(DAffine2::IDENTITY, |outer, inner| outer * inner)
+			.fold(self.base_transform, |outer, inner| outer * inner)
+	}
+
+	/// Draws what `draw` draws into a stream of its own, in the current space, like the content of a mask.
+	fn draw_stream(&mut self, draw: impl FnOnce(&mut PdfCanvas)) -> Stream {
+		let base_transform = self.current_transform();
+		let page_size = self.page_size;
+		let (fonts, left_out) = (std::mem::take(&mut self.fonts), std::mem::take(&mut self.left_out));
+
+		let mut builder = self.surface.stream_builder();
+		let mut surface = builder.surface();
+		let mut stream_canvas = PdfCanvas {
+			surface: &mut surface,
+			page_size,
+			base_transform,
+			pushed: Vec::new(),
+			fonts,
+			left_out,
+		};
+		draw(&mut stream_canvas);
+
+		// The fonts embedded and the content left out while drawing the stream count for the whole document
+		let PdfCanvas { fonts, left_out, .. } = stream_canvas;
+		surface.finish();
+		let stream = builder.finish();
+		(self.fonts, self.left_out) = (fonts, left_out);
+
+		stream
+	}
+
+	/// Shows the content drawn until the matching [`Self::pop`] only where `mask`, drawn in the current space, has alpha.
+	fn push_alpha_mask(&mut self, mask: Stream) {
+		self.surface.push_mask(Mask::new(mask, MaskType::Alpha));
+		self.pushed.push(Pushed::States(1));
 	}
 
 	/// Places the content drawn until the matching [`Self::pop`] by `transform`, within the current space.
@@ -314,14 +352,70 @@ pub(super) fn draw_graphic_item(item: ItemRef<'_, Graphic>, canvas: &mut PdfCanv
 	canvas.pop();
 }
 
+/// Draws `count` items of a list in order, those that `clips` clipped to the alpha of the item before the first of their run, as Vello and SVG clip them.
+fn draw_items_with_clipping(canvas: &mut PdfCanvas, count: usize, clips: impl Fn(usize) -> bool, mut draw_item: impl FnMut(&mut PdfCanvas, usize), mut draw_masker: impl FnMut(&mut PdfCanvas, usize)) {
+	let mut masker = None;
+
+	for index in 0..count {
+		let next_clips = index + 1 < count && clips(index + 1);
+
+		match masker {
+			// The item the run after it is clipped to draws as itself too
+			None if next_clips => {
+				masker = Some(index);
+				draw_item(canvas, index);
+			}
+			None => draw_item(canvas, index),
+			Some(masker_index) => {
+				if !next_clips {
+					masker = None;
+				}
+
+				let mask = canvas.draw_stream(|mask_canvas| draw_masker(mask_canvas, masker_index));
+				canvas.push_alpha_mask(mask);
+				draw_item(canvas, index);
+				canvas.pop();
+			}
+		}
+	}
+}
+
 /// Draws a group of items, each over the ones before it.
 pub(super) fn draw_graphic_list(list: &List<Graphic>, canvas: &mut PdfCanvas, render_params: &RenderParams) {
-	for index in 0..list.len() {
-		if list.element(index).is_some_and(Graphic::had_clip_enabled) {
-			canvas.leave_out("clipping masks");
-		}
-		draw_graphic_item(ItemRef::ListItem(list, index), canvas, render_params);
-	}
+	let clipper_render_params = render_params.for_clipper();
+
+	draw_items_with_clipping(
+		canvas,
+		list.len(),
+		|index| list.element(index).is_some_and(Graphic::had_clip_enabled),
+		|canvas, index| draw_graphic_item(ItemRef::ListItem(list, index), canvas, render_params),
+		// The masker's content clips at its placement, without the compositing it draws with itself
+		|canvas, index| {
+			let Some(element) = list.element(index) else { return };
+			canvas.push_transform(list.attribute_cloned_or_default(ATTR_TRANSFORM, index));
+			element.render_pdf(canvas, &clipper_render_params);
+			canvas.pop();
+		},
+	);
+}
+
+/// Draws a list of vector items, each over the ones before it.
+pub(super) fn draw_vector_list(list: &List<Vector>, canvas: &mut PdfCanvas, render_params: &RenderParams) {
+	let clipper_render_params = render_params.for_clipper();
+
+	draw_items_with_clipping(
+		canvas,
+		list.len(),
+		|index| list.attribute_cloned_or_default::<bool>(ATTR_CLIPPING_MASK, index),
+		|canvas, index| draw_vector_item(ItemRef::ListItem(list, index), canvas, render_params),
+		// The shadows and glows the masker casts don't widen the area its clipped content shows in
+		|canvas, index| {
+			let Some(element) = list.element(index) else { return };
+			let mut masker = Item::from_parts(element.clone(), list.clone_item_attributes(index));
+			masker.remove_attribute::<Effects>(ATTR_EFFECTS);
+			draw_vector_item(ItemRef::Item(&masker), canvas, &clipper_render_params);
+		},
+	);
 }
 
 /// Draws each artboard's background and content, clipped to its area if it clips.
@@ -389,23 +483,44 @@ pub(super) fn draw_vector_item(item: ItemRef<'_, Vector>, canvas: &mut PdfCanvas
 	let Some(placed) = item.placed_contours(applied_stroke_transform) else { return };
 	let stroke_affine = Affine::new(applied_stroke_transform.to_cols_array());
 	let fill = pdf_paint(fill_paint, item_transform, element_transform, render_params.for_mask);
-	let stroke_paint = pdf_paint(stroke_paint, item_transform, element_transform, render_params.for_mask);
-	if matches!(fill, PdfPaint::Clipped) || matches!(stroke_paint, PdfPaint::Clipped) {
-		canvas.leave_out("fills and strokes of images and other content");
-	}
+	let stroke_pdf_paint = pdf_paint(stroke_paint, item_transform, element_transform, render_params.for_mask);
 
+	// A paint subtree supplies its own styling, so an element's appearance must not cascade into it
+	let paint_render_params = RenderParams {
+		inherited_appearance: None,
+		..render_params.clone()
+	};
+	// Paint content that's clipped to an area draws in the item's space, which the geometry's stroke space reaches by its transform
+	let draw_clipped_paint = |canvas: &mut PdfCanvas, area: &BezPath, paint: &Graphic| {
+		canvas.push_clip(area, FillRule::NonZero);
+		canvas.push_transform(applied_stroke_transform);
+		paint.render_pdf(canvas, &paint_render_params);
+		canvas.pop();
+		canvas.pop();
+	};
+
+	let fill_area = |canvas: &mut PdfCanvas, area: &BezPath| match (&fill, fill_paint) {
+		(PdfPaint::Clipped, Some(paint)) => draw_clipped_paint(canvas, area, paint),
+		_ => canvas.fill_path(area, &fill, FillRule::NonZero),
+	};
 	let draw_fill = |canvas: &mut PdfCanvas| {
 		if vector.use_face_fill(paths) {
 			for face in item.faces().iter() {
-				canvas.fill_path(&(stroke_affine * face), &fill, FillRule::NonZero);
+				fill_area(canvas, &(stroke_affine * face));
 			}
 		} else {
-			canvas.fill_path(placed.path(), &fill, FillRule::NonZero);
+			fill_area(canvas, placed.path());
 		}
 	};
 	let draw_stroke = |canvas: &mut PdfCanvas| {
 		let Some(stroke) = &stroke else { return };
-		draw_aligned_stroke(canvas, placed.path(), stroke, &stroke_paint);
+		draw_aligned_stroke(canvas, placed.path(), stroke, &mut |canvas, stroke| match (&stroke_pdf_paint, stroke_paint) {
+			(PdfPaint::Clipped, Some(paint)) => {
+				let outline = kurbo::stroke(placed.path().iter(), &to_kurbo_stroke(stroke), &kurbo::StrokeOpts::default(), 0.01);
+				draw_clipped_paint(canvas, &outline, paint);
+			}
+			_ => canvas.stroke_path(placed.path(), stroke, &stroke_pdf_paint),
+		});
 	};
 
 	canvas.push_compositing(compositing.opacity_without_effects(), item.attribute_cloned_or_default(ATTR_BLEND_MODE));
@@ -421,11 +536,11 @@ pub(super) fn draw_vector_item(item: ItemRef<'_, Vector>, canvas: &mut PdfCanvas
 	canvas.pop();
 }
 
-/// Strokes `path`, keeping an inside or outside aligned stroke to its side of the path by clipping a stroke twice as wide.
-fn draw_aligned_stroke(canvas: &mut PdfCanvas, path: &BezPath, stroke: &VectorStroke, paint: &PdfPaint) {
+/// Strokes `path` through `draw_stroke`, keeping an inside or outside aligned stroke to its side of the path by clipping a stroke twice as wide.
+fn draw_aligned_stroke(canvas: &mut PdfCanvas, path: &BezPath, stroke: &VectorStroke, draw_stroke: &mut dyn FnMut(&mut PdfCanvas, &VectorStroke)) {
 	let path_is_closed = path.elements().last().is_some_and(|element| matches!(element, PathEl::ClosePath));
 	if !stroke.align.is_not_centered() || !path_is_closed {
-		canvas.stroke_path(path, stroke, paint);
+		draw_stroke(canvas, stroke);
 		return;
 	}
 
@@ -444,7 +559,7 @@ fn draw_aligned_stroke(canvas: &mut PdfCanvas, path: &BezPath, stroke: &VectorSt
 			canvas.push_clip(&outside, FillRule::EvenOdd);
 		}
 	}
-	canvas.stroke_path(path, &doubled, paint);
+	draw_stroke(canvas, &doubled);
 	canvas.pop();
 }
 
@@ -457,6 +572,18 @@ pub(super) fn draw_raster_item(item: ItemRef<'_, Raster<CPU>>, canvas: &mut PdfC
 
 	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let compositing = item.compositing(render_params, item_transform);
+
+	// Leading adjustments are carried out on the image's pixels, as SVG does
+	let mut remaining_effects = Effects::default();
+	let (leading_adjustments, compositing) = compositing.split_leading_adjustments(&mut remaining_effects);
+	let adjusted;
+	let raster = match leading_adjustments.is_empty() {
+		true => raster,
+		false => {
+			adjusted = adjusted_raster(raster, &leading_adjustments);
+			&adjusted
+		}
+	};
 	if compositing.effects.is_some() {
 		canvas.leave_out("effects");
 	}
