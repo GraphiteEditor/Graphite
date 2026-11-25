@@ -3,6 +3,8 @@
 //! Parsing and style resolution are left to `usvg`. This crate maps the resulting tree onto Graphene's graphic types.
 //! The conversion is best effort: what has no counterpart is left out.
 
+mod stroke;
+
 use core_types::list::{Item, List};
 use core_types::{ATTR_OPACITY, ATTR_TRANSFORM, Color};
 use glam::DAffine2;
@@ -50,8 +52,12 @@ fn path_item(path: &usvg::Path) -> Item<Graphic> {
 	if let Some(fill) = path.fill()
 		&& let usvg::Paint::Color(color) = fill.paint()
 	{
-		let color = Color::from_gamma_srgb_channels(color.red as f32 / 255., color.green as f32 / 255., color.blue as f32 / 255., fill.opacity().get());
-		stamp_coverage(&mut vector, Coverage::new_fill(), Graphic::from(color), CoverPlacement::Above);
+		stamp_coverage(&mut vector, Coverage::new_fill(), solid_paint(*color, fill.opacity()), CoverPlacement::Above);
+	}
+	if let Some(stroke) = path.stroke()
+		&& let usvg::Paint::Color(color) = stroke.paint()
+	{
+		stamp_coverage(&mut vector, Coverage::new_stroke(&stroke::style(stroke)), solid_paint(*color, stroke.opacity()), CoverPlacement::Above);
 	}
 
 	Item::new_from_element(Graphic::VectorList(List::new_from_item(vector)))
@@ -62,6 +68,11 @@ fn image_item(image: &usvg::Image) -> Option<Item<Graphic>> {
 		usvg::ImageKind::SVG(tree) => Some(group_item(tree.root())),
 		usvg::ImageKind::PNG(_) | usvg::ImageKind::JPEG(_) | usvg::ImageKind::GIF(_) | usvg::ImageKind::WEBP(_) => None,
 	}
+}
+
+fn solid_paint(color: usvg::Color, opacity: usvg::Opacity) -> Graphic {
+	let [red, green, blue] = [color.red, color.green, color.blue].map(|channel| channel as f32 / 255.);
+	Graphic::from(Color::from_gamma_srgb_channels(red, green, blue, opacity.get()))
 }
 
 fn bezpath(path: &tiny_skia_path::Path) -> BezPath {

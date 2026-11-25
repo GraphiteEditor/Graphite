@@ -1,6 +1,7 @@
 use core_types::list::{ATTR_APPEARANCE, List};
 use core_types::{ATTR_OPACITY, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
+use graphic_types::vector_types::vector::style::{StrokeCap, StrokeJoin};
 use graphic_types::{Appearance, Cover, Graphic};
 use svg_convert::{Error, Options, convert};
 
@@ -66,6 +67,33 @@ fn a_nested_svg_image_becomes_a_group_of_its_content() -> Result<(), Error> {
 
 	let nested_root = group(&content, 0).and_then(|placement| placement.element(0));
 	assert!(matches!(nested_root, Some(Graphic::GraphicList(nested)) if matches!(nested.element(0), Some(Graphic::VectorList(_)))));
+	Ok(())
+}
+
+#[test]
+fn a_stroked_path_carries_a_stroke_coverage_with_its_paint_width_dashes_cap_and_join() -> Result<(), Error> {
+	let content = converted(r#"<path d="M1 1 H7 V7" fill="none" stroke="blue" stroke-opacity="0.5" stroke-width="3" stroke-dasharray="2" stroke-linecap="round" stroke-linejoin="miter-clip"/>"#)?;
+
+	let appearance = appearance_of(&content);
+	assert_eq!(
+		appearance.and_then(|appearance| appearance.first_paint_of(Cover::Stroke)),
+		Some(&Graphic::from(Color::from_gamma_srgb_channels(0., 0., 1., 0.5)))
+	);
+	assert_eq!(
+		appearance
+			.and_then(Appearance::first_stroke_params)
+			.map(|stroke| (stroke.weight, stroke.dash_lengths, stroke.cap, stroke.join)),
+		Some((3., vec![2., 2.], StrokeCap::Round, StrokeJoin::Miter))
+	);
+	Ok(())
+}
+
+#[test]
+fn a_stroke_in_a_scaled_group_is_measured_in_the_paths_own_space() -> Result<(), Error> {
+	let content = converted(r#"<g transform="scale(2)"><path d="M1 1 H3" stroke="red"/></g>"#)?;
+
+	let stroke = group(&content, 0).and_then(appearance_of).and_then(Appearance::first_stroke_params);
+	assert_eq!(stroke.map(|stroke| (stroke.weight, stroke.transform)), Some((1., DAffine2::IDENTITY)));
 	Ok(())
 }
 
