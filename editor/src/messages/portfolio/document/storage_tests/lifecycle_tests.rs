@@ -213,6 +213,7 @@ fn web_save_path(opened_path: &str) -> Option<std::path::PathBuf> {
 #[tokio::test]
 async fn web_saves_write_back_to_the_opened_graphite_file() {
 	assert_eq!(web_save_path("/key/Saving.graphite"), Some("/key/Saving.graphite".into()));
+	assert_eq!(web_save_path("/key/Saving.GRAPHITE"), Some("/key/Saving.GRAPHITE".into()));
 }
 
 #[tokio::test]

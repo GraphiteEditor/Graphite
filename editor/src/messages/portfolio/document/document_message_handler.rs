@@ -1293,7 +1293,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let path = match message {
 					DocumentMessage::SaveDocumentAs => None,
 					// On web, the path keys the file handle to write back to, so a document opened from another file type (like `.gdd`) asks where to save its `.graphite` file
-					_ if environment.is_web() => self.path.clone().filter(|path| path.extension().is_some_and(|extension| extension == FILE_EXTENSION)),
+					_ if environment.is_web() => self.path.clone().filter(|path| {
+						path.extension()
+							.and_then(|extension| extension.to_str())
+							.is_some_and(|extension| extension.eq_ignore_ascii_case(FILE_EXTENSION))
+					}),
 					// A document opened from a `.gdd` file is saved back under the `.graphite` extension
 					_ => self.path.clone().map(|path| path.with_extension(FILE_EXTENSION)),
 				};
