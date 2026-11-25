@@ -8,7 +8,9 @@ use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::{CompileError, CompiledNetwork, Compiler};
-use graph_craft::proto::GraphErrors;
+use graph_craft::proto::{GraphErrors, ProtoNetwork};
+use graph_ui::GraphUi;
+use graph_ui::scene::{GraphUiScene, GraphUiSceneDelta};
 use graphene_hash::CacheHash;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, Texture};
 use graphene_std::ops::ConvertAsync;
@@ -20,7 +22,7 @@ use graphene_std::vector::style::RenderMode;
 use graphene_std::{Context, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::layer_paths::write_layer_paths;
-use interpreted_executor::util::wrap_network_with_render_node_in_scope;
+use interpreted_executor::util::{wrap_network_in_scope, wrap_network_with_render_node_in_scope};
 use observer::Observer;
 pub use observer::{InspectResult, InspectedContext, Observation, ObservedConnector, ObservedValue};
 use std::sync::Arc;
@@ -54,17 +56,18 @@ pub struct NodeRuntime {
 	pending_thumbnails: Option<DocumentId>,
 	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
-	/// Whether the latest network failed to compile, leaving the executor with an older one that mustn't be shown in its place.
-	compile_failed: bool,
-	async_runtime: Option<AsyncRuntime>,
 
+	async_runtime: Option<AsyncRuntime>,
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
+
 	node_graph_errors: GraphErrors,
 	node_graph_warnings: GraphErrors,
+	/// Whether the latest network failed to compile, leaving the executor with an older one that mustn't be shown in its place.
+	compile_failed: bool,
+
 	thumbnails: Thumbnails,
 	observer: Observer<ObservationKey>,
-	/// Whether an observation changed since its results were last sent.
 	observations_changed: bool,
 
 	preprocessor: preprocessor::Preprocessor,
@@ -83,6 +86,10 @@ pub struct NodeRuntime {
 	overlays_canvas: VelloCanvas,
 	/// The latest rendered overlays.
 	overlays_texture: Option<Texture>,
+
+	graph_ui_scene: GraphUiScene,
+	graph_ui_output: OutputHandle,
+	graph_ui_frame: Option<Texture>,
 }
 
 /// What the viewport shows beneath its overlays.
@@ -94,12 +101,13 @@ enum ViewportArtwork {
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
 	ThumbnailsInView {
 		layers: HashSet<NodeId>,
+		layers_panel: HashSet<NodeId>,
 		document_id: DocumentId,
 	},
 	/// Starts, changes, or with `None` stops one observation without a graph update.
@@ -112,9 +120,10 @@ pub enum GraphRuntimeRequest {
 		layers: Vec<NodeId>,
 	},
 	RenderOverlays(OverlayContext),
+	GraphUi(GraphUiSceneDelta),
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
 	pub(super) resources: ResourceRegistry,
@@ -175,6 +184,7 @@ impl NodeRuntime {
 			node_graph_errors: Vec::new(),
 			node_graph_warnings: Vec::new(),
 			thumbnails: Thumbnails::new(),
+
 			observer: Observer::default(),
 			observations_changed: false,
 
@@ -188,6 +198,10 @@ impl NodeRuntime {
 			overlays_stale: false,
 			overlays_canvas: VelloCanvas::default(),
 			overlays_texture: None,
+
+			graph_ui_scene: GraphUiScene::default(),
+			graph_ui_output: OutputHandle::default(),
+			graph_ui_frame: None,
 		}
 	}
 
@@ -210,8 +224,8 @@ impl NodeRuntime {
 					self.pending = Some(request);
 					self.dirty.store(true, Ordering::Release);
 				}
-				GraphRuntimeRequest::ThumbnailsInView { layers, document_id } => {
-					self.thumbnails.set_in_view(layers);
+				GraphRuntimeRequest::ThumbnailsInView { layers, layers_panel, document_id } => {
+					self.thumbnails.set_in_view(layers, layers_panel);
 					self.pending_thumbnails = Some(document_id);
 				}
 				// A graph update applied after this loop would otherwise replace this with what it observed before
@@ -231,6 +245,7 @@ impl NodeRuntime {
 					self.overlays = Some(context);
 					self.overlays_stale = true;
 				}
+				GraphRuntimeRequest::GraphUi(delta) => self.graph_ui_scene.apply(delta),
 			}
 		}
 
@@ -258,6 +273,8 @@ impl NodeRuntime {
 			self.thumbnails.update_sources(&layers, &network, &self.executor);
 			self.old_graph = Some(network);
 		}
+		let graph_ui_network = graph_ui_network(&self.preprocessor, self.editor_api.clone(), self.async_runtime().handle());
+		(self.graph_ui_output, _) = self.executor.update(graph_ui_network).expect("The network of the node graph is typed");
 		let node_graph_errors = self.node_graph_errors.clone();
 		let node_graph_warnings = self.node_graph_warnings.clone();
 
@@ -286,9 +303,13 @@ impl NodeRuntime {
 				&& !self.compile_failed
 			{
 				let mut responses = VecDeque::new();
-				self.thumbnails.render_stale(&self.executor, &self.editor_api, &mut responses).await;
+				let rendered = self.thumbnails.render_stale(&self.executor, &self.editor_api, &mut responses).await;
 				if !responses.is_empty() {
 					self.sender.send(NodeGraphUpdate::Thumbnails { responses, document_id }).expect("Failed to send response");
+				}
+				// The node graph is drawn again with the thumbnails rendered between its frames
+				if rendered && let Some(request) = self.pending.filter(|request| request.graph_ui_config.is_some()) {
+					texture = self.draw_viewport_frame(request);
 				}
 			}
 
@@ -321,62 +342,134 @@ impl NodeRuntime {
 		let mut result = self.evaluate(request)?;
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 
+		if let Some(RenderOutput { data, metadata }) = result.render_output() {
+			let artwork = match data {
+				RenderOutputType::Texture(texture) => Some(ViewportArtwork::Texture(texture.clone())),
+				RenderOutputType::Svg { .. } if request.render_config.export_format == ExportFormat::Raster => Some(ViewportArtwork::Svg),
+				_ => None,
+			};
+			if artwork.is_some() {
+				self.viewport_artwork = artwork;
+				let path_contents = path_contents(&observations);
+				self.rendered_layers = RenderedLayers::new(metadata, &path_contents, self.old_graph.as_ref());
+				self.overlays_stale = true;
+			}
+		}
+
+		let thumbnails = self.response_thumbnails().await;
+		let frame = self.draw_viewport_frame(request);
+
 		#[cfg(all(target_family = "wasm", feature = "wasm"))]
-		let resolution = request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale;
-
-		let texture = if let Some(RenderOutput { data, metadata }) = result.render_output()
-			&& let RenderOutputType::Texture(texture) = data
-		{
-			self.viewport_artwork = Some(ViewportArtwork::Texture(texture.clone()));
-			let path_contents = path_contents(&observations);
-			self.rendered_layers = RenderedLayers::new(metadata, &path_contents, self.old_graph.as_ref());
-			self.overlays_stale = true;
-			let frame = self.composite_viewport_frame();
-
-			#[cfg(all(target_family = "wasm", feature = "wasm"))]
-			{
-				*data = RenderOutputType::CanvasFrame {
-					canvas_id: self.wasm_canvas_cache.id(),
-					resolution,
-				};
+		if let Some(RenderOutput { data, .. }) = result.render_output() {
+			let resolution = request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale;
+			match data {
+				RenderOutputType::Texture(_) => {
+					*data = RenderOutputType::CanvasFrame {
+						canvas_id: self.wasm_canvas_cache.id(),
+						resolution,
+					}
+				}
+				RenderOutputType::Svg { svg, .. } if request.render_config.export_format == ExportFormat::Raster => {
+					let end = svg.rfind("</svg>").unwrap_or(svg.len());
+					svg.insert_str(end, &viewport_canvas_placeholder(self.wasm_canvas_cache.id(), resolution));
+				}
+				_ => {}
 			}
+		}
 
-			frame
-		} else if request.render_config.export_format == ExportFormat::Raster
-			&& let Some(RenderOutput {
-				data: RenderOutputType::Svg { .. },
-				metadata,
-			}) = result.render_output()
+		if request.graph_ui_config.is_some()
+			&& result.render_output().is_none()
+			&& let Some(data) = self.frame_data(request, &frame)
 		{
-			// The viewport was rendered as SVG in place of the requested raster, so the frontend draws it beneath the overlays
-			self.viewport_artwork = Some(ViewportArtwork::Svg);
-			let path_contents = path_contents(&observations);
-			self.rendered_layers = RenderedLayers::new(metadata, &path_contents, self.old_graph.as_ref());
-			self.overlays_stale = true;
-			let frame = self.composite_viewport_frame();
-
-			#[cfg(all(target_family = "wasm", feature = "wasm"))]
-			if let Some(RenderOutput {
-				data: RenderOutputType::Svg { svg, .. },
-				..
-			}) = result.render_output()
-			{
-				let end = svg.rfind("</svg>").unwrap_or(svg.len());
-				svg.insert_str(end, &viewport_canvas_placeholder(self.wasm_canvas_cache.id(), resolution));
-			}
-
-			frame
-		} else {
-			None
-		};
-
-		self.respond(request.execution_id, result, observations).await;
-		texture
+			let render = || TaggedValue::RenderOutput(RenderOutput { data, metadata: Default::default() });
+			result = match result {
+				ExecutionResult::Pending => ExecutionResult::Partial(render()),
+				ExecutionResult::Error(errors) => ExecutionResult::Fallback(render(), errors),
+				ExecutionResult::Uncompiled => ExecutionResult::Fallback(render(), EvaluationErrors(Box::default())),
+				result => result,
+			};
+		}
+		self.send_response(request.execution_id, result, thumbnails, observations);
+		frame
 	}
 
-	/// Draws the latest overlays over the viewport's artwork, or alone above SVG artwork, presenting the frame on web.
+	/// Draws the node graph if it is open, and composites the viewport's frame.
+	fn draw_viewport_frame(&mut self, request: ExecutionRequest) -> Option<Texture> {
+		self.graph_ui_frame = request.graph_ui_config.and_then(|config| self.draw_graph_ui(request, config));
+		self.composite_viewport_frame()
+	}
+
+	fn draw_graph_ui(&self, request: ExecutionRequest, mut config: GraphUiConfig) -> Option<Texture> {
+		// With no artwork beneath the node graph, its backdrop is opaque
+		if !matches!(self.viewport_artwork, Some(ViewportArtwork::Texture(_))) {
+			config.fade_artwork = 1.;
+		}
+
+		let scene = self.graph_ui_scene.clone();
+		let thumbnails = self.thumbnails.graphics();
+		let context = graph_ui::render::context(request.render_config, GraphUi { scene, config, thumbnails }).into_context();
+		match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.execute(&self.graph_ui_output, context))) {
+			Ok(Ok(Poll::Final(TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Texture(frame),
+				..
+			})))) => Some(frame),
+			Ok(Ok(Poll::Error(error))) => {
+				log::error!("Failed to draw the node graph: {}", error.error());
+				None
+			}
+			Ok(Ok(_)) => None,
+			Ok(Err(error)) => {
+				log::error!("Failed to draw the node graph: {error}");
+				None
+			}
+			Err(payload) => {
+				self.send_result(request.execution_id, ExecutionResult::Panic(payload));
+				None
+			}
+		}
+	}
+
+	/// What the editor is sent of a frame that comes without a render of the artwork.
+	fn frame_data(&mut self, request: ExecutionRequest, frame: &Option<Texture>) -> Option<RenderOutputType> {
+		#[cfg(all(target_family = "wasm", feature = "wasm"))]
+		return frame.as_ref().map(|_| RenderOutputType::CanvasFrame {
+			canvas_id: self.wasm_canvas_cache.id(),
+			resolution: request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale,
+		});
+
+		#[cfg(not(all(target_family = "wasm", feature = "wasm")))]
+		{
+			let _ = request;
+			frame.clone().map(RenderOutputType::Texture)
+		}
+	}
+
+	fn send_result(&self, execution_id: u64, result: ExecutionResult) {
+		self.send_response(execution_id, result, Default::default(), HashMap::new());
+	}
+
+	fn send_response(
+		&self,
+		execution_id: u64,
+		result: ExecutionResult,
+		(responses, dropped_thumbnails): (VecDeque<FrontendMessage>, Vec<NodeId>),
+		observations: HashMap<ObservationKey, InspectResult>,
+	) {
+		let response = ExecutionResponse {
+			execution_id,
+			result,
+			responses,
+			dropped_thumbnails,
+			observations,
+		};
+		self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
+	}
+
+	/// Draws the node graph and the latest overlays over the viewport's artwork, or without it above SVG artwork, presenting the frame on web.
 	fn composite_viewport_frame(&mut self) -> Option<Texture> {
-		let artwork = self.viewport_artwork.as_ref()?;
+		if self.viewport_artwork.is_none() && self.graph_ui_frame.is_none() {
+			return None;
+		}
 		let executor = self.editor_api.application_io.as_ref().and_then(|application_io| application_io.gpu_executor())?;
 
 		if std::mem::take(&mut self.overlays_stale)
@@ -388,24 +481,33 @@ impl NodeRuntime {
 				.ok();
 		}
 
-		let frame = match (artwork, &self.overlays_texture) {
-			(ViewportArtwork::Texture(artwork), Some(overlays)) => {
-				let (width, height) = (artwork.width(), artwork.height());
+		let artwork = match &self.viewport_artwork {
+			Some(ViewportArtwork::Texture(artwork)) => Some(artwork),
+			Some(ViewportArtwork::Svg) | None => None,
+		};
+		let frame = match (artwork, &self.graph_ui_frame, &self.overlays_texture) {
+			(None, None, None) => return None,
+			(Some(frame), None, None) | (None, Some(frame), None) | (None, None, Some(frame)) => frame.clone(),
+			(artwork, graph_ui, overlays) => {
+				// The node graph is drawn at the viewport's size, which artwork from before a resize doesn't have
+				let base = graph_ui.as_ref().or(artwork).or(overlays.as_ref())?;
+				let (width, height) = (base.width(), base.height());
 				let max_texture_size = executor.context().device.limits().max_texture_dimension_2d;
-				let overlays_to_artwork = kurbo::Affine::scale_non_uniform(width as f64 / overlays.width() as f64, height as f64 / overlays.height() as f64);
 
 				let mut scene = VelloSceneBuilder::new(width as u16, height as u16, kurbo::Affine::IDENTITY, max_texture_size);
-				scene.draw_texture(artwork.clone(), ImageSampler::new(), kurbo::Affine::IDENTITY);
-				scene.draw_texture(overlays.clone(), ImageSampler::new(), overlays_to_artwork);
+				for layer in [artwork, graph_ui.as_ref()].into_iter().flatten() {
+					scene.draw_texture(layer.clone(), ImageSampler::new(), kurbo::Affine::IDENTITY);
+				}
+				if let Some(overlays) = overlays {
+					let overlays_to_frame = kurbo::Affine::scale_non_uniform(width as f64 / overlays.width() as f64, height as f64 / overlays.height() as f64);
+					scene.draw_texture(overlays.clone(), ImageSampler::new(), overlays_to_frame);
+				}
 
 				executor
 					.render_vello_scene_on_canvas(&mut self.overlays_canvas, scene)
-					.inspect_err(|error| log::error!("Failed to draw the overlays over the artwork: {error:?}"))
-					.unwrap_or_else(|_| artwork.clone())
+					.inspect_err(|error| log::error!("Failed to draw the viewport's frame: {error:?}"))
+					.unwrap_or_else(|_| base.clone())
 			}
-			(ViewportArtwork::Texture(artwork), None) => artwork.clone(),
-			(ViewportArtwork::Svg, Some(overlays)) => overlays.clone(),
-			(ViewportArtwork::Svg, None) => return None,
 		};
 
 		#[cfg(all(target_family = "wasm", feature = "wasm"))]
@@ -457,15 +559,19 @@ impl NodeRuntime {
 			return Some(ExecutionResult::Uncompiled);
 		}
 
-		let ExecutionRequest { execution_id, mut render_config } = request;
+		let ExecutionRequest {
+			execution_id,
+			mut render_config,
+			graph_ui_config,
+		} = request;
 
-		// Render via the SVG pipeline even though raster was requested if SVG Preview render mode is active
-		if render_config.export_format == ExportFormat::Raster && render_config.render_mode == RenderMode::SvgPreview {
+		// Render via the SVG pipeline even though raster was requested  if SVG Preview render mode is active and the graph, isn't open
+		if render_config.export_format == ExportFormat::Raster && render_config.render_mode == RenderMode::SvgPreview && graph_ui_config.is_none() {
 			render_config.export_format = ExportFormat::Svg;
 		}
 
 		let context = render_config.into_context_with_generations(self.async_runtime().snapshot());
-		let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.tree().eval_tagged_value(self.output.node(), &context))) {
+		let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.execute(&self.output, context))) {
 			Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
 			Ok(Ok(Poll::Partial(_))) if render_config.for_export => ExecutionResult::Pending,
 			Ok(Ok(Poll::Partial(value))) => ExecutionResult::Partial(value),
@@ -475,16 +581,9 @@ impl NodeRuntime {
 				ExecutionResult::Fallback(value, self.resolve_errors(&error))
 			}
 			Ok(Ok(Poll::Error(error))) => ExecutionResult::Error(self.resolve_errors(&error)),
-			Ok(Err(error)) => ExecutionResult::Error(EvaluationErrors(Box::new([(Arc::clone(NodeError::new(error).error()), NodeErrorTrace::default())]))),
+			Ok(Err(error)) => ExecutionResult::Error(EvaluationErrors(Box::new([(Arc::clone(NodeError::new(error.to_string()).error()), NodeErrorTrace::default())]))),
 			Err(payload) => {
-				let response = ExecutionResponse {
-					execution_id,
-					result: ExecutionResult::Panic(payload),
-					responses: VecDeque::new(),
-					dropped_thumbnails: Vec::new(),
-					observations: HashMap::new(),
-				};
-				self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
+				self.send_result(execution_id, ExecutionResult::Panic(payload));
 				return None;
 			}
 		};
@@ -492,19 +591,17 @@ impl NodeRuntime {
 	}
 
 	async fn respond(&mut self, execution_id: u64, result: ExecutionResult, observations: HashMap<ObservationKey, InspectResult>) {
+		let thumbnails = self.response_thumbnails().await;
+		self.send_response(execution_id, result, thumbnails, observations);
+	}
+
+	async fn response_thumbnails(&mut self) -> (VecDeque<FrontendMessage>, Vec<NodeId>) {
 		let mut responses = VecDeque::new();
 
 		// While the graph fails to compile, thumbnails stay stale to render once it compiles, not from the last network that did
 		let dropped_thumbnails = if self.compile_failed { Vec::new() } else { self.update_thumbnails(&mut responses).await };
 
-		let response = ExecutionResponse {
-			execution_id,
-			result,
-			responses,
-			dropped_thumbnails,
-			observations,
-		};
-		self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
+		(responses, dropped_thumbnails)
 	}
 
 	/// Reads one observation from the last evaluation, apart from the observations the runtime keeps.
@@ -595,6 +692,12 @@ impl ExecutionResult {
 	}
 }
 
+fn graph_ui_network(preprocessor: &preprocessor::Preprocessor, editor_api: Arc<PlatformEditorApi>, runtime: graphene_std::RuntimeHandle) -> ProtoNetwork {
+	let mut network = wrap_network_in_scope(graph_ui::render::network(), editor_api, runtime);
+	preprocessor.preprocess(&mut network, &|_| None).expect("The network of the node graph preprocesses");
+	Compiler {}.compile_single(network).expect("The network of the node graph compiles").network
+}
+
 fn evaluated_output(poll: Poll<graphene_std::registry::Any>) -> Option<graphene_std::registry::Any> {
 	match poll {
 		Poll::Final(output) | Poll::Partial(output) => Some(output),
@@ -653,9 +756,13 @@ impl Spawn for NodeTaskExecutor {
 mod tests {
 	use super::*;
 	use crate::messages::frontend::utility_types::RenderStatus;
-	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+	use crate::messages::portfolio::document::node_graph::graph_ui::GraphUiPart;
+	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+	use crate::messages::tool::common_functionality::graph_modification_utils;
 	use crate::test_utils::EditorTestUtils;
 	use glam::{DVec2, UVec2};
+	use graph_craft::ProtoNodeIdentifier;
 	use graph_craft::document::DocumentNode;
 	use graphene_std::SourceId;
 	use graphene_std::runtime::Runtime;
@@ -679,13 +786,27 @@ mod tests {
 
 	/// Sends a network update and a request to evaluate it at a viewport of `resolution` pixels.
 	fn send_update_at(editor: &mut EditorTestUtils, resolution: UVec2) {
+		send_update_with_graph_ui(editor, resolution, None);
+	}
+
+	fn send_update_with_graph_ui(editor: &mut EditorTestUtils, resolution: UVec2, graph_ui_config: Option<GraphUiConfig>) {
 		let portfolio = editor.portfolio_message_handler_mut();
 		let document_id = portfolio.active_document_id.unwrap();
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
 		let document = documents.get_mut(&document_id).unwrap();
 		executor
-			.submit_node_graph_evaluation(document, document_id, resolution, 1., Default::default(), Vec::new(), true, DVec2::ZERO)
+			.submit_node_graph_evaluation(document, document_id, resolution, 1., Default::default(), Vec::new(), true, DVec2::ZERO, graph_ui_config)
 			.unwrap();
+	}
+
+	fn graph_ui_config(view: DAffine2) -> GraphUiConfig {
+		GraphUiConfig {
+			view,
+			fade_artwork: 0.8,
+			wire_in_progress: None,
+			reorder_bar: None,
+			box_selection: None,
+		}
 	}
 
 	/// Sends a network update and a request to export it, as the editor does for an export.
@@ -759,9 +880,116 @@ mod tests {
 		});
 	}
 
+	fn create(editor: &mut EditorTestUtils, node_type: DefinitionIdentifier) -> NodeId {
+		let node_id = NodeId::new();
+		editor.dispatch(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(node_id),
+			node_type,
+			xy: None,
+			add_transaction: true,
+		});
+		node_id
+	}
+
+	fn feed_layer(editor: &mut EditorTestUtils, source: ProtoNodeIdentifier, filter: ProtoNodeIdentifier) {
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let source = create(editor, DefinitionIdentifier::ProtoNode(source));
+		let filter = create(editor, DefinitionIdentifier::ProtoNode(filter));
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(source),
+			input_connector: InputConnector::node_at_index(filter, 0),
+		});
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(filter),
+			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+		});
+	}
+
+	fn delay_layer(editor: &mut EditorTestUtils) {
+		feed_layer(editor, graphene_std::vector::generator_nodes::rectangle::IDENTIFIER, graphene_std::poll_debug::delay::IDENTIFIER);
+	}
+
+	fn send_request(editor: &mut EditorTestUtils) {
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = portfolio.documents.get_mut(&document_id).unwrap();
+		portfolio
+			.executor
+			.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO, None)
+			.unwrap();
+	}
+
+	async fn run(editor: &mut EditorTestUtils) -> Option<Texture> {
+		editor.runtime.update();
+		editor.runtime.run().await
+	}
+
 	/// The ID of the viewport request the runtime evaluates, which only changes once it has read a newer one.
 	fn last_request(editor: &EditorTestUtils) -> Option<u64> {
 		editor.runtime.pending.map(|request| request.execution_id)
+	}
+
+	fn respond_to_last_request(editor: &mut EditorTestUtils, result: ExecutionResult) -> Vec<FrontendMessage> {
+		editor.runtime.send_result(last_request(editor).unwrap(), result);
+		editor.dispatch(Message::Wake)
+	}
+
+	fn failed(messages: &[FrontendMessage]) -> bool {
+		messages.iter().any(|message| matches!(message, FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }))
+	}
+
+	fn drawn_in(messages: &[FrontendMessage]) -> Option<&str> {
+		messages.iter().find_map(|message| match message {
+			FrontendMessage::UpdateDocumentArtwork { svg } => Some(svg.as_str()),
+			_ => None,
+		})
+	}
+
+	async fn reported(editor: &mut EditorTestUtils) -> Vec<ExecutionResult> {
+		run(editor).await;
+		let receiver = &editor.portfolio_message_handler().executor.receiver;
+		receiver
+			.try_iter()
+			.filter_map(|update| match update {
+				NodeGraphUpdate::ExecutionResponse(response) => Some(response.result),
+				_ => None,
+			})
+			.collect()
+	}
+
+	fn empty_svg() -> RenderOutputType {
+		RenderOutputType::Svg {
+			svg: String::new(),
+			image_data: Vec::new(),
+		}
+	}
+
+	fn rendered(data: RenderOutputType) -> TaggedValue {
+		TaggedValue::RenderOutput(RenderOutput { data, metadata: Default::default() })
+	}
+
+	fn shown_errors(editor: &EditorTestUtils) -> usize {
+		editor.portfolio_message_handler().executor.graph_ui_scene().errors().len()
+	}
+
+	async fn with_a_layer_error_shown() -> EditorTestUtils {
+		let mut editor = editor().await;
+		editor.handle_message(DocumentMessage::GraphViewOverlay { open: true }).await;
+		send_update(&mut editor);
+		run(&mut editor).await;
+		editor.dispatch(Message::Wake);
+
+		let layer = editor.active_document().metadata().all_layers().next().unwrap().to_node();
+		let error = (Arc::clone(NodeError::new("failed").error()), vec![vec![vec![layer].into()].into()].into());
+		respond_to_last_request(&mut editor, ExecutionResult::Fallback(rendered(empty_svg()), EvaluationErrors(Box::new([error]))));
+		assert_eq!(shown_errors(&editor), 1);
+		editor
+	}
+
+	struct Parked;
+
+	impl Spawn for Parked {
+		fn spawn(&self, _: Task) {}
 	}
 
 	#[tokio::test]
@@ -784,7 +1012,7 @@ mod tests {
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
 		let document = documents.get_mut(&document_id).unwrap();
 		let message = executor
-			.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, scale, Default::default(), DVec2::ZERO)
+			.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, scale, Default::default(), DVec2::ZERO, None)
 			.unwrap();
 		editor.dispatch(message);
 	}
@@ -864,7 +1092,7 @@ mod tests {
 
 		let mut editor = editor().await;
 		let layer = editor.active_document().metadata().all_layers().next().unwrap().to_node();
-		editor.runtime.thumbnails.set_in_view(HashSet::from([layer]));
+		editor.runtime.thumbnails.set_in_view(HashSet::from([layer]), HashSet::from([layer]));
 		send_update(&mut editor);
 		assert!(!thumbnail_stale(&mut editor, layer).await);
 
@@ -1152,6 +1380,192 @@ mod tests {
 			messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Partial }),
 			"the trace's frame isn't partial"
 		);
+	}
+
+	#[tokio::test]
+	async fn a_provisional_frame_is_reported_as_partial() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
+		add_traced_noise_layer(&mut editor).await;
+		send_update_with_graph_ui(&mut editor, UVec2::splat(512), None);
+
+		let mut results = Vec::new();
+		for _ in 0..100_000 {
+			results.extend(reported(&mut editor).await);
+			if results.iter().any(|result| !matches!(result, ExecutionResult::Pending)) {
+				break;
+			}
+		}
+		assert!(matches!(results.last(), Some(ExecutionResult::Partial(_))), "a trace in progress is provisional: {results:?}");
+	}
+
+	#[tokio::test]
+	async fn a_provisional_frame_keeps_the_errors_shown() {
+		let mut editor = with_a_layer_error_shown().await;
+		respond_to_last_request(&mut editor, ExecutionResult::Partial(rendered(empty_svg())));
+		assert_eq!(shown_errors(&editor), 1, "a provisional frame keeps the errors");
+		respond_to_last_request(&mut editor, ExecutionResult::Value(rendered(empty_svg())));
+		assert_eq!(shown_errors(&editor), 0);
+	}
+
+	#[tokio::test]
+	async fn a_network_that_failed_to_compile_is_never_evaluated() {
+		let mut editor = editor().await;
+		let (layer_content, original_content) = break_compile(&mut editor);
+		send_update(&mut editor);
+		run(&mut editor).await;
+		assert!(!evaluated(&mut editor), "the network that failed to compile was evaluated");
+		send_request(&mut editor);
+		run(&mut editor).await;
+		assert!(!evaluated(&mut editor), "the network that compiled before was evaluated");
+
+		send_export(&mut editor, FileType::Svg);
+		run(&mut editor).await;
+		assert!(editor.runtime.pending_export.is_none(), "the export never finished");
+		assert!(!exported(&mut editor), "the network that compiled before was exported");
+
+		editor.active_document_mut().network_interface.set_input(&layer_content, original_content, &[]);
+		send_update(&mut editor);
+		run(&mut editor).await;
+		assert!(evaluated(&mut editor), "the network compiles again");
+	}
+
+	#[tokio::test]
+	async fn the_graph_is_drawn_while_the_network_fails_to_compile() {
+		let mut editor = editor().await;
+		send_update(&mut editor);
+		run(&mut editor).await;
+		editor.dispatch(Message::Wake);
+		let tree = editor.runtime.executor.tree();
+		let compiled: Vec<NodeId> = tree.source_map().values().map(|(node, _)| *node).filter(|node| tree.get(*node).is_some()).collect();
+
+		break_compile(&mut editor);
+		editor.dispatch(PortfolioMessage::UpdateGraphUi { part: GraphUiPart::All });
+		send_update_with_graph_ui(&mut editor, UVec2::ONE, Some(graph_ui_config(DAffine2::IDENTITY)));
+		let frame = run(&mut editor).await;
+		assert!(failed(&editor.dispatch(Message::Wake)), "the failed compile is reported");
+		assert!(frame.is_some(), "and the graph is drawn");
+
+		break_compile(&mut editor);
+		send_update_with_graph_ui(&mut editor, UVec2::ONE, Some(graph_ui_config(DAffine2::IDENTITY)));
+		let frame = run(&mut editor).await;
+		assert!(frame.is_some(), "the graph is drawn after a second failed compile");
+		let tree = editor.runtime.executor.tree();
+		assert!(compiled.iter().all(|node| tree.get(*node).is_some()), "the document's compiled nodes are kept");
+	}
+
+	async fn graph_frame(editor: &mut EditorTestUtils, fade_artwork: f64) -> Vec<u8> {
+		let config = GraphUiConfig {
+			fade_artwork,
+			..graph_ui_config(DAffine2::IDENTITY)
+		};
+		send_update_with_graph_ui(editor, UVec2::splat(16), Some(config));
+		let frame = run(editor).await.expect("the graph is drawn");
+		editor.runtime.read_back(frame).await.to_flat_u8().0
+	}
+
+	#[tokio::test]
+	async fn the_artwork_shows_through_the_graph_as_far_as_the_fade_lets_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_primary_color(graphene_std::Color::RED).await;
+		editor.select_secondary_color(graphene_std::Color::RED).await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		let red = |pixels: &[u8]| pixels.as_chunks::<4>().0.iter().filter(|pixel| pixel[0] > 0x60 && pixel[1] < 0x30).count();
+
+		let faded = graph_frame(&mut editor, 0.5).await;
+		assert!(red(&faded) > 0, "the red square shows through the backdrop");
+		let hidden = graph_frame(&mut editor, 1.).await;
+		assert_eq!(red(&hidden), 0, "a full fade hides it");
+	}
+
+	#[tokio::test]
+	async fn the_graph_is_opaque_while_no_artwork_is_drawn_beneath_it() {
+		let mut editor = editor().await;
+		break_compile(&mut editor);
+		let frame = graph_frame(&mut editor, 0.5).await;
+		assert!(frame.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 0xff));
+	}
+
+	#[tokio::test]
+	async fn the_graph_is_drawn_over_the_last_artwork_while_the_artwork_of_an_edit_is_pending() {
+		let mut editor = editor().await;
+		send_update(&mut editor);
+		run(&mut editor).await;
+		editor.dispatch(Message::Wake);
+		editor.dispatch(PortfolioMessage::UpdateGraphUi { part: GraphUiPart::All });
+		send_update_with_graph_ui(&mut editor, UVec2::ONE, Some(graph_ui_config(DAffine2::IDENTITY)));
+		assert!(run(&mut editor).await.is_some(), "the graph is drawn over the artwork");
+		editor.dispatch(Message::Wake);
+
+		editor.runtime.replace_task_executor(Arc::new(Parked), Arc::new(|| {}));
+		delay_layer(&mut editor);
+		send_update_with_graph_ui(&mut editor, UVec2::ONE, Some(graph_ui_config(DAffine2::IDENTITY)));
+		assert!(run(&mut editor).await.is_some(), "the frame of the pending artwork is drawn");
+	}
+
+	#[tokio::test]
+	async fn closing_the_graph_over_a_network_that_failed_to_compile_still_reports_the_failure() {
+		let mut editor = editor().await;
+		editor.dispatch(PortfolioMessage::SubmitActiveGraphRender);
+		run(&mut editor).await;
+		editor.dispatch(Message::Wake);
+		break_compile(&mut editor);
+
+		editor.dispatch(DocumentMessage::GraphViewOverlay { open: true });
+		let frame = run(&mut editor).await;
+		let messages = editor.dispatch(Message::Wake);
+		assert!(
+			messages.iter().any(|message| matches!(message, FrontendMessage::UpdateRenderStatus { status: RenderStatus::Fallback })),
+			"the failed compile is reported"
+		);
+		assert!(frame.is_some(), "the graph is drawn");
+
+		editor.dispatch(DocumentMessage::GraphViewOverlay { open: false });
+		run(&mut editor).await;
+		let messages = editor.dispatch(Message::Wake);
+		assert!(failed(&messages), "the render that closes the graph reports the failure");
+		assert_eq!(drawn_in(&messages), None, "the failure draws no frame");
+	}
+
+	#[tokio::test]
+	async fn the_frame_that_shows_an_edit_shows_the_thumbnail_of_the_changed_layer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.set_viewport_size(DVec2::ZERO, DVec2::new(1200., 800.)).await;
+		editor.select_primary_color(graphene_std::Color::RED).await;
+		editor.select_secondary_color(graphene_std::Color::RED).await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.handle_message(DocumentMessage::GraphViewOverlay { open: true }).await;
+		let layer = editor.get_selected_layer().await.expect("the drawn rectangle is selected");
+		let document = editor.active_document();
+		let rectangle = graph_modification_utils::get_rectangle_id(layer, &document.network_interface).unwrap();
+		let to_viewport = document.network_interface.network_metadata(&[]).unwrap().persistent_metadata.navigation_metadata.node_graph_to_viewport;
+		let [min, max] = editor.portfolio_message_handler().executor.graph_ui_scene().layers().get(&layer.to_node()).unwrap().thumbnail_image();
+		let [middle, near_the_left_edge] = [DVec2::new(0.5, 0.5), DVec2::new(1. / 12., 0.5)].map(|at| to_viewport.transform_point2(min + (max - min) * at).as_uvec2());
+		let red_at = |(pixels, width, _): &(Vec<u8>, u32, u32), point: UVec2| {
+			let index = (point.y * width + point.x) as usize * 4;
+			pixels[index] > 0xf0 && pixels[index + 1] < 0x20 && pixels[index + 2] < 0x20
+		};
+
+		editor.dispatch(PortfolioMessage::SubmitActiveGraphRender);
+		editor.runtime.update();
+		let frame = editor.runtime.run().await.expect("the graph is drawn");
+		let pixels = editor.runtime.read_back(frame).await.to_flat_u8();
+		assert!(red_at(&pixels, middle), "in the thumbnail of the square");
+		assert!(!red_at(&pixels, near_the_left_edge), "beside the square in its thumbnail");
+
+		editor.dispatch(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(rectangle, graphene_std::vector::generator_nodes::rectangle::WidthInput),
+			input: NodeInput::value(TaggedValue::Number(300.), false),
+		});
+		editor.dispatch(NodeGraphMessage::RunDocumentGraph);
+		editor.runtime.update();
+		let frame = editor.runtime.run().await.expect("the graph is drawn with the edit");
+		let pixels = editor.runtime.read_back(frame).await.to_flat_u8();
+		assert!(red_at(&pixels, near_the_left_edge), "the widened rectangle reaches the sides of its new thumbnail");
+		assert!(editor.runtime.run().await.is_none(), "the graph is not drawn again without another request");
 	}
 
 	#[test]

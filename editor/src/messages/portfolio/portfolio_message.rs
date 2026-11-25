@@ -1,3 +1,4 @@
+use super::document::node_graph::graph_ui::GraphUiPart;
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::history::HistoryMessage;
 use super::persistent_state::PersistentStateMessage;
@@ -157,11 +158,6 @@ pub enum PortfolioMessage {
 		artboard_name: Option<String>,
 		artboard_count: usize,
 	},
-	RenderOverlays {
-		#[serde(skip, default = "OverlayContext::default")]
-		#[derivative(Debug = "ignore", PartialEq = "ignore")]
-		context: OverlayContext,
-	},
 	SubmitActiveGraphRender,
 	SubmitGraphRender {
 		document_id: DocumentId,
@@ -174,6 +170,14 @@ pub enum PortfolioMessage {
 	},
 	SubmitInspectContextOverrides {
 		overrides: graphene_std::ContextOverrides,
+	},
+	UpdateGraphUi {
+		part: GraphUiPart,
+	},
+	RenderOverlays {
+		#[serde(skip, default = "OverlayContext::default")]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
+		context: OverlayContext,
 	},
 	PollNodeGraphEvaluation,
 	ToggleResetNodesToDefinitionsOnOpen,

@@ -8,6 +8,8 @@ use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::proto::GraphErrors;
+use graph_ui::GraphUiConfig;
+use graph_ui::scene::{GraphUiScene, GraphUiSceneEdit};
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::color::SRGBA8;
@@ -27,10 +29,11 @@ mod recompile_tests;
 mod runtime;
 pub use runtime::*;
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub struct ExecutionRequest {
 	execution_id: u64,
 	render_config: RenderConfig,
+	graph_ui_config: Option<GraphUiConfig>,
 }
 
 pub struct ExecutionResponse {
@@ -117,6 +120,8 @@ pub struct NodeGraphExecutor {
 	futures: VecDeque<(u64, ExecutionContext)>,
 	pending: Option<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
+	graph_ui_scene: GraphUiScene,
+	graph_ui_shown: bool,
 	/// The document whose network the graph runtime was last sent.
 	node_graph_document: Option<DocumentId>,
 	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
@@ -175,6 +180,8 @@ impl NodeGraphExecutor {
 			pending: None,
 			current_execution_id: 0,
 			node_graph_hash: 0,
+			graph_ui_scene: GraphUiScene::default(),
+			graph_ui_shown: false,
 			node_graph_document: None,
 			previous_node_to_inspect: Vec::new(),
 			inspect_context_overrides: ContextOverrides::default(),
@@ -204,11 +211,37 @@ impl NodeGraphExecutor {
 		self.evaluation_errors.take()
 	}
 
+	#[cfg(test)]
+	pub fn graph_ui_scene(&self) -> &GraphUiScene {
+		&self.graph_ui_scene
+	}
+
+	pub fn graph_ui_shown(&self) -> bool {
+		self.graph_ui_shown
+	}
+
+	pub fn update_graph_ui(&mut self, change: impl FnOnce(&mut GraphUiSceneEdit)) -> bool {
+		let mut edit = std::mem::take(&mut self.graph_ui_scene).edit();
+		change(&mut edit);
+		let (scene, delta) = edit.finish();
+		self.graph_ui_scene = scene;
+
+		let changed = !delta.is_empty();
+		if changed {
+			self.sender.send(GraphRuntimeRequest::GraphUi(delta)).expect("Failed to send the graph UI delta");
+		}
+		changed
+	}
+
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
+	fn queue_execution(&mut self, render_config: RenderConfig, graph_ui_config: Option<GraphUiConfig>) -> u64 {
 		let execution_id = self.current_execution_id;
 		self.current_execution_id += 1;
-		let request = ExecutionRequest { execution_id, render_config };
+		let request = ExecutionRequest {
+			execution_id,
+			render_config,
+			graph_ui_config,
+		};
 		self.sender.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
@@ -248,8 +281,9 @@ impl NodeGraphExecutor {
 		}
 
 		let layers = document.layers_in_view.all_in_view();
+		let layers_panel = document.layers_in_view.layers_panel().clone();
 		self.sender
-			.send(GraphRuntimeRequest::ThumbnailsInView { layers, document_id })
+			.send(GraphRuntimeRequest::ThumbnailsInView { layers, layers_panel, document_id })
 			.expect("Failed to send the thumbnails in view");
 	}
 
@@ -332,6 +366,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// Adds an evaluate request for whatever current network is cached.
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn submit_current_node_graph_evaluation(
 		&mut self,
 		document: &mut DocumentMessageHandler,
@@ -340,6 +375,7 @@ impl NodeGraphExecutor {
 		viewport_scale: f64,
 		time: TimingInformation,
 		pointer: DVec2,
+		graph_ui_config: Option<GraphUiConfig>,
 	) -> Result<Message, String> {
 		let viewport = Footprint {
 			transform: document.metadata().document_to_viewport,
@@ -358,7 +394,8 @@ impl NodeGraphExecutor {
 		};
 
 		// Execute the node graph
-		let execution_id = self.queue_execution(render_config);
+		let execution_id = self.queue_execution(render_config, graph_ui_config);
+		self.graph_ui_shown = graph_ui_config.is_some();
 
 		self.futures.push_back((
 			execution_id,
@@ -385,9 +422,10 @@ impl NodeGraphExecutor {
 		node_to_inspect: Vec<NodeId>,
 		ignore_hash: bool,
 		pointer: DVec2,
+		graph_ui_config: Option<GraphUiConfig>,
 	) -> Result<Message, String> {
 		self.update_node_graph(document, document_id, node_to_inspect, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
+		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer, graph_ui_config)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -425,7 +463,7 @@ impl NodeGraphExecutor {
 		};
 
 		// Execute the node graph
-		let execution_id = self.queue_execution(render_config);
+		let execution_id = self.queue_execution(render_config, None);
 
 		self.futures.push_back((
 			execution_id,
@@ -494,7 +532,7 @@ impl NodeGraphExecutor {
 				observations: self.observations(&document.network_interface),
 			}))
 			.map_err(|e| e.to_string())?;
-		let execution_id = self.queue_execution(render_config);
+		let execution_id = self.queue_execution(render_config, None);
 		self.futures.push_back((
 			execution_id,
 			ExecutionContext {
@@ -563,7 +601,9 @@ impl NodeGraphExecutor {
 					if let Some(bake_target) = execution_context.measure_fill {
 						if execution_context.document_id == document_id && self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id == document_id) {
 							let measured = observations.remove(&ObservationKey::FillMeasurement);
-							let inspect_result = matches!(result, ExecutionResult::Value(_) | ExecutionResult::Fallback(..)).then_some(measured).flatten();
+							let inspect_result = matches!(result, ExecutionResult::Value(_) | ExecutionResult::Partial(_) | ExecutionResult::Fallback(..))
+								.then_some(measured)
+								.flatten();
 							self.handle_gradient_measurement(document, document_id, bake_target, inspect_result, responses);
 						}
 						continue;
@@ -571,8 +611,8 @@ impl NodeGraphExecutor {
 
 					responses.add(OverlaysMessage::Draw);
 
-					// A pending graph keeps the last frame, and the errors shown with it
-					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending) {
+					// A pending graph keeps the last frame, and the errors shown with it; a provisional frame keeps the errors
+					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending | ExecutionResult::Partial(_)) {
 						let errors = match &result {
 							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => {
 								let in_document = |path: &&[NodeId]| {
@@ -725,7 +765,7 @@ impl NodeGraphExecutor {
 							});
 
 							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
-							break;
+							continue;
 						}
 						Ok(result) => result,
 					};
@@ -917,7 +957,7 @@ impl NodeGraphExecutor {
 			for_export: false,
 			for_eyedropper: false,
 		};
-		let execution_id = self.queue_execution(render_config);
+		let execution_id = self.queue_execution(render_config, None);
 		self.futures.push_back((
 			execution_id,
 			ExecutionContext {

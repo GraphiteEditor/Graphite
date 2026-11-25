@@ -14,6 +14,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
+use crate::messages::portfolio::document::node_graph::graph_ui;
 use crate::messages::portfolio::document_storage_io::{
 	DocumentStoreHandle, attach_container, copy_stored_document, join_stored_session, legacy_path, list_stored_documents, load_legacy_document, load_stored_document, open_document_file,
 	remove_stored_document,
@@ -216,7 +217,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Send the information for tooltips and categories for each node/input.
 				responses.add(FrontendMessage::SendUIMetadata {
 					node_descriptions: document_node_definitions::collect_node_descriptions(),
-					node_icons: document_node_definitions::collect_node_icons(),
 					node_types: document_node_definitions::collect_node_types(),
 				});
 
@@ -958,7 +958,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
 				if node_graph_open {
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
-					responses.add(NodeGraphMessage::UnloadWires);
 					responses.add(NodeGraphMessage::SendWires)
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
@@ -1012,6 +1011,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WakeNodeRuntime);
 			}
+			PortfolioMessage::UpdateGraphUi { part } => {
+				let Some(document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
+					return;
+				};
+				let edited = graph_ui::edited_name(document);
+				document.node_graph_handler.graph_ui.update_name_field(edited, responses);
+				let facts = graph_ui::Facts::of(document);
+				if self.executor.update_graph_ui(|scene| facts.update(part, scene, preferences.graph_wire_style)) {
+					responses.add(PortfolioMessage::SubmitActiveGraphRender);
+				}
+			}
 			PortfolioMessage::SubmitActiveGraphRender => {
 				if let Some(document_id) = self.active_document_id {
 					responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
@@ -1025,9 +1035,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 
-				// Skip rendering while a resource is still loading, so its error isn't shown in the meantime.
-				// Each load queues `RunDocumentGraph` when it succeeds or fails, so the render goes ahead once none are left.
-				if document.resources.awaiting_resources() {
+				let graph_ui_config = graph_ui::config(document);
+				if graph_ui_config.is_none() && !self.executor.graph_ui_shown() && document.resources.awaiting_resources() {
 					return;
 				}
 
@@ -1051,12 +1060,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// TODO: See #3796.
 				#[cfg(not(target_family = "wasm"))]
 				responses.add_front(FrontendMessage::UpdateViewportHolePunch {
-					active: document.render_mode != graphene_std::vector::style::RenderMode::SvgPreview,
+					active: document.render_mode != graphene_std::vector::style::RenderMode::SvgPreview || graph_ui_config.is_some(),
 				});
 
-				let result = self
-					.executor
-					.submit_node_graph_evaluation(document, document_id, physical_resolution, scale, timing_information, node_to_inspect, ignore_hash, pointer_position);
+				let result = self.executor.submit_node_graph_evaluation(
+					document,
+					document_id,
+					physical_resolution,
+					scale,
+					timing_information,
+					node_to_inspect,
+					ignore_hash,
+					pointer_position,
+					graph_ui_config,
+				);
 
 				match result {
 					Err(description) => {
