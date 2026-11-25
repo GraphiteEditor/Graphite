@@ -21,7 +21,7 @@ pub enum PaintTarget {
 }
 
 impl PaintTarget {
-	fn paint_attr(self) -> &'static str {
+	pub(crate) fn paint_attr(self) -> &'static str {
 		match self {
 			Self::Fill => "fill",
 			Self::Stroke => "stroke",

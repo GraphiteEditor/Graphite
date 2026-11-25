@@ -206,6 +206,8 @@ fn create_context(
 	let render_params = RenderParams {
 		render_mode: render_config.render_mode,
 		for_export: render_config.for_export,
+		// Exported SVG files keep their text as text, while the canvas and other SVG renders draw it as outlines
+		embed_fonts: render_config.for_export && matches!(render_output_type, RenderOutputTypeRequest::Svg),
 		render_output_type,
 		scale: render_config.scale,
 		viewport_zoom: Some(logical_viewport.scale_magnitudes().x),

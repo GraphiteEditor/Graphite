@@ -1054,6 +1054,8 @@ pub struct SvgRender {
 	pub effect_maps: Vec<EffectMap>,
 	/// The content with effects SVG filters can't carry out, for the GPU to render images of in place of the markup standing in for it.
 	pub deferred_images: Vec<DeferredImage>,
+	/// The fonts already embedded into the defs, by the IDs of their data.
+	embedded_fonts: HashSet<u64>,
 	/// Whether markup standing in for deferred content is being drawn, inside which nothing more is deferred since the content's image covers it.
 	drawing_deferred_markup: bool,
 	/// How far the filters of the groups around the content being drawn read past it, in document pixels, which the maps and images inside cover past the view.
@@ -1070,6 +1072,7 @@ impl SvgRender {
 			image_data: HashMap::new(),
 			effect_maps: Vec::new(),
 			deferred_images: Vec::new(),
+			embedded_fonts: HashSet::new(),
 			drawing_deferred_markup: false,
 			ancestors_reach: 0.,
 			indent: 0,
@@ -1169,6 +1172,7 @@ impl From<&SvgRenderOutput> for SvgRender {
 			image_data: value.image_data.clone(),
 			effect_maps: value.effect_maps.clone(),
 			deferred_images: value.deferred_images.clone(),
+			embedded_fonts: HashSet::new(),
 			drawing_deferred_markup: false,
 			ancestors_reach: 0.,
 			indent: 0,
@@ -1217,6 +1221,8 @@ pub struct RenderParams {
 	pub thumbnail: bool,
 	/// Are we exporting
 	pub for_export: bool,
+	/// Emits text as SVG `<text>` with its fonts embedded, for an SVG file, rather than as glyph outlines.
+	pub embed_fonts: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
 	pub for_mask: bool,
 	/// Are we generating a mask for alignment? Used to prevent unnecessary transforms in masks
@@ -1587,8 +1593,50 @@ enum PaintBrush {
 	Clipped,
 }
 
+/// Which way a paint covers a shape, without building anything to draw it with.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PaintKind {
+	/// No paint, or one that shows nothing.
+	Nothing,
+	/// A solid color or a single gradient, which one brush carries.
+	Brush,
+	/// Content no single brush can carry, which draws clipped to the area instead.
+	Clipped,
+}
+
+fn paint_kind(paint: Option<&Graphic>) -> PaintKind {
+	let Some(paint) = paint else { return PaintKind::Nothing };
+
+	match paint {
+		Graphic::None(_) | Graphic::NoneList(_) => PaintKind::Nothing,
+		Graphic::Color(_) | Graphic::ColorList(_) | Graphic::Gradient(_) => PaintKind::Brush,
+		// Stacked gradients cannot be composited into one brush
+		Graphic::GradientList(list) if list.len() <= 1 => PaintKind::Brush,
+		Graphic::GradientList(_)
+		| Graphic::Graphic(_)
+		| Graphic::Vector(_)
+		| Graphic::RasterCPU(_)
+		| Graphic::RasterGPU(_)
+		| Graphic::Generator(_)
+		| Graphic::Text(_)
+		| Graphic::VectorList(_)
+		| Graphic::RasterCPUList(_)
+		| Graphic::RasterGPUList(_)
+		| Graphic::GeneratorList(_)
+		| Graphic::GraphicList(_)
+		| Graphic::TextList(_)
+		| Graphic::StrokeList(_) => PaintKind::Clipped,
+	}
+}
+
 /// The brush `paint` covers a shape with, drawn under `element_transform` within content placed by `multiplied_transform`.
 fn paint_brush(paint: &Graphic, multiplied_transform: DAffine2, element_transform: DAffine2, for_mask: bool) -> PaintBrush {
+	match paint_kind(Some(paint)) {
+		PaintKind::Nothing => return PaintBrush::Nothing,
+		PaintKind::Clipped => return PaintBrush::Clipped,
+		PaintKind::Brush => {}
+	}
+
 	let solid = |color: Option<Color>| match color {
 		Some(color) => PaintBrush::Brush(peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color()), None),
 		None => PaintBrush::Nothing,
@@ -1607,26 +1655,12 @@ fn paint_brush(paint: &Graphic, multiplied_transform: DAffine2, element_transfor
 	};
 
 	match paint {
-		Graphic::None(_) | Graphic::NoneList(_) => PaintBrush::Nothing,
 		Graphic::Color(item) => solid(faded_paint_color(ItemRef::Item(item), for_mask)),
 		Graphic::ColorList(list) => solid(composite_paint_colors(list, for_mask)),
 		Graphic::Gradient(item) => gradient(ItemRef::Item(item)),
-		// Stacked gradients cannot be composited into one brush
-		Graphic::GradientList(list) if list.len() <= 1 => gradient(ItemRef::ListItem(list, 0)),
-		Graphic::GradientList(_)
-		| Graphic::Graphic(_)
-		| Graphic::Vector(_)
-		| Graphic::RasterCPU(_)
-		| Graphic::RasterGPU(_)
-		| Graphic::Generator(_)
-		| Graphic::Text(_)
-		| Graphic::VectorList(_)
-		| Graphic::RasterCPUList(_)
-		| Graphic::RasterGPUList(_)
-		| Graphic::GeneratorList(_)
-		| Graphic::GraphicList(_)
-		| Graphic::TextList(_)
-		| Graphic::StrokeList(_) => PaintBrush::Clipped,
+		Graphic::GradientList(list) => gradient(ItemRef::ListItem(list, 0)),
+		// Every other paint was classified as drawing nothing or clipped above
+		_ => PaintBrush::Nothing,
 	}
 }
 
@@ -4362,19 +4396,19 @@ fn similarity_scale(transform: DAffine2) -> Option<f64> {
 	(uniform && scale > 0.).then_some(scale)
 }
 
-/// Whether native glyph runs can draw a text's fill and stroke exactly as its outlines would draw as vector geometry.
+/// Whether native glyph runs (or SVG text) can draw a text's fill and stroke exactly as its outlines would draw as vector geometry.
 /// `stroke_scale` is the uniform scale of the stroke's space relative to the text's layout, or `None` if that space stretches or skews.
-fn draws_natively(fill_brush: &PaintBrush, stroke: Option<&graphic_types::vector_types::vector::style::Stroke>, stroke_brush: &PaintBrush, stroke_scale: Option<f64>) -> bool {
-	if matches!(fill_brush, PaintBrush::Clipped) {
+fn draws_natively(fill: PaintKind, stroke: Option<&graphic_types::vector_types::vector::style::Stroke>, stroke_paint: PaintKind, stroke_scale: Option<f64>) -> bool {
+	if fill == PaintKind::Clipped {
 		return false;
 	}
 
 	let Some(stroke) = stroke else { return true };
-	match stroke_brush {
-		PaintBrush::Nothing => true,
-		PaintBrush::Clipped => false,
+	match stroke_paint {
+		PaintKind::Nothing => true,
+		PaintKind::Clipped => false,
 		// Aligned strokes need the fill's area as a mask, and dashes might restart differently than along the compound outline
-		PaintBrush::Brush(..) => !stroke.align.is_not_centered() && stroke.dash_lengths.is_empty() && stroke_scale.is_some(),
+		PaintKind::Brush => !stroke.align.is_not_centered() && stroke.dash_lengths.is_empty() && stroke_scale.is_some(),
 	}
 }
 
@@ -4412,32 +4446,32 @@ fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, ()>, x_offset: f3
 	}
 }
 
+/// The font and typesetting a text item's attributes set, with the fallback font when none is attached.
+fn text_item_typesetting(item: ItemRef<'_, String>) -> (Resource, text_nodes::TypesettingConfig) {
+	let font: Resource = item.attribute_cloned_or_default(ATTR_FONT);
+	let font = if font.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { font };
+
+	let typesetting = text_nodes::TypesettingConfig {
+		font_size: item.attribute_cloned_or(ATTR_FONT_SIZE, DEFAULT_FONT_SIZE),
+		line_height_ratio: item.attribute_cloned_or(ATTR_LINE_HEIGHT, 1.2),
+		letter_spacing: item.attribute_cloned_or(ATTR_LETTER_SPACING, 0.),
+		letter_tilt: item.attribute_cloned_or(ATTR_LETTER_TILT, 0.),
+		max_width: item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.),
+		max_height: item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.),
+		align: item.attribute_cloned_or_default(ATTR_TEXT_ALIGN),
+	};
+
+	(font, typesetting)
+}
+
 /// Lays out one text item and returns its local size and transform. The `BoundingBox` trait can't do
 /// this since a bare `String` carries no typography, so click-target and bounding-box computation share this. Falls back to an em
 /// square if the font isn't registered yet.
 fn text_item_size_and_transform(item: ItemRef<'_, String>) -> Option<(DVec2, DAffine2)> {
 	let text = item.element()?;
-	let font: Resource = {
-		let f: Resource = item.attribute_cloned_or_default(ATTR_FONT);
-		if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
-	};
-	let font_size: f64 = item.attribute_cloned_or(ATTR_FONT_SIZE, DEFAULT_FONT_SIZE);
-	let line_height: f64 = item.attribute_cloned_or(ATTR_LINE_HEIGHT, 1.2);
-	let letter_spacing: f64 = item.attribute_cloned_or(ATTR_LETTER_SPACING, 0.);
-	let max_width = item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.);
-	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
-	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
+	let (font, typesetting) = text_item_typesetting(item);
+	let (font_size, max_width, max_height) = (typesetting.font_size, typesetting.max_width, typesetting.max_height);
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-
-	let typesetting = text_nodes::TypesettingConfig {
-		font_size,
-		line_height_ratio: line_height,
-		letter_spacing,
-		letter_tilt: 0.,
-		max_width,
-		max_height,
-		align,
-	};
 
 	let (width, height) = text_nodes::TextContext::with_thread_local(|ctx| {
 		ctx.layout_text(text, &font, typesetting).map(|layout| {
@@ -4584,10 +4618,262 @@ fn drawn_bounding_box(graphic: &Graphic, transform: DAffine2) -> RenderBoundingB
 	}
 }
 
+/// One glyph run's characters for SVG `<text>`, each placed where the layout put its cluster so viewers don't lay the text out again.
+struct SvgTextRun {
+	font: peniko::FontData,
+	/// The font's own family name, which viewers that can't load embedded fonts fall back to finding installed.
+	family_name: Option<String>,
+	font_size: f32,
+	baseline: f32,
+	/// The tangent of the faux-italic skew around the baseline.
+	tilt_tan: f64,
+	characters: String,
+	x_positions: Vec<f32>,
+}
+
+impl SvgTextRun {
+	/// The run's characters with their positions, or `None` if its font can't be embedded to draw it as laid out:
+	/// one face of a font collection, an instance of a variable font, or a synthesized bold.
+	fn new(glyph_run: &parley::GlyphRun<'_, ()>, text: &str, x_offset: f32, space_extra: f32, tilt_tan: f64) -> Option<Self> {
+		let run = glyph_run.run();
+		let font = run.font();
+		let default_instance = run.normalized_coords().iter().all(|coord| coord.to_bits() == 0);
+		if font.index != 0 || !default_instance || run.synthesis().embolden() {
+			return None;
+		}
+
+		// Clusters map to characters only while the glyph run spans its whole run, as it does for text in one style
+		if (glyph_run.advance() - run.advance()).abs() > 1e-3 {
+			return None;
+		}
+
+		let mut clusters = Vec::new();
+		let mut cluster_x = glyph_run.offset() + x_offset;
+		for cluster in run.visual_clusters() {
+			clusters.push((cluster.text_range(), cluster_x));
+			cluster_x += cluster.advance();
+			if space_extra != 0. && cluster.is_space_or_nbsp() {
+				cluster_x += space_extra;
+			}
+		}
+
+		// Characters are listed in reading order, and those after the first of a cluster (like in a ligature) share its position
+		clusters.sort_by_key(|(range, _)| range.start);
+		let mut characters = String::new();
+		let mut x_positions = Vec::new();
+		for (range, x) in clusters {
+			for character in text.get(range).unwrap_or_default().chars().filter(|character| !character.is_control()) {
+				characters.push(character);
+				x_positions.push(x);
+			}
+		}
+
+		let font_ref = SkrifaFontRef::from_index(font.data.as_ref(), font.index).ok();
+		let family_name = font_ref.and_then(|font_ref| {
+			let names = |id| font_ref.localized_strings(id).english_or_first().map(|name| name.to_string());
+			names(skrifa::string::StringId::TYPOGRAPHIC_FAMILY_NAME).or_else(|| names(skrifa::string::StringId::FAMILY_NAME))
+		});
+
+		Some(Self {
+			font: font.clone(),
+			family_name,
+			font_size: run.font_size(),
+			baseline: glyph_run.baseline(),
+			tilt_tan: tilt_tan + synthesized_tilt_tan(run),
+			characters,
+			x_positions,
+		})
+	}
+
+	/// The `<text>` element drawing the run with its embedded font, given the paint and stroke attributes it draws with.
+	fn markup(&self, paint_attributes: &str) -> String {
+		let x_positions = self.x_positions.iter().map(|x| ((*x as f64 * 1000.).round() / 1000.).to_string()).collect::<Vec<_>>().join(" ");
+
+		// Skewed around the baseline, so glyph tops lean right as the outlines' faux italics do
+		let skew = match self.tilt_tan {
+			0. => String::new(),
+			tilt_tan => {
+				let skew = DAffine2::from_cols_array(&[1., 0., -tilt_tan, 1., tilt_tan * self.baseline as f64, 0.]);
+				format!(r#" transform="{}""#, format_transform_matrix(skew))
+			}
+		};
+
+		let mut font_family = embedded_font_family(&self.font);
+		if let Some(family_name) = &self.family_name {
+			let family_name: String = family_name.chars().filter(|character| !matches!(character, '\'' | '"' | '<' | '>' | '&' | '\\')).collect();
+			let _ = write!(font_family, ", '{family_name}'");
+		}
+
+		format!(
+			r#"<text font-family="{font_family}" font-size="{}" x="{x_positions}" y="{}"{skew} xml:space="preserve"{paint_attributes}>{}</text>"#,
+			self.font_size,
+			self.baseline,
+			escape_xml_text(&self.characters),
+		)
+	}
+}
+
+/// The family name an embedded font is known by in an SVG document.
+fn embedded_font_family(font: &peniko::FontData) -> String {
+	format!("graphite-font-{}", font.data.id())
+}
+
+/// Adds an `@font-face` rule to `svg_defs` holding the whole font file, under its [`embedded_font_family`] name.
+fn write_embedded_font(svg_defs: &mut String, font: &peniko::FontData) {
+	use base64::Engine;
+
+	let data = font.data.data();
+	let (media_type, format) = match data.get(..4) {
+		Some(b"OTTO") => ("font/otf", "opentype"),
+		Some(b"wOFF") => ("font/woff", "woff"),
+		Some(b"wOF2") => ("font/woff2", "woff2"),
+		_ => ("font/ttf", "truetype"),
+	};
+	let encoded = base64::engine::general_purpose::STANDARD.encode(data);
+
+	let _ = write!(
+		svg_defs,
+		r#"<style>@font-face{{font-family:"{}";src:url(data:{media_type};base64,{encoded}) format("{format}")}}</style>"#,
+		embedded_font_family(font)
+	);
+}
+
+/// Escapes the characters that would otherwise be read as markup in an XML text node.
+fn escape_xml_text(text: &str) -> String {
+	text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+/// Emits one item of text content as SVG `<text>` with its fonts embedded, returning whether it could draw it exactly as its outlines would.
+fn render_text_item_as_svg_text(item: ItemRef<'_, String>, render: &mut SvgRender, render_params: &RenderParams) -> bool {
+	let Some(text) = item.element() else { return false };
+	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+
+	with_text_paints(item, render_params, item_transform, |paints| {
+		if matches!(render_params.render_mode, RenderMode::Outline) || !paints.draw_natively() {
+			return false;
+		}
+
+		let (font, typesetting) = text_item_typesetting(item);
+		let Some((runs, layout_size)) = text_nodes::TextContext::with_thread_local(|ctx| {
+			let layout = ctx.layout_text(text, &font, typesetting)?;
+			let tilt_tan = typesetting.letter_tilt.to_radians().tan();
+
+			let mut runs = Some(Vec::new());
+			text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+				let run = SvgTextRun::new(glyph_run, text, x_offset, space_extra, tilt_tan);
+				runs = runs.take().zip(run).map(|(mut runs, run)| {
+					runs.push(run);
+					runs
+				});
+			});
+
+			let alignment_width = typesetting.max_width.unwrap_or(layout.full_width() as f64);
+			Some((runs?, DVec2::new(alignment_width, layout.height() as f64)))
+		}) else {
+			return false;
+		};
+
+		for run in &runs {
+			if render.embedded_fonts.insert(run.font.data.id()) {
+				write_embedded_font(&mut render.svg_defs, &run.font);
+			}
+		}
+
+		// Padded by the font size, since glyphs can overhang their layout box
+		let padding = DVec2::splat(typesetting.font_size);
+		let layout_bounds = RenderBoundingBox::Rectangle((item_transform * Quad::from_box([-padding, layout_size + padding])).bounding_box());
+		let compositing = &paints.compositing;
+		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+
+		let deferred = start_deferred_markup(render, render_params, compositing, || layout_bounds);
+		let filter = compositing.svg_filter(render, render_params, || layout_bounds, || Graphic::Text(without_opacity_and_blend_mode(item, text.clone())));
+		let filtered = filter.is_some();
+
+		render_svg_through_filter(render, filter, compositing.opacity, blend_mode, |render| {
+			// The text sits in its layout space inside the group placing it, which its paints are placed relative to
+			let bounds = DAffine2::from_scale(layout_size);
+			let (user_to_document, paint_reach) = (render.transform, render.ancestors_reach);
+			let paint = |paint: Option<&Graphic>, render: &mut SvgRender, render_params: &RenderParams, target: PaintTarget| match paint {
+				Some(paint) => paint.render(
+					&mut render.svg_defs,
+					user_to_document,
+					paint_reach,
+					item_transform,
+					item_transform,
+					DAffine2::IDENTITY,
+					bounds,
+					render_params,
+					target,
+				),
+				None => format!(r#" {}="none""#, target.paint_attr()),
+			};
+
+			let mut paint_attributes = paint(paints.fill_paint, render, render_params, PaintTarget::Fill);
+			if let Some(local_stroke) = paints.local_stroke()
+				&& paints.stroke_paint.is_some()
+			{
+				let stroke_render_params = RenderParams {
+					stroke_below: paints.stroke_below,
+					..render_params.clone()
+				};
+				let shape = local_stroke.render(
+					&mut render.svg_defs,
+					user_to_document,
+					paint_reach,
+					item_transform,
+					item_transform,
+					DAffine2::IDENTITY,
+					bounds,
+					&stroke_render_params,
+					PaintTarget::Stroke,
+				);
+				paint_attributes.push_str(&shape);
+				paint_attributes.push_str(&paint(paints.stroke_paint, render, &stroke_render_params, PaintTarget::Stroke));
+			}
+
+			render.parent_tag(
+				"g",
+				|attributes| {
+					let matrix = format_transform_matrix(item_transform);
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
+					if filtered {
+						return;
+					}
+
+					let opacity = compositing.opacity_without_effects();
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
+					}
+					if blend_mode != BlendMode::default() {
+						attributes.push("style", blend_mode.render());
+					}
+				},
+				|render| {
+					for run in runs.iter().filter(|run| !run.characters.is_empty()) {
+						render.leaf_node(run.markup(&paint_attributes));
+					}
+				},
+			);
+		});
+
+		finish_deferred_markup(render, deferred, render_params, compositing, blend_mode, || {
+			Graphic::Text(without_opacity_and_blend_mode(item, text.clone()))
+		});
+
+		true
+	})
+}
+
 /// Emits one item of text content as SVG, laying out its glyphs and wrapping them in a styled group.
 fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, render_params: &RenderParams) {
 	let Some(text) = item.element() else { return };
 	if text.is_empty() {
+		return;
+	}
+
+	if render_params.embed_fonts && render_text_item_as_svg_text(item, render, render_params) {
 		return;
 	}
 
@@ -4700,18 +4986,42 @@ fn default_text_appearance() -> Appearance {
 	Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(Color::BLACK)))
 }
 
-/// Draws one item of text content into the Vello scene, as native glyph runs where they can draw its appearance, else as its outlines.
-fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
-	let Some(text) = item.element() else { return };
-	if text.is_empty() {
-		return;
+/// The paints a text item draws with, resolved like a vector item's appearance.
+struct TextPaints<'a> {
+	/// The item's compositing, without the adjustments folded into its solid paints.
+	compositing: ItemCompositing<'a>,
+	fill_paint: Option<&'a Graphic>,
+	stroke_paint: Option<&'a Graphic>,
+	/// The stroke, if it draws anything.
+	stroke: Option<graphic_types::vector_types::vector::style::Stroke>,
+	stroke_below: bool,
+	/// The uniform scale from the text's layout space to its stroke's space, or `None` if that space stretches or skews.
+	stroke_scale: Option<f64>,
+}
+
+impl TextPaints<'_> {
+	/// Whether native glyph runs (or SVG text) can draw these paints exactly as the text's outlines would.
+	fn draw_natively(&self) -> bool {
+		draws_natively(paint_kind(self.fill_paint), self.stroke.as_ref(), paint_kind(self.stroke_paint), self.stroke_scale)
 	}
 
-	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let multiplied_transform = transform * item_transform;
-	let compositing = item.compositing(render_params, multiplied_transform);
+	/// The stroke style in the text's layout space, whose width and dashes are measured in the stroke's own space.
+	fn local_stroke(&self) -> Option<graphic_types::vector_types::vector::style::Stroke> {
+		let (stroke, scale) = self.stroke.as_ref().zip(self.stroke_scale)?;
 
-	// The item's own declared appearance wins over one cascading down from an ancestor
+		let mut local_stroke = stroke.clone();
+		local_stroke.weight /= scale;
+		local_stroke.dash_lengths.iter_mut().for_each(|length| *length /= scale);
+		local_stroke.dash_offset /= scale;
+		Some(local_stroke)
+	}
+}
+
+/// Calls `draw` with the paints of a text item placed by `content_transform`, whose own declared appearance wins over one cascading down from an ancestor.
+fn with_text_paints<R>(item: ItemRef<'_, String>, render_params: &RenderParams, content_transform: DAffine2, draw: impl FnOnce(TextPaints) -> R) -> R {
+	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let compositing = item.compositing(render_params, content_transform);
+
 	let own_appearance = item.attribute::<Appearance>(ATTR_APPEARANCE).and_then(Appearance::declared);
 	let default_appearance;
 	let appearance = match own_appearance.or(render_params.inherited_appearance.as_ref()) {
@@ -4736,120 +5046,117 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBu
 		None => (fill_paint, stroke_paint, compositing),
 	};
 
-	// Glyphs are drawn in the text's layout space, so their brushes are placed relative to the whole transform
-	let brush_for = |paint: Option<&Graphic>| paint.map_or(PaintBrush::Nothing, |paint| paint_brush(paint, multiplied_transform, multiplied_transform, render_params.for_mask));
-	let (fill_brush, stroke_brush) = (brush_for(fill_paint), brush_for(stroke_paint));
-
 	// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
 	let stroke_space = (stroke.as_ref())
 		.map(|stroke| if own_appearance.is_some() { stroke.transform } else { item_transform })
 		.filter(|transform| transform_is_invertible(*transform))
-		.unwrap_or(multiplied_transform);
-	let stroke_scale = similarity_scale(stroke_space);
+		.unwrap_or(content_transform);
 
+	draw(TextPaints {
+		compositing,
+		fill_paint,
+		stroke_paint,
+		stroke,
+		stroke_below,
+		stroke_scale: similarity_scale(stroke_space),
+	})
+}
+
+/// Draws one item of text content into the Vello scene, as native glyph runs where they can draw its appearance, else as its outlines.
+fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+	let Some(text) = item.element() else { return };
+	if text.is_empty() {
+		return;
+	}
+
+	let multiplied_transform = transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 	let outline_mode = matches!(render_params.render_mode, RenderMode::Outline);
-	let native = scene.can_draw_glyphs() && (outline_mode || draws_natively(&fill_brush, stroke.as_ref(), &stroke_brush, stroke_scale));
-	if !native {
-		if let Some(vectors) = text_item_as_vectors(item, render_params) {
-			vectors.render_to_vello(scene, transform, render_params);
+
+	with_text_paints(item, render_params, multiplied_transform, |paints| {
+		if !scene.can_draw_glyphs() || !(outline_mode || paints.draw_natively()) {
+			if let Some(vectors) = text_item_as_vectors(item, render_params) {
+				vectors.render_to_vello(scene, transform, render_params);
+			}
+			return;
 		}
-		return;
-	}
 
-	let font: Resource = {
-		let f: Resource = item.attribute_cloned_or_default(ATTR_FONT);
-		if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
-	};
-	let font_size: f64 = item.attribute_cloned_or(ATTR_FONT_SIZE, DEFAULT_FONT_SIZE);
-	let max_width = item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.);
-	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
-	let typesetting = text_nodes::TypesettingConfig {
-		font_size,
-		line_height_ratio: item.attribute_cloned_or(ATTR_LINE_HEIGHT, 1.2),
-		letter_spacing: item.attribute_cloned_or(ATTR_LETTER_SPACING, 0.),
-		letter_tilt,
-		max_width,
-		max_height: item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.),
-		align: item.attribute_cloned_or_default(ATTR_TEXT_ALIGN),
-	};
+		let (font, typesetting) = text_item_typesetting(item);
+		let Some((runs, layout_size)) = text_nodes::TextContext::with_thread_local(|ctx| {
+			let layout = ctx.layout_text(text, &font, typesetting)?;
+			let tilt_tan = typesetting.letter_tilt.to_radians().tan();
 
-	let Some((runs, layout_size)) = text_nodes::TextContext::with_thread_local(|ctx| {
-		let layout = ctx.layout_text(text, &font, typesetting)?;
-		let tilt_tan = letter_tilt.to_radians().tan();
+			let mut runs = Vec::new();
+			text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+				runs.push(NativeGlyphRun::new(glyph_run, x_offset, space_extra, tilt_tan));
+			});
 
-		let mut runs = Vec::new();
-		text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
-			runs.push(NativeGlyphRun::new(glyph_run, x_offset, space_extra, tilt_tan));
-		});
+			let alignment_width = typesetting.max_width.unwrap_or(layout.full_width() as f64);
+			Some((runs, DVec2::new(alignment_width, layout.height() as f64)))
+		}) else {
+			return;
+		};
 
-		let alignment_width = max_width.unwrap_or(layout.full_width() as f64);
-		Some((runs, DVec2::new(alignment_width, layout.height() as f64)))
-	}) else {
-		return;
-	};
+		let affine = Affine::new(multiplied_transform.to_cols_array());
+		// Padded by the font size, since glyphs can overhang their layout box
+		let padding = typesetting.font_size;
+		let transformed_bounds = affine.transform_rect_bbox(kurbo::Rect::new(-padding, -padding, layout_size.x + padding, layout_size.y + padding));
 
-	let affine = Affine::new(multiplied_transform.to_cols_array());
-	// Padded by the font size, since glyphs can overhang their layout box
-	let transformed_bounds = affine.transform_rect_bbox(kurbo::Rect::new(-font_size, -font_size, layout_size.x + font_size, layout_size.y + font_size));
+		let compositing = &paints.compositing;
+		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+		let needs_layer = compositing.opacity < 1. || blend_mode != BlendMode::default();
+		if needs_layer {
+			let blending = peniko::BlendMode::new(blend_mode.to_peniko(), peniko::Compose::SrcOver);
+			let reach = compositing.reach();
+			scene.push_layer(
+				peniko::Fill::NonZero,
+				blending,
+				compositing.opacity,
+				kurbo::Affine::IDENTITY,
+				&transformed_bounds.inflate(reach.x, reach.y),
+			);
+		}
 
-	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let needs_layer = compositing.opacity < 1. || blend_mode != BlendMode::default();
-	if needs_layer {
-		let blending = peniko::BlendMode::new(blend_mode.to_peniko(), peniko::Compose::SrcOver);
-		let reach = compositing.reach();
-		scene.push_layer(
-			peniko::Fill::NonZero,
-			blending,
-			compositing.opacity,
-			kurbo::Affine::IDENTITY,
-			&transformed_bounds.inflate(reach.x, reach.y),
+		// Glyphs are drawn in the text's layout space, so their brushes are placed relative to the whole transform
+		let brush_for = |paint: Option<&Graphic>| paint.map_or(PaintBrush::Nothing, |paint| paint_brush(paint, multiplied_transform, multiplied_transform, render_params.for_mask));
+		let (fill_brush, stroke_brush) = (brush_for(paints.fill_paint), brush_for(paints.stroke_paint));
+		let local_stroke = paints.local_stroke().map(|stroke| to_kurbo_stroke(&stroke));
+
+		compositing.draw_with_effects(
+			scene,
+			|| rect_bounds(transformed_bounds),
+			|scene| {
+				if outline_mode {
+					let (outline_stroke, outline_color) = get_outline_styles(render_params);
+					let outline_brush = peniko::Brush::Solid(outline_color);
+					runs.iter().for_each(|run| run.draw(scene, GlyphPaintMode::Stroke(&outline_stroke), affine, &outline_brush, None));
+					return;
+				}
+
+				let draw_fill = |scene: &mut VelloSceneBuilder| {
+					if let PaintBrush::Brush(brush, brush_transform) = &fill_brush {
+						runs.iter().for_each(|run| run.draw(scene, GlyphPaintMode::Fill, affine, brush, *brush_transform));
+					}
+				};
+				let draw_stroke = |scene: &mut VelloSceneBuilder| {
+					if let (Some(local_stroke), PaintBrush::Brush(brush, brush_transform)) = (&local_stroke, &stroke_brush) {
+						runs.iter().for_each(|run| run.draw(scene, GlyphPaintMode::Stroke(local_stroke), affine, brush, *brush_transform));
+					}
+				};
+
+				if paints.stroke_below {
+					draw_stroke(scene);
+					draw_fill(scene);
+				} else {
+					draw_fill(scene);
+					draw_stroke(scene);
+				}
+			},
 		);
-	}
 
-	// The stroke's width and dashes are measured in its own space, which the layout reaches by a uniform scale
-	let local_stroke = stroke.as_ref().zip(stroke_scale).map(|(stroke, scale)| {
-		let mut local_stroke = to_kurbo_stroke(stroke);
-		local_stroke.width /= scale;
-		local_stroke.dash_pattern.iter_mut().for_each(|length| *length /= scale);
-		local_stroke.dash_offset /= scale;
-		local_stroke
+		if needs_layer {
+			scene.pop_layer();
+		}
 	});
-
-	compositing.draw_with_effects(
-		scene,
-		|| rect_bounds(transformed_bounds),
-		|scene| {
-			if outline_mode {
-				let (outline_stroke, outline_color) = get_outline_styles(render_params);
-				let outline_brush = peniko::Brush::Solid(outline_color);
-				runs.iter().for_each(|run| run.draw(scene, GlyphPaintMode::Stroke(&outline_stroke), affine, &outline_brush, None));
-				return;
-			}
-
-			let draw_fill = |scene: &mut VelloSceneBuilder| {
-				if let PaintBrush::Brush(brush, brush_transform) = &fill_brush {
-					runs.iter().for_each(|run| run.draw(scene, GlyphPaintMode::Fill, affine, brush, *brush_transform));
-				}
-			};
-			let draw_stroke = |scene: &mut VelloSceneBuilder| {
-				if let (Some(local_stroke), PaintBrush::Brush(brush, brush_transform)) = (&local_stroke, &stroke_brush) {
-					runs.iter().for_each(|run| run.draw(scene, GlyphPaintMode::Stroke(local_stroke), affine, brush, *brush_transform));
-				}
-			};
-
-			if stroke_below {
-				draw_stroke(scene);
-				draw_fill(scene);
-			} else {
-				draw_fill(scene);
-				draw_stroke(scene);
-			}
-		},
-	);
-
-	if needs_layer {
-		scene.pop_layer();
-	}
 }
 
 /// Whether text has an appearance of its own or inherited from an ancestor, without which it draws with [`default_text_appearance`].
@@ -5099,31 +5406,158 @@ mod tests {
 	fn text_draws_natively_unless_its_paint_or_stroke_needs_outlines() {
 		use graphic_types::vector_types::vector::style::Stroke;
 
-		let solid = || PaintBrush::Brush(peniko::Brush::Solid(peniko::Color::BLACK), None);
 		let centered = Stroke { weight: 2., ..Default::default() };
+		let (nothing, brush, clipped) = (PaintKind::Nothing, PaintKind::Brush, PaintKind::Clipped);
 
 		// Brush paints and centered strokes in a uniformly scaled space draw as glyph runs
-		assert!(draws_natively(&solid(), None, &PaintBrush::Nothing, None));
-		assert!(draws_natively(&solid(), Some(&centered), &solid(), Some(2.)));
-		assert!(draws_natively(&PaintBrush::Nothing, Some(&centered), &solid(), Some(1.)));
+		assert!(draws_natively(brush, None, nothing, None));
+		assert!(draws_natively(brush, Some(&centered), brush, Some(2.)));
+		assert!(draws_natively(nothing, Some(&centered), brush, Some(1.)));
 
 		// Clipped paints, aligned or dashed strokes, and stretched stroke spaces need the outlines
-		assert!(!draws_natively(&PaintBrush::Clipped, None, &PaintBrush::Nothing, None));
-		assert!(!draws_natively(&solid(), Some(&centered), &PaintBrush::Clipped, Some(1.)));
-		assert!(!draws_natively(&solid(), Some(&centered), &solid(), None));
+		assert!(!draws_natively(clipped, None, nothing, None));
+		assert!(!draws_natively(brush, Some(&centered), clipped, Some(1.)));
+		assert!(!draws_natively(brush, Some(&centered), brush, None));
 		let inside = Stroke {
 			align: StrokeAlign::Inside,
 			..centered.clone()
 		};
-		assert!(!draws_natively(&solid(), Some(&inside), &solid(), Some(1.)));
+		assert!(!draws_natively(brush, Some(&inside), brush, Some(1.)));
 		let dashed = Stroke {
 			dash_lengths: vec![4., 2.],
 			..centered.clone()
 		};
-		assert!(!draws_natively(&solid(), Some(&dashed), &solid(), Some(1.)));
+		assert!(!draws_natively(brush, Some(&dashed), brush, Some(1.)));
 
 		// A stroke that paints nothing never needs the outlines
-		assert!(draws_natively(&solid(), Some(&inside), &PaintBrush::Nothing, None));
+		assert!(draws_natively(brush, Some(&inside), nothing, None));
+	}
+
+	/// Renders `text` into a standalone SVG document, as `<text>` with embedded fonts or as glyph outlines.
+	fn text_svg_document(text: &List<String>, embed_fonts: bool) -> String {
+		let mut render = SvgRender::new();
+		let render_params = RenderParams {
+			for_export: true,
+			embed_fonts,
+			..Default::default()
+		};
+		text.render_svg(&mut render, &render_params);
+		render.wrap_with_transform(DAffine2::IDENTITY, Some(DVec2::new(400., 200.)));
+		render.svg.to_svg_string()
+	}
+
+	/// The bounds of the ink an SVG document draws, laying out its text with the fallback font.
+	fn drawn_svg_bounds(svg: &str) -> [f32; 4] {
+		// Text reports its line box as its bounds, so its glyphs' paths are measured instead
+		fn ink_bounds(group: &usvg::Group, bounds: &mut [f32; 4]) {
+			for node in group.children() {
+				match node {
+					usvg::Node::Group(group) => ink_bounds(group, bounds),
+					usvg::Node::Text(text) => ink_bounds(text.flattened(), bounds),
+					usvg::Node::Path(path) => {
+						let path_bounds = path.abs_bounding_box();
+						*bounds = [
+							bounds[0].min(path_bounds.left()),
+							bounds[1].min(path_bounds.top()),
+							bounds[2].max(path_bounds.right()),
+							bounds[3].max(path_bounds.bottom()),
+						];
+					}
+					usvg::Node::Image(_) => {}
+				}
+			}
+		}
+
+		let mut options = usvg::Options::default();
+		options.fontdb_mut().load_font_data(include_bytes!("../../../nodes/text/src/source-sans-pro-regular.ttf").to_vec());
+		let tree = usvg::Tree::from_str(svg, &options).expect("the rendered SVG parses");
+
+		let mut bounds = [f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+		ink_bounds(tree.root(), &mut bounds);
+		bounds
+	}
+
+	#[test]
+	fn exported_text_lays_out_like_its_outlines() {
+		use core_types::{ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_MAX_WIDTH, ATTR_TEXT_ALIGN};
+
+		let styled = |text: &str| {
+			Item::new_from_element(text.to_string())
+				.with_attribute(ATTR_FONT_SIZE, 36.)
+				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(10., 10.)))
+		};
+
+		// Each case alone in its document, so the feature it covers decides the bounds compared
+		let cases = [
+			("tilted", styled("Tilted").with_attribute(ATTR_LETTER_TILT, 12.)),
+			// A justified last line reaches the right edge only through the extra spacing of its space
+			(
+				"justified",
+				styled("a b").with_attribute(ATTR_MAX_WIDTH, 300.).with_attribute(ATTR_TEXT_ALIGN, text_nodes::TextAlign::JustifyAll),
+			),
+			("letter spaced", styled("Spaced").with_attribute(ATTR_LETTER_SPACING, 9.)),
+			("wrapped", styled("Wraps onto lines").with_attribute(ATTR_MAX_WIDTH, 120.)),
+		];
+
+		for (case, item) in cases {
+			let text = List::new_from_item(item);
+			let exported = text_svg_document(&text, true);
+			assert!(exported.contains("<text "), "the {case} text is exported as text");
+
+			let outlined = text_svg_document(&text, false);
+			assert!(!outlined.contains("<text"), "other SVG renders draw text as outlines");
+
+			let (text_bounds, outline_bounds) = (drawn_svg_bounds(&exported), drawn_svg_bounds(&outlined));
+			for (text_edge, outline_edge) in text_bounds.iter().zip(outline_bounds) {
+				assert!((text_edge - outline_edge).abs() < 0.5, "the {case} text spans {text_bounds:?} but its outlines span {outline_bounds:?}");
+			}
+		}
+	}
+
+	#[test]
+	fn exported_text_embeds_each_font_once() {
+		let mut text = List::new();
+		text.push(Item::new_from_element("First".to_string()));
+		text.push(Item::new_from_element("Second\nline".to_string()).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(0., 50.))));
+
+		let exported = text_svg_document(&text, true);
+		assert_eq!(exported.matches("<text ").count(), 3, "each line of each item is a text element");
+		assert_eq!(exported.matches("@font-face").count(), 1, "the font both items share is embedded once");
+		assert!(exported.contains("'Source Sans Pro'"), "the font's own family name is a fallback for viewers without embedded fonts");
+	}
+
+	#[test]
+	fn exported_text_escapes_its_characters_and_carries_its_paints() {
+		use graphic_types::appearance::{CoverPlacement, stamp_coverage};
+		use graphic_types::vector_types::vector::style::Stroke;
+
+		let mut item = Item::new_from_element("a<b & c".to_string()).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(2.)));
+		let gradient = Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE])).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(50.)));
+		stamp_coverage(&mut item, Coverage::new_fill(), Graphic::Gradient(gradient), CoverPlacement::Above);
+		let stroke = Stroke { weight: 4., ..Default::default() };
+		stamp_coverage(
+			&mut item,
+			Coverage::new_stroke(&stroke),
+			Graphic::ColorList(List::new_from_element(Color::BLACK)),
+			CoverPlacement::Above,
+		);
+
+		let exported = text_svg_document(&List::new_from_item(item), true);
+		assert!(exported.contains(">a&lt;b &amp; c</text>"), "markup characters are escaped in {exported}");
+		assert!(exported.contains(r#"fill="url(#"#), "the gradient fill is a paint server");
+		// The stroke is 4 wide in the space the item's transform doubles, so it is 2 wide in the text's own space
+		assert!(exported.contains(r#"stroke-width="2""#), "the stroke width is measured in the stroke's space in {exported}");
+
+		// A dashed stroke can't be drawn exactly by viewers stroking each glyph, so the text keeps its outlines
+		let mut dashed = Item::new_from_element("Dashed".to_string());
+		let dashed_stroke = Stroke { dash_lengths: vec![3., 1.], ..stroke };
+		stamp_coverage(
+			&mut dashed,
+			Coverage::new_stroke(&dashed_stroke),
+			Graphic::ColorList(List::new_from_element(Color::BLACK)),
+			CoverPlacement::Above,
+		);
+		assert!(!text_svg_document(&List::new_from_item(dashed), true).contains("<text"));
 	}
 
 	#[test]
