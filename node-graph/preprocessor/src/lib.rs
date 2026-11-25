@@ -901,14 +901,17 @@ mod tests {
 	}
 
 	#[test]
-	fn a_resource_without_a_hash_evaluates_to_a_missing_resource_error() {
+	fn a_resource_without_a_hash_evaluates_to_the_empty_resource_with_a_missing_resource_error() {
 		use graph_craft::graphene_compiler::Compiler;
 		use graphene_std::platform_application_io::MissingResourceError;
 		use interpreted_executor::dynamic_executor::DynamicExecutor;
 
-		let image = DocumentNode {
-			inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::Resource(ResourceId::from(1)), false)],
-			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER),
+		let color_lookup = DocumentNode {
+			inputs: vec![
+				NodeInput::value(TaggedValue::Color(Color::RED), false),
+				NodeInput::value(TaggedValue::Resource(ResourceId::from(1)), false),
+			],
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::raster_nodes::adjustments::color_lookup::IDENTIFIER),
 			..Default::default()
 		};
 		// Stub of the "editor-api" scope injection, which preprocessing requires and `wrap_network_in_scope` normally provides
@@ -919,7 +922,7 @@ mod tests {
 		};
 		let mut network = NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(0), 0)],
-			nodes: [(NodeId(0), image), (NodeId(1), editor_api)].into_iter().collect(),
+			nodes: [(NodeId(0), color_lookup), (NodeId(1), editor_api)].into_iter().collect(),
 			scope_injections: [("editor-api".to_string(), (NodeId(1), concrete!(&graph_craft::application_io::PlatformEditorApi)))]
 				.into_iter()
 				.collect(),
@@ -930,9 +933,11 @@ mod tests {
 		let proto_network = Compiler {}.compile_single(network).unwrap().network;
 		let executor = DynamicExecutor::new(proto_network).unwrap();
 		let context: core_types::Context = None;
-		let Ok(core_types::Poll::Error(error)) = executor.tree().eval_tagged_value(executor.output(), &context) else {
-			panic!("The image should fail to evaluate");
+		let Ok(core_types::Poll::Fallback(boxed)) = executor.tree().eval_tagged_value(executor.output(), &context) else {
+			panic!("The color lookup should evaluate with an error");
 		};
+		let (color, error) = *boxed;
+		assert_eq!(color, TaggedValue::Color(Color::RED));
 		assert!(error.error().is::<MissingResourceError>());
 	}
 }

@@ -935,7 +935,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn a_missing_resource_is_an_error_traced_through_its_node() {
+	async fn a_missing_resource_renders_with_an_error_traced_through_its_node() {
 		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 		use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 		use graph_craft::application_io::resource::ResourceId;
@@ -958,7 +958,7 @@ mod tests {
 		send_update(&mut editor);
 		editor.runtime.update();
 		editor.runtime.run().await;
-		editor.dispatch(Message::Wake);
+		assert!(evaluated(&mut editor));
 
 		let errors = editor.portfolio_message_handler_mut().executor.take_evaluation_errors().unwrap();
 		assert!(

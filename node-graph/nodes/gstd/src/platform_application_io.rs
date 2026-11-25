@@ -315,8 +315,8 @@ fn pending_stored_resource(_hash: &Item<ResourceHash>, _application_io: &Item<Ar
 pub struct MissingResourceError(ResourceId);
 
 #[node_macro::node(category(""))]
-fn missing_resource(_: impl Ctx, id: Item<ResourceId>) -> Result<Item<Resource>, MissingResourceError> {
-	Err(MissingResourceError(id.into_element()))
+fn missing_resource(_: impl Ctx, id: Item<ResourceId>) -> Result<Item<Resource>, (Item<Resource>, MissingResourceError)> {
+	Err((Item::new_from_element(Resource::empty()), MissingResourceError(id.into_element())))
 }
 
 #[node_macro::node(category(""), inject_scope)]
