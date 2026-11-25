@@ -7164,6 +7164,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
+name = "svg-convert"
+version = "0.0.0"
+dependencies = [
+ "core-types",
+ "glam",
+ "graphic-types",
+ "kurbo",
+ "usvg",
+]
+
+[[package]]
 name = "svgtypes"
 version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
