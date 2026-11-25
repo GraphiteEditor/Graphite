@@ -18,6 +18,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::ops::Range;
 use vector_types::gradient::GradientEvaluator;
+use vector_types::vector::style::StrokeAlign;
 use vector_types::{Gradient, GradientSettings};
 
 /// The image operation an [`Effect`] carries out.
@@ -32,6 +33,12 @@ pub enum EffectKind {
 	InnerShadow,
 	/// Surrounds the content with a soft glow of its silhouette.
 	OuterGlow,
+	/// Glows inward from the content's edges, or outward from its center.
+	InnerGlow,
+	/// Shades the content's interior with soft bands from its silhouette cast two ways.
+	Satin,
+	/// Draws a band of color along the content's silhouette.
+	Outline,
 	/// Paints over the content within its silhouette, mixing with its colors by a blend mode. A solid color paint is the color overlay adjustment.
 	PaintOverlay,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
@@ -63,6 +70,9 @@ impl std::fmt::Display for EffectKind {
 			Self::DropShadow => "Drop Shadow",
 			Self::InnerShadow => "Inner Shadow",
 			Self::OuterGlow => "Outer Glow",
+			Self::InnerGlow => "Inner Glow",
+			Self::Satin => "Satin",
+			Self::Outline => "Outline",
 			Self::PaintOverlay => "Paint Overlay",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
@@ -98,6 +108,19 @@ pub enum GlowTechnique {
 	Softer,
 	/// Fades evenly with the distance from the content's edges, following its details.
 	Precise,
+}
+
+/// Where an inner glow starts from.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum GlowSource {
+	/// Glows inward from the edges.
+	#[default]
+	Edge,
+	/// Glows outward from the center.
+	Center,
 }
 
 /// One of the coverages an effect is drawn from, which a render can output in place of the effects' result, so an SVG can embed it as a map of what its filters can't work out.
@@ -392,6 +415,15 @@ impl GlowFill {
 	}
 }
 
+/// How far an outline of `weight` reaches outside the silhouette's edge and inside it, by where it's aligned.
+pub fn outline_extents(weight: f64, align: StrokeAlign) -> (f64, f64) {
+	match align {
+		StrokeAlign::Outside => (weight, 0.),
+		StrokeAlign::Inside => (0., weight),
+		StrokeAlign::Center => (weight / 2., weight / 2.),
+	}
+}
+
 /// Appends an effect to the item's list, after those already applied to it, recording the item's transform at that point.
 /// Like a stroke's transform, it sets the space the effect's lengths and angles are measured in, so transforms applied later carry and scale the effect.
 pub fn stamp_effect<T>(item: &mut Item<T>, effect: Effect) {
@@ -501,6 +533,31 @@ pub enum EffectOperation {
 		range: f64,
 		contour: TransferCurve,
 	},
+	InnerGlow {
+		/// A solid color with the glow's opacity, or a gradient running from the content's edge inward (or from its center outward).
+		color: Graphic,
+		technique: GlowTechnique,
+		source: GlowSource,
+		/// The percentage of the size that hardens into a grow inward from the edges rather than softening.
+		choke: f64,
+		size: f64,
+		range: f64,
+		contour: TransferCurve,
+	},
+	Satin {
+		color: Color,
+		/// The direction each of the two casts of the silhouette is moved along, one each way, in degrees counterclockwise from the right.
+		angle: f64,
+		distance: f64,
+		size: f64,
+		invert: bool,
+		contour: TransferCurve,
+	},
+	Outline {
+		color: Color,
+		weight: f64,
+		align: StrokeAlign,
+	},
 	/// Paints over the content with a paint other than a solid color, since a solid one decodes into the color overlay adjustment instead.
 	PaintOverlay {
 		/// Placed in the space the content's item is, or fitted to the content's bounds if it's a gradient or image without its own placement.
@@ -524,6 +581,9 @@ impl EffectOperation {
 			Self::DropShadow { .. } => EffectKind::DropShadow,
 			Self::InnerShadow { .. } => EffectKind::InnerShadow,
 			Self::OuterGlow { .. } => EffectKind::OuterGlow,
+			Self::InnerGlow { .. } => EffectKind::InnerGlow,
+			Self::Satin { .. } => EffectKind::Satin,
+			Self::Outline { .. } => EffectKind::Outline,
 			Self::PaintOverlay { .. } => EffectKind::PaintOverlay,
 			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
@@ -533,8 +593,9 @@ impl EffectOperation {
 	pub fn changes_nothing(&self) -> bool {
 		match self {
 			Self::Blur { radius, .. } => *radius <= 0.,
-			Self::DropShadow { color, .. } | Self::InnerShadow { color, .. } => color.a() <= 0.,
-			Self::OuterGlow { color, .. } => GlowFill::of(color).is_none_or(|fill| fill.is_invisible()),
+			Self::DropShadow { color, .. } | Self::InnerShadow { color, .. } | Self::Satin { color, .. } => color.a() <= 0.,
+			Self::OuterGlow { color, .. } | Self::InnerGlow { color, .. } => GlowFill::of(color).is_none_or(|fill| fill.is_invisible()),
+			Self::Outline { color, weight, .. } => color.a() <= 0. || *weight <= 0.,
 			Self::PaintOverlay { opacity, .. } => *opacity <= 0.,
 			Self::Adjustment(_) => false,
 		}
@@ -545,7 +606,7 @@ impl EffectOperation {
 		match self {
 			Self::Blur { .. } => true,
 			// Cast from the content's shape or changing each pixel alone
-			Self::DropShadow { .. } | Self::InnerShadow { .. } | Self::OuterGlow { .. } => false,
+			Self::DropShadow { .. } | Self::InnerShadow { .. } | Self::OuterGlow { .. } | Self::InnerGlow { .. } | Self::Satin { .. } | Self::Outline { .. } => false,
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => false,
 		}
 	}
@@ -564,6 +625,9 @@ impl EffectOperation {
 			// Shadows and glows end within their size, past which a precise glow fades over one more unit.
 			Self::DropShadow { distance, size, .. } | Self::InnerShadow { distance, size, .. } => distance.abs() + size.max(0.) + 1.,
 			Self::OuterGlow { size, .. } => size.max(0.) + 1.,
+			Self::InnerGlow { size, .. } => size.max(0.) + 1.,
+			Self::Satin { distance, size, .. } => distance.abs() + size.max(0.) + 1.,
+			Self::Outline { weight, .. } => weight.max(0.) + 1.,
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => 0.,
 		}
 	}
@@ -585,6 +649,9 @@ impl EffectOperation {
 				[angle, distance, spread, size].into_iter().for_each(finite);
 			}
 			Self::OuterGlow { spread, size, range, .. } => [spread, size, range].into_iter().for_each(finite),
+			Self::InnerGlow { choke, size, range, .. } => [choke, size, range].into_iter().for_each(finite),
+			Self::Satin { angle, distance, size, .. } => [angle, distance, size].into_iter().for_each(finite),
+			Self::Outline { weight, .. } => finite(weight),
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => {}
 		}
 		self
@@ -622,6 +689,28 @@ impl EffectOperation {
 				size: 0.,
 				range: 0.,
 				contour: TransferCurve::default(),
+			},
+			EffectKind::InnerGlow => Self::InnerGlow {
+				color: Graphic::default(),
+				technique: GlowTechnique::default(),
+				source: GlowSource::default(),
+				choke: 0.,
+				size: 0.,
+				range: 0.,
+				contour: TransferCurve::default(),
+			},
+			EffectKind::Satin => Self::Satin {
+				color: Color::TRANSPARENT,
+				angle: 0.,
+				distance: 0.,
+				size: 0.,
+				invert: false,
+				contour: TransferCurve::default(),
+			},
+			EffectKind::Outline => Self::Outline {
+				color: Color::TRANSPARENT,
+				weight: 0.,
+				align: StrokeAlign::default(),
 			},
 			EffectKind::PaintOverlay => Self::PaintOverlay {
 				paint: Graphic::default(),
@@ -725,6 +814,43 @@ impl EffectOperation {
 				visitor.parameter("range", range, 50.);
 				visitor.parameter("contour", contour, TransferCurve::default());
 			}
+			Self::InnerGlow {
+				color,
+				technique,
+				source,
+				choke,
+				size,
+				range,
+				contour,
+			} => {
+				visitor.parameter("color", color, Graphic::from(glow_color));
+				visitor.parameter("technique", technique, GlowTechnique::default());
+				visitor.parameter("source", source, GlowSource::default());
+				visitor.parameter("choke", choke, 0.);
+				visitor.parameter("size", size, 5.);
+				visitor.parameter("range", range, 50.);
+				visitor.parameter("contour", contour, TransferCurve::default());
+			}
+			Self::Satin {
+				color,
+				angle,
+				distance,
+				size,
+				invert,
+				contour,
+			} => {
+				visitor.parameter("color", color, Color::from(SRGBA8::new(0, 0, 0, 0x80)));
+				visitor.parameter("angle", angle, 19.);
+				visitor.parameter("distance", distance, 11.);
+				visitor.parameter("size", size, 14.);
+				visitor.parameter("invert", invert, true);
+				visitor.parameter("contour", contour, TransferCurve::default());
+			}
+			Self::Outline { color, weight, align } => {
+				visitor.parameter("color", color, Color::BLACK);
+				visitor.parameter("weight", weight, 3.);
+				visitor.parameter("align", align, StrokeAlign::Outside);
+			}
 			Self::PaintOverlay { paint, blend_mode, opacity } => {
 				visitor.parameter("paint", paint, Graphic::from(Color::BLACK));
 				visitor.parameter("blend_mode", blend_mode, BlendMode::default());
@@ -764,6 +890,28 @@ mod tests {
 				size: 8.,
 				range: 75.,
 				contour: TransferCurve::default(),
+			},
+			EffectOperation::InnerGlow {
+				color: Graphic::from(Color::GREEN),
+				technique: GlowTechnique::Precise,
+				source: GlowSource::Center,
+				choke: 20.,
+				size: 3.,
+				range: 50.,
+				contour: TransferCurve::default(),
+			},
+			EffectOperation::Satin {
+				color: Color::BLACK,
+				angle: 45.,
+				distance: 6.,
+				size: 2.,
+				invert: false,
+				contour: TransferCurve::new(vec![DVec2::ZERO, DVec2::new(0.5, 1.), DVec2::ONE]),
+			},
+			EffectOperation::Outline {
+				color: Color::RED,
+				weight: 7.,
+				align: StrokeAlign::Center,
 			},
 			EffectOperation::PaintOverlay {
 				paint: Graphic::from(Gradient::new([0., 1.].map(|position| GradientStop {

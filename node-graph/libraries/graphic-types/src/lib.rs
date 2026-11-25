@@ -15,7 +15,7 @@ pub use vector_types;
 pub use adjustment::Adjustment;
 pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
 pub use artboard::Artboard;
-pub use effects::{Effect, EffectKind, EffectOperation, Effects, GlowTechnique, fitted_paint, paint_with_envelope_effects, stamp_effect, stamped_transform};
+pub use effects::{Effect, EffectKind, EffectOperation, Effects, GlowSource, GlowTechnique, fitted_paint, paint_with_envelope_effects, stamp_effect, stamped_transform};
 pub use generator::Generator;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 

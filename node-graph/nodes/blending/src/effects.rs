@@ -3,9 +3,10 @@ use core_types::list::Item;
 use core_types::transfer_curve::TransferCurve;
 use core_types::{ATTR_OPACITY, ATTR_OPACITY_FILL, Color, Ctx};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Effect, EffectOperation, Generator, GlowTechnique, Graphic, Vector, paint_with_envelope_effects, stamp_effect};
+use graphic_types::{Effect, EffectOperation, Generator, GlowSource, GlowTechnique, Graphic, Vector, paint_with_envelope_effects, stamp_effect};
 use raster_kernels::{evaluate_color_effects, evaluate_gradient_effects};
 use vector_types::Gradient;
+use vector_types::vector::style::StrokeAlign;
 
 /// Blurs the input graphics, whether vector shapes, images, or text.
 #[node_macro::node(category("Raster: Filter"), icon("NodeBlur"), version(2))]
@@ -197,6 +198,139 @@ fn outer_glow<T>(
 			size: *size.element(),
 			range: *range.element(),
 			contour: contour.into_element(),
+		}),
+	);
+	content
+}
+
+/// Glows inward from the edges of the input graphics, or outward from their center.
+#[node_macro::node(category("Raster: Effect"), icon("NodeInnerGlow"))]
+fn inner_glow<T>(
+	_: impl Ctx,
+	/// The content to glow within.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
+	content: Item<T>,
+	/// The glow's color with its opacity, or a gradient that runs from the content's edges inward (or from its center outward) across the glow.
+	#[default("#ffffbebf")]
+	color: Item<Graphic>,
+	/// Whether the glow fades like a blur or evenly with the distance from the content's edges.
+	technique: Item<GlowTechnique>,
+	/// Whether the glow starts from the edges or the center.
+	source: Item<GlowSource>,
+	/// How much of the size hardens the glow by growing its edge inward, rather than softening it.
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	choke: Item<f64>,
+	/// How far the glow reaches in from the content's edges.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..250)]
+	#[default(5.)]
+	size: Item<f64>,
+	/// The share of the glow's strength at which it reaches full opacity, so a lower range makes it denser.
+	#[unit("%")]
+	#[range]
+	#[hard(1..100)]
+	#[default(50.)]
+	range: Item<f64>,
+	/// Reshapes how the glow's strength falls off across its size.
+	contour: Item<TransferCurve>,
+) -> Item<T> {
+	let mut content = content;
+	stamp_effect(
+		&mut content,
+		Effect::new(&EffectOperation::InnerGlow {
+			color: glow_paint(color),
+			technique: *technique.element(),
+			source: *source.element(),
+			choke: *choke.element(),
+			size: *size.element(),
+			range: *range.element(),
+			contour: contour.into_element(),
+		}),
+	);
+	content
+}
+
+/// Shades the inside of the input graphics with soft, glossy bands that follow their shape.
+#[node_macro::node(category("Raster: Effect"), icon("NodeSatin"))]
+fn satin<T>(
+	_: impl Ctx,
+	/// The content to shade.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
+	content: Item<T>,
+	/// The shading's color, with its opacity.
+	#[default("#00000080")]
+	color: Item<Color>,
+	/// The direction the two casts of the content's silhouette are moved along, one each way, which the bands run across.
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	#[default(19.)]
+	angle: Item<f64>,
+	/// How far each cast of the silhouette is moved, which sets how far apart the bands are.
+	#[unit(" px")]
+	#[hard(0..)]
+	#[default(11.)]
+	distance: Item<f64>,
+	/// How soft the bands are.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..250)]
+	#[default(14.)]
+	size: Item<f64>,
+	/// Reshapes the shading's strength across the bands.
+	contour: Item<TransferCurve>,
+	/// Shade where the bands overlap rather than where they don't.
+	#[default(true)]
+	invert: Item<bool>,
+) -> Item<T> {
+	let mut content = content;
+	stamp_effect(
+		&mut content,
+		Effect::new(&EffectOperation::Satin {
+			color: evaluate_color_effects(color).into_element(),
+			angle: *angle.element(),
+			distance: *distance.element(),
+			size: *size.element(),
+			invert: *invert.element(),
+			contour: contour.into_element(),
+		}),
+	);
+	content
+}
+
+/// Draws a band of color along the edge of the input graphics, outside, inside, or centered on it.
+#[node_macro::node(category("Raster: Effect"), icon("NodeOutline"))]
+fn outline<T>(
+	_: impl Ctx,
+	/// The content to outline.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
+	content: Item<T>,
+	/// The outline's color, with its opacity.
+	#[default(Color::BLACK)]
+	color: Item<Color>,
+	/// How thick the outline is.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..100)]
+	#[default(3.)]
+	weight: Item<f64>,
+	/// Whether the outline is drawn outside the edge, inside it, or centered on it.
+	#[default(StrokeAlign::Outside)]
+	align: Item<StrokeAlign>,
+) -> Item<T> {
+	let mut content = content;
+	stamp_effect(
+		&mut content,
+		Effect::new(&EffectOperation::Outline {
+			color: evaluate_color_effects(color).into_element(),
+			weight: *weight.element(),
+			align: *align.element(),
 		}),
 	);
 	content

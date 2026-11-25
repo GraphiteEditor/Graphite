@@ -454,6 +454,21 @@ mod tests {
 	}
 
 	#[test]
+	fn growing_the_outside_inward_covers_only_the_band_along_the_edges() {
+		let mut square = Plane::<f32>::new(21, 21);
+		for y in 2..19 {
+			square.data[y * 21 + 2..y * 21 + 19].fill(1.);
+		}
+		let inward = square.map(|coverage| 1. - coverage).grown(3.);
+		let at = |x: usize, y: usize| inward.data[y * 21 + x];
+
+		assert_eq!(at(2, 10), 1., "at the edge");
+		assert_eq!(at(4, 10), 1., "the band's full width in");
+		assert_eq!(at(5, 10), 0., "past the band's width");
+		assert_eq!(at(10, 10), 0., "deep inside");
+	}
+
+	#[test]
 	fn shifting_moves_by_fractions_of_a_pixel() {
 		let mut plane = Plane::<f32>::new(4, 1);
 		plane.data[1] = 1.;
