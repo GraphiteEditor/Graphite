@@ -58,4 +58,5 @@ mod tests {
 	mod projection;
 	mod round_trip;
 	mod sessions;
+	mod simulation;
 }
