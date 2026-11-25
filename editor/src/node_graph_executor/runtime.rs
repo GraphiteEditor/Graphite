@@ -294,12 +294,12 @@ impl NodeRuntime {
 		let dirty = self.dirty.swap(false, Ordering::Acquire);
 		let mut texture = None;
 
-		if let Some(export) = self.pending_export {
+		if let Some(export) = self.pending_export.clone() {
 			if dirty {
 				self.run_export(export).await;
 			}
 		} else {
-			let viewport = if dirty { self.pending } else { None };
+			let viewport = if dirty { self.pending.clone() } else { None };
 
 			if let Some(document_id) = self.pending_thumbnails.take()
 				&& viewport.is_none()
@@ -336,9 +336,10 @@ impl NodeRuntime {
 	}
 
 	async fn run_viewport(&mut self, request: ExecutionRequest) -> Option<Texture> {
+		let execution_id = request.execution_id;
 		self.thumbnails.set_scale(request.render_config.scale);
 
-		let mut result = self.evaluate(request)?;
+		let mut result = self.evaluate(request.clone())?;
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 
 		#[cfg(all(target_family = "wasm", feature = "wasm"))]
@@ -390,7 +391,7 @@ impl NodeRuntime {
 			None
 		};
 
-		self.respond(request.execution_id, result, observations).await;
+		self.respond(execution_id, result, observations).await;
 		texture
 	}
 
@@ -435,6 +436,7 @@ impl NodeRuntime {
 	}
 
 	async fn run_export(&mut self, request: ExecutionRequest) {
+		let execution_id = request.execution_id;
 		let result = self.evaluate(request);
 		if matches!(result, Some(ExecutionResult::Pending)) {
 			return;
@@ -451,12 +453,12 @@ impl NodeRuntime {
 			*data = RenderOutputType::Buffer { data: buffer, width, height };
 		}
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
-		self.respond(request.execution_id, result, observations).await;
+		self.respond(execution_id, result, observations).await;
 	}
 
 	async fn run_eyedropper(&mut self, mut request: ExecutionRequest) {
 		// Eyedropper should use the same time and pointer to not invalidate the cache
-		if let Some(viewport) = self.pending {
+		if let Some(viewport) = &self.pending {
 			request.render_config.time = viewport.render_config.time;
 			request.render_config.pointer = viewport.render_config.pointer;
 		}
@@ -484,10 +486,11 @@ impl NodeRuntime {
 			render_config.export_format = ExportFormat::Svg;
 		}
 
+		let for_export = render_config.for_export;
 		let context = render_config.into_context_with_generations(self.async_runtime().snapshot());
 		let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.tree().eval_tagged_value(self.executor.output(), &context))) {
 			Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
-			Ok(Ok(Poll::Partial(_))) if render_config.for_export => ExecutionResult::Pending,
+			Ok(Ok(Poll::Partial(_))) if for_export => ExecutionResult::Pending,
 			Ok(Ok(Poll::Partial(value))) => ExecutionResult::Partial(value),
 			Ok(Ok(Poll::Final(value))) => ExecutionResult::Value(value),
 			Ok(Ok(Poll::Fallback(boxed))) => {
@@ -788,7 +791,7 @@ mod tests {
 
 	/// The ID of the viewport request the runtime evaluates, which only changes once it has read a newer one.
 	fn last_request(editor: &EditorTestUtils) -> Option<u64> {
-		editor.runtime.pending.map(|request| request.execution_id)
+		editor.runtime.pending.as_ref().map(|request| request.execution_id)
 	}
 
 	#[tokio::test]

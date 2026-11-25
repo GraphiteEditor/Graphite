@@ -170,7 +170,7 @@ pub(crate) async fn render_frame(
 	} = settings;
 	let export_format = match file_type {
 		FileType::Svg => ExportFormat::Svg,
-		FileType::Pdf => ExportFormat::Pdf,
+		FileType::Pdf => ExportFormat::Pdf { artboards_as_pages: false },
 		_ => ExportFormat::Raster,
 	};
 
@@ -400,7 +400,7 @@ pub async fn export_image_sequence(
 }
 
 pub async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
-	let execute = || executor.execute(render_config.into_context_with_generations(runtime.snapshot()));
+	let execute = || executor.execute(render_config.clone().into_context_with_generations(runtime.snapshot()));
 	let mut frame = execute()?;
 	while spawner.join().await {
 		frame = execute()?;

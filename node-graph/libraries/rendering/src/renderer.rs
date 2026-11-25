@@ -1226,6 +1226,10 @@ pub struct RenderParams {
 	pub for_export: bool,
 	/// Emits text as SVG `<text>` with its fonts embedded, for an SVG file, rather than as glyph outlines.
 	pub embed_fonts: bool,
+	/// Puts each artboard of an exported PDF on a page of its own.
+	pub artboards_as_pages: bool,
+	/// What an exported document records about itself.
+	pub export_metadata: Option<Arc<graphene_application_io::ExportMetadata>>,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
 	pub for_mask: bool,
 	/// Are we generating a mask for alignment? Used to prevent unnecessary transforms in masks
@@ -1757,6 +1761,11 @@ pub trait Render: BoundingBox {
 
 	/// Draws the content onto a PDF page, in the space of the canvas's current transform.
 	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams);
+
+	/// The content as artboards, which a PDF can put on pages of their own.
+	fn as_artboards(&self) -> Option<&List<Artboard>> {
+		None
+	}
 
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	/// `inherited_appearance` is the nearest ancestor's appearance, cascading to items that lack their own, mirroring the render cascade.
@@ -2376,6 +2385,10 @@ fn read_artboard_attributes(list: &List<Artboard>, index: usize) -> (DVec2, DVec
 impl Render for List<Artboard> {
 	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
 		pdf::draw_artboards(self, canvas, render_params);
+	}
+
+	fn as_artboards(&self) -> Option<&List<Artboard>> {
+		Some(self)
 	}
 
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
@@ -5758,6 +5771,44 @@ mod tests {
 			.expect("the PDF is written")
 			.0;
 		assert!(contains_bytes(&pdf, b"/Subtype/Image"), "the image filling the circle is embedded");
+	}
+
+	/// Two named artboards, a wide one at the origin holding the clipped circle and a tall one to its right.
+	fn artboards_pdf_test_content() -> (List<Artboard>, RenderParams) {
+		use core_types::{ATTR_BACKGROUND, ATTR_DIMENSIONS, ATTR_LOCATION};
+
+		let artboard = |layer: u64, location: DVec2, dimensions: DVec2, content: List<Graphic>| {
+			Item::new_from_element(Artboard::new(content))
+				.with_attribute(ATTR_LOCATION, location)
+				.with_attribute(ATTR_DIMENSIONS, dimensions)
+				.with_attribute(ATTR_BACKGROUND, Color::WHITE)
+				.with_attribute(ATTR_EDITOR_LAYER_PATH, NodeIdPath::from(vec![NodeId(1), NodeId(layer)]))
+		};
+
+		let mut artboards = List::new();
+		artboards.push(artboard(10, DVec2::ZERO, DVec2::new(200., 100.), clipped_pdf_test_content()));
+		artboards.push(artboard(20, DVec2::new(300., 0.), DVec2::new(100., 300.), List::new()));
+
+		let render_params = RenderParams {
+			artboards_as_pages: true,
+			export_metadata: Some(Arc::new(graphene_application_io::ExportMetadata {
+				title: "Poster".to_string(),
+				artboard_names: vec![(NodeId(10), "Front".to_string()), (NodeId(20), "Back".to_string())],
+			})),
+			..Default::default()
+		};
+		(artboards, render_params)
+	}
+
+	#[test]
+	fn pdf_export_puts_each_artboard_on_its_own_page() {
+		let (artboards, render_params) = artboards_pdf_test_content();
+		let (pdf, _) = pdf::render_pdf_document(&artboards, &test_pdf_page(DVec2::new(400., 300.)), &render_params, pdf::PdfRasters::new()).expect("the PDF is written");
+
+		let pages = pdf.windows(b"/Type/Page".len()).filter(|window| *window == b"/Type/Page").count() - pdf.windows(b"/Type/Pages".len()).filter(|window| *window == b"/Type/Pages").count();
+		assert_eq!(pages, 2, "each artboard should be a page");
+		assert!(contains_bytes(&pdf, b"Front") && contains_bytes(&pdf, b"Back"), "each page should be bookmarked by its artboard's name");
+		assert!(contains_bytes(&pdf, b"Poster"), "the document should be titled");
 	}
 
 	#[test]

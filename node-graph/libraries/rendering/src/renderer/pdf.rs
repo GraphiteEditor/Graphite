@@ -57,45 +57,104 @@ pub type PdfRasters = HashMap<u64, (DeferredImagePlacement, Raster<CPU>)>;
 /// Renders `content` into a PDF document of one page, drawing the `rasters` in place of the content they're images of.
 /// Also gives back the content the PDF can't draw itself that `rasters` lacks images of, for the GPU to render before rendering the document again.
 /// Content is met in the same order each time, so the IDs of that content name the same content then.
-pub fn render_pdf_document(content: &(impl Render + ?Sized), page: &PdfPage, render_params: &RenderParams, rasters: PdfRasters) -> Result<(Vec<u8>, Vec<DeferredImage>), String> {
-	let Some(page_size) = Size::from_wh(page.size.x as f32, page.size.y as f32) else {
-		return Err(format!("A PDF page can't be {} by {} points", page.size.x, page.size.y));
+pub fn render_pdf_document(content: &(impl Render + ?Sized), page: &PdfPage, render_params: &RenderParams, rasters: PdfRasters) -> Result<(Vec<u8>, Vec<PdfDeferredImage>), String> {
+	let artboards = content.as_artboards().filter(|artboards| render_params.artboards_as_pages && !artboards.is_empty());
+
+	// Each artboard on a page of its own sized to it, or all the content on the one page
+	let pages: Vec<(PdfPage, Option<usize>)> = match artboards {
+		Some(artboards) => (0..artboards.len())
+			.map(|index| {
+				let (location, dimensions, ..) = read_artboard_attributes(artboards, index);
+				let artboard_page = PdfPage {
+					size: dimensions,
+					transform: DAffine2::from_translation(-location),
+					raster_scale: page.raster_scale,
+				};
+				(artboard_page, Some(index))
+			})
+			.collect(),
+		None => vec![(*page, None)],
 	};
 
 	let mut document = krilla::Document::new();
-	let mut pdf_page = document.start_page_with(PageSettings::new(page_size));
-	let mut surface = pdf_page.surface();
-
 	let mut state = DocumentState {
 		fonts: HashMap::new(),
 		left_out: BTreeSet::new(),
 		rasters,
 		deferred: Vec::new(),
 		next_deferred_id: 0,
+		page_view: Footprint::default(),
 	};
-	let mut canvas = PdfCanvas {
-		surface: &mut surface,
-		document: &mut state,
-		page_size: page.size,
-		base_transform: DAffine2::IDENTITY,
-		pushed: Vec::new(),
-	};
-	canvas.push_transform(page.transform);
-	content.render_pdf(&mut canvas, render_params);
-	canvas.pop();
+
+	for (page, artboard_index) in &pages {
+		let Some(page_size) = Size::from_wh(page.size.x as f32, page.size.y as f32) else {
+			return Err(format!("A PDF page can't be {} by {} points", page.size.x, page.size.y));
+		};
+		state.page_view = page.deferred_image_view();
+
+		let mut pdf_page = document.start_page_with(PageSettings::new(page_size));
+		let mut surface = pdf_page.surface();
+		let mut canvas = PdfCanvas {
+			surface: &mut surface,
+			document: &mut state,
+			page_size: page.size,
+			base_transform: DAffine2::IDENTITY,
+			pushed: Vec::new(),
+		};
+
+		canvas.push_transform(page.transform);
+		match (artboards, artboard_index) {
+			(Some(artboards), Some(index)) => draw_artboard(artboards, *index, &mut canvas, render_params),
+			_ => content.render_pdf(&mut canvas, render_params),
+		}
+		canvas.pop();
+
+		surface.finish();
+		pdf_page.finish();
+	}
+
+	if let Some(metadata) = &render_params.export_metadata {
+		document.set_metadata(krilla::metadata::Metadata::new().title(metadata.title.clone()).creator("Graphite".to_string()));
+
+		if let Some(artboards) = artboards {
+			document.set_outline(artboard_bookmarks(artboards, metadata));
+		}
+	}
 
 	if !state.left_out.is_empty() {
 		let left_out: Vec<_> = state.left_out.iter().copied().collect();
 		log::warn!("The PDF leaves out content it can't draw yet: {}", left_out.join(", "));
 	}
 
-	surface.finish();
-	pdf_page.finish();
 	let pdf = document.finish().map_err(|error| format!("The PDF could not be written: {error:?}"))?;
 
 	// The content still without an image is what the GPU renders before the document is drawn again
-	let missing = state.deferred.into_iter().filter(|deferred| !state.rasters.contains_key(&deferred.id)).collect();
+	let missing = state.deferred.into_iter().filter(|deferred| !state.rasters.contains_key(&deferred.image.id)).collect();
 	Ok((pdf, missing))
+}
+
+/// The bookmarks of the pages each artboard is on, named after the artboard.
+fn artboard_bookmarks(artboards: &List<Artboard>, metadata: &graphene_application_io::ExportMetadata) -> krilla::outline::Outline {
+	let mut outline = krilla::outline::Outline::new();
+
+	for index in 0..artboards.len() {
+		// An artboard's own layer ends the path of the layers it sits in
+		let layer = (artboards.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index)).and_then(|path| path.0.element(path.0.len().checked_sub(1)?).copied());
+		let name = (metadata.artboard_names.iter())
+			.find(|(artboard_layer, _)| Some(*artboard_layer) == layer)
+			.map_or_else(|| format!("Artboard {}", index + 1), |(_, name)| name.clone());
+
+		let destination = krilla::destination::XyzDestination::new(index, Point::from_xy(0., 0.));
+		outline.push_child(krilla::outline::OutlineNode::new(name, destination));
+	}
+
+	outline
+}
+
+/// Content of a PDF page the GPU renders an image of, with the view of the page it renders the image in.
+pub struct PdfDeferredImage {
+	pub image: DeferredImage,
+	pub view: Footprint,
 }
 
 /// What one [`PdfCanvas::pop`] ends.
@@ -114,8 +173,10 @@ struct DocumentState {
 	left_out: BTreeSet<&'static str>,
 	rasters: PdfRasters,
 	/// The content drawn as images the GPU renders, in the order it's met, which numbers it the same each time the document is drawn.
-	deferred: Vec<DeferredImage>,
+	deferred: Vec<PdfDeferredImage>,
 	next_deferred_id: u64,
+	/// The view of the page being drawn, which the GPU renders the images of its deferred content in.
+	page_view: Footprint,
 }
 
 /// The page being drawn, which tracks its transforms so content filling the page knows where its edges are.
@@ -169,17 +230,18 @@ impl PdfCanvas<'_, '_> {
 		let id = self.document.next_deferred_id;
 		self.document.next_deferred_id += 1;
 
-		let user_to_document = self.current_transform();
-		self.document.deferred.push(DeferredImage {
+		let image = DeferredImage {
 			id,
 			content: content(),
 			render_params: render_params.clone(),
-			user_to_document,
+			user_to_document: self.current_transform(),
 			bounds,
 			margin: 0.,
 			opacity,
 			blend_mode,
-		});
+		};
+		let view = self.document.page_view;
+		self.document.deferred.push(PdfDeferredImage { image, view });
 
 		let Some((placement, raster)) = self.document.rasters.get(&id) else { return };
 		let (pixels, width, height) = raster.to_flat_u8();
@@ -510,27 +572,32 @@ pub(super) fn draw_vector_list(list: &List<Vector>, canvas: &mut PdfCanvas, rend
 /// Draws each artboard's background and content, clipped to its area if it clips.
 pub(super) fn draw_artboards(list: &List<Artboard>, canvas: &mut PdfCanvas, render_params: &RenderParams) {
 	for index in 0..list.len() {
-		let Some(content) = list.element(index).map(Artboard::as_graphic_list) else { continue };
-		let (location, dimensions, background, clip) = read_artboard_attributes(list, index);
-		let area = rectangle_path(location, location + dimensions);
+		draw_artboard(list, index, canvas, render_params);
+	}
+}
 
-		canvas.fill_path(&area, &solid_pdf_paint(Some(background)), FillRule::NonZero);
+/// Draws an artboard's background and content, clipped to its area if it clips.
+fn draw_artboard(list: &List<Artboard>, index: usize, canvas: &mut PdfCanvas, render_params: &RenderParams) {
+	let Some(content) = list.element(index).map(Artboard::as_graphic_list) else { return };
+	let (location, dimensions, background, clip) = read_artboard_attributes(list, index);
+	let area = rectangle_path(location, location + dimensions);
 
-		if clip {
-			canvas.push_clip(&area, FillRule::NonZero);
-		}
-		canvas.push_transform(DAffine2::from_translation(location));
+	canvas.fill_path(&area, &solid_pdf_paint(Some(background)), FillRule::NonZero);
 
-		let render_params = RenderParams {
-			artboard_background: Some(background),
-			..render_params.clone()
-		};
-		content.render_pdf(canvas, &render_params);
+	if clip {
+		canvas.push_clip(&area, FillRule::NonZero);
+	}
+	canvas.push_transform(DAffine2::from_translation(location));
 
+	let render_params = RenderParams {
+		artboard_background: Some(background),
+		..render_params.clone()
+	};
+	content.render_pdf(canvas, &render_params);
+
+	canvas.pop();
+	if clip {
 		canvas.pop();
-		if clip {
-			canvas.pop();
-		}
 	}
 }
 

@@ -195,7 +195,7 @@ fn create_context(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>>,
 ) -> Result<Item<RenderOutput>, Interrupt> {
-	let render_config = ctx.vararg(0).ok().and_then(|config| config.downcast_ref::<RenderConfig>()).copied().unwrap_or_else(|| {
+	let render_config = ctx.vararg(0).ok().and_then(|config| config.downcast_ref::<RenderConfig>()).cloned().unwrap_or_else(|| {
 		log::error!("The boundary context is missing its render config vararg");
 		RenderConfig::default()
 	});
@@ -203,7 +203,7 @@ fn create_context(
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
 		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
-		ExportFormat::Pdf => RenderOutputTypeRequest::Pdf,
+		ExportFormat::Pdf { .. } => RenderOutputTypeRequest::Pdf,
 	};
 
 	let logical_viewport = render_config.viewport;
@@ -223,6 +223,8 @@ fn create_context(
 		for_export: render_config.for_export,
 		// Exported SVG files keep their text as text, while the canvas and other SVG renders draw it as outlines
 		embed_fonts: render_config.for_export && matches!(render_output_type, RenderOutputTypeRequest::Svg),
+		artboards_as_pages: matches!(render_config.export_format, ExportFormat::Pdf { artboards_as_pages: true }),
+		export_metadata: render_config.metadata.clone().map(Arc::new),
 		render_output_type,
 		scale: render_config.scale,
 		viewport_zoom: Some(logical_viewport.scale_magnitudes().x),

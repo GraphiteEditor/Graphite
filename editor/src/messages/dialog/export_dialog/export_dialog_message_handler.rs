@@ -131,15 +131,26 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.widget_instance(),
 		];
 
+		let scale_description = match self.file_type {
+			FileType::Pdf => "Resolution of the images of effects and other content PDF can't draw itself, where 1 is 300 DPI.",
+			_ => "Size of the exported image relative to the document's size.",
+		};
 		let resolution = vec![
-			TextLabel::new("Scale Factor").table_align(true).sizing(WidgetSizing::fixed(100)).widget_instance(),
+			TextLabel::new("Scale Factor")
+				.table_align(true)
+				.sizing(WidgetSizing::fixed(100))
+				.tooltip_label("Scale Factor")
+				.tooltip_description(scale_description)
+				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(self.scale_factor))
 				.unit("")
 				.min(0.)
 				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.increment_step(0.5)
-				.disabled(self.file_type.is_vector())
+				.tooltip_label("Scale Factor")
+				.tooltip_description(scale_description)
+				.disabled(self.file_type == FileType::Svg)
 				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor { factor: number_input.value.unwrap() }.into())
 				.sizing(WidgetSizing::default().min_width(200))
 				.widget_instance(),

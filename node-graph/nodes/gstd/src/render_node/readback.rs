@@ -107,7 +107,10 @@ impl ReadbackSlot {
 		let partial = RenderOutputType::Pdf { data: pdf.clone() };
 		self.poll_readback(key, partial, runtime, source, || {
 			let executor = executor?;
-			let images = executor.render_deferred_images(&deferred, page.deferred_image_view());
+			// Each image is rendered in the view of the page it's on
+			let images: Vec<_> = (deferred.iter())
+				.flat_map(|deferred| executor.render_deferred_images(std::slice::from_ref(&deferred.image), deferred.view))
+				.collect();
 			if images.is_empty() {
 				return None;
 			}

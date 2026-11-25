@@ -27,7 +27,7 @@ mod recompile_tests;
 mod runtime;
 pub use runtime::*;
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionRequest {
 	execution_id: u64,
 	render_config: RenderConfig,
@@ -356,6 +356,7 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			for_export: false,
 			for_eyedropper: false,
+			metadata: None,
 		};
 
 		// Execute the node graph
@@ -423,6 +424,7 @@ impl NodeGraphExecutor {
 			render_mode,
 			for_export: false,
 			for_eyedropper: true,
+			metadata: None,
 		};
 
 		// Execute the node graph
@@ -449,7 +451,9 @@ impl NodeGraphExecutor {
 
 		let export_format = match export_config.file_type {
 			FileType::Svg => graphene_std::application_io::ExportFormat::Svg,
-			FileType::Pdf => graphene_std::application_io::ExportFormat::Pdf,
+			FileType::Pdf => graphene_std::application_io::ExportFormat::Pdf {
+				artboards_as_pages: export_config.bounds == ExportBounds::AllArtwork,
+			},
 			_ => graphene_std::application_io::ExportFormat::Raster,
 		};
 
@@ -483,6 +487,10 @@ impl NodeGraphExecutor {
 			render_mode: graphene_std::vector::style::RenderMode::Normal,
 			for_export: true,
 			for_eyedropper: false,
+			metadata: Some(graphene_std::application_io::ExportMetadata {
+				title: export_config.name.clone(),
+				artboard_names: (document.artboard_names().into_iter()).map(|(layer, name)| (layer.to_node(), name)).collect(),
+			}),
 		};
 
 		// Execute the node graph
@@ -924,6 +932,7 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			for_export: false,
 			for_eyedropper: false,
+			metadata: None,
 		};
 		let execution_id = self.queue_execution(render_config);
 		self.futures.push_back((

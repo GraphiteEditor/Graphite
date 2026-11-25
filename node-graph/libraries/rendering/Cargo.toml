@@ -26,6 +26,7 @@ brush-types = { workspace = true }
 graphene-hash = { workspace = true }
 graphene-resource = { workspace = true }
 text-nodes = { workspace = true }
+graphene-application-io = { workspace = true }
 
 # Workspace dependencies
 glam = { workspace = true }

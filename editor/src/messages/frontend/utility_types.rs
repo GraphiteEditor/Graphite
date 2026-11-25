@@ -96,7 +96,7 @@ impl FileType {
 		}
 	}
 
-	/// Whether the file holds vector content, which doesn't depend on an export scale.
+	/// Whether the file holds vector content rather than an image of the export's area.
 	pub fn is_vector(self) -> bool {
 		matches!(self, FileType::Svg | FileType::Pdf)
 	}

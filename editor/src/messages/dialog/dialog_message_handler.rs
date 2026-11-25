@@ -103,22 +103,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			DialogMessage::RequestExportDialog => {
 				self.on_dismiss = Some(DialogMessage::Close.into());
 				if let Some(document) = portfolio.active_document() {
-					let artboards = document
-						.metadata()
-						.all_layers()
-						.filter(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
-						.map(|layer| {
-							let name = document
-								.network_interface
-								.node_metadata(&layer.to_node(), &[])
-								.map(|node| node.persistent_metadata.display_name.clone())
-								.filter(|name| !name.is_empty())
-								.unwrap_or_else(|| "Artboard".to_string());
-							(layer, name)
-						})
-						.collect();
-
-					self.export_dialog.artboards = artboards;
+					self.export_dialog.artboards = document.artboard_names().into_iter().collect();
 
 					if let ExportBounds::Artboard(layer) = self.export_dialog.bounds
 						&& !self.export_dialog.artboards.contains_key(&layer)

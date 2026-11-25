@@ -1,4 +1,5 @@
 use core_types::transform::Footprint;
+use core_types::uuid::NodeId;
 use core_types::{Context, Generations, OwnedContextImpl};
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::DVec2;
@@ -43,7 +44,19 @@ pub enum ExportFormat {
 	#[default]
 	Svg,
 	Raster,
-	Pdf,
+	Pdf {
+		/// Puts each artboard on a page of its own, sized to it, rather than all of the export's area on one page.
+		artboards_as_pages: bool,
+	},
+}
+
+/// What an exported document records about itself, where its format has a place for it.
+#[derive(Debug, Default, Clone, PartialEq, CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ExportMetadata {
+	pub title: String,
+	/// The names of the artboards by the IDs of their layers, which a PDF's bookmarks of their pages take.
+	pub artboard_names: Vec<(NodeId, String)>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, CacheHash)]
@@ -53,7 +66,7 @@ pub struct TimingInformation {
 	pub animation_time: Duration,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, CacheHash)]
+#[derive(Debug, Default, Clone, PartialEq, DynAny, CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderConfig {
 	pub viewport: Footprint,
@@ -65,6 +78,9 @@ pub struct RenderConfig {
 	pub export_format: ExportFormat,
 	pub for_export: bool,
 	pub for_eyedropper: bool,
+	/// What an exported document records about itself.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub metadata: Option<ExportMetadata>,
 }
 
 impl RenderConfig {

@@ -6098,6 +6098,7 @@ dependencies = [
  "dyn-any",
  "glam",
  "glifo",
+ "graphene-application-io",
  "graphene-hash",
  "graphene-resource",
  "graphic-types",
