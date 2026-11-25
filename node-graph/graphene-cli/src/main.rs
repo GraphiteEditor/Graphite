@@ -49,7 +49,7 @@ enum Command {
 		/// Path to the .graphite document
 		document: PathBuf,
 
-		/// Output file path (extension determines format: .svg, .png, .jpg, .webp, .tiff, .bmp, .tga, .ico, .gif)
+		/// Output file path (extension determines format: .svg, .pdf, .png, .jpg, .webp, .tiff, .bmp, .tga, .ico, .gif)
 		#[clap(long, short = 'o')]
 		output: PathBuf,
 

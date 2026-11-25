@@ -1203,7 +1203,10 @@ pub enum RenderOutputType {
 	#[default]
 	Svg,
 	Vello,
+	Pdf,
 }
+
+pub mod pdf;
 
 /// Static state used whilst rendering
 #[derive(Default, Clone, CacheHash)]
@@ -1752,6 +1755,9 @@ pub trait Render: BoundingBox {
 
 	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, _render_params: &RenderParams);
 
+	/// Draws the content onto a PDF page, in the space of the canvas's current transform.
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams);
+
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	/// `inherited_appearance` is the nearest ancestor's appearance, cascading to items that lack their own, mirroring the render cascade.
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {}
@@ -2099,6 +2105,28 @@ fn add_graphic_item_outline_targets(item: ItemRef<'_, Graphic>, outlines: &mut V
 }
 
 impl Render for Graphic {
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
+		match self {
+			Graphic::None(_) | Graphic::NoneList(_) | Graphic::StrokeList(_) => (),
+			Graphic::Graphic(item) => pdf::draw_graphic_item(ItemRef::Item(item), canvas, render_params),
+			Graphic::Vector(item) => pdf::draw_vector_item(ItemRef::Item(item), canvas, render_params),
+			Graphic::RasterCPU(item) => pdf::draw_raster_item(ItemRef::Item(item), canvas, render_params),
+			Graphic::RasterGPU(_) => canvas.leave_out("GPU images"),
+			Graphic::Color(item) => pdf::draw_color_item(ItemRef::Item(item), canvas, render_params),
+			Graphic::Gradient(item) => pdf::draw_gradient_item(ItemRef::Item(item), canvas, render_params),
+			Graphic::Generator(_) => canvas.leave_out("generated patterns"),
+			Graphic::Text(item) => pdf::draw_text_item(ItemRef::Item(item), canvas, render_params),
+			Graphic::GraphicList(list) => list.render_pdf(canvas, render_params),
+			Graphic::VectorList(list) => list.render_pdf(canvas, render_params),
+			Graphic::RasterCPUList(list) => list.render_pdf(canvas, render_params),
+			Graphic::RasterGPUList(list) => list.render_pdf(canvas, render_params),
+			Graphic::ColorList(list) => list.render_pdf(canvas, render_params),
+			Graphic::GradientList(list) => list.render_pdf(canvas, render_params),
+			Graphic::GeneratorList(list) => list.render_pdf(canvas, render_params),
+			Graphic::TextList(list) => list.render_pdf(canvas, render_params),
+		}
+	}
+
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			Graphic::None(_) | Graphic::NoneList(_) => (),
@@ -2346,6 +2374,10 @@ fn read_artboard_attributes(list: &List<Artboard>, index: usize) -> (DVec2, DVec
 }
 
 impl Render for List<Artboard> {
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
+		pdf::draw_artboards(self, canvas, render_params);
+	}
+
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
@@ -2476,6 +2508,10 @@ impl Render for List<Artboard> {
 }
 
 impl Render for List<Graphic> {
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
+		pdf::draw_graphic_list(self, canvas, render_params);
+	}
+
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut mask_state = None;
 
@@ -3285,6 +3321,12 @@ fn add_vector_item_outline_targets(item: ItemRef<'_, Vector>, outlines: &mut Vec
 }
 
 impl Render for List<Vector> {
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			pdf::draw_vector_item(ItemRef::ListItem(self, index), canvas, render_params);
+		}
+	}
+
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut clip_mask_state: Option<(u64, MaskType)> = None;
 
@@ -3735,6 +3777,12 @@ fn render_generator_item_to_vello(item: ItemRef<'_, Generator>, scene: &mut Vell
 }
 
 impl Render for List<Generator> {
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, _render_params: &RenderParams) {
+		if !self.is_empty() {
+			canvas.leave_out("generated patterns");
+		}
+	}
+
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_generator_item_svg(ItemRef::ListItem(self, index), render, render_params);
@@ -3784,6 +3832,12 @@ fn add_unit_square_click_target(transform: DAffine2, click_targets: &mut Vec<Cli
 }
 
 impl Render for List<Raster<CPU>> {
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			pdf::draw_raster_item(ItemRef::ListItem(self, index), canvas, render_params);
+		}
+	}
+
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_raster_cpu_item_svg(ItemRef::ListItem(self, index), render, render_params);
@@ -3808,6 +3862,12 @@ impl Render for List<Raster<CPU>> {
 }
 
 impl Render for List<Raster<GPU>> {
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, _render_params: &RenderParams) {
+		if !self.is_empty() {
+			canvas.leave_out("GPU images");
+		}
+	}
+
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {
 		log::warn!("tried to render texture as an svg");
 	}
@@ -3886,6 +3946,8 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut V
 }
 
 impl Render for List<brush_types::Stroke> {
+	fn render_pdf(&self, _canvas: &mut pdf::PdfCanvas, _render_params: &RenderParams) {}
+
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {}
 
 	fn render_to_vello(&self, _scene: &mut VelloSceneBuilder, _transform: DAffine2, _render_params: &RenderParams) {}
@@ -3897,6 +3959,12 @@ impl Render for List<brush_types::Stroke> {
 // For SVG, this is is achived by creating a truly giant rectangle.
 // For Vello, the scene records a viewport fill that covers whatever area each render draws.
 impl Render for List<Color> {
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			pdf::draw_color_item(ItemRef::ListItem(self, index), canvas, render_params);
+		}
+	}
+
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_color_item_svg(ItemRef::ListItem(self, index), render, render_params);
@@ -4018,6 +4086,12 @@ fn render_gradient_item_svg(item: ItemRef<'_, Gradient>, render: &mut SvgRender,
 }
 
 impl Render for List<Gradient> {
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			pdf::draw_gradient_item(ItemRef::ListItem(self, index), canvas, render_params);
+		}
+	}
+
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let thumbnail_rect = gradient_thumbnail_rect(render_params);
 
@@ -5243,6 +5317,12 @@ fn add_text_item_click_targets(item: ItemRef<'_, String>, click_targets: &mut Ve
 }
 
 impl Render for List<String> {
+	fn render_pdf(&self, canvas: &mut pdf::PdfCanvas, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			pdf::draw_text_item(ItemRef::ListItem(self, index), canvas, render_params);
+		}
+	}
+
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_text_item_svg(ItemRef::ListItem(self, index), render, render_params);
@@ -5558,6 +5638,64 @@ mod tests {
 			CoverPlacement::Above,
 		);
 		assert!(!text_svg_document(&List::new_from_item(dashed), true).contains("<text"));
+	}
+
+	/// Content for the PDF tests: a gradient-filled, stroked rectangle under a line of text with the given stroke.
+	fn pdf_test_content(text_stroke: Option<graphic_types::vector_types::vector::style::Stroke>) -> List<Graphic> {
+		use graphic_types::appearance::{CoverPlacement, stamp_coverage};
+		use graphic_types::vector_types::vector::style::Stroke;
+
+		let black = || Graphic::ColorList(List::new_from_element(Color::BLACK));
+
+		let mut rectangle = Vector::item_from_bezpath(&kurbo::Rect::new(10., 10., 190., 90.).to_path(kurbo::DEFAULT_ACCURACY));
+		let gradient = Item::new_from_element(Gradient::from(vec![Color::from_rgbaf32_unchecked(1., 0.5, 0., 1.), Color::from_rgbaf32_unchecked(0., 0.3, 1., 1.)]))
+			.with_attribute(ATTR_TRANSFORM, DAffine2::from_scale_angle_translation(DVec2::new(180., 80.), 0., DVec2::new(10., 10.)));
+		stamp_coverage(&mut rectangle, Coverage::new_fill(), Graphic::Gradient(gradient), CoverPlacement::Above);
+		let outline = Stroke {
+			weight: 4.,
+			align: StrokeAlign::Inside,
+			..Default::default()
+		};
+		stamp_coverage(&mut rectangle, Coverage::new_stroke(&outline), black(), CoverPlacement::Above);
+
+		let mut text = Item::new_from_element("Hello PDF".to_string())
+			.with_attribute(core_types::ATTR_FONT_SIZE, 30.)
+			.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(20., 30.)));
+		stamp_coverage(&mut text, Coverage::new_fill(), Graphic::ColorList(List::new_from_element(Color::WHITE)), CoverPlacement::Above);
+		if let Some(stroke) = text_stroke {
+			stamp_coverage(&mut text, Coverage::new_stroke(&stroke), black(), CoverPlacement::Above);
+		}
+
+		let mut content = List::new();
+		content.push(Item::new_from_element(Graphic::Vector(Box::new(rectangle))));
+		content.push(Item::new_from_element(Graphic::Text(text)));
+		content
+	}
+
+	fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+		haystack.windows(needle.len()).any(|window| window == needle)
+	}
+
+	#[test]
+	fn pdf_export_keeps_text_as_embedded_glyphs() {
+		let content = pdf_test_content(Some(graphic_types::vector_types::vector::style::Stroke { weight: 1., ..Default::default() }));
+		let pdf = pdf::render_pdf_document(&content, DVec2::new(200., 100.), DAffine2::IDENTITY, &RenderParams::default()).expect("the PDF is written");
+
+		assert!(pdf.starts_with(b"%PDF-"), "the document is a PDF");
+		assert!(contains_bytes(&pdf, b"/FontFile"), "the text's font is embedded");
+		assert!(contains_bytes(&pdf, b"/ToUnicode"), "the text maps back to its characters, so it can be selected");
+	}
+
+	#[test]
+	fn pdf_export_draws_text_it_cant_keep_as_glyphs_as_outlines() {
+		let dashed = graphic_types::vector_types::vector::style::Stroke {
+			weight: 1.,
+			dash_lengths: vec![2., 1.],
+			..Default::default()
+		};
+		let pdf = pdf::render_pdf_document(&pdf_test_content(Some(dashed)), DVec2::new(200., 100.), DAffine2::IDENTITY, &RenderParams::default()).expect("the PDF is written");
+
+		assert!(!contains_bytes(&pdf, b"/FontFile"), "dashed text strokes are drawn as outlines, without embedding the font");
 	}
 
 	#[test]

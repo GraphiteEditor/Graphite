@@ -217,6 +217,7 @@ tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-mult
 kurbo = { version = "0.13", features = ["serde"] }
 vello_gpu = { version = "0.3", default-features = false, features = ["wgpu", "full_image_support", "text"] }
 glifo = { version = "0.4", default-features = false, features = ["std"] }
+krilla = { version = "0.8", default-features = false, features = ["raster-images"] }
 usvg = "0.49"
 simplecss = "0.2"
 parley = { version = "0.12", default-features = false, features = ["std"] }

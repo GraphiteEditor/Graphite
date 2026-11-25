@@ -447,10 +447,10 @@ impl NodeGraphExecutor {
 		let previewed = document.network_interface.previewed_nodes();
 		let resources = document.resources.registry.clone();
 
-		let export_format = if export_config.file_type == FileType::Svg {
-			graphene_std::application_io::ExportFormat::Svg
-		} else {
-			graphene_std::application_io::ExportFormat::Raster
+		let export_format = match export_config.file_type {
+			FileType::Svg => graphene_std::application_io::ExportFormat::Svg,
+			FileType::Pdf => graphene_std::application_io::ExportFormat::Pdf,
+			_ => graphene_std::application_io::ExportFormat::Raster,
 		};
 
 		// Calculate the bounding box of the region to be exported (artboard bounds always contribute).
@@ -1055,6 +1055,11 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
 				return;
 			}
+			RenderOutputType::Pdf { data } => {
+				log::error!("Invalid node graph output type: a PDF document of {} bytes", data.len());
+				responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+				return;
+			}
 		}
 
 		let RenderMetadata {
@@ -1123,9 +1128,19 @@ impl NodeGraphExecutor {
 				});
 			}
 			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Pdf { data }, ..
+			}) if file_type == FileType::Pdf => {
+				responses.add(FrontendMessage::TriggerSaveFile {
+					name,
+					folder,
+					filters,
+					content: data.into(),
+				});
+			}
+			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Buffer { data, width, height },
 				..
-			}) if file_type != FileType::Svg => {
+			}) if !file_type.is_vector() => {
 				let content = match file_type.encode(width, height, data) {
 					Ok(content) => content.into(),
 					Err(description) => {

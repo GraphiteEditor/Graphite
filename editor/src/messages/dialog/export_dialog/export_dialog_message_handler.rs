@@ -94,9 +94,9 @@ impl DialogLayoutHolder for ExportDialogMessageHandler {
 
 impl LayoutHolder for ExportDialogMessageHandler {
 	fn layout(&self) -> Layout {
-		// The vector type, then the raster ones
+		// The vector types, then the raster ones
 		let file_types = [
-			vec![(FileType::Svg, "SVG")],
+			vec![(FileType::Svg, "SVG"), (FileType::Pdf, "PDF")],
 			vec![
 				(FileType::Png, "PNG"),
 				(FileType::Jpg, "JPG"),
@@ -139,7 +139,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.min(0.)
 				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.increment_step(0.5)
-				.disabled(self.file_type == FileType::Svg)
+				.disabled(self.file_type.is_vector())
 				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor { factor: number_input.value.unwrap() }.into())
 				.sizing(WidgetSizing::default().min_width(200))
 				.widget_instance(),
