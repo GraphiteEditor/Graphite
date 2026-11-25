@@ -188,9 +188,9 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 export function onPotentialDoubleClick(e: MouseEvent, editor: EditorWrapper) {
 	if (isObserveOnly(e) || textToolInteractiveInputElement || inPointerLock) return;
 
-	// Allow only events within the viewport or node graph boundaries
+	// Allow only events within the viewport or node graph boundaries, but not in a text field laid over them
 	const isTargetingCanvas = e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
-	if (!(isTargetingCanvas instanceof Element)) return;
+	if (!(isTargetingCanvas instanceof Element) || targetIsTextField(e.target || undefined)) return;
 
 	// Allow only double-clicks (2, 4, etc.), not 0 for a canceled click
 	if (e.detail === 0 || e.detail % 2 === 1) return;

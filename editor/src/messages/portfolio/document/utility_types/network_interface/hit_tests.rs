@@ -24,81 +24,6 @@ impl NodeNetworkInterface {
 		all_selected_nodes
 	}
 
-	pub fn collect_frontend_click_targets(&self, network_path: &[NodeId]) -> FrontendClickTargets {
-		let mut all_node_click_targets = Vec::new();
-		let mut connector_click_targets = Vec::new();
-		let mut icon_click_targets = Vec::new();
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in collect_frontend_click_targets");
-			return FrontendClickTargets::default();
-		};
-		let nodes = network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>();
-		self.with_import_export_ports(network_path, |import_export_click_targets| {
-			for port in import_export_click_targets.click_targets() {
-				if let ClickTargetType::Path(path) = port.target_type() {
-					connector_click_targets.push(path.to_svg());
-				}
-			}
-		});
-		nodes.into_iter().for_each(|node_id| {
-			self.with_node_click_targets(&node_id, network_path, |node_click_targets| {
-				let mut node_path = String::new();
-
-				if let ClickTargetType::Path(path) = node_click_targets.node_click_target.target_type() {
-					node_path.push_str(path.to_svg().as_str())
-				}
-				all_node_click_targets.push((node_id, node_path));
-				for port in node_click_targets.port_click_targets.click_targets() {
-					if let ClickTargetType::Path(path) = port.target_type() {
-						connector_click_targets.push(path.to_svg());
-					}
-				}
-				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
-					// Visibility button (eye icon)
-					if let ClickTargetType::Path(path) = layer_metadata.visibility_click_target.target_type() {
-						icon_click_targets.push(path.to_svg());
-					}
-					// Lock button (padlock icon), only when the layer is locked
-					if let Some(lock_click_target) = &layer_metadata.lock_click_target
-						&& let ClickTargetType::Path(path) = lock_click_target.target_type()
-					{
-						icon_click_targets.push(path.to_svg());
-					}
-					// Drag grip (dotted symbol)
-					if let ClickTargetType::Path(path) = layer_metadata.grip_click_target.target_type() {
-						icon_click_targets.push(path.to_svg());
-					}
-				}
-			});
-		});
-		let mut layer_click_targets = Vec::new();
-		let mut node_click_targets = Vec::new();
-		all_node_click_targets.into_iter().for_each(|(node_id, path)| {
-			if self.is_layer(&node_id, network_path) {
-				layer_click_targets.push(path);
-			} else {
-				node_click_targets.push(path);
-			}
-		});
-
-		let bounds = self.all_nodes_bounding_box(network_path).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
-		let all_nodes_bounding_box = rectangle_path(bounds[0], bounds[1]).to_svg();
-
-		let import_export_names = self
-			.import_export_name_bounds(network_path)
-			.into_iter()
-			.map(|(_, [name_min, name_max])| rectangle_path(name_min, name_max).to_svg())
-			.collect();
-		FrontendClickTargets {
-			node_click_targets,
-			layer_click_targets,
-			connector_click_targets,
-			icon_click_targets,
-			all_nodes_bounding_box,
-			import_export_names,
-		}
-	}
-
 	pub fn set_document_to_viewport_transform(&mut self, transform: DAffine2) {
 		self.document_metadata.document_to_viewport = transform;
 	}
@@ -394,35 +319,10 @@ impl NodeNetworkInterface {
 		Some((node_graph_to_viewport * Quad::from_box(bounds)).bounding_box())
 	}
 
-	pub fn collect_layer_widths(&self, network_path: &[NodeId]) -> (HashMap<NodeId, u32>, HashMap<NodeId, u32>, HashMap<NodeId, bool>) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in collect_layer_widths");
-			return (HashMap::new(), HashMap::new(), HashMap::new());
-		};
-		let nodes = network_metadata
-			.persistent_metadata
-			.node_metadata
-			.keys()
-			.filter_map(|node_id| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
-			.collect::<Vec<_>>();
-		let layer_widths = nodes
-			.iter()
-			.filter_map(|node_id| self.layer_width(node_id, network_path).map(|layer_width| (*node_id, layer_width)))
-			.collect::<HashMap<NodeId, u32>>();
-		let chain_widths = nodes.iter().map(|node_id| (*node_id, self.chain_width(node_id, network_path))).collect::<HashMap<NodeId, u32>>();
-		let has_left_input_wire = nodes
-			.iter()
-			.map(|node_id| {
-				(
-					*node_id,
-					!self
-						.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow)
-						.skip(1)
-						.all(|node_id| self.is_chain(&node_id, network_path)),
-				)
-			})
-			.collect::<HashMap<NodeId, bool>>();
-
-		(layer_widths, chain_widths, has_left_input_wire)
+	pub fn has_left_input_wire(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		!self
+			.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow)
+			.skip(1)
+			.all(|node_id| self.is_chain(&node_id, network_path))
 	}
 }

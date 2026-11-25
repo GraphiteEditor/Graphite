@@ -1,0 +1,15 @@
+[package]
+name = "graph-ui-icons"
+description = "The icons of the node graph UI of Graphite, as SVG sources"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

@@ -5,6 +5,7 @@ use crate::messages::prelude::*;
 pub struct OverlaysMessageContext<'a> {
 	pub visibility_settings: OverlaysVisibilitySettings,
 	pub viewport: &'a ViewportMessageHandler,
+	pub graph_open: bool,
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -25,7 +26,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 
 				let overlay_context = OverlayContext::new(*viewport, visibility_settings);
 
-				if visibility_settings.all() {
+				if visibility_settings.all() && !context.graph_open {
 					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
 					responses.add(DocumentMessage::LayersPanelHoverOverlays { context: overlay_context.clone() });
 

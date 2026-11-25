@@ -680,7 +680,7 @@
 						{:else if ["Fallback", "Error", "Panic"].includes($document.renderStatus)}
 							<div class="render-status-outline failed"></div>
 						{/if}
-						{#if $document.renderStatus === "Error"}
+						{#if $document.renderStatus === "Error" && !$document.graphViewOverlayOpen}
 							<LayoutCol class="render-status-overlay">
 								<TextLabel>
 									<p>
@@ -703,7 +703,7 @@
 						{/if}
 					</div>
 
-					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
+					<div class="graph-view" class:open={$document.graphViewOverlayOpen}>
 						<Graph />
 					</div>
 				</LayoutCol>
@@ -1005,7 +1005,6 @@
 
 					.graph-view {
 						pointer-events: none;
-						transition: opacity 0.2s;
 						opacity: 0;
 
 						&.open {
@@ -1013,21 +1012,8 @@
 							pointer-events: auto;
 							opacity: 1;
 						}
-
-						&::before {
-							content: "";
-							position: absolute;
-							top: 0;
-							left: 0;
-							width: 100%;
-							height: 100%;
-							background: var(--color-2-mildblack);
-							opacity: var(--fade-artwork);
-							pointer-events: none;
-						}
 					}
 
-					.fade-artwork,
 					.graph {
 						position: absolute;
 						top: 0;

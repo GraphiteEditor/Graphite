@@ -1236,7 +1236,7 @@
 						{/if}
 						<div class="thumbnail">
 							{#if $nodeGraph.thumbnailCanvases.has(listing.id)}
-								<ThumbnailCanvas canvasId={$nodeGraph.thumbnailCanvases.get(listing.id)?.layersPanelCanvasId} />
+								<ThumbnailCanvas canvasId={$nodeGraph.thumbnailCanvases.get(listing.id)} />
 							{:else if $thumbnailImages.has(listing.id)}
 								<ThumbnailImage image={$thumbnailImages.get(listing.id)} />
 							{/if}

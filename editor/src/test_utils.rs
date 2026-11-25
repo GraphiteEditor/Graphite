@@ -75,7 +75,7 @@ impl EditorTestUtils {
 			Err(e) => return Err(TestGraphError::Other(format!("update_node_graph_instrumented failed\n\n{e}"))),
 		};
 
-		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
+		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO, None) {
 			return Err(TestGraphError::Other(format!("submit_current_node_graph_evaluation failed\n\n{e}")));
 		}
 		self.runtime.update();
@@ -90,11 +90,20 @@ impl EditorTestUtils {
 			return Err(TestGraphError::Evaluation(errors));
 		}
 
-		for message in frontend_messages {
-			message.check_node_graph_error();
-		}
+		self.check_node_graph_errors();
 
 		Ok(instrumented)
+	}
+
+	fn check_node_graph_errors(&self) {
+		let document = self.active_document();
+		if !document.graph_view_overlay_open {
+			return;
+		}
+		let errors = document.node_graph_handler.node_graph_errors(&document.network_interface, document.breadcrumb_network_path());
+		if !errors.is_empty() {
+			panic!("errors: {errors:?}");
+		}
 	}
 
 	/// Repeatedly calls [`Self::eval_graph_once`] until no more runs are triggered by deferred messages.
@@ -436,19 +445,6 @@ impl EditorTestUtils {
 	}
 }
 
-pub trait FrontendMessageTestUtils {
-	fn check_node_graph_error(&self);
-}
-
-impl FrontendMessageTestUtils for FrontendMessage {
-	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors } = self else { return };
-		if !errors.is_empty() {
-			panic!("errors: {errors:?}");
-		}
-	}
-}
-
 #[derive(Debug)]
 pub enum TestGraphError {
 	Evaluation(EvaluationErrors),
@@ -539,7 +535,6 @@ impl Spawn for BlockingSpawner {
 
 #[cfg(test)]
 pub mod test_prelude {
-	pub use super::FrontendMessageTestUtils;
 	pub use crate::application::Editor;
 	pub use crate::float_eq;
 	pub use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};

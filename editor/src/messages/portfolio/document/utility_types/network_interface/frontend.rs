@@ -1,56 +1,21 @@
-//! The shapes the node graph frontend is sent: one entry per visible port, carrying its type, its
-//! name and whether it's connected. Read-only projections of the graph, rather than a source of truth.
+//! The connectors the graph UI's rows and tooltips are built from: one entry per visible port, carrying its type,
+//! its name and whether it's connected. Read-only projections of the graph, rather than a source of truth.
 
 use super::resolved_types::TypeSource;
 use super::*;
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 
 impl NodeNetworkInterface {
-	pub fn frontend_imports(&self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphOutput>> {
-		match network_path.split_last() {
-			Some((node_id, encapsulating_network_path)) => {
-				let Some(node) = self.document_node(node_id, encapsulating_network_path) else {
-					log::error!("Could not get node {node_id} in network {encapsulating_network_path:?}");
-					return Vec::new();
-				};
-				let mut frontend_imports = (0..node.inputs.len())
-					.map(|import_index| self.frontend_output_from_connector(&OutputConnector::Import(import_index), network_path))
-					.collect::<Vec<_>>();
-				if frontend_imports.is_empty() {
-					frontend_imports.push(None);
-				}
-				frontend_imports
-			}
-			// In the document network display no imports
-			None => Vec::new(),
-		}
-	}
-
-	pub fn frontend_exports(&self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphInput>> {
-		let Some(network) = self.nested_network(network_path) else { return Vec::new() };
-		let mut frontend_exports = ((0..network.exports.len()).map(|export_index| self.frontend_input_from_connector(&InputConnector::Export(export_index), network_path))).collect::<Vec<_>>();
-		if frontend_exports.is_empty() {
-			frontend_exports.push(None);
-		}
-		frontend_exports
-	}
-
-	/// Returns None if there is an error, it is a hidden primary export, or a hidden input
+	/// Returns None if there is an error, it is a hidden primary export, or a hidden or missing input
 	pub fn frontend_input_from_connector(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<FrontendGraphInput> {
-		// Return None if it is a hidden input
-		if self.input_from_connector(input_connector, network_path).is_some_and(|input| !input.is_exposed()) {
-			return None;
-		}
-		let input_type = self.input_type(input_connector, network_path);
-		let data_type = input_type.displayed_type();
-		let resolved_type = input_type.resolved_type_node_string();
-
-		let connected = self.upstream_output_connector(input_connector, network_path).is_some();
-
-		let (name, description) = match input_connector {
-			InputConnector::Node { node_id, input_index } => self.displayed_input_name_and_description(node_id, *input_index, network_path),
-			InputConnector::Export(export_index) => (self.displayed_export_name(*export_index, network_path), self.export_description(*export_index, network_path)),
+		let (name, data_type, connected) = self.graph_ui_input(input_connector, network_path)?;
+		let description = match input_connector {
+			InputConnector::Node { node_id, input_index } => self
+				.persistent_input_metadata(node_id, *input_index, network_path)
+				.map(|metadata| metadata.input_description.clone())
+				.unwrap_or_default(),
+			InputConnector::Export(export_index) => self.export_description(*export_index, network_path),
 		};
-
 		let valid_types = match input_connector {
 			InputConnector::Node { .. } => self.potential_valid_input_types(input_connector, network_path),
 			// An export takes any type itself, so it's limited only by what its subgraph node's output feeds, or at the document's root, what can be rendered
@@ -60,22 +25,49 @@ impl NodeNetworkInterface {
 				.filter(|valid_type| !valid_type.nested_type().is_generic())
 				.collect(),
 		};
-		let valid_types = distinct_type_names(&valid_types);
-
 		Some(FrontendGraphInput {
 			data_type,
-			resolved_type,
+			resolved_type: self.input_type(input_connector, network_path).resolved_type_node_string(),
 			name,
 			description,
-			valid_types,
+			valid_types: distinct_type_names(&valid_types),
 			connected,
 		})
 	}
 
 	/// Returns None if there is an error, it is the document network, a hidden primary output or import
 	pub fn frontend_output_from_connector(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<FrontendGraphOutput> {
+		let (name, data_type, connected) = self.graph_ui_output(output_connector, network_path)?;
+		let description = match output_connector {
+			OutputConnector::Node { node_id, output_index } => self.output_description(node_id, *output_index, network_path),
+			OutputConnector::Import(import_index) => self.import_description(*import_index, network_path),
+		};
+		Some(FrontendGraphOutput {
+			data_type,
+			resolved_type: self.output_type(output_connector, network_path).resolved_type_node_string(),
+			name,
+			description,
+			possible_types: distinct_type_names(&self.possible_output_types(output_connector, network_path)),
+			connected,
+		})
+	}
+
+	pub fn graph_ui_input(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<(String, FrontendGraphDataType, bool)> {
+		// Return None if it is a hidden or missing input
+		if !self.input_from_connector(input_connector, network_path).is_some_and(|input| input.is_exposed()) {
+			return None;
+		}
+		let name = match input_connector {
+			InputConnector::Node { node_id, input_index } => self.displayed_input_name_and_description(node_id, *input_index, network_path).0,
+			InputConnector::Export(export_index) => self.displayed_export_name(*export_index, network_path),
+		};
+		let connected = self.upstream_output_connector(input_connector, network_path).is_some();
+		Some((name, self.input_type(input_connector, network_path).displayed_type(), connected))
+	}
+
+	pub fn graph_ui_output(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<(String, FrontendGraphDataType, bool)> {
 		let output_type = self.output_type(output_connector, network_path);
-		let (name, description) = match output_connector {
+		let name = match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
 				// Do not display the primary output port for a node if it is a network node with a hidden primary export
 				if *output_index == 0 && self.hidden_primary_output(node_id, network_path) {
@@ -85,8 +77,7 @@ impl NodeNetworkInterface {
 				let output_names = self.view(network_path).ok()?.output_names(node_id).ok()?;
 				let output_name = output_names.get(*output_index).cloned().unwrap_or_default();
 
-				let output_name = if !output_name.is_empty() { output_name } else { output_type.resolved_type_node_string() };
-				(output_name, self.output_description(node_id, *output_index, network_path))
+				if !output_name.is_empty() { output_name } else { output_type.resolved_type_node_string() }
 			}
 			OutputConnector::Import(import_index) => {
 				// Return None if it is an import in the document network
@@ -98,24 +89,13 @@ impl NodeNetworkInterface {
 					return None;
 				};
 
-				(self.displayed_import_name(*import_index, network_path), self.import_description(*import_index, network_path))
+				self.displayed_import_name(*import_index, network_path)
 			}
 		};
-		let data_type = output_type.displayed_type();
-		let resolved_type = output_type.resolved_type_node_string();
-		let possible_types = distinct_type_names(&self.possible_output_types(output_connector, network_path));
 		let connected = self
 			.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).is_some_and(|inputs| !inputs.is_empty()))
 			.unwrap_or_default();
-
-		Some(FrontendGraphOutput {
-			data_type,
-			resolved_type,
-			name,
-			description,
-			possible_types,
-			connected,
-		})
+		Some((name, output_type.displayed_type(), connected))
 	}
 
 	/// Returns the input name to display in the Inspector. If the input has no name then its type is used.
