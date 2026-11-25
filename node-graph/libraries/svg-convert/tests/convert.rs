@@ -1,5 +1,5 @@
 use core_types::list::{ATTR_APPEARANCE, Item, List};
-use core_types::{ATTR_BLEND_MODE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_TRANSFORM, BlendMode, Color};
+use core_types::{ATTR_BLEND_MODE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::raster_types::{Image, Raster};
 use graphic_types::vector_types::vector::style::{StrokeCap, StrokeJoin};
@@ -182,6 +182,42 @@ fn a_gradient_stroke_carries_the_stroke_opacity_in_its_stop_alphas() -> Result<(
 		stops,
 		Some([Some(&Color::from_gamma_srgb_channels(1., 0., 0., 0.5)), Some(&Color::from_gamma_srgb_channels(0., 0., 1., 0.25))])
 	);
+	Ok(())
+}
+
+#[test]
+fn a_clip_path_becomes_a_hidden_clipper_beneath_the_content_it_clips() -> Result<(), Error> {
+	let content = converted(r#"<clipPath id="clip"><rect width="4" height="4"/></clipPath><g clip-path="url(#clip)"><rect width="8" height="8"/></g>"#)?;
+
+	let clipped = group(&content, 0);
+	assert!(clipped.and_then(|clipped| clipped.element(0)).is_some_and(Graphic::can_reduce_to_clip_path));
+	assert_eq!(clipped.and_then(|clipped| clipped.attribute::<f64>(ATTR_OPACITY_FILL, 0)), Some(&0.));
+	assert!(clipped.and_then(|clipped| clipped.element(1)).is_some_and(Graphic::had_clip_enabled));
+	Ok(())
+}
+
+#[test]
+fn a_clip_path_transform_places_its_shapes() -> Result<(), Error> {
+	let content = converted(r#"<clipPath id="clip" transform="translate(1 2)"><rect width="4" height="4"/></clipPath><g clip-path="url(#clip)"><rect width="8" height="8"/></g>"#)?;
+
+	let shapes = group(&content, 0).and_then(|clipped| clipped.element(0)).and_then(Graphic::as_vector_list);
+	assert_eq!(
+		shapes.and_then(|shapes| shapes.attribute::<DAffine2>(ATTR_TRANSFORM, 0)),
+		Some(&DAffine2::from_translation(DVec2::new(1., 2.)))
+	);
+	Ok(())
+}
+
+#[test]
+fn a_clip_path_with_its_own_clip_path_clips_the_content_once_more() -> Result<(), Error> {
+	let content = converted(
+		r#"<clipPath id="outer"><rect width="6" height="6"/></clipPath><clipPath id="inner" clip-path="url(#outer)"><rect width="4" height="4"/></clipPath><g clip-path="url(#inner)"><rect width="8" height="8"/></g>"#,
+	)?;
+
+	let clipped_twice = group(&content, 0);
+	assert!(clipped_twice.and_then(|clipped_twice| clipped_twice.element(1)).is_some_and(Graphic::had_clip_enabled));
+	let clipped_once = clipped_twice.and_then(|clipped_twice| group(clipped_twice, 1));
+	assert!(clipped_once.and_then(|clipped_once| clipped_once.element(1)).is_some_and(Graphic::had_clip_enabled));
 	Ok(())
 }
 

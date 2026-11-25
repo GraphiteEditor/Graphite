@@ -4,6 +4,7 @@
 //! The conversion is best effort: what has no counterpart is left out.
 
 mod blend_mode;
+mod clip;
 mod gradient;
 mod raster;
 mod stroke;
@@ -37,9 +38,11 @@ fn graphic_item(node: &usvg::Node) -> Option<Item<Graphic>> {
 }
 
 fn group_item(group: &usvg::Group) -> Item<Graphic> {
-	let transform = affine(group.transform());
+	let content = graphic_list(group);
+	let content = clip::clipped(group, content);
 
-	let mut item = Item::new_from_element(Graphic::GraphicList(graphic_list(group)));
+	let mut item = Item::new_from_element(Graphic::GraphicList(content));
+	let transform = affine(group.transform());
 	if transform != DAffine2::IDENTITY {
 		item.set_attribute(ATTR_TRANSFORM, transform);
 	}
