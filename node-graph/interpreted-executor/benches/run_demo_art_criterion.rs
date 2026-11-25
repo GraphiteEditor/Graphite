@@ -1,7 +1,5 @@
 use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main};
-use graph_craft::graphene_compiler::Executor;
-use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::{DEMO_ART, compile};
 use graphene_std::transform::Footprint;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -12,9 +10,8 @@ fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 		.unwrap()
 		.network;
 	let proto_network = compile(network);
-	let empty = ProtoNetwork::default();
 
-	let executor = DynamicExecutor::new(empty).unwrap();
+	let executor = DynamicExecutor::default();
 
 	c.bench_function(name, |b| {
 		b.iter_batched(
@@ -38,10 +35,11 @@ fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 		.network;
 	let proto_network = compile(network);
 
-	let executor = DynamicExecutor::new(proto_network).unwrap();
+	let mut executor = DynamicExecutor::default();
+	let (output, _) = executor.update(proto_network).unwrap();
 	let footprint = Footprint::default();
 
-	c.bench_function(name, |b| b.iter(|| (&executor).execute(footprint)));
+	c.bench_function(name, |b| b.iter(|| executor.execute(&output, footprint)));
 }
 fn run_once_demo(c: &mut Criterion) {
 	let mut g = c.benchmark_group("Run Once no render");

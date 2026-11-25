@@ -3,32 +3,41 @@ use core_types::{NodeError, Poll, SourceId, WasmNotSend};
 use graph_craft::Type;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::document::{NodeId, NodeNetwork};
-use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{Any, AnyInput, ConstructionArgs, GraphError, NodeContainer, ProtoNetwork, ProtoNode, SharedNode, SharedNodeContainer, TypeErasedBox, TypeErasedNode, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
 #[derive(Clone)]
 pub struct DynamicExecutor {
-	output: NodeId,
 	/// Stores all of the dynamic node structs.
 	tree: BorrowTree,
 	/// Stores the types of the proto nodes.
 	typing_context: TypingContext,
+	/// The outputs of the networks, kept alive by the executor as long as there are handles to them.
+	outputs: Vec<Weak<NodeId>>,
 	// Kept for one more update, so a node that comes back is reused
 	orphaned_nodes: HashSet<NodeId>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct OutputHandle(Arc<NodeId>);
+
+impl OutputHandle {
+	pub fn node(&self) -> NodeId {
+		*self.0
+	}
 }
 
 impl Default for DynamicExecutor {
 	fn default() -> Self {
 		Self {
-			output: Default::default(),
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
+			outputs: Vec::new(),
 			orphaned_nodes: HashSet::new(),
 		}
 	}
@@ -49,28 +58,24 @@ pub struct ResolvedDocumentNodeTypesDelta {
 }
 
 impl DynamicExecutor {
-	pub fn new(proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
-		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
-		typing_context.update(&proto_network)?;
-		let output = proto_network.output;
-		let tree = BorrowTree::new(proto_network, &typing_context)?;
-
-		Ok(Self {
-			tree,
-			output,
-			typing_context,
-			orphaned_nodes: HashSet::new(),
-		})
-	}
-
 	pub fn sources(&self) -> impl Iterator<Item = &SourceId> {
 		self.tree.sources.iter().map(|(_, source)| source)
 	}
 
-	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
+	/// Adds the [`ProtoNetwork`] to the existing [`BorrowTree`], reusing nodes where possible.
 	#[cfg_attr(debug_assertions, inline(never))]
-	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
-		self.output = proto_network.output;
+	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<(OutputHandle, ResolvedDocumentNodeTypesDelta), (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
+		let (output, add) = self.insert_nodes(proto_network)?;
+		let remove = self.free_orphaned_nodes();
+		Ok((output, ResolvedDocumentNodeTypesDelta { add, remove }))
+	}
+
+	pub fn update_without_freeing(&mut self, proto_network: ProtoNetwork) -> Result<(OutputHandle, ResolvedDocumentNodeTypesDelta), (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
+		let (output, add) = self.insert_nodes(proto_network)?;
+		Ok((output, ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }))
+	}
+
+	fn insert_nodes(&mut self, proto_network: ProtoNetwork) -> Result<(OutputHandle, Vec<(Path, NodeTypes)>), (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
 		self.typing_context.update(&proto_network).map_err(|e| {
 			// If there is an error then get types that have been resolved before the error
 			let add = proto_network
@@ -92,7 +97,31 @@ impl DynamicExecutor {
 			(ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }, e)
 		})?;
 
-		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
+		let output = proto_network.output;
+		let add = self.tree.update(proto_network, &self.typing_context).map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
+		self.outputs.retain(|output| output.strong_count() > 0);
+		let held = self.outputs.iter().filter_map(Weak::upgrade).find(|held| **held == output);
+		let output = held.unwrap_or_else(|| {
+			let output = Arc::new(output);
+			self.outputs.push(Arc::downgrade(&output));
+			output
+		});
+
+		let add = self.document_node_types(add.into_iter()).collect();
+		Ok((OutputHandle(output), add))
+	}
+
+	fn free_orphaned_nodes(&mut self) -> Vec<Path> {
+		let mut kept = HashSet::new();
+		let mut pending: Vec<NodeId> = self.outputs.iter().filter_map(Weak::upgrade).map(|output| *output).collect();
+		while let Some(node) = pending.pop() {
+			if kept.insert(node)
+				&& let Some((_, _, inputs)) = self.tree.nodes.get(&node)
+			{
+				pending.extend(inputs.iter());
+			}
+		}
+		let orphaned = self.tree.nodes.keys().filter(|node| !kept.contains(node)).copied().collect();
 		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
 		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
 		for node_id in old_to_remove {
@@ -104,31 +133,23 @@ impl DynamicExecutor {
 				}
 			}
 		}
-		let add = self.document_node_types(add.into_iter()).collect();
-		Ok(ResolvedDocumentNodeTypesDelta { add, remove })
+		remove
 	}
 
-	pub fn update_without_freeing(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
-		let orphaned_nodes = std::mem::take(&mut self.orphaned_nodes);
-		let result = self.update(proto_network);
-		self.orphaned_nodes = orphaned_nodes;
-		result
+	pub fn execute<I: 'static + WasmNotSend>(&self, output: &OutputHandle, input: I) -> Result<Poll<TaggedValue>, Box<dyn Error>> {
+		self.tree.eval_tagged_value(output.node(), &input).map_err(|error| error.into())
 	}
 
-	pub fn input_type(&self) -> Option<Type> {
-		self.typing_context.type_of(self.output).map(|node_io| node_io.call_argument.clone())
+	pub fn input_type(&self, output: &OutputHandle) -> Option<Type> {
+		self.typing_context.type_of(output.node()).map(|node_io| node_io.call_argument.clone())
 	}
 
 	pub fn tree(&self) -> &BorrowTree {
 		&self.tree
 	}
 
-	pub fn output(&self) -> NodeId {
-		self.output
-	}
-
-	pub fn output_type(&self) -> Option<Type> {
-		self.typing_context.type_of(self.output).map(|node_io| node_io.return_value.clone())
+	pub fn output_type(&self, output: &OutputHandle) -> Option<Type> {
+		self.typing_context.type_of(output.node()).map(|node_io| node_io.return_value.clone())
 	}
 
 	pub fn document_node_types<'a>(&'a self, nodes: impl Iterator<Item = Path> + 'a) -> impl Iterator<Item = (Path, NodeTypes)> + 'a {
@@ -157,15 +178,6 @@ impl DynamicExecutor {
 			passed.push(node);
 		}
 		passed.into_boxed_slice()
-	}
-}
-
-impl<I> Executor<I, Poll<TaggedValue>> for &DynamicExecutor
-where
-	I: 'static + WasmNotSend,
-{
-	fn execute(&self, input: I) -> Result<Poll<TaggedValue>, Box<dyn Error>> {
-		self.tree.eval_tagged_value(self.output, &input).map_err(|error| error.into())
 	}
 }
 
@@ -285,9 +297,8 @@ impl BorrowTree {
 		Ok(nodes)
 	}
 
-	/// Pushes new nodes into the tree and return orphaned nodes
-	pub fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
-		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
+	/// Pushes new nodes into the tree
+	pub fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Vec<Path>, GraphErrors> {
 		let mut new_nodes: Vec<_> = Vec::new();
 		// TODO: Problem: When a passthrough node is connected directly to an export the first input to the passthrough node is not added to the proto network, while the second input is. This means the primary input does not have a type.
 		for (id, node) in proto_network.nodes {
@@ -297,9 +308,8 @@ impl BorrowTree {
 			} else if self.update_source_map(id, typing_context, &node) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 			}
-			old_nodes.remove(&id);
 		}
-		Ok((new_nodes, old_nodes))
+		Ok(new_nodes)
 	}
 
 	fn node_deps(&self, nodes: &[NodeId]) -> Vec<SharedNodeContainer> {

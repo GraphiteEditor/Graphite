@@ -2,10 +2,10 @@ use document_live::{Event, LiveDocument};
 use graph_craft::application_io::resource::ResourceHash;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue, UVec2};
-use graphene_cli::{TokioSpawner, compile_graph, create_executor, editor_api, export};
+use graphene_cli::{TokioSpawner, compile_graph, editor_api, export};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphene_std::runtime::AsyncRuntime;
-use interpreted_executor::dynamic_executor::DynamicExecutor;
+use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle};
 use std::error::Error;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -56,7 +56,7 @@ struct Viewer {
 	window: Option<Arc<dyn Window>>,
 	surface: Option<(WgpuSurface, wgpu::SurfaceConfiguration)>,
 	blitter: Option<TextureBlitter>,
-	executor: Option<DynamicExecutor>,
+	executor: Option<(DynamicExecutor, OutputHandle)>,
 	dirty: bool,
 	waiting: Vec<ResourceHash>,
 }
@@ -132,13 +132,17 @@ impl Viewer {
 			Ok(proto) => proto,
 			Err(error) => return log::error!("Compile failed: {error}"),
 		};
-		match create_executor(proto) {
-			Ok(executor) => {
+		let mut executor = DynamicExecutor::default();
+		match executor.update(proto) {
+			Ok((output, _)) => {
 				self.graph_runtime.update_sources(executor.sources());
 				log::info!("Document compiled");
-				self.executor = Some(executor);
+				self.executor = Some((executor, output));
 			}
-			Err(error) => log::error!("Executor creation failed: {error}"),
+			Err((_, errors)) => {
+				let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
+				log::error!("Executor creation failed: {}", messages.join("\n"));
+			}
 		}
 	}
 
@@ -149,14 +153,15 @@ impl Viewer {
 
 		// Present even without a frame, since Wayland never shows a surface with no committed buffer
 		let frame = match &self.executor {
-			Some(executor) => {
+			Some((executor, output)) => {
 				let mut render_config = RenderConfig {
 					export_format: ExportFormat::Raster,
 					scale: 1.,
 					..Default::default()
 				};
 				render_config.viewport.resolution = UVec2::new(config.width, config.height);
-				match self.runtime.block_on(export::execute_until_settled(executor, &self.graph_runtime, &self.spawner, render_config))? {
+				let settled = export::execute_until_settled(executor, output, &self.graph_runtime, &self.spawner, render_config);
+				match self.runtime.block_on(settled)? {
 					TaggedValue::RenderOutput(RenderOutput {
 						data: RenderOutputType::Texture(texture),
 						..

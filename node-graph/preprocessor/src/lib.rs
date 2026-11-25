@@ -546,10 +546,11 @@ mod destructure_tests {
 
 	fn assert_execution_result(network: NodeNetwork, expected: TaggedValue) {
 		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed").network;
-		let executor = DynamicExecutor::new(proto_network).expect("The executor should type check and build");
+		let mut executor = DynamicExecutor::default();
+		let (output, _) = executor.update(proto_network).expect("The executor should type check and build");
 
 		let context: core_types::Context = None;
-		let result = executor.tree().eval_tagged_value(executor.output(), &context).expect("Execution should succeed");
+		let result = executor.tree().eval_tagged_value(output.node(), &context).expect("Execution should succeed");
 		assert_eq!(result, core_types::Poll::Final(expected));
 	}
 

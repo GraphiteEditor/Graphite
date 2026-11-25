@@ -4,11 +4,11 @@ use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::{DEMO_ART, compile};
 use graphene_std::application_io::EditorApi;
 use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
-use interpreted_executor::dynamic_executor::DynamicExecutor;
+use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle};
 use interpreted_executor::util::wrap_network_in_scope;
 use std::path::Path;
 
-pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
+pub fn setup_network(name: &str) -> (DynamicExecutor, OutputHandle, ProtoNetwork) {
 	let network = futures::executor::block_on(document_loader::open_document(Path::new(&format!("../../demo-artwork/{name}.graphite"))))
 		.unwrap()
 		.network;
@@ -17,8 +17,9 @@ pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	let preprocessor = preprocessor::Preprocessor::new();
 	preprocessor.preprocess(&mut network, &|_| None).unwrap();
 	let proto_network = compile(network);
-	let executor = DynamicExecutor::new(proto_network.clone()).unwrap();
-	(executor, proto_network)
+	let mut executor = DynamicExecutor::default();
+	let (output, _) = executor.update(proto_network.clone()).unwrap();
+	(executor, output, proto_network)
 }
 
 #[allow(dead_code, reason = "shared by the bench targets, only some of which call it, and each compiles this module separately")]

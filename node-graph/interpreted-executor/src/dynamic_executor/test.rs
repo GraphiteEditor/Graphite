@@ -875,11 +875,12 @@ fn error_traced_through(indices: &[usize]) -> NodeError {
 
 #[test]
 fn a_trace_leads_to_the_node_that_raised_the_error() {
-	let executor = DynamicExecutor::new(bounding_box_network(TaggedValue::TypeDefault(item!(Vector)))).unwrap();
+	let mut executor = DynamicExecutor::default();
+	let (output, _) = executor.update(bounding_box_network(TaggedValue::TypeDefault(item!(Vector)))).unwrap();
 
-	assert!(executor.trace_error(executor.output(), &error_traced_through(&[])).is_empty());
-	assert_eq!(*executor.trace_error(executor.output(), &error_traced_through(&[0])), [NodeId(0)]);
-	assert_eq!(*executor.trace_error(executor.output(), &error_traced_through(&[0, 0])), [NodeId(0)], "a value node has no inputs");
+	assert!(executor.trace_error(output.node(), &error_traced_through(&[])).is_empty());
+	assert_eq!(*executor.trace_error(output.node(), &error_traced_through(&[0])), [NodeId(0)]);
+	assert_eq!(*executor.trace_error(output.node(), &error_traced_through(&[0, 0])), [NodeId(0)], "a value node has no inputs");
 	assert!(executor.trace_error(NodeId(0), &error_traced_through(&[])).is_empty());
 	assert!(
 		executor.trace_error(NodeId(0), &error_traced_through(&[0])).is_empty(),
@@ -892,14 +893,15 @@ fn a_trace_steps_over_the_index_of_a_promotion_adapter() {
 	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(f64)).into()), vec![NodeId(0)]);
 	let mut box_corners_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	box_corners_node.identifier = graphene_std::vector::generator_nodes::box_corners::IDENTIFIER;
-	let executor = DynamicExecutor::new(ProtoNetwork {
+	let network = ProtoNetwork {
 		inputs: vec![],
 		output: NodeId(1),
 		nodes: vec![(NodeId(0), value_node), (NodeId(1), box_corners_node)],
-	})
-	.unwrap();
+	};
+	let mut executor = DynamicExecutor::default();
+	let (output, _) = executor.update(network).unwrap();
 
-	assert_eq!(*executor.trace_error(executor.output(), &error_traced_through(&[0, 0])), [NodeId(0)]);
+	assert_eq!(*executor.trace_error(output.node(), &error_traced_through(&[0, 0])), [NodeId(0)]);
 }
 
 #[test]
@@ -912,21 +914,19 @@ fn executor_panics_reach_the_host_with_the_original_payload() {
 		}
 	}
 
-	let mut executor = DynamicExecutor {
-		output: NodeId(0),
-		..Default::default()
-	};
-	let missing_output = (&executor).execute(()).unwrap_err();
+	let mut executor = DynamicExecutor::default();
+	let output = OutputHandle::default();
+	let missing_output = executor.execute(&output, ()).unwrap_err();
 	assert_eq!(missing_output.to_string(), "Output node not found in executor");
 
 	executor.tree.store_node(ObservedNode::new(Box::new(Panics)), NodeId(0), Box::default(), Box::default());
-	let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (&executor).execute(()))).unwrap_err();
+	let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| executor.execute(&output, ()))).unwrap_err();
 	assert_eq!(*payload.downcast::<u32>().unwrap(), 42);
 }
 
 #[test]
 fn chained_fallbacks_both_reach_the_root() {
-	let executor = DynamicExecutor::new(ProtoNetwork {
+	let network = ProtoNetwork {
 		inputs: vec![],
 		output: NodeId(4),
 		nodes: [
@@ -934,15 +934,16 @@ fn chained_fallbacks_both_reach_the_root() {
 			vec![(NodeId(3), throw_error_node([0, 1, 2, 1], 3)), (NodeId(4), throw_error_node([3, 1, 2, 1], 4))],
 		]
 		.concat(),
-	})
-	.unwrap();
+	};
+	let mut executor = DynamicExecutor::default();
+	let (output, _) = executor.update(network).unwrap();
 
 	let context: Context = None;
-	let Ok(Poll::Fallback(boxed)) = (&executor).execute(context) else {
+	let Ok(Poll::Fallback(boxed)) = executor.execute(&output, context) else {
 		panic!("Both nodes fall back, so the root should too")
 	};
 	let error = &boxed.1;
-	assert!(executor.trace_error(executor.output(), error).is_empty());
+	assert!(executor.trace_error(output.node(), error).is_empty());
 	let [upstream] = error.upstream() else {
 		panic!("The second node's error should carry the first node's error")
 	};
@@ -951,7 +952,7 @@ fn chained_fallbacks_both_reach_the_root() {
 
 #[test]
 fn an_error_after_a_fallback_keeps_both() {
-	let executor = DynamicExecutor::new(ProtoNetwork {
+	let network = ProtoNetwork {
 		inputs: vec![],
 		output: NodeId(5),
 		nodes: [
@@ -963,14 +964,15 @@ fn an_error_after_a_fallback_keeps_both() {
 			],
 		]
 		.concat(),
-	})
-	.unwrap();
+	};
+	let mut executor = DynamicExecutor::default();
+	let (output, _) = executor.update(network).unwrap();
 
 	let context: Context = None;
-	let Ok(Poll::Error(error)) = (&executor).execute(context) else {
+	let Ok(Poll::Error(error)) = executor.execute(&output, context) else {
 		panic!("The failing node should stop the frame")
 	};
-	assert!(executor.trace_error(executor.output(), &error).is_empty());
+	assert!(executor.trace_error(output.node(), &error).is_empty());
 	let [upstream] = error.upstream() else {
 		panic!("The failing node's error should carry the fallback before it")
 	};
@@ -979,7 +981,7 @@ fn an_error_after_a_fallback_keeps_both() {
 
 #[test]
 fn a_node_error_names_the_node_that_raised_it() {
-	let executor = DynamicExecutor::new(ProtoNetwork {
+	let network = ProtoNetwork {
 		inputs: vec![],
 		output: NodeId(5),
 		nodes: [
@@ -991,14 +993,15 @@ fn a_node_error_names_the_node_that_raised_it() {
 			],
 		]
 		.concat(),
-	})
-	.expect("The Throw Error nodes should resolve");
+	};
+	let mut executor = DynamicExecutor::default();
+	let (output, _) = executor.update(network).expect("The Throw Error nodes should resolve");
 
 	let context: Context = None;
-	let Ok(Poll::Error(error)) = (&executor).execute(context) else {
+	let Ok(Poll::Error(error)) = executor.execute(&output, context) else {
 		panic!("The failing node should stop the frame")
 	};
-	let origin = executor.trace_error(executor.output(), &error).last().copied();
+	let origin = executor.trace_error(output.node(), &error).last().copied();
 	assert_eq!(origin, Some(NodeId(4)), "The error should name the failing node, not the root that forwarded it");
 	let paths: Vec<_> = executor
 		.tree()
@@ -1028,11 +1031,11 @@ fn throw_error_node(inputs: [u64; 4], id: u64) -> ProtoNode {
 	node
 }
 
-fn handled_error_network(handler: ProtoNodeIdentifier, handler_inputs: &[u64], keep_value: bool) -> DynamicExecutor {
+fn handled_error_network(handler: ProtoNodeIdentifier, handler_inputs: &[u64], keep_value: bool) -> (DynamicExecutor, OutputHandle) {
 	let mut handler_node = ProtoNode::value(ConstructionArgs::Nodes(handler_inputs.iter().copied().map(NodeId).collect()), vec![NodeId(6)]);
 	handler_node.identifier = handler;
 
-	DynamicExecutor::new(ProtoNetwork {
+	let network = ProtoNetwork {
 		inputs: vec![],
 		output: NodeId(6),
 		nodes: [
@@ -1045,40 +1048,42 @@ fn handled_error_network(handler: ProtoNodeIdentifier, handler_inputs: &[u64], k
 			],
 		]
 		.concat(),
-	})
-	.expect("The error handling nodes should resolve")
+	};
+	let mut executor = DynamicExecutor::default();
+	let (output, _) = executor.update(network).expect("The error handling nodes should resolve");
+	(executor, output)
 }
 
 #[test]
 fn a_caught_error_does_not_reach_the_output() {
 	let context: Context = None;
 	for keep_value in [false, true] {
-		let executor = handled_error_network(graphene_core::poll::catch::IDENTIFIER, &[4, 5], keep_value);
-		assert!(matches!((&executor).execute(context.clone()), Ok(Poll::Final(_))), "Catch should hide the error");
+		let (executor, output) = handled_error_network(graphene_core::poll::catch::IDENTIFIER, &[4, 5], keep_value);
+		assert!(matches!(executor.execute(&output, context.clone()), Ok(Poll::Final(_))), "Catch should hide the error");
 	}
 }
 
 #[test]
 fn suppress_error_hides_only_an_error_with_a_value() {
 	let context: Context = None;
-	let executor = handled_error_network(graphene_core::poll::suppress_error::IDENTIFIER, &[4], true);
+	let (executor, output) = handled_error_network(graphene_core::poll::suppress_error::IDENTIFIER, &[4], true);
 	assert!(
-		matches!((&executor).execute(context.clone()), Ok(Poll::Final(_))),
+		matches!(executor.execute(&output, context.clone()), Ok(Poll::Final(_))),
 		"Suppress Error should keep the value and hide the error"
 	);
-	let executor = handled_error_network(graphene_core::poll::suppress_error::IDENTIFIER, &[4], false);
-	assert!(matches!((&executor).execute(context), Ok(Poll::Error(_))), "An error without a value should still stop the frame");
+	let (executor, output) = handled_error_network(graphene_core::poll::suppress_error::IDENTIFIER, &[4], false);
+	assert!(matches!(executor.execute(&output, context), Ok(Poll::Error(_))), "An error without a value should still stop the frame");
 }
 
 #[test]
 fn a_fallback_keeps_the_error_on_the_node_that_raised_it() {
-	let executor = handled_error_network(graphene_core::poll::fallback::IDENTIFIER, &[4, 5], false);
+	let (executor, output) = handled_error_network(graphene_core::poll::fallback::IDENTIFIER, &[4, 5], false);
 	let context: Context = None;
-	let Ok(Poll::Fallback(boxed)) = (&executor).execute(context) else {
+	let Ok(Poll::Fallback(boxed)) = executor.execute(&output, context) else {
 		panic!("Fallback should keep the frame going with the error")
 	};
 	assert_eq!(boxed.1.to_string(), "too small");
-	assert_eq!(*executor.trace_error(executor.output(), &boxed.1), [NodeId(4)], "The error should stay on the Throw Error node");
+	assert_eq!(*executor.trace_error(output.node(), &boxed.1), [NodeId(4)], "The error should stay on the Throw Error node");
 }
 
 #[test]
@@ -1187,7 +1192,8 @@ fn source_network(node: u64) -> ProtoNetwork {
 
 #[test]
 fn update_without_freeing_keeps_the_nodes_the_network_leaves_out() {
-	let mut executor = DynamicExecutor::new(source_network(0)).unwrap();
+	let mut executor = DynamicExecutor::default();
+	executor.update(source_network(0)).unwrap();
 
 	executor.update_without_freeing(source_network(1)).unwrap();
 	executor.update_without_freeing(source_network(1)).unwrap();
@@ -1195,8 +1201,54 @@ fn update_without_freeing_keeps_the_nodes_the_network_leaves_out() {
 }
 
 #[test]
+fn networks_are_executed_side_by_side_by_their_handles() {
+	let network = |node: u64| ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(node),
+		nodes: vec![value_node(node, TaggedValue::Number(node as f64))],
+	};
+	let mut executor = DynamicExecutor::default();
+	let (first, _) = executor.update(network(0)).unwrap();
+	let (second, _) = executor.update(network(1)).unwrap();
+
+	let context: Context = None;
+	assert_eq!(executor.execute(&first, context.clone()).unwrap(), Poll::Final(TaggedValue::Number(0.)));
+	assert_eq!(executor.execute(&second, context).unwrap(), Poll::Final(TaggedValue::Number(1.)));
+}
+
+#[test]
+fn an_output_that_is_already_held_shares_its_handle() {
+	let mut executor = DynamicExecutor::default();
+	let (first, _) = executor.update(source_network(0)).unwrap();
+	let (second, _) = executor.update(source_network(0)).unwrap();
+	let (other, _) = executor.update(source_network(1)).unwrap();
+
+	assert!(Arc::ptr_eq(&first.0, &second.0));
+	assert!(!Arc::ptr_eq(&first.0, &other.0));
+}
+
+#[test]
+fn a_handle_keeps_its_output_and_the_nodes_that_feed_it() {
+	let mut executor = DynamicExecutor::default();
+	let (output, _) = executor.update(bounding_box_network(TaggedValue::TypeDefault(item!(Vector)))).unwrap();
+	let kept = |executor: &DynamicExecutor| [0, 1].map(|node| executor.tree().get(NodeId(node)).is_some());
+
+	for _ in 0..3 {
+		executor.update(source_network(2)).unwrap();
+	}
+	assert_eq!(kept(&executor), [true; 2]);
+
+	drop(output);
+	executor.update(source_network(2)).unwrap();
+	assert_eq!(kept(&executor), [true; 2], "orphaned for one more update");
+	executor.update(source_network(2)).unwrap();
+	assert_eq!(kept(&executor), [false; 2]);
+}
+
+#[test]
 fn a_source_is_listed_for_as_long_as_its_node_lives() {
-	let mut executor = DynamicExecutor::new(source_network(0)).unwrap();
+	let mut executor = DynamicExecutor::default();
+	executor.update(source_network(0)).unwrap();
 
 	for _ in 0..3 {
 		executor.update(source_network(1)).unwrap();

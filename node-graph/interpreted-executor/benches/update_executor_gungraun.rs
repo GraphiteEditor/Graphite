@@ -7,10 +7,8 @@ use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::hint::black_box;
 
 fn setup_update_executor(name: &str) -> (DynamicExecutor, ProtoNetwork) {
-	let (_, proto_network) = setup_network(name);
-	let empty = ProtoNetwork::default();
-	let executor = DynamicExecutor::new(empty).unwrap();
-	(executor, proto_network)
+	let (_, _, proto_network) = setup_network(name);
+	(DynamicExecutor::default(), proto_network)
 }
 
 #[library_benchmark]

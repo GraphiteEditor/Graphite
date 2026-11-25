@@ -8,9 +8,9 @@ fn subsequent_evaluations(c: &mut Criterion) {
 	let mut group = c.benchmark_group("Subsequent Evaluations");
 	let context = RenderConfig::default().into_context();
 	bench_for_each_demo(&mut group, |name, g| {
-		let (executor, _) = setup_network(name);
+		let (executor, output, _) = setup_network(name);
 		let context = context.clone();
-		g.bench_function(name, |b| b.iter(|| executor.tree().eval_tagged_value(executor.output(), std::hint::black_box(&context)).unwrap()));
+		g.bench_function(name, |b| b.iter(|| executor.tree().eval_tagged_value(output.node(), std::hint::black_box(&context)).unwrap()));
 	});
 	group.finish();
 }

@@ -1,6 +1,5 @@
 use crate::TokioSpawner;
 use graph_craft::document::value::{DAffine2, DVec2, RenderOutputType, TaggedValue, UVec2};
-use graph_craft::graphene_compiler::Executor;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
@@ -9,7 +8,7 @@ use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::{no_paths, paths_from_item_attributes};
 use graphene_std::{NodeError, Poll};
 use image::ImageFormat;
-use interpreted_executor::dynamic_executor::DynamicExecutor;
+use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle};
 use std::error::Error;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -88,12 +87,12 @@ pub struct Framing {
 impl ExportSettings {
 	/// Frame the artwork as it is at time zero, unless a size was given.
 	/// Every frame of an animation shares this framing, so they all have one size.
-	pub async fn framed(mut self, executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner) -> Result<Self, Box<dyn Error>> {
+	pub async fn framed(mut self, executor: &DynamicExecutor, output: &OutputHandle, runtime: &AsyncRuntime, spawner: &TokioSpawner) -> Result<Self, Box<dyn Error>> {
 		if self.size.0.is_some() && self.size.1.is_some() {
 			return Ok(self);
 		}
 
-		let [min, max] = artwork_bounds(executor, runtime, spawner).await?.ok_or("The document has no artwork to export")?;
+		let [min, max] = artwork_bounds(executor, output, runtime, spawner).await?.ok_or("The document has no artwork to export")?;
 		let resolution = ((max - min) * self.scale).round().max(DVec2::ONE).as_uvec2();
 		self.framing = Some(Framing {
 			transform: DAffine2::from_translation(min).inverse(),
@@ -105,7 +104,7 @@ impl ExportSettings {
 
 /// The document-space bounds of every layer including its stroke, artboards included, from the metadata of an SVG render.
 /// Content an artboard clips away still counts, since this has no layer tree to tell which artboard holds it.
-async fn artwork_bounds(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner) -> Result<Option<[DVec2; 2]>, Box<dyn Error>> {
+async fn artwork_bounds(executor: &DynamicExecutor, output: &OutputHandle, runtime: &AsyncRuntime, spawner: &TokioSpawner) -> Result<Option<[DVec2; 2]>, Box<dyn Error>> {
 	// An identity viewport, since the default one is degenerate and its transforms come out NaN
 	let render_config = RenderConfig {
 		viewport: Footprint {
@@ -118,7 +117,7 @@ async fn artwork_bounds(executor: &DynamicExecutor, runtime: &AsyncRuntime, spaw
 		for_export: true,
 		..Default::default()
 	};
-	let TaggedValue::RenderOutput(output) = execute_until_settled(executor, runtime, spawner, render_config).await? else {
+	let TaggedValue::RenderOutput(output) = execute_until_settled(executor, output, runtime, spawner, render_config).await? else {
 		return Err("The document did not render".into());
 	};
 
@@ -153,6 +152,7 @@ fn combine_bounds([a_min, a_max]: [DVec2; 2], [b_min, b_max]: [DVec2; 2]) -> [DV
 /// Renders the document at the given animation time, as SVG text for an SVG export and as pixels for every other file type.
 pub(crate) async fn render_frame(
 	executor: &DynamicExecutor,
+	output: &OutputHandle,
 	wgpu_executor: &wgpu_executor::WgpuExecutor,
 	settings: ExportSettings,
 	animation_time: Duration,
@@ -187,7 +187,7 @@ pub(crate) async fn render_frame(
 	}
 
 	// Execute the graph and extract its output
-	match execute_until_settled(executor, runtime, spawner, render_config).await? {
+	match execute_until_settled(executor, output, runtime, spawner, render_config).await? {
 		TaggedValue::RenderOutput(output) => match output.data {
 			RenderOutputType::Svg { svg, .. } => Ok(RenderedFrame::Svg(svg)),
 			RenderOutputType::Texture(texture) => {
@@ -263,13 +263,14 @@ fn encode_raster(file_type: FileType, data: Vec<u8>, width: u32, height: u32, tr
 
 pub async fn export_document(
 	executor: &DynamicExecutor,
+	output: &OutputHandle,
 	wgpu_executor: &wgpu_executor::WgpuExecutor,
 	output_path: PathBuf,
 	settings: ExportSettings,
 	runtime: &AsyncRuntime,
 	spawner: &TokioSpawner,
 ) -> Result<(), Box<dyn Error>> {
-	let frame = render_frame(executor, wgpu_executor, settings, Duration::ZERO, runtime, spawner).await?;
+	let frame = render_frame(executor, output, wgpu_executor, settings, Duration::ZERO, runtime, spawner).await?;
 	write_frame(&output_path, settings, frame)?;
 
 	log::info!("Exported to: {}", output_path.display());
@@ -305,8 +306,10 @@ impl AnimationParams {
 }
 
 /// Export an animated GIF by rendering multiple frames at different animation times
+#[allow(clippy::too_many_arguments)]
 pub async fn export_gif(
 	executor: &DynamicExecutor,
+	output: &OutputHandle,
 	wgpu_executor: &wgpu_executor::WgpuExecutor,
 	output_path: PathBuf,
 	settings: ExportSettings,
@@ -334,7 +337,7 @@ pub async fn export_gif(
 
 		log::debug!("Rendering frame {}/{} at time {:?}", frame_idx + 1, animation.frames, animation_time);
 
-		let RenderedFrame::Raster { data, width, height } = render_frame(executor, wgpu_executor, settings, animation_time, runtime, spawner).await? else {
+		let RenderedFrame::Raster { data, width, height } = render_frame(executor, output, wgpu_executor, settings, animation_time, runtime, spawner).await? else {
 			return Err("A GIF frame must render as pixels".into());
 		};
 
@@ -355,8 +358,10 @@ pub async fn export_gif(
 }
 
 /// Export an animation as one numbered file per frame beside the output path (`name_000.png`, `name_001.png`, ..., zero-padded to fit the frame count).
+#[allow(clippy::too_many_arguments)]
 pub async fn export_image_sequence(
 	executor: &DynamicExecutor,
+	output: &OutputHandle,
 	wgpu_executor: &wgpu_executor::WgpuExecutor,
 	output_path: PathBuf,
 	settings: ExportSettings,
@@ -378,7 +383,7 @@ pub async fn export_image_sequence(
 		// Print progress to stderr (overwrites previous line)
 		eprint!("\rRendering frame {}/{}...", frame_idx + 1, animation.frames);
 
-		let frame = render_frame(executor, wgpu_executor, settings, animation_time, runtime, spawner).await?;
+		let frame = render_frame(executor, output, wgpu_executor, settings, animation_time, runtime, spawner).await?;
 		let frame_path = directory.join(format!("{stem}_{frame_idx:0digits$}.{extension}"));
 		write_frame(&frame_path, settings, frame)?;
 	}
@@ -390,8 +395,14 @@ pub async fn export_image_sequence(
 	Ok(())
 }
 
-pub async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
-	let execute = || executor.execute(render_config.into_context_with_generations(runtime.snapshot()));
+pub async fn execute_until_settled(
+	executor: &DynamicExecutor,
+	output: &OutputHandle,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
+	render_config: RenderConfig,
+) -> Result<TaggedValue, Box<dyn Error>> {
+	let execute = || executor.execute(output, render_config.into_context_with_generations(runtime.snapshot()));
 	let mut frame = execute()?;
 	while spawner.join().await {
 		frame = execute()?;
