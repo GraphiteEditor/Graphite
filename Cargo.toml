@@ -215,7 +215,8 @@ url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
 # Linebender ecosystem (BEGIN)
 kurbo = { version = "0.13", features = ["serde"] }
-vello_gpu = { version = "0.3", default-features = false, features = ["wgpu", "full_image_support"] }
+vello_gpu = { version = "0.3", default-features = false, features = ["wgpu", "full_image_support", "text"] }
+glifo = { version = "0.4", default-features = false, features = ["std"] }
 usvg = "0.49"
 simplecss = "0.2"
 parley = { version = "0.12", default-features = false, features = ["std"] }
@@ -318,3 +319,4 @@ fastnoise-lite = { git = "https://github.com/Keavon/FastNoiseLite.git", rev = "2
 vello_gpu = { git = "https://github.com/Keavon/vello.git", rev = "9d032e642c1480c92e45889524db69a7b6a3dc07" }
 vello_common = { git = "https://github.com/Keavon/vello.git", rev = "9d032e642c1480c92e45889524db69a7b6a3dc07" }
 vello_gpu_shaders = { git = "https://github.com/Keavon/vello.git", rev = "9d032e642c1480c92e45889524db69a7b6a3dc07" }
+glifo = { git = "https://github.com/Keavon/vello.git", rev = "9d032e642c1480c92e45889524db69a7b6a3dc07" }

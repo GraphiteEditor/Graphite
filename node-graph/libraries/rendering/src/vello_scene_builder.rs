@@ -44,6 +44,30 @@ pub struct VelloSceneBuilder<'a> {
 	effects_renderer: Option<&'a mut dyn EffectsRenderer>,
 	/// The coverage the next effects group drawn outputs in place of its result, for an SVG map of it.
 	effect_capture: Option<EffectCapture>,
+	/// Caches the outlines of glyph runs drawn natively. A scene without it can't draw glyph runs.
+	glyph_resources: Option<&'a dyn GlyphResources>,
+}
+
+/// Lends out the renderer's resources that glyph runs cache their outlines in.
+pub trait GlyphResources: Sync {
+	/// Calls `draw` with the resources, held exclusively until it returns.
+	fn with_resources(&self, draw: &mut dyn FnMut(&mut vello_gpu::Resources));
+}
+
+/// The font and styling shared by the glyphs of one glyph run.
+pub struct GlyphRunStyle<'b> {
+	pub font: &'b peniko::FontData,
+	pub font_size: f32,
+	/// The variation coordinates of a variable font, empty for its default instance.
+	pub normalized_coords: &'b [i16],
+	/// Places each glyph's outline relative to its origin, like a skew for faux italics.
+	pub glyph_transform: Affine,
+}
+
+/// Whether a glyph run's outlines are filled or stroked.
+pub enum GlyphPaintMode<'b> {
+	Fill,
+	Stroke(&'b Stroke),
 }
 
 /// Renders the content of a scene's effects groups offscreen and carries out their effects, while the scene is drawn.
@@ -148,6 +172,7 @@ impl<'a> VelloSceneBuilder<'a> {
 			pushed: Vec::new(),
 			effects_renderer: None,
 			effect_capture: None,
+			glyph_resources: None,
 		}
 	}
 
@@ -155,6 +180,17 @@ impl<'a> VelloSceneBuilder<'a> {
 	pub fn with_effects_renderer(mut self, renderer: &'a mut dyn EffectsRenderer) -> Self {
 		self.effects_renderer = Some(renderer);
 		self
+	}
+
+	/// Draws glyph runs natively, caching their outlines in `resources`.
+	pub fn with_glyph_resources(mut self, resources: &'a dyn GlyphResources) -> Self {
+		self.glyph_resources = Some(resources);
+		self
+	}
+
+	/// Whether [`Self::draw_glyphs`] can draw, which needs glyph resources.
+	pub fn can_draw_glyphs(&self) -> bool {
+		self.glyph_resources.is_some()
 	}
 
 	/// Has the next effects group drawn output the coverage `capture` names in place of its result, leaving the groups drawn within it as they are.
@@ -235,6 +271,42 @@ impl<'a> VelloSceneBuilder<'a> {
 		self.scene.set_paint(paint);
 		self.scene.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
 		self.scene.stroke_path(&finite_path(&shape.to_path(SHAPE_TOLERANCE)));
+	}
+
+	/// Draws a run of glyphs positioned in the space of `transform`, with the brush placed by `transform * brush_transform`.
+	/// Draws nothing without glyph resources, which [`Self::can_draw_glyphs`] tells.
+	pub fn draw_glyphs<'b>(&mut self, style: &GlyphRunStyle, mode: GlyphPaintMode, transform: Affine, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>, glyphs: &[glifo::Glyph]) {
+		let Some(glyph_resources) = self.glyph_resources else {
+			log::error!("A scene without glyph resources was asked to draw glyphs");
+			return;
+		};
+		let Some((paint, paint_to_brush)) = self.paint(brush.into()) else { return };
+
+		self.scene.set_transform(self.view * transform);
+		self.scene.set_fill_rule(Fill::NonZero);
+		self.scene.set_paint(paint);
+		self.scene.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
+		if let GlyphPaintMode::Stroke(stroke) = mode {
+			self.scene.set_stroke(stroke.clone());
+		}
+
+		let scene = &mut self.scene;
+		glyph_resources.with_resources(&mut |resources| {
+			// Unhinted, so outlines keep their shapes at every zoom like the rest of the artwork
+			let glyph_run = (scene.glyph_run(resources, style.font))
+				.font_size(style.font_size)
+				.normalized_coords(style.normalized_coords)
+				.glyph_transform(style.glyph_transform)
+				.hint(false);
+
+			let drawn = match mode {
+				GlyphPaintMode::Fill => glyph_run.fill_glyphs(glyphs.iter().copied()),
+				GlyphPaintMode::Stroke(_) => glyph_run.stroke_glyphs(glyphs.iter().copied()),
+			};
+			if let Err(error) = drawn {
+				log::warn!("Some glyphs failed to draw: {error:?}");
+			}
+		});
 	}
 
 	/// Fills the whole scene, which is how content without bounds (like a color or gradient layer) paints, with the brush placed by `brush_transform` in the space of the drawn content.

@@ -5,7 +5,7 @@ use glam::{DAffine2, UVec2};
 use graphic_types::effects::EffectCapture;
 use graphic_types::raster_types::{CPU, Image, Raster, WeakCPU};
 use graphic_types::{Adjustment, Effects};
-use rendering::vello_scene_builder::{EffectsRenderer, GeneratorTile, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
+use rendering::vello_scene_builder::{EffectsRenderer, GeneratorTile, GlyphResources, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 use vello_gpu::kurbo::Affine;
@@ -38,7 +38,7 @@ pub const MAX_LAYER_RENDER_SIZE: u32 = 4096;
 
 /// Vello GPU's renderer and GPU resources, shared by every [`VelloCanvas`] so their memory and pipelines exist once.
 pub(crate) struct VelloRenderer {
-	/// Locked only while a scene is rendered and submitted, so one canvas drawing its scene on the CPU doesn't hold up another's render.
+	/// Locked only while a scene is rendered and submitted or a glyph run is drawn, so one canvas drawing its scene on the CPU doesn't hold up another's render.
 	gpu: Mutex<(Renderer, Resources)>,
 	alpha_conversion: AlphaConversion,
 	effect_passes: EffectPasses,
@@ -258,7 +258,10 @@ impl RenderContext<'_> {
 		// Draw the scene for this render's size and placement, which renders its effects groups as they're drawn
 		let mut scene = self.canvas.spare_scenes.pop().unwrap_or_else(|| vello_gpu::Scene::new(width, height));
 		scene.reset_and_resize(width, height);
-		let mut builder = VelloSceneBuilder::from_vello(scene, view, max_texture_size).with_effects_renderer(self);
+		let glyph_resources: &VelloRenderer = self.renderer;
+		let mut builder = VelloSceneBuilder::from_vello(scene, view, max_texture_size)
+			.with_glyph_resources(glyph_resources)
+			.with_effects_renderer(self);
 		draw(&mut builder);
 		let (scene, images) = builder.finish();
 
@@ -353,6 +356,14 @@ impl RenderContext<'_> {
 		}
 
 		rendered
+	}
+}
+
+impl GlyphResources for VelloRenderer {
+	fn with_resources(&self, draw: &mut dyn FnMut(&mut Resources)) {
+		// Glyph runs are drawn without the atlas cache, so they only touch the CPU-side outline caches the lock guards
+		let mut gpu = self.gpu.lock().unwrap_or_else(PoisonError::into_inner);
+		draw(&mut gpu.1);
 	}
 }
 
