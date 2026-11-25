@@ -1,5 +1,5 @@
 use core_types::list::{ATTR_APPEARANCE, List};
-use core_types::{ATTR_TRANSFORM, Color};
+use core_types::{ATTR_OPACITY, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::{Appearance, Cover, Graphic};
 use svg_convert::{Error, Options, convert};
@@ -28,6 +28,16 @@ fn a_group_becomes_an_item_carrying_its_transform() -> Result<(), Error> {
 
 	assert!(matches!(content.element(0), Some(Graphic::GraphicList(children)) if children.len() == 1));
 	assert_eq!(content.attribute::<DAffine2>(ATTR_TRANSFORM, 0), Some(&DAffine2::from_translation(DVec2::new(3., 4.))));
+	Ok(())
+}
+
+#[test]
+fn a_group_item_carries_its_opacity_only_when_below_one() -> Result<(), Error> {
+	let half = converted(r#"<g opacity="0.5"><rect width="4" height="4"/></g>"#)?;
+	let full = converted(r#"<g opacity="1"><rect width="4" height="4"/></g>"#)?;
+
+	assert_eq!(half.attribute::<f64>(ATTR_OPACITY, 0), Some(&0.5));
+	assert_eq!(full.attribute::<f64>(ATTR_OPACITY, 0), None);
 	Ok(())
 }
 
