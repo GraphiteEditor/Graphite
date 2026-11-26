@@ -22,13 +22,35 @@ impl MapColor for ColorOverlay {
 	}
 }
 
-/// The color with `paint` mixed over it by the blend mode, as much as the paint's alpha times `opacity` (from 0 to 1), keeping the color's own alpha.
+/// The color with `paint` mixed over it by the blend mode in gamma, as much as the paint's alpha times `opacity` (from 0 to 1), keeping the color's own alpha.
 pub fn overlay_paint(color: Color, paint: Color, blend_mode: BlendMode, opacity: f32) -> Color {
-	let overlay = apply_blend_mode(paint, color, blend_mode);
-	let amount = opacity * paint.a();
-	let mix = |under: f32, over: f32| under + (over - under) * amount;
+	let gamma = |color: Color| {
+		let [red, green, blue, _] = color.to_gamma_srgb_channels();
+		[red, green, blue]
+	};
+	let (under, over) = (gamma(color), gamma(paint));
+	let blended = blend_gamma(under, over, blend_mode);
 
-	Color::from_rgbaf32_unchecked(mix(color.r(), overlay.r()), mix(color.g(), overlay.g()), mix(color.b(), overlay.b()), color.a())
+	let amount = opacity * paint.a();
+	let [red, green, blue] = std::array::from_fn(|channel| under[channel] + (blended[channel] - under[channel]) * amount);
+	Color::from_gamma_srgb_channels(red, green, blue, color.a())
+}
+
+/// The blend mode's mix of straight gamma-encoded `backdrop` and `paint` colors.
+pub fn blend_gamma(backdrop: [f32; 3], paint: [f32; 3], blend_mode: BlendMode) -> [f32; 3] {
+	match blend_mode {
+		// The component modes encode the colors they're given themselves
+		BlendMode::Hue | BlendMode::Saturation | BlendMode::Color | BlendMode::Luminosity => {
+			let color = |[red, green, blue]: [f32; 3]| Color::from_gamma_srgb_channels(red, green, blue, 1.);
+			let [red, green, blue, _] = apply_blend_mode(color(paint), color(backdrop), blend_mode).to_gamma_srgb_channels();
+			[red, green, blue]
+		}
+		_ => {
+			let color = |[red, green, blue]: [f32; 3]| Color::from_rgbaf32_unchecked(red, green, blue, 1.);
+			let blended = apply_blend_mode(color(paint), color(backdrop), blend_mode);
+			[blended.r(), blended.g(), blended.b()]
+		}
+	}
 }
 
 /// Every blend mode with the name the shader gives its code.

@@ -7,6 +7,7 @@ pub mod color_lookup_table;
 pub mod effect_kernels;
 pub mod generators;
 mod kernel;
+pub mod layer_blending;
 pub mod mandelbrot;
 pub mod raster_effects;
 pub mod value_effects;

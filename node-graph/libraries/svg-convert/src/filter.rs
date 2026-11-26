@@ -1,7 +1,7 @@
 use crate::color;
-use core_types::ATTR_EFFECTS;
 use core_types::list::{Item, List};
 use core_types::transfer_curve::TransferCurve;
+use core_types::{ATTR_EFFECTS, BlendMode};
 use graphic_types::{EffectOperation, Effects, Graphic};
 use usvg::filter::{ColorInterpolation, Input, Kind, Primitive};
 
@@ -38,6 +38,8 @@ fn operation(primitives: &[Primitive]) -> Option<EffectOperation> {
 			let tent = standard_deviation(shadow.std_dev_x().get(), shadow.std_dev_y().get()) * 6_f64.sqrt();
 			Some(EffectOperation::DropShadow {
 				color: color(shadow.color(), shadow.opacity().get()),
+				// SVG composites a drop shadow beneath its source normally
+				blend_mode: BlendMode::Normal,
 				angle: dy.atan2(-dx).to_degrees(),
 				distance: dx.hypot(dy),
 				spread: 0.,

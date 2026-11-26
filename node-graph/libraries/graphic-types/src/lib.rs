@@ -1,6 +1,7 @@
 pub mod adjustment;
 pub mod appearance;
 pub mod artboard;
+pub mod effect_layers;
 pub mod effects;
 pub mod generator;
 pub mod graphic;

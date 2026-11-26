@@ -1,4 +1,10 @@
 //! Migrations of the nodes in `blending_nodes`.
 
+mod drop_shadow_v1;
+mod inner_glow_v1;
+mod inner_shadow_v1;
+mod outer_glow_v1;
+mod outline_v1;
 mod paint_overlay_from_color_overlay;
 mod renames;
+mod satin_v1;

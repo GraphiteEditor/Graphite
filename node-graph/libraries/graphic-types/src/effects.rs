@@ -135,6 +135,12 @@ pub struct EffectCapture {
 	pub plane: usize,
 }
 
+impl EffectCapture {
+	/// Not an effect's coverage but the share of each pixel within the content that its fill lets what lies beneath show through,
+	/// which the parts of interior pieces blending with what lies beneath are cut to (see [`crate::effect_layers::PiecePlace::Through`]).
+	pub const THROUGH_MASK: Self = Self { index: usize::MAX, plane: 0 };
+}
+
 /// The offset a shadow cast by light from `angle` (in degrees counterclockwise from the right) falls at `distance` from the content, in the document's y-down space.
 pub fn shadow_offset(angle: f64, distance: f64) -> DVec2 {
 	let angle = angle.to_radians();
@@ -567,6 +573,8 @@ pub enum EffectOperation {
 	DropShadow {
 		/// With the shadow's opacity.
 		color: Color,
+		/// How the shadow mixes with what lies beneath the content.
+		blend_mode: BlendMode,
 		/// The direction the light comes from, in degrees counterclockwise from the right.
 		angle: f64,
 		distance: f64,
@@ -579,6 +587,8 @@ pub enum EffectOperation {
 	},
 	InnerShadow {
 		color: Color,
+		/// How the shadow mixes with the content and what shows through it.
+		blend_mode: BlendMode,
 		angle: f64,
 		distance: f64,
 		/// The percentage of the size that hardens into a grow inward from the edges rather than softening.
@@ -589,6 +599,8 @@ pub enum EffectOperation {
 	OuterGlow {
 		/// A solid color with the glow's opacity, or a gradient running from the content's edge outward.
 		color: Graphic,
+		/// How the glow mixes with what lies beneath the content.
+		blend_mode: BlendMode,
 		technique: GlowTechnique,
 		spread: f64,
 		size: f64,
@@ -599,6 +611,8 @@ pub enum EffectOperation {
 	InnerGlow {
 		/// A solid color with the glow's opacity, or a gradient running from the content's edge inward (or from its center outward).
 		color: Graphic,
+		/// How the glow mixes with the content and what shows through it.
+		blend_mode: BlendMode,
 		technique: GlowTechnique,
 		source: GlowSource,
 		/// The percentage of the size that hardens into a grow inward from the edges rather than softening.
@@ -609,6 +623,8 @@ pub enum EffectOperation {
 	},
 	Satin {
 		color: Color,
+		/// How the shading mixes with the content and what shows through it.
+		blend_mode: BlendMode,
 		/// The direction each of the two casts of the silhouette is moved along, one each way, in degrees counterclockwise from the right.
 		angle: f64,
 		distance: f64,
@@ -618,6 +634,8 @@ pub enum EffectOperation {
 	},
 	Outline {
 		color: Color,
+		/// How the outline mixes with what lies beneath it, or with the content for the part inside its edge.
+		blend_mode: BlendMode,
 		weight: f64,
 		align: StrokeAlign,
 	},
@@ -637,11 +655,11 @@ pub enum EffectOperation {
 		altitude: f64,
 		/// With the highlight's opacity.
 		highlight_color: Color,
-		/// How the highlight mixes with the content's colors.
+		/// How the highlight mixes with the colors beneath it.
 		highlight_blend_mode: BlendMode,
 		/// With the shadow's opacity.
 		shadow_color: Color,
-		/// How the shadow mixes with the content's colors.
+		/// How the shadow mixes with the colors beneath it.
 		shadow_blend_mode: BlendMode,
 	},
 	/// Paints over the content with a paint other than a solid color, since a solid one decodes into the color overlay adjustment instead.
@@ -687,6 +705,7 @@ impl EffectOperation {
 				highlight_color, shadow_color, size, ..
 			} => (highlight_color.a() <= 0. && shadow_color.a() <= 0.) || *size <= 0.,
 			Self::PaintOverlay { opacity, .. } => *opacity <= 0.,
+			Self::Adjustment(Adjustment::ColorOverlay { color, opacity, .. }) => color.a() <= 0. || *opacity <= 0.,
 			Self::Adjustment(_) => false,
 		}
 	}
@@ -761,6 +780,7 @@ impl EffectOperation {
 			},
 			EffectKind::DropShadow => Self::DropShadow {
 				color: Color::TRANSPARENT,
+				blend_mode: BlendMode::default(),
 				angle: 0.,
 				distance: 0.,
 				spread: 0.,
@@ -770,6 +790,7 @@ impl EffectOperation {
 			},
 			EffectKind::InnerShadow => Self::InnerShadow {
 				color: Color::TRANSPARENT,
+				blend_mode: BlendMode::default(),
 				angle: 0.,
 				distance: 0.,
 				choke: 0.,
@@ -778,6 +799,7 @@ impl EffectOperation {
 			},
 			EffectKind::OuterGlow => Self::OuterGlow {
 				color: Graphic::default(),
+				blend_mode: BlendMode::default(),
 				technique: GlowTechnique::default(),
 				spread: 0.,
 				size: 0.,
@@ -786,6 +808,7 @@ impl EffectOperation {
 			},
 			EffectKind::InnerGlow => Self::InnerGlow {
 				color: Graphic::default(),
+				blend_mode: BlendMode::default(),
 				technique: GlowTechnique::default(),
 				source: GlowSource::default(),
 				choke: 0.,
@@ -795,6 +818,7 @@ impl EffectOperation {
 			},
 			EffectKind::Satin => Self::Satin {
 				color: Color::TRANSPARENT,
+				blend_mode: BlendMode::default(),
 				angle: 0.,
 				distance: 0.,
 				size: 0.,
@@ -803,6 +827,7 @@ impl EffectOperation {
 			},
 			EffectKind::Outline => Self::Outline {
 				color: Color::TRANSPARENT,
+				blend_mode: BlendMode::default(),
 				weight: 0.,
 				align: StrokeAlign::default(),
 			},
@@ -877,6 +902,7 @@ impl EffectOperation {
 			}
 			Self::DropShadow {
 				color,
+				blend_mode,
 				angle,
 				distance,
 				spread,
@@ -885,6 +911,7 @@ impl EffectOperation {
 				knockout,
 			} => {
 				visitor.parameter("color", color, shadow_color);
+				visitor.parameter("blend_mode", blend_mode, BlendMode::Multiply);
 				visitor.parameter("angle", angle, 120.);
 				visitor.parameter("distance", distance, 5.);
 				visitor.parameter("spread", spread, 0.);
@@ -894,6 +921,7 @@ impl EffectOperation {
 			}
 			Self::InnerShadow {
 				color,
+				blend_mode,
 				angle,
 				distance,
 				choke,
@@ -901,6 +929,7 @@ impl EffectOperation {
 				contour,
 			} => {
 				visitor.parameter("color", color, shadow_color);
+				visitor.parameter("blend_mode", blend_mode, BlendMode::Multiply);
 				visitor.parameter("angle", angle, 120.);
 				visitor.parameter("distance", distance, 5.);
 				visitor.parameter("choke", choke, 0.);
@@ -909,6 +938,7 @@ impl EffectOperation {
 			}
 			Self::OuterGlow {
 				color,
+				blend_mode,
 				technique,
 				spread,
 				size,
@@ -916,6 +946,7 @@ impl EffectOperation {
 				contour,
 			} => {
 				visitor.parameter("color", color, Graphic::from(glow_color));
+				visitor.parameter("blend_mode", blend_mode, BlendMode::Screen);
 				visitor.parameter("technique", technique, GlowTechnique::default());
 				visitor.parameter("spread", spread, 0.);
 				visitor.parameter("size", size, 5.);
@@ -924,6 +955,7 @@ impl EffectOperation {
 			}
 			Self::InnerGlow {
 				color,
+				blend_mode,
 				technique,
 				source,
 				choke,
@@ -932,6 +964,7 @@ impl EffectOperation {
 				contour,
 			} => {
 				visitor.parameter("color", color, Graphic::from(glow_color));
+				visitor.parameter("blend_mode", blend_mode, BlendMode::Screen);
 				visitor.parameter("technique", technique, GlowTechnique::default());
 				visitor.parameter("source", source, GlowSource::default());
 				visitor.parameter("choke", choke, 0.);
@@ -941,6 +974,7 @@ impl EffectOperation {
 			}
 			Self::Satin {
 				color,
+				blend_mode,
 				angle,
 				distance,
 				size,
@@ -948,14 +982,16 @@ impl EffectOperation {
 				contour,
 			} => {
 				visitor.parameter("color", color, Color::from(SRGBA8::new(0, 0, 0, 0x80)));
+				visitor.parameter("blend_mode", blend_mode, BlendMode::Multiply);
 				visitor.parameter("angle", angle, 19.);
 				visitor.parameter("distance", distance, 11.);
 				visitor.parameter("size", size, 14.);
 				visitor.parameter("invert", invert, true);
 				visitor.parameter("contour", contour, TransferCurve::default());
 			}
-			Self::Outline { color, weight, align } => {
+			Self::Outline { color, blend_mode, weight, align } => {
 				visitor.parameter("color", color, Color::BLACK);
+				visitor.parameter("blend_mode", blend_mode, BlendMode::Normal);
 				visitor.parameter("weight", weight, 3.);
 				visitor.parameter("align", align, StrokeAlign::Outside);
 			}
@@ -1012,6 +1048,7 @@ mod tests {
 			EffectOperation::default_for(EffectKind::DropShadow),
 			EffectOperation::InnerShadow {
 				color: Color::RED,
+				blend_mode: BlendMode::Normal,
 				angle: 30.,
 				distance: 3.,
 				choke: 25.,
@@ -1020,6 +1057,7 @@ mod tests {
 			},
 			EffectOperation::OuterGlow {
 				color: Graphic::from(Color::BLUE),
+				blend_mode: BlendMode::Lighten,
 				technique: GlowTechnique::Precise,
 				spread: 10.,
 				size: 8.,
@@ -1028,6 +1066,7 @@ mod tests {
 			},
 			EffectOperation::InnerGlow {
 				color: Graphic::from(Color::GREEN),
+				blend_mode: BlendMode::Screen,
 				technique: GlowTechnique::Precise,
 				source: GlowSource::Center,
 				choke: 20.,
@@ -1037,6 +1076,7 @@ mod tests {
 			},
 			EffectOperation::Satin {
 				color: Color::BLACK,
+				blend_mode: BlendMode::ColorBurn,
 				angle: 45.,
 				distance: 6.,
 				size: 2.,
@@ -1045,6 +1085,7 @@ mod tests {
 			},
 			EffectOperation::Outline {
 				color: Color::RED,
+				blend_mode: BlendMode::Difference,
 				weight: 7.,
 				align: StrokeAlign::Center,
 			},
@@ -1107,6 +1148,7 @@ mod tests {
 	fn lengths_that_arent_finite_decode_as_zero() {
 		let row = Effect::new(&EffectOperation::DropShadow {
 			color: Color::BLACK,
+			blend_mode: BlendMode::Multiply,
 			angle: 90.,
 			distance: f64::NAN,
 			spread: 3.,

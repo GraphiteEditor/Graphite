@@ -4,6 +4,7 @@
 //! `WGPU_BACKEND` takes `dx12`, `vulkan`, or `gl`, `WGPU_DX12_COMPILER` takes `fxc` or `dxc`, and `WGPU_DEBUG=0` builds shaders as a release build does.
 
 use crate::WgpuExecutor;
+use core_types::blending::BlendMode;
 use glam::{DAffine2, UVec2};
 use rendering::vello_scene_builder::VelloSceneBuilder;
 use vello_gpu::kurbo::{Affine, BezPath, Line, ParamCurve, PathSeg, Point, Rect, Stroke, Vec2};
@@ -359,6 +360,39 @@ fn render_square_with_effects(effects: Vec<graphic_types::EffectOperation>, fill
 
 /// Like [`render_square_with_effects`], carrying out the effects in an `effect_space` placed in the document.
 fn render_square_with_effects_in(effects: Vec<graphic_types::EffectOperation>, effect_space: DAffine2, fill: f32, min: f64, max: f64, size: UVec2) -> Option<Vec<[u8; 4]>> {
+	render_square_over_backdrop_in(effects, effect_space, fill, 1., core_types::blending::BlendMode::Normal, None, Color::WHITE, min, max, size)
+}
+
+/// Renders a square of the `content` color from (`min`, `min`) to (`max`, `max`) through `effects` with `fill`, `opacity`, and `blend_mode`, over a `backdrop` color filling the render if there is one.
+#[expect(clippy::too_many_arguments)]
+fn render_square_over_backdrop(
+	effects: Vec<graphic_types::EffectOperation>,
+	fill: f32,
+	opacity: f32,
+	blend_mode: core_types::blending::BlendMode,
+	backdrop: Option<Color>,
+	content: Color,
+	min: f64,
+	max: f64,
+	size: UVec2,
+) -> Option<Vec<[u8; 4]>> {
+	render_square_over_backdrop_in(effects, DAffine2::IDENTITY, fill, opacity, blend_mode, backdrop, content, min, max, size)
+}
+
+/// Like [`render_square_over_backdrop`], carrying out the effects in an `effect_space` placed in the document.
+#[expect(clippy::too_many_arguments)]
+fn render_square_over_backdrop_in(
+	effects: Vec<graphic_types::EffectOperation>,
+	effect_space: DAffine2,
+	fill: f32,
+	opacity: f32,
+	blend_mode: core_types::blending::BlendMode,
+	backdrop: Option<Color>,
+	content: Color,
+	min: f64,
+	max: f64,
+	size: UVec2,
+) -> Option<Vec<[u8; 4]>> {
 	use rendering::{Render, RenderParams};
 
 	let square = Rect::new(min, min, max, max);
@@ -379,8 +413,11 @@ fn render_square_with_effects_in(effects: Vec<graphic_types::EffectOperation>, e
 
 	let effects = graphic_types::Effects::from_operations(effects);
 	render(size, |scene| {
-		scene.draw_effects(&effects, fill, Some(square), effect_space, &mut draw_paint, &mut |scene| {
-			scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
+		if let Some(backdrop) = backdrop {
+			scene.fill(Fill::NonZero, Affine::IDENTITY, backdrop, None, &Rect::new(0., 0., size.x as f64, size.y as f64));
+		}
+		scene.draw_effects(&effects, fill, opacity, blend_mode, true, Some(square), effect_space, &mut draw_paint, &mut |scene| {
+			scene.fill(Fill::NonZero, Affine::IDENTITY, content, None, &square)
 		});
 	})
 }
@@ -389,6 +426,7 @@ fn render_square_with_effects_in(effects: Vec<graphic_types::EffectOperation>, e
 fn drop_shadow(color: core_types::Color, offset: glam::DVec2, size: f64, spread: f64) -> graphic_types::EffectOperation {
 	graphic_types::EffectOperation::DropShadow {
 		color,
+		blend_mode: core_types::blending::BlendMode::Normal,
 		angle: offset.y.atan2(-offset.x).to_degrees(),
 		distance: offset.length(),
 		spread,
@@ -495,6 +533,7 @@ fn shadows_and_glows_fall_where_they_should() {
 	// An inner shadow darkens the content's top left edges from inside and stays within it
 	let inner_shadow = EffectOperation::InnerShadow {
 		color: black,
+		blend_mode: BlendMode::Normal,
 		angle: 135.,
 		distance: 6. * std::f64::consts::SQRT_2,
 		choke: 0.,
@@ -512,6 +551,7 @@ fn shadows_and_glows_fall_where_they_should() {
 	// A glow grown by its whole size surrounds the content evenly
 	let glow = EffectOperation::OuterGlow {
 		color: GraphicColor::from_rgbaf32_unchecked(1., 0., 0., 1.).into(),
+		blend_mode: BlendMode::Normal,
 		technique: Default::default(),
 		spread: 100.,
 		size: 5.,
@@ -541,6 +581,7 @@ fn inner_glows_satins_outlines_and_bevels_fall_where_they_should() {
 	// A fully choked inner glow from the edges covers a band inside them, and one from the center covers the rest
 	let inner_glow = |source| EffectOperation::InnerGlow {
 		color: black.into(),
+		blend_mode: BlendMode::Normal,
 		technique: GlowTechnique::Softer,
 		source,
 		choke: 100.,
@@ -559,6 +600,7 @@ fn inner_glows_satins_outlines_and_bevels_fall_where_they_should() {
 	// Satin shades where the two casts of the silhouette disagree, which for a horizontal offset is a band along each side
 	let satin = EffectOperation::Satin {
 		color: black,
+		blend_mode: BlendMode::Normal,
 		angle: 180.,
 		distance: 10.,
 		size: 0.,
@@ -571,7 +613,12 @@ fn inner_glows_satins_outlines_and_bevels_fall_where_they_should() {
 	assert_eq!(pixel(&pixels, size, 75, 55), [0, 0, 0, 255], "the right band");
 
 	// An outline outside the edge rounds the corners it grows around, and one inside stays within the content
-	let outline = |align| EffectOperation::Outline { color: black, weight: 5., align };
+	let outline = |align| EffectOperation::Outline {
+		color: black,
+		blend_mode: BlendMode::Normal,
+		weight: 5.,
+		align,
+	};
 	let Some(pixels) = render_square(outline(StrokeAlign::Outside)) else { return };
 	assert_eq!(pixel(&pixels, size, 26, 55), [0, 0, 0, 255], "within the weight of the edge");
 	assert_eq!(pixel(&pixels, size, 23, 55)[3], clear, "past the weight");
@@ -675,6 +722,261 @@ fn later_shadows_stack_over_earlier_ones_beneath_the_content() {
 }
 
 #[test]
+fn effects_blend_by_their_modes_onto_what_lies_beneath() {
+	use core_types::Color as GraphicColor;
+	use glam::DVec2;
+	use graphic_types::EffectOperation;
+
+	let size = UVec2::new(128, 128);
+	let (blue, green) = (GraphicColor::from_rgbaf32_unchecked(0., 0., 1., 1.), GraphicColor::from_rgbaf32_unchecked(0., 1., 0., 1.));
+	let red = Color::from_rgb8(255, 0, 0);
+	let close = |actual: [u8; 4], expected: [u8; 4]| actual.iter().zip(expected).all(|(&actual, expected)| actual.abs_diff(expected) <= 2);
+
+	// A blue shadow multiplying a red backdrop leaves black where it falls past the content, which still covers the backdrop
+	let mut shadow = drop_shadow(blue, DVec2::splat(10.), 0., 0.);
+	if let EffectOperation::DropShadow { blend_mode, .. } = &mut shadow {
+		*blend_mode = BlendMode::Multiply;
+	}
+	let render = |effects: Vec<EffectOperation>, opacity: f32, blend_mode: BlendMode| render_square_over_backdrop(effects, 1., opacity, blend_mode, Some(red), Color::WHITE, 30., 80., size);
+	let Some(pixels) = render(vec![shadow.clone()], 1., BlendMode::Normal) else { return };
+	assert!(
+		close(pixel(&pixels, size, 85, 85), [0, 0, 0, 255]),
+		"the shadow multiplies the backdrop: {:?}",
+		pixel(&pixels, size, 85, 85)
+	);
+	assert_eq!(pixel(&pixels, size, 50, 50), [255, 255, 255, 255], "the content covers it");
+	assert_eq!(pixel(&pixels, size, 20, 20), [255, 0, 0, 255], "the backdrop shows elsewhere");
+
+	// The item's opacity fades the shadow before it blends, and its blend mode acts on the content alone
+	let Some(pixels) = render(vec![shadow.clone()], 0.5, BlendMode::Normal) else { return };
+	assert!(
+		close(pixel(&pixels, size, 85, 85), [128, 0, 0, 255]),
+		"a faded multiply halves the red: {:?}",
+		pixel(&pixels, size, 85, 85)
+	);
+	let Some(pixels) = render(vec![shadow], 1., BlendMode::Multiply) else { return };
+	assert_eq!(pixel(&pixels, size, 50, 50), [255, 0, 0, 255], "white content multiplying leaves the red backdrop");
+	assert!(close(pixel(&pixels, size, 85, 85), [0, 0, 0, 255]), "the shadow keeps its own mode: {:?}", pixel(&pixels, size, 85, 85));
+
+	// An inner shadow multiplying within the content tints it, and at no fill tints the backdrop seen through it
+	let inner_shadow = EffectOperation::InnerShadow {
+		color: green,
+		blend_mode: BlendMode::Multiply,
+		angle: 180.,
+		distance: 10.,
+		choke: 0.,
+		size: 0.,
+		contour: Default::default(),
+	};
+	let Some(pixels) = render(vec![inner_shadow.clone()], 1., BlendMode::Normal) else { return };
+	assert!(close(pixel(&pixels, size, 33, 55), [0, 255, 0, 255]), "green multiplies white: {:?}", pixel(&pixels, size, 33, 55));
+	let Some(pixels) = render(vec![inner_shadow.clone()], 1., BlendMode::Multiply) else { return };
+	assert!(
+		close(pixel(&pixels, size, 33, 55), [0, 0, 0, 255]),
+		"over multiplying content, green multiplies the red it leaves: {:?}",
+		pixel(&pixels, size, 33, 55)
+	);
+	let Some(pixels) = render_square_over_backdrop(vec![inner_shadow], 0., 1., BlendMode::Normal, Some(red), Color::WHITE, 30., 80., size) else {
+		return;
+	};
+	assert!(close(pixel(&pixels, size, 33, 55), [0, 0, 0, 255]), "green multiplies red: {:?}", pixel(&pixels, size, 33, 55));
+	assert_eq!(pixel(&pixels, size, 55, 55), [255, 0, 0, 255], "the faded content shows the backdrop");
+}
+
+#[test]
+fn translucent_content_knocks_out_a_blended_shadow_through_its_fill_and_opacity() {
+	use glam::DVec2;
+	use graphic_types::EffectOperation;
+
+	let size = UVec2::new(128, 128);
+	let backdrop = Color::from_rgb8(51, 153, 255);
+	let content = Color::from_rgba8(255, 128, 0, 128);
+	let mut shadow = drop_shadow(core_types::Color::RED, DVec2::splat(10.), 0., 0.);
+	if let EffectOperation::DropShadow { blend_mode, .. } = &mut shadow {
+		*blend_mode = BlendMode::Multiply;
+	}
+	let Some(pixels) = render_square_over_backdrop(vec![shadow], 0.5, 0.5, BlendMode::Normal, Some(backdrop), content, 30., 80., size) else {
+		return;
+	};
+	let close = |actual: [u8; 4], expected: [f32; 3]| actual.iter().zip(expected).all(|(&actual, expected)| (actual as f32 - expected * 255.).abs() <= 2.5);
+	let [red, green, blue] = [0.2, 0.6, 1.];
+
+	// Past the content, the red shadow cast from its half alpha, at half opacity, multiplies away a quarter of the backdrop's green and blue
+	let alone = pixel(&pixels, size, 85, 85);
+	assert!(close(alone, [red, green * 0.75, blue * 0.75]), "{alone:?}");
+
+	// Beneath the content, with half alpha faded by the half fill and half opacity, the shadow shows through 1 - alpha of the 1 - alpha × fill × opacity it shows through
+	let shown = 0.5 * 0.5 * (1. - 0.5) / (1. - 0.5 * 0.5 * 0.5);
+	let shaded = [red, green * (1. - shown), blue * (1. - shown)];
+	let covered = 0.5 * 0.5 * 0.5;
+	let expected = [1., 128. / 255., 0.].map(|channel| channel * covered);
+	let expected: [f32; 3] = std::array::from_fn(|channel| shaded[channel] * (1. - covered) + expected[channel]);
+	let beneath = pixel(&pixels, size, 75, 75);
+	assert!(close(beneath, expected), "{beneath:?} against {expected:?}");
+}
+
+/// A pixel's gamma-encoded channels each mixed from `from` to `to` by `amount`.
+fn mix_channels(from: [f32; 3], to: [f32; 3], amount: f32) -> [f32; 3] {
+	std::array::from_fn(|channel| from[channel] + (to[channel] - from[channel]) * amount)
+}
+
+#[test]
+fn interior_pieces_blend_within_the_contents_share_of_a_half_covered_pixel() {
+	use graphic_types::{Adjustment, EffectOperation};
+	use raster_kernels::layer_blending::blend_pixel;
+
+	let size = UVec2::new(64, 64);
+	let (backdrop, content, paint, strength) = ([0.2, 0.6, 0.9], [0.9, 0.5, 0.2], [0.3, 0.8, 0.4], 0.75);
+	let alpha = 128. / 255.;
+	let to_color = |[red, green, blue]: [f32; 3], alpha: f32| Color::from_rgba8((red * 255.).round() as u8, (green * 255.).round() as u8, (blue * 255.).round() as u8, (alpha * 255.).round() as u8);
+
+	// For PSD interop, the piece blends at full coverage onto the content mixed with the backdrop by the fill, and the content's alpha sets only its share, which the opacity then fades
+	let expected = |blend_mode, fill, opacity| {
+		let base = mix_channels(backdrop, content, fill);
+		let [red, green, blue, _] = blend_pixel(
+			paint.map(|channel| channel * strength).into_iter().chain([strength]).collect::<Vec<_>>().try_into().unwrap(),
+			[base[0], base[1], base[2], 1.],
+			blend_mode,
+		);
+		mix_channels(backdrop, mix_channels(backdrop, [red, green, blue], alpha), opacity)
+	};
+
+	// Exact at a full fill in any mode, and below it for a mode straight along the backdrop
+	let cases = [
+		(BlendMode::Multiply, 1., 1.),
+		(BlendMode::Screen, 1., 1.),
+		(BlendMode::Color, 1., 1.),
+		(BlendMode::ColorDodge, 1., 1.),
+		(BlendMode::Multiply, 1., 0.6),
+		(BlendMode::Multiply, 0.5, 1.),
+		(BlendMode::Screen, 0.5, 1.),
+		(BlendMode::HardLight, 0.5, 0.6),
+	];
+	for (blend_mode, fill, opacity) in cases {
+		let overlay = EffectOperation::Adjustment(Adjustment::ColorOverlay {
+			color: core_types::Color::from_gamma_srgb_channels(paint[0], paint[1], paint[2], 1.),
+			blend_mode,
+			opacity: strength as f64 * 100.,
+		});
+		let Some(pixels) = render_square_over_backdrop(vec![overlay], fill, opacity, BlendMode::Normal, Some(to_color(backdrop, 1.)), to_color(content, alpha), 16., 48., size) else {
+			return;
+		};
+
+		let actual = pixel(&pixels, size, 32, 32);
+		let expected = expected(blend_mode, fill, opacity);
+		let close = actual.iter().zip(expected).all(|(&actual, expected)| (actual as f32 - expected * 255.).abs() <= 3.);
+		assert!(
+			close,
+			"{blend_mode:?} at fill {fill} and opacity {opacity}: {actual:?} against {:?}",
+			expected.map(|channel| channel * 255.)
+		);
+	}
+}
+
+/// A solid paint overlay of gamma-encoded `paint` at `strength`.
+fn color_overlay(paint: [f32; 3], blend_mode: BlendMode, strength: f32) -> graphic_types::EffectOperation {
+	graphic_types::EffectOperation::Adjustment(graphic_types::Adjustment::ColorOverlay {
+		color: core_types::Color::from_gamma_srgb_channels(paint[0], paint[1], paint[2], 1.),
+		blend_mode,
+		opacity: strength as f64 * 100.,
+	})
+}
+
+/// An opaque color of gamma-encoded `channels`.
+fn opaque(channels: [f32; 3]) -> Color {
+	let [red, green, blue] = channels.map(|channel| (channel * 255.).round() as u8);
+	Color::from_rgb8(red, green, blue)
+}
+
+/// For PSD interop, what fully covering content shows: its color mixed by the `fill` with what lies `beneath` it, with each of the `pieces` blending onto it in turn.
+fn interior_over(beneath: [f32; 3], content: [f32; 3], fill: f32, pieces: &[(BlendMode, [f32; 3], f32)]) -> [f32; 3] {
+	use raster_kernels::layer_blending::blend_pixel;
+
+	pieces.iter().fold(mix_channels(beneath, content, fill), |base, &(blend_mode, paint, strength)| {
+		let paint = [paint[0] * strength, paint[1] * strength, paint[2] * strength, strength];
+		let [red, green, blue, _] = blend_pixel(paint, [base[0], base[1], base[2], 1.], blend_mode);
+		[red, green, blue]
+	})
+}
+
+#[test]
+fn interior_pieces_after_one_over_the_content_stay_over_it() {
+	let size = UVec2::new(64, 64);
+	let (backdrop, content, light, dark) = ([0.2, 0.3, 0.9], [1., 0.5, 0.], [1., 1., 0.75], [0.1, 0.6, 0.3]);
+
+	// Across a fully covered pixel at half fill, a piece in a mode that bends stays beneath the pieces after it
+	for (first, second) in [
+		(BlendMode::Overlay, BlendMode::Normal),
+		(BlendMode::Difference, BlendMode::Normal),
+		(BlendMode::Overlay, BlendMode::Multiply),
+		(BlendMode::Lighten, BlendMode::Normal),
+	] {
+		let effects = vec![color_overlay(light, first, 0.75), color_overlay(dark, second, 0.75)];
+		let Some(pixels) = render_square_over_backdrop(effects, 0.5, 1., BlendMode::Normal, Some(opaque(backdrop)), opaque(content), 16., 48., size) else {
+			return;
+		};
+
+		let expected = interior_over(backdrop, content, 0.5, &[(first, light, 0.75), (second, dark, 0.75)]);
+		let actual = pixel(&pixels, size, 32, 32);
+		let close = actual.iter().zip(expected).all(|(&actual, expected)| (actual as f32 - expected * 255.).abs() <= 3.);
+		assert!(close, "{first:?} then {second:?}: {actual:?} against {:?}", expected.map(|channel| channel * 255.));
+	}
+}
+
+#[test]
+fn the_part_through_the_fill_shows_over_what_lies_beneath_the_content_in_its_layer() {
+	use glam::DVec2;
+	use graphic_types::EffectOperation;
+
+	let size = UVec2::new(64, 64);
+	let (backdrop, content, glow) = ([0.2, 0.3, 0.9], [1., 0.5, 0.], [1., 1., 0.75]);
+	let mut shadow = drop_shadow(core_types::Color::BLACK.with_alpha(0.75), DVec2::ZERO, 0., 0.);
+	if let EffectOperation::DropShadow { knockout, .. } = &mut shadow {
+		*knockout = false;
+	}
+
+	// Content at 30% fill over a shadow it doesn't knock out, with a screen glow over the content
+	let effects = vec![shadow, color_overlay(glow, BlendMode::Screen, 0.75)];
+	let Some(pixels) = render_square_over_backdrop(effects, 0.3, 1., BlendMode::Normal, Some(opaque(backdrop)), opaque(content), 16., 48., size) else {
+		return;
+	};
+
+	let expected = interior_over(mix_channels(backdrop, [0.; 3], 0.75), content, 0.3, &[(BlendMode::Screen, glow, 0.75)]);
+	let actual = pixel(&pixels, size, 32, 32);
+	let close = actual.iter().zip(expected).all(|(&actual, expected)| (actual as f32 - expected * 255.).abs() <= 3.);
+	assert!(close, "{actual:?} against {:?}", expected.map(|channel| channel * 255.));
+}
+
+#[test]
+fn a_knocked_out_shadow_shows_only_outside_the_contents_share_beneath_an_interior_piece() {
+	use glam::DVec2;
+	use graphic_types::{Adjustment, EffectOperation};
+
+	// Half-transparent content at no fill, painted black within its share, over a red shadow cast right beneath it
+	let size = UVec2::new(64, 64);
+	let black_overlay = EffectOperation::Adjustment(Adjustment::ColorOverlay {
+		color: core_types::Color::BLACK,
+		blend_mode: BlendMode::Normal,
+		opacity: 100.,
+	});
+	let shadow = drop_shadow(core_types::Color::RED, DVec2::ZERO, 0., 0.);
+	let content = Color::from_rgba8(255, 255, 255, 128);
+	let Some(pixels) = render_square_over_backdrop(vec![shadow, black_overlay], 0., 1., BlendMode::Normal, Some(Color::from_rgb8(0, 0, 255)), content, 16., 48., size) else {
+		return;
+	};
+
+	// The shadow cast at half strength shows only in the half of the pixel the content leaves, under the black within the other half
+	let alpha = 128. / 255.;
+	let outside = mix_channels([0., 0., 1.], [1., 0., 0.], alpha);
+	let expected = mix_channels(outside, [0., 0., 0.], alpha);
+	let actual = pixel(&pixels, size, 32, 32);
+	assert!(
+		actual.iter().zip(expected).all(|(&actual, expected)| (actual as f32 - expected * 255.).abs() <= 3.),
+		"{actual:?} against {expected:?}"
+	);
+}
+
+#[test]
 fn nested_effects_groups_render_inside_out() {
 	use core_types::Color as GraphicColor;
 	use glam::DVec2;
@@ -691,11 +993,21 @@ fn nested_effects_groups_render_inside_out() {
 		gamma: false,
 	}]);
 	let draw = |scene: &mut VelloSceneBuilder| {
-		scene.draw_effects(&shadow, 1., Some(square.inflate(12., 12.)), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
-			scene.draw_effects(&blur, 1., Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
-				scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
-			});
-		});
+		scene.draw_effects(
+			&shadow,
+			1.,
+			1.,
+			BlendMode::Normal,
+			true,
+			Some(square.inflate(12., 12.)),
+			DAffine2::IDENTITY,
+			&mut |_, _| {},
+			&mut |scene| {
+				scene.draw_effects(&blur, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+					scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
+				});
+			},
+		);
 	};
 
 	let Some(pixels) = render(size, draw) else { return };
@@ -718,7 +1030,7 @@ fn captured_coverages_the_effects_never_reach_cover_nothing() {
 	let outline = Effects::from_operations([EffectOperation::default_for(EffectKind::Outline)]);
 	let draw = |scene: &mut VelloSceneBuilder| {
 		scene.capture_next_effects(EffectCapture { index: 0, plane: 1 });
-		scene.draw_effects(&outline, 1., Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+		scene.draw_effects(&outline, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
 			scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
 		});
 	};
@@ -771,6 +1083,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 
 	let gradient_glow = |color, technique, spread, size, range, contour| EffectOperation::OuterGlow {
 		color,
+		blend_mode: BlendMode::Screen,
 		technique,
 		spread,
 		size,
@@ -802,6 +1115,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		vec![drop_shadow(shadow_color, DVec2::new(2., 3.), 40., 0.)],
 		vec![EffectOperation::InnerShadow {
 			color: shadow_color,
+			blend_mode: BlendMode::Multiply,
 			angle: 135.,
 			distance: 5.,
 			choke: 50.,
@@ -817,6 +1131,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		vec![gradient_glow(opaque, GlowTechnique::Softer, 25., 12., 50., bow.clone())],
 		vec![EffectOperation::InnerGlow {
 			color: shadow_color.into(),
+			blend_mode: BlendMode::Overlay,
 			technique: GlowTechnique::Softer,
 			source: GlowSource::Edge,
 			choke: 25.,
@@ -826,6 +1141,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		}],
 		vec![EffectOperation::InnerGlow {
 			color: shadow_color.into(),
+			blend_mode: BlendMode::Normal,
 			technique: GlowTechnique::Precise,
 			source: GlowSource::Center,
 			choke: 0.,
@@ -835,6 +1151,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		}],
 		vec![EffectOperation::Satin {
 			color: shadow_color,
+			blend_mode: BlendMode::Multiply,
 			angle: 25.,
 			distance: 7.,
 			size: 6.,
@@ -843,6 +1160,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		}],
 		vec![EffectOperation::Satin {
 			color: shadow_color,
+			blend_mode: BlendMode::Hue,
 			angle: -110.,
 			distance: 9.,
 			size: 3.,
@@ -851,21 +1169,25 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		}],
 		vec![EffectOperation::Outline {
 			color: shadow_color,
+			blend_mode: BlendMode::Normal,
 			weight: 6.,
 			align: StrokeAlign::Outside,
 		}],
 		vec![EffectOperation::Outline {
 			color: shadow_color,
+			blend_mode: BlendMode::Difference,
 			weight: 5.,
 			align: StrokeAlign::Inside,
 		}],
 		vec![EffectOperation::Outline {
 			color: shadow_color,
+			blend_mode: BlendMode::Normal,
 			weight: 9.,
 			align: StrokeAlign::Center,
 		}],
 		vec![EffectOperation::InnerGlow {
 			color: inner_gradient,
+			blend_mode: BlendMode::SoftLight,
 			technique: GlowTechnique::Precise,
 			source: GlowSource::Center,
 			choke: 20.,
@@ -942,9 +1264,15 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		overlay(&checker, BlendMode::Screen, 100.),
 	]);
 
+	// Content in a color of its own, so every mode has colors to blend
+	let content = [217, 140, 89];
+	let gpu_content = Color::from_rgb8(content[0], content[1], content[2]);
+	let [red, green, blue] = content.map(|channel| channel as f32 / 255.);
+	let cpu_content = GraphicColor::from_gamma_srgb_channels(red, green, blue, 1.);
+
 	for effects in cases.into_iter().chain(paint_cases) {
 		for fill in [1., 0.5] {
-			let Some(gpu) = render_square_with_effects(effects.clone(), fill, min as f64, max as f64, size) else {
+			let Some(gpu) = render_square_over_backdrop(effects.clone(), fill, 1., BlendMode::Normal, None, gpu_content, min as f64, max as f64, size) else {
 				return;
 			};
 
@@ -952,7 +1280,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 			let mut image = Image::new(size.x, size.y, GraphicColor::TRANSPARENT);
 			for y in min..max {
 				for x in min..max {
-					image.data[(y * size.x + x) as usize] = GraphicColor::WHITE;
+					image.data[(y * size.x + x) as usize] = cpu_content;
 				}
 			}
 			let mut item = Item::new_from_element(Raster::new_cpu(image))
@@ -988,7 +1316,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 			let tolerance = match effects.last() {
 				Some(EffectOperation::PaintOverlay { blend_mode: VividLight, .. }) => 16,
 				Some(EffectOperation::PaintOverlay {
-					blend_mode: ColorBurn | LinearBurn | ColorDodge | HardLight | LinearLight | PinLight,
+					blend_mode: ColorBurn | LinearBurn | ColorDodge | HardLight | LinearLight | PinLight | Difference,
 					..
 				}) => 8,
 				_ => 2,
@@ -1056,7 +1384,9 @@ fn gpu_adjusted_texels(run: &[graphic_types::Adjustment], texels: &[[half::f16; 
 	let content = device.create_texture_with_data(&queue, &descriptor, wgpu::util::TextureDataOrder::LayerMajor, bytemuck::cast_slice(&padded));
 	let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
 	let mut textures = crate::vello_effects::EffectTextures::default();
-	let adjusted = effect_passes.apply(device, &queue, &mut textures, &content, &effects, fill, glam::DMat2::IDENTITY, &[], None);
+	let layers = graphic_types::effect_layers::EffectLayers::plan(&effects, core_types::blending::BlendMode::Normal, fill, false);
+	let results = effect_passes.apply(device, &queue, &mut textures, &content, &effects, &layers, fill, 1., glam::DMat2::IDENTITY, &[], None);
+	let (adjusted, _) = results.into_iter().next().expect("the adjustments draw one layer");
 	drop(queue);
 
 	let bytes = executor.read_texture_pixels(&adjusted).expect("Failed to read back the adjusted colors");
@@ -1105,7 +1435,7 @@ fn gpu_adjustment_deviation(run: &[graphic_types::Adjustment], colors: &[core_ty
 	Some(worst)
 }
 
-/// Checks that each named run of adjustments strays from the CPU's kernels on the GPU by at most the rounding of its half floats, printing how far each strays.
+/// Checks that each named run of adjustments strays from the CPU's kernels on the GPU by at most the rounding of the half floats its passes write, printing how far each strays.
 fn assert_gpu_adjustments_match_the_cpu_kernels(runs: Vec<(impl std::fmt::Display, Vec<graphic_types::Adjustment>)>) {
 	assert_gpu_adjustments_stray_at_most(0.3, runs, &[1.]);
 }
@@ -1116,11 +1446,17 @@ fn assert_gpu_adjustments_stray_at_most(limit: f32, runs: Vec<(impl std::fmt::Di
 
 	let mut strays = Vec::new();
 	for (name, run) in runs {
-		for &fill in fills {
+		// A Color Overlay draws as a pass of its own, splitting the run of adjustments around it into passes of their own too
+		let is_overlay = |adjustment: &graphic_types::Adjustment| matches!(adjustment, graphic_types::Adjustment::ColorOverlay { .. });
+		let passes = run.split(is_overlay).filter(|adjustments| !adjustments.is_empty()).count() + run.iter().filter(|adjustment| is_overlay(adjustment)).count();
+
+		// It paints within the content unfaded by the fill, unlike the kernels adjusting the faded content, so a run with one is compared at a full fill
+		let has_overlay = run.iter().any(is_overlay);
+		for &fill in fills.iter().filter(|&&fill| fill >= 1. || !has_overlay) {
 			let Some((levels, worst_pixel)) = gpu_adjustment_deviation(&run, &colors, fill) else { return };
 			println!("{name} at a fill of {fill}: {levels:.3} levels");
 
-			if levels > limit {
+			if levels > limit * passes.max(1) as f32 {
 				strays.push(format!("{name} at a fill of {fill} strays from the CPU's kernels by {levels} levels, adjusting {worst_pixel}"));
 			}
 		}
@@ -1399,9 +1735,12 @@ fn gpu_color_adjustments_match_the_cpu_kernels() {
 	];
 	let mut runs: Vec<(String, Vec<Adjustment>)> = runs.into_iter().map(|(name, adjustment)| (name.to_string(), vec![adjustment])).collect();
 
-	// Every blend mode, overlaying an opaque color and a translucent one
+	// Every blend mode, overlaying an opaque color and a translucent one, each with channels summing to what no test color's do, which Darker Color and Lighter Color compare
 	for blend_mode in BlendMode::list().into_iter().flatten().chain(&[BlendMode::Erase, BlendMode::Restore, BlendMode::MultiplyAlpha]) {
-		for (color, opacity) in [(Color::from_gamma_srgb_channels(0.9, 0.45, 0.2, 1.), 70.), (Color::from_gamma_srgb_channels(0.1, 0.6, 0.85, 0.4), 100.)] {
+		for (color, opacity) in [
+			(Color::from_gamma_srgb_channels(0.9, 0.453, 0.2, 1.), 70.),
+			(Color::from_gamma_srgb_channels(0.1, 0.6, 0.853, 0.4), 100.),
+		] {
 			let overlay = Adjustment::ColorOverlay {
 				color,
 				blend_mode: *blend_mode,
@@ -2059,7 +2398,17 @@ fn gpu_adjustments_of_8_bit_content_match_the_cpu_kernels_at_the_edges_of_their_
 	for (name, adjustment) in cases {
 		let effects = Effects::from_operations([EffectOperation::Adjustment(adjustment.clone())]);
 		let Some(pixels) = render(size, |scene| {
-			scene.draw_effects(&effects, 1., Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| draw_grays(scene))
+			scene.draw_effects(
+				&effects,
+				1.,
+				1.,
+				core_types::blending::BlendMode::Normal,
+				true,
+				Some(square),
+				DAffine2::IDENTITY,
+				&mut |_, _| {},
+				&mut |scene| draw_grays(scene),
+			)
 		}) else {
 			return;
 		};
@@ -2118,7 +2467,7 @@ fn steep_adjustments_of_smooth_gradients_stay_smooth() {
 	// A layer just short of opaque is drawn in an intermediate texture of its own
 	for in_layer in [false, true] {
 		let Some(pixels) = render(size, |scene| {
-			scene.draw_effects(&effects, 1., Some(bounds), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(bounds), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
 				if in_layer {
 					scene.push_layer(Fill::NonZero, peniko::Mix::Normal, 0.999, Affine::IDENTITY, &bounds);
 				}
@@ -2266,7 +2615,7 @@ fn adjustments_leave_the_empty_space_around_content_empty() {
 	for (name, run, alpha_within) in cases {
 		let effects = Effects::from_operations(run.into_iter().map(EffectOperation::Adjustment));
 		let Some(pixels) = render(size, |scene| {
-			scene.draw_effects(&effects, 1., Some(bounds), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(bounds), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
 				scene.fill(Fill::NonZero, Affine::IDENTITY, RED, None, &circle((64., 64.), 20.))
 			});
 		}) else {
@@ -2313,7 +2662,7 @@ fn soft_chisels_on_translucent_content_match_the_cpu() {
 
 		let square = Rect::new(min as f64, min as f64, max as f64, max as f64);
 		let Some(gpu) = render(size, |scene| {
-			scene.draw_effects(&effects, 1., Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
 				scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE.with_alpha(alpha), None, &square)
 			});
 		}) else {
@@ -2430,7 +2779,7 @@ fn adjustments_on_image_textures_and_through_effects_groups_match_the_cpu_kernel
 		let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
 		let through_effects_group = |scene: &mut VelloSceneBuilder| {
 			let bounds = Rect::new(0., 0., size.x as f64, size.y as f64);
-			scene.draw_effects(&effects, 1., Some(bounds), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(bounds), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
 				scene.draw_raster(raster.clone(), Vec::new(), peniko::ImageSampler::new(), Affine::IDENTITY)
 			});
 		};
@@ -2558,6 +2907,7 @@ fn svgs_draw_content_with_effects_svg_cannot_express_as_images_the_gpu_renders()
 	// An orange square casting a shadow, with Vibrance draining its color, which no SVG filter can do after the shadow
 	let shadow = EffectOperation::DropShadow {
 		color: Color::BLACK,
+		blend_mode: BlendMode::Multiply,
 		angle: 180.,
 		distance: 4.,
 		spread: 0.,
