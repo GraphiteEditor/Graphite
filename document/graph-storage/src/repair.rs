@@ -406,9 +406,11 @@ fn set(registry: &mut Registry, ops: &mut Vec<RegistryDelta>, slot: Slot, input:
 	match slot {
 		Slot::Input(id, index) => {
 			let Some(input) = input else { return };
-			if let Some(slot) = registry.node_instances.get_mut(&id).and_then(|node| node.inputs.get_mut(index as usize)) {
-				slot.input = input.clone();
-			}
+			// A chain the line no longer holds the slot for, as shrinking a node's inputs leaves, is not written back
+			let Some(slot) = registry.node_instances.get_mut(&id).and_then(|node| node.inputs.get_mut(index as usize)) else {
+				return;
+			};
+			slot.input = input.clone();
 			ops.push(RegistryDelta::ChangeNodeInput { id, index, new_input: input });
 		}
 		Slot::Export(id, index) => {
