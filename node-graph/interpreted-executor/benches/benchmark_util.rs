@@ -5,7 +5,7 @@ use graph_craft::util::{DEMO_ART, compile};
 use graphene_std::application_io::EditorApi;
 use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle};
-use interpreted_executor::util::wrap_network_in_scope;
+use interpreted_executor::util::wrap_network_with_render_node_in_scope;
 use std::path::Path;
 
 pub fn setup_network(name: &str) -> (DynamicExecutor, OutputHandle, ProtoNetwork) {
@@ -13,7 +13,7 @@ pub fn setup_network(name: &str) -> (DynamicExecutor, OutputHandle, ProtoNetwork
 		.unwrap()
 		.network;
 	let editor_api = std::sync::Arc::new(EditorApi::default());
-	let mut network = wrap_network_in_scope(network, editor_api, AsyncRuntime::new(std::sync::Arc::new(DummySpawner)).handle());
+	let mut network = wrap_network_with_render_node_in_scope(network, editor_api, AsyncRuntime::new(std::sync::Arc::new(DummySpawner)).handle());
 	let preprocessor = preprocessor::Preprocessor::new();
 	preprocessor.preprocess(&mut network, &|_| None).unwrap();
 	let proto_network = compile(network);

@@ -9,7 +9,7 @@ use graphene_std::RuntimeHandle;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, runtime: RuntimeHandle) -> NodeNetwork {
+pub fn wrap_network_with_render_node_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, runtime: RuntimeHandle) -> NodeNetwork {
 	let definitions = std::mem::take(&mut network.definitions);
 
 	let inner_network = DocumentNode {
@@ -114,10 +114,28 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 		..Default::default()
 	};
 
+	let network = NodeNetwork {
+		exports: vec![NodeInput::node(NodeId(1), 0)],
+		nodes: [(NodeId(0), inner_network), (NodeId(1), render_node)].into_iter().collect(),
+		definitions,
+		generated: true,
+		..Default::default()
+	};
+	wrap_network_in_scope(network, editor_api, runtime)
+}
+
+pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, runtime: RuntimeHandle) -> NodeNetwork {
+	let definitions = std::mem::take(&mut network.definitions);
+
+	let inner_network = DocumentNode {
+		implementation: DocumentNodeImplementation::Network(network),
+		inputs: vec![],
+		..Default::default()
+	};
+
 	// wrap the inner network in a scope
 	let nodes = vec![
 		inner_network,
-		render_node,
 		DocumentNode {
 			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER),
 			inputs: vec![NodeInput::value(TaggedValue::EditorApi(editor_api), false)],
@@ -130,12 +148,12 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 		},
 	];
 	let scope_injections = vec![
-		("editor-api".to_string(), (NodeId(2), item!(Arc<PlatformEditorApi>))),
-		("runtime".to_string(), (NodeId(3), item!(RuntimeHandle))),
+		("editor-api".to_string(), (NodeId(1), item!(Arc<PlatformEditorApi>))),
+		("runtime".to_string(), (NodeId(2), item!(RuntimeHandle))),
 	];
 
 	NodeNetwork {
-		exports: vec![NodeInput::node(NodeId(1), 0)],
+		exports: vec![NodeInput::node(NodeId(0), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		scope_injections: scope_injections.into_iter().collect(),
 		definitions,

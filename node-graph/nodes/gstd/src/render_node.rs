@@ -177,7 +177,7 @@ fn render(
 
 #[node_macro::node(category(""))]
 fn create_context(
-	// The executor boundary supplies the render config as the sole vararg (see `wrap_network_in_scope()`)
+	// The executor boundary supplies the render config as the sole vararg (see `wrap_network_with_render_node_in_scope()`)
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>>,
 ) -> Result<Item<RenderOutput>, Interrupt> {

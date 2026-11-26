@@ -20,7 +20,7 @@ use graphene_std::vector::style::RenderMode;
 use graphene_std::{Context, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::layer_paths::write_layer_paths;
-use interpreted_executor::util::wrap_network_in_scope;
+use interpreted_executor::util::wrap_network_with_render_node_in_scope;
 use observer::Observer;
 pub use observer::{InspectResult, InspectedContext, Observation, ObservedConnector, ObservedValue};
 use std::sync::Arc;
@@ -522,7 +522,7 @@ impl NodeRuntime {
 	}
 
 	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
-		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone(), self.async_runtime().handle());
+		let mut scoped_network = wrap_network_with_render_node_in_scope(graph, self.editor_api.clone(), self.async_runtime().handle());
 
 		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
 			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));

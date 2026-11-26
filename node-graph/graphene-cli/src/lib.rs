@@ -14,7 +14,7 @@ use graphene_std::application_io::ApplicationIo;
 use graphene_std::runtime::{AsyncRuntime, RuntimeHandle, Spawn, Task};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle};
 use interpreted_executor::layer_paths::write_layer_paths;
-use interpreted_executor::util::wrap_network_in_scope;
+use interpreted_executor::util::wrap_network_with_render_node_in_scope;
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
@@ -95,7 +95,7 @@ pub async fn editor_api(gdd: Option<&GddV1>) -> (Arc<PlatformApplicationIo>, Arc
 /// Compile `network`, writing the path of each of its `layers` onto what that layer renders.
 pub fn compile_graph(mut network: NodeNetwork, layers: &[Vec<NodeId>], editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>, runtime: RuntimeHandle) -> Result<ProtoNetwork, Box<dyn Error>> {
 	write_layer_paths(&mut network, layers);
-	let mut network = wrap_network_in_scope(network, editor_api, runtime);
+	let mut network = wrap_network_with_render_node_in_scope(network, editor_api, runtime);
 
 	let preprocessor = preprocessor::Preprocessor::new();
 	let preprocessed = match gdd {
