@@ -1,8 +1,10 @@
-//! The GPU passes of the layer styles' finer options: the outline's paints.
+//! The GPU passes of the layer styles' finer options: the outline's paints, and the bevel's contour and texture.
 
-use super::{COVERAGE_FORMAT, GRADIENT_SAMPLES, Parameters, PassRecorder, Seeds, WORKING_FORMAT};
-use glam::DVec2;
-use graphic_types::effects::GlowFill;
+use super::{COVERAGE_FORMAT, GRADIENT_SAMPLES, MAX_TAPS, Parameters, PassRecorder, Seeds, WORKING_FORMAT};
+use core_types::transfer_curve::TransferCurve;
+use glam::{DVec2, DVec3};
+use graphic_types::BevelStyle;
+use graphic_types::effects::{BEVEL_FOOT_FADE, GlowFill, contour_end_slopes, slope_contour_reshapes};
 use raster_kernels::effect_kernels::NEGLIGIBLE_LENGTH;
 
 /// An outline's coverage outside the content's edge and inside it, where it reaches, and each pixel's place across it for a contour gradient.
@@ -79,5 +81,68 @@ impl PassRecorder<'_> {
 		let painted = self.run("contour_gradient_band", WORKING_FORMAT, self.size, positions, Some(&samples), Some(&band), parameters);
 		self.textures.release(band);
 		painted
+	}
+}
+
+/// What shapes a bevel's surface besides its height: a contour reshaping its slopes across a percentage of them, and a texture's gray sinking it by a percentage of its span.
+pub(super) struct BevelSurface<'a> {
+	pub style: BevelStyle,
+	pub slope_contour: &'a TransferCurve,
+	pub slope_range: f64,
+	/// Whether the slope contour is sampled at nine points across each texel.
+	pub slope_antialiased: bool,
+	pub texture: Option<&'a wgpu::Texture>,
+	pub texture_depth: f64,
+}
+
+impl PassRecorder<'_> {
+	/// How much brighter than flat ground the `light` lights each texel of a bevel's surface, negative where darker, with its `height` running from -0.5 at its slopes' foot to 0.5 at their top.
+	/// The slopes rise `rise` texels as the `surface` options shape them. Matches the CPU's `bevel_shading` before its gloss contour.
+	/// With `direct` as `Some(shadow)`, it's instead the highlight, or if `shadow` the shadow, that makes without a gloss contour or a fade at the foot.
+	pub(super) fn bevel_lit(&mut self, height: &wgpu::Texture, surface: &BevelSurface, rise: f64, light: DVec3, direct: Option<bool>) -> wgpu::Texture {
+		let reshaped = slope_contour_reshapes(surface.slope_contour, surface.style, surface.slope_range);
+		let (start_slope, end_slope) = contour_end_slopes(&surface.slope_contour.evaluator());
+		let samples = reshaped.then(|| self.contour_samples(surface.slope_contour));
+		let style_number = match surface.style {
+			BevelStyle::InnerBevel => 0.,
+			BevelStyle::OuterBevel => 1.,
+			BevelStyle::Emboss | BevelStyle::PillowEmboss => 2.,
+		};
+
+		let mut taps = [[0.; 4]; MAX_TAPS];
+		taps[0] = [style_number, (surface.slope_range.clamp(1., 100.) / 100.) as f32, start_slope as f32, end_slope as f32];
+		taps[1] = [
+			if reshaped { 1. } else { 0. },
+			if reshaped && surface.slope_antialiased { 1. } else { 0. },
+			if surface.texture.is_some() { (surface.texture_depth / 100.) as f32 } else { 0. },
+			match direct {
+				None => 0.,
+				Some(false) => 1.,
+				Some(true) => 2.,
+			},
+		];
+		let light = light.as_vec3();
+		let parameters = Parameters {
+			values: [light.x, light.y, light.z, rise as f32],
+			taps,
+			..Default::default()
+		};
+		self.run("bevel_lit", COVERAGE_FORMAT, self.size, height, samples.as_ref(), surface.texture, parameters)
+	}
+
+	/// The highlight, or if `shadow` the shadow, of each texel of a bevel's surface lit `brighter` than flat ground, of brightness `light_z`.
+	/// The `gloss` contour's samples, if any, reshape how lit it is first, antialiased if paired with true. If `fades_at_foot`, it fades out across the slopes' foot by its `height`.
+	/// Matches the CPU's `bevel_shading` and `foot_faded`.
+	pub(super) fn bevel_amount(&mut self, brighter: &wgpu::Texture, height: &wgpu::Texture, gloss: Option<&(wgpu::Texture, bool)>, light_z: f64, shadow: bool, fades_at_foot: bool) -> wgpu::Texture {
+		let flag = |on: bool| if on { 1. } else { 0. };
+		let mut taps = [[0.; 4]; MAX_TAPS];
+		taps[0] = [flag(fades_at_foot), 0., 0., 0.];
+		let parameters = Parameters {
+			amount: BEVEL_FOOT_FADE as f32,
+			values: [light_z as f32, flag(gloss.is_some()), flag(gloss.is_some_and(|(_, antialiased)| *antialiased)), flag(shadow)],
+			taps,
+			..Default::default()
+		};
+		self.run("bevel_amount", COVERAGE_FORMAT, self.size, brighter, gloss.map(|(samples, _)| samples), Some(height), parameters)
 	}
 }

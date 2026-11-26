@@ -268,10 +268,18 @@ impl SliderRange {
 	fn value(self, position: f64) -> f64 {
 		(self.min + position * (self.max - self.min)).clamp(self.min, self.max)
 	}
+
+	/// The `value` moved into the bounds by whole periods of their width, for a periodic number like an angle.
+	fn wrapped(self, value: f64) -> f64 {
+		if (self.min..=self.max).contains(&value) {
+			return value;
+		}
+		self.min + (value - self.min).rem_euclid(self.max - self.min)
+	}
 }
 
 /// The number a parameter's definition gives it by default, which a slider's double-click restores.
-fn definition_default_number(parameter_widgets_info: &ParameterWidgetsInfo) -> Option<f64> {
+pub(crate) fn definition_default_number(parameter_widgets_info: &ParameterWidgetsInfo) -> Option<f64> {
 	let identifier = parameter_widgets_info
 		.network_interface
 		.reference(&parameter_widgets_info.node_id, parameter_widgets_info.selection_network_path)?;
@@ -2382,13 +2390,14 @@ fn value_slider(
 }
 
 /// A row with a range slider and a 60px number input for the number at `parameter_widgets_info`. The slider's 0..1 position maps
-/// to the number through `position_of` and `value_at`, and double-click restores `default`.
+/// to the number through `position_of` and `value_at`, a typed number is stored as `typed_value` gives it, and double-click restores `default`.
 fn slider_row(
 	parameter_widgets_info: ParameterWidgetsInfo,
 	number_props: NumberInput,
 	default: Option<f64>,
 	position_of: impl Fn(f64) -> f64,
 	value_at: impl Fn(f64) -> f64 + 'static + Send + Sync,
+	typed_value: impl Fn(f64) -> f64 + 'static + Send + Sync,
 ) -> Vec<WidgetInstance> {
 	let mut widgets = start_widgets(&parameter_widgets_info);
 
@@ -2421,7 +2430,7 @@ fn slider_row(
 		number_props
 			.value(Some(current))
 			.sizing(WidgetSizing::fixed(60))
-			.on_update(update_value_at_index(move |x: &NumberInput| tagged_value(x.value.unwrap_or_default()), node_id, index))
+			.on_update(update_value_at_index(move |x: &NumberInput| tagged_value(typed_value(x.value.unwrap_or_default())), node_id, index))
 			.on_commit(commit_value)
 			.widget_instance(),
 	]);
@@ -2437,6 +2446,19 @@ pub(crate) fn range_slider_widget(parameter_widgets_info: ParameterWidgetsInfo, 
 		slider.default,
 		move |value| slider.position(value),
 		move |position| slider.value(position),
+		|value| value,
+	)
+}
+
+/// A slider row running linearly across `slider`'s bounds for a periodic number like an angle, which wraps a typed number past either end back into them.
+pub(crate) fn wrapping_range_slider_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput, slider: SliderRange) -> Vec<WidgetInstance> {
+	slider_row(
+		parameter_widgets_info,
+		number_props,
+		slider.default,
+		move |value| slider.position(slider.wrapped(value)),
+		move |position| slider.value(position),
+		move |value| slider.wrapped(value),
 	)
 }
 
@@ -2908,6 +2930,7 @@ pub(crate) fn exposure_inspector(node_id: NodeId, context: &mut NodeInspectorCon
 		Some(1.),
 		|gamma| MarkerScale::Gamma.position(gamma),
 		|position| MarkerScale::Gamma.value(position),
+		|gamma| gamma,
 	);
 
 	vec![LayoutGroup::row(exposure), LayoutGroup::row(offset), LayoutGroup::row(gamma_correction)]

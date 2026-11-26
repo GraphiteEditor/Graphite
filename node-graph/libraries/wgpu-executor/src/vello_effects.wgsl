@@ -57,10 +57,10 @@ fn resample(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	return sample_source(position.xy * parameters.target_to_uv);
 }
 
-// The coverage of the content's silhouette, shifted by the offset
+// The coverage of the content's silhouette, shifted by the offset, less `amount`
 @fragment
 fn cast_silhouette(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-	return vec4<f32>(sample_source(position.xy * parameters.target_to_uv - parameters.offset).a);
+	return vec4<f32>(sample_source(position.xy * parameters.target_to_uv - parameters.offset).a - parameters.amount);
 }
 
 // The coverage of the area outside the content's silhouette, shifted by the offset
@@ -340,8 +340,8 @@ fn knock_out_by_layer(@builtin(position) position: vec4<f32>) -> @location(0) ve
 	return textureLoad(source, pixel, 0) * min(shown, 1.);
 }
 
-// A chiseled bevel's height from 0 to 1, from the distances in from the edge (`source`) and out from it (`secondary`), matching the CPU's `bevel_height`.
-// It rises from `values.x` to `values.y` texels, and with `values.z` 1 (a soft chisel, given distances through its slope-limited matte) by their difference alone.
+// A chiseled bevel's height from -0.5 at its foot `values.w` texels outside the edge to 0.5 at its top as far inside, from the distances in from the edge (`source`) and out from it (`secondary`).
+// It's kept from `values.x` to `values.y` texels across the edge, and with `values.z` 1 (a soft chisel, given distances through its slope-limited matte) measured by their difference alone. Matches the CPU's `bevel_height`.
 @fragment
 fn chisel_height(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let pixel = vec2<i32>(position.xy);
@@ -352,34 +352,7 @@ fn chisel_height(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f3
 	if parameters.values.z > 0.5 {
 		rise = inward - outward;
 	}
-	let low = parameters.values.x;
-	let high = parameters.values.y;
-	return vec4<f32>((clamp(rise, low, high) - low) / (high - low));
-}
-
-// The bevel's height at a texel offset from `pixel`, holding the edge texels beyond the edges
-fn height_at(pixel: vec2<i32>, offset: vec2<i32>) -> f32 {
-	let last = vec2<i32>(textureDimensions(source)) - 1;
-	return textureLoad(source, clamp(pixel + offset, vec2<i32>(0), last), 0).r;
-}
-
-// How much a bevel's surface rising `values.w` texels for each unit of height is lit by the light toward `values.xyz` past a flat surface's brightness,
-// or with `amount` 1 how much it falls short, its slope the difference across its neighbors averaged over three rows or columns, matching the CPU's `bevel_shading`
-@fragment
-fn bevel_shading(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-	let pixel = vec2<i32>(position.xy);
-	let across = height_at(pixel, vec2<i32>(1, -1)) + height_at(pixel, vec2<i32>(1, 0)) + height_at(pixel, vec2<i32>(1, 1))
-		- height_at(pixel, vec2<i32>(-1, -1)) - height_at(pixel, vec2<i32>(-1, 0)) - height_at(pixel, vec2<i32>(-1, 1));
-	let down = height_at(pixel, vec2<i32>(-1, 1)) + height_at(pixel, vec2<i32>(0, 1)) + height_at(pixel, vec2<i32>(1, 1))
-		- height_at(pixel, vec2<i32>(-1, -1)) - height_at(pixel, vec2<i32>(0, -1)) - height_at(pixel, vec2<i32>(1, -1));
-	let gradient = vec2<f32>(across, down) * parameters.values.w / 6.;
-
-	let light = parameters.values.xyz;
-	let lit = dot(normalize(vec3<f32>(-gradient, 1.)), light);
-	if parameters.amount > 0.5 {
-		return vec4<f32>(select(0., clamp((light.z - lit) / light.z, 0., 1.), light.z > 0.));
-	}
-	return vec4<f32>(select(0., clamp((lit - light.z) / (1. - light.z), 0., 1.), light.z < 1.));
+	return vec4<f32>(clamp(rise, parameters.values.x, parameters.values.y) / (2. * parameters.values.w));
 }
 
 // Places the shadows and glows beneath the image

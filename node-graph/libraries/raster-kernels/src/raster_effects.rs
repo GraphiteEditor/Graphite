@@ -13,13 +13,13 @@ use core_types::color::{linear_to_srgb, srgb_to_linear};
 use core_types::list::{ATTR_EFFECTS, ATTR_GRADIENT_FORM, Item};
 use core_types::transfer_curve::TransferCurve;
 use core_types::{ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
-use glam::{DAffine2, DMat2, DVec2, DVec3};
+use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::adjustment::Adjustment;
 use graphic_types::effect_layers::{EffectLayers, LayerPart, PiecePlace};
 use graphic_types::effects::{
-	BevelDirection, BevelStyle, BevelTechnique, EffectCapture, EffectOperation, Effects, GlowFill, GlowSource, GlowTechnique, OutlineFill, bevel_light, bevel_lighting, contour_gradient_span,
-	effect_space, fitted_paint, grow_and_tent, outline_extents, precise_falloff, shadow_offset, shape_strength, spans_along_axes,
+	BevelDirection, BevelStyle, BevelTechnique, EffectCapture, EffectOperation, Effects, GlowFill, GlowSource, GlowTechnique, OutlineFill, bevel_light, contour_gradient_span, effect_space,
+	fitted_paint, grow_and_tent, outline_extents, precise_falloff, shadow_offset, shape_strength, spans_along_axes,
 };
 use graphic_types::generator::GeneratorPattern;
 use raster_types::parallel_rows::fill_rows;
@@ -341,18 +341,43 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				highlight_blend_mode,
 				shadow_color,
 				shadow_blend_mode,
+				ref gloss_contour,
+				gloss_antialiased,
+				ref slope_contour,
+				slope_antialiased,
+				slope_range,
+				texture_depth,
+				..
 			} => {
 				// Straight-line distances can't stretch along one axis, so an image scaled unevenly takes the mean of its two scales
 				let mean_scale = (pixels_per_length.x * pixels_per_length.y).sqrt();
-				let size = size * mean_scale;
-				if size < NEGLIGIBLE_LENGTH {
+				let bevel_size = size * mean_scale;
+				if bevel_size < NEGLIGIBLE_LENGTH && gloss_contour.is_identity() {
 					continue;
 				}
+				let image_size = DVec2::new(width as f64, height as f64);
+				let texture = drawn_paint_colors(operation, transform, image_size, effect_to_pixels, (margin_x, margin_y), full.width, full.height)
+					.map(|colors| styles::texture_grays(colors, full.width, full.height));
 
-				// The surface's height, lit from the light's direction into its highlights and shadows
-				let (height, rise) = bevel_height(&full.map(|[_, _, _, alpha]| alpha), style, technique, size);
+				// The surface's height, reshaped by the contour and sunk by the texture, lit from the light's direction into its highlights and shadows
+				let (height, rise) = bevel_height(&full.map(|[_, _, _, alpha]| alpha), style, technique, bevel_size);
 				let rise = rise * depth / 100. * if direction == BevelDirection::Down { -1. } else { 1. };
-				let lit = bevel_shading(&height, rise, bevel_light(angle, altitude, effect_to_pixels));
+				let surface = styles::BevelSurface {
+					style,
+					slope_contour,
+					slope_range,
+					slope_antialiased,
+					texture,
+					texture_depth,
+				};
+				let gloss = (!gloss_contour.is_identity()).then(|| (gloss_contour.evaluator(), gloss_antialiased));
+				let light = bevel_light(angle, altitude, effect_to_pixels);
+				let bevel_shading = |rise: f64| styles::bevel_shading(&height, &surface, rise, light, gloss.as_ref());
+				let lit = bevel_shading(rise);
+
+				// Under a gloss contour or texture, the shading beneath the content fades out across the slopes' foot
+				let fades_at_foot = gloss.is_some() || surface.texture.is_some();
+				let beneath_shading = |amounts: [Plane<f32>; 2]| if fades_at_foot { styles::foot_faded(amounts, &height) } else { amounts };
 				let (_, soften) = grow_and_tent(soften * mean_scale, 0.);
 				let softened = |amounts: [Plane<f32>; 2]| {
 					amounts.map(|amount| match soften >= NEGLIGIBLE_LENGTH {
@@ -365,9 +390,12 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				let inside = (style != BevelStyle::OuterBevel).then(|| softened(lit.clone()));
 				let outside = match style {
 					BevelStyle::InnerBevel => None,
-					BevelStyle::OuterBevel | BevelStyle::Emboss => Some(inside.clone().unwrap_or_else(|| softened(lit))),
+					BevelStyle::OuterBevel | BevelStyle::Emboss => Some(match (&inside, fades_at_foot) {
+						(Some(inside), false) => inside.clone(),
+						_ => softened(beneath_shading(lit)),
+					}),
 					// A pillow's slopes outside are lit mirrored, so they rise away from the edge
-					BevelStyle::PillowEmboss => Some(softened(bevel_shading(&height, -rise, bevel_light(angle, altitude, effect_to_pixels)))),
+					BevelStyle::PillowEmboss => Some(softened(beneath_shading(bevel_shading(-rise)))),
 				};
 				let colors = [(highlight_color, highlight_blend_mode), (shadow_color, shadow_blend_mode)];
 				for (plane, (amount, (color, blend_mode))) in inside.into_iter().flatten().zip(colors).enumerate() {
@@ -750,8 +778,8 @@ fn composite_beneath(image: &Plane<[f32; 4]>, beneath: &Plane<[f32; 4]>) -> Plan
 	image.zip(beneath, |image, beneath| std::array::from_fn(|channel| image[channel] + beneath[channel] * (1. - image[3])))
 }
 
-/// A bevel's height from 0 to 1 over the `style`'s slopes `size` pixels wide, shaped by the `technique`, with how many pixels a height of 1 rises.
-/// Smooth slopes are a tent blur of the silhouette, and chiseled ones rise evenly with the distance from its edge.
+/// A bevel's height over the `style`'s slopes `size` pixels wide, shaped by the `technique`, from -0.5 at their foot to 0.5 at their top, with how many pixels they rise.
+/// It's centered on the edge, where the GPU's matching half floats are finest. Smooth slopes are a tent blur of the silhouette, and chiseled ones rise evenly with the distance from its edge.
 fn bevel_height(silhouette: &Plane<f32>, style: BevelStyle, technique: BevelTechnique, size: f64) -> (Plane<f32>, f64) {
 	// Embossed slopes span half the size on each side of the edge
 	let span = match style {
@@ -759,14 +787,19 @@ fn bevel_height(silhouette: &Plane<f32>, style: BevelStyle, technique: BevelTech
 		BevelStyle::Emboss | BevelStyle::PillowEmboss => size / 2.,
 	};
 
+	// Slopes too narrow to see leave a flat surface, of the coverage less a half, which only a gloss contour shades
+	if span < NEGLIGIBLE_LENGTH {
+		return (silhouette.map(|alpha| alpha - 0.5), 0.);
+	}
+
 	match technique {
 		BevelTechnique::Smooth => {
 			let (_, tent) = grow_and_tent(span, 0.);
-			(silhouette.clone().blurred(BlurKernel::Tent { radius: tent }, BlurKernel::Tent { radius: tent }), span)
+			(silhouette.map(|alpha| alpha - 0.5).blurred(BlurKernel::Tent { radius: tent }, BlurKernel::Tent { radius: tent }), span)
 		}
 		BevelTechnique::ChiselHard | BevelTechnique::ChiselSoft => {
 			// For PSD interop, the slope continues through the edge from 0 at the first pixel outside, and levels off a pixel past its span having risen half the span.
-			// The height spans only the part across the edge the style lights, which keeps its precision.
+			// The height spans only the part across the edge the style lights.
 			let near = if technique == BevelTechnique::ChiselSoft { 3. } else { 2. };
 			let (low, high) = match style {
 				BevelStyle::InnerBevel => (-near, span + 1.),
@@ -790,32 +823,12 @@ fn bevel_height(silhouette: &Plane<f32>, style: BevelStyle, technique: BevelTech
 				}
 			};
 
-			let (low, high) = (low as f32, high as f32);
-			let height = field.map(|field| (field.clamp(low, high) - low) / (high - low));
-			(height, span / (2. * (span + 1.)) * (high - low) as f64)
+			// The slopes run from their foot a pixel past their span outside to their top a pixel past it inside
+			let (low, high, reach) = (low as f32, high as f32, (span + 1.) as f32);
+			let height = field.map(|field| field.clamp(low, high) / (2. * reach));
+			(height, span)
 		}
 	}
-}
-
-/// How much each pixel of a bevel's surface is lit by the `light` past a flat surface's brightness (its highlight), and how much it falls short (its shadow), each from 0 to 1.
-/// The surface's height rises `rise` pixels for each unit of `height`, and for PSD interop, its slope at each pixel is the difference across its neighbors averaged over the three rows or columns they span. O(width × height).
-fn bevel_shading(height: &Plane<f32>, rise: f64, light: DVec3) -> [Plane<f32>; 2] {
-	let (columns, rows) = (height.width as isize, height.height as isize);
-	let at = |x: isize, y: isize| height.data[(y.clamp(0, rows - 1) * columns + x.clamp(0, columns - 1)) as usize] as f64;
-
-	let mut lighting = Plane::<[f32; 4]>::new(height.width, height.height);
-	fill_rows(&mut lighting.data, height.width, |y, row| {
-		let y = y as isize;
-		for (x, lit) in row.iter_mut().enumerate() {
-			let x = x as isize;
-			let across = at(x + 1, y - 1) + at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - at(x - 1, y) - at(x - 1, y + 1);
-			let down = at(x - 1, y + 1) + at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - at(x, y - 1) - at(x + 1, y - 1);
-
-			let (highlight, shadow) = bevel_lighting(DVec2::new(across, down) * rise / 6., light);
-			*lit = [highlight as f32, shadow as f32, 0., 0.];
-		}
-	});
-	[lighting.map(|[highlight, ..]| highlight), lighting.map(|[_, shadow, ..]| shadow)]
 }
 
 /// The color of the operation's drawn paint at each pixel's center in an image `width` by `height`, which is the image of `size` pixels that `transform` places grown by `margin` on each side.
@@ -942,6 +955,35 @@ mod tests {
 		// The first pixel outside lies half a pixel past the edge, (7 - 0.5) / 8 across, and the band's last lies 5.5 past it
 		assert!((gray(margin - 1) - 207. / 255.).abs() < 1e-3, "the first pixel outside is {}", gray(margin - 1) * 255.);
 		assert!((gray(margin - 6) - 48. / 255.).abs() < 1e-3, "the band's last pixel is {}", gray(margin - 6) * 255.);
+	}
+
+	#[test]
+	fn textured_bevels_shade_nothing_beneath_the_content_past_their_slopes() {
+		use vector_types::gradient::GradientStop;
+
+		// A ramp from black to white across far more than the content, which lights flat ground wherever it reaches
+		let stops = [(0., Color::BLACK), (1., Color::WHITE)].map(|(position, color)| GradientStop { position, midpoint: 0.5, color });
+		let ramp = Item::new_from_element(Gradient::new(stops))
+			.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::splat(-100.)) * DAffine2::from_scale(DVec2::splat(300.)))
+			.with_attribute(ATTR_GRADIENT_FORM, GradientForm::Linear);
+
+		let mut emboss = EffectOperation::default_for(graphic_types::EffectKind::BevelAndEmboss);
+		if let EffectOperation::BevelAndEmboss { style, size, texture, .. } = &mut emboss {
+			(*style, *size, *texture) = (BevelStyle::Emboss, 10., Graphic::from(ramp));
+		}
+		let mut item = Item::new_from_element(Raster::new_cpu(Image::new(20, 20, Color::WHITE))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(20.)));
+		graphic_types::stamp_effect(&mut item, graphic_types::Effect::new(&emboss));
+		let evaluated = evaluate_raster_effects(item);
+		let raster = evaluated.element();
+		let width = raster.width as usize;
+		let margin = (width - 20) / 2;
+		let alpha = |x: usize| raster.data[(margin + 10) * width + x].a();
+
+		// An emboss of 10 spans 5 each way, so its slopes reach their foot 6 pixels out
+		assert!(alpha(margin - 3) > 0., "the slope beneath the content goes unshaded");
+		for x in 0..margin - 7 {
+			assert!(alpha(x) < 0.5 / 255., "pixel {x} past the foot is shaded by {}", alpha(x));
+		}
 	}
 
 	#[test]

@@ -678,6 +678,13 @@ fn inner_glows_satins_outlines_and_bevels_fall_where_they_should() {
 		highlight_blend_mode: core_types::blending::BlendMode::Normal,
 		shadow_color: GraphicColor::BLUE,
 		shadow_blend_mode: core_types::blending::BlendMode::Normal,
+		gloss_contour: Default::default(),
+		gloss_antialiased: false,
+		slope_contour: Default::default(),
+		slope_antialiased: false,
+		slope_range: 100.,
+		texture: Default::default(),
+		texture_depth: 100.,
 	};
 	let reddish = |[red, green, blue, alpha]: [u8; 4]| red > 200 && green < 128 && blue < 128 && alpha > 128;
 	let bluish = |[red, green, blue, alpha]: [u8; 4]| blue > 200 && red < 128 && green < 128 && alpha > 128;
@@ -692,11 +699,43 @@ fn inner_glows_satins_outlines_and_bevels_fall_where_they_should() {
 	assert!(bluish(pixel(&pixels, size, 55, 32)), "a sunken top slope is shaded: {:?}", pixel(&pixels, size, 55, 32));
 	assert!(reddish(pixel(&pixels, size, 55, 77)), "a sunken bottom slope is highlighted: {:?}", pixel(&pixels, size, 55, 77));
 
+	// A light nearly overhead lights the flat top most, which it still shades none, so even the slope facing the light gets less and is faintly shaded
+	let mut overhead = bevel(BevelStyle::InnerBevel, BevelDirection::Up);
+	if let EffectOperation::BevelAndEmboss { altitude, .. } = &mut overhead {
+		*altitude = 88.;
+	}
+	let Some(pixels) = render_square(overhead) else { return };
+	assert_eq!(pixel(&pixels, size, 55, 55), white, "the flat top is unlit");
+	let [red, green, blue, alpha] = pixel(&pixels, size, 55, 32);
+	assert!(
+		alpha == 255 && blue == 255 && red == green && red < 255,
+		"the top slope is faintly shaded: {:?}",
+		pixel(&pixels, size, 55, 32)
+	);
+
 	// An outer bevel's slopes lie outside the content, beneath it
 	let Some(pixels) = render_square(bevel(BevelStyle::OuterBevel, BevelDirection::Up)) else { return };
 	assert!(reddish(pixel(&pixels, size, 55, 27)), "the top slope outside is highlighted: {:?}", pixel(&pixels, size, 55, 27));
 	assert!(bluish(pixel(&pixels, size, 55, 82)), "the bottom slope outside is shaded: {:?}", pixel(&pixels, size, 55, 82));
 	assert_eq!(pixel(&pixels, size, 55, 40), white, "the content inside is unlit");
+
+	// An inverted gloss contour maps the light a flat top gets at an altitude of 60° to far less than its brightness, shading it 85%
+	let mut glossy = bevel(BevelStyle::InnerBevel, BevelDirection::Up);
+	if let EffectOperation::BevelAndEmboss { gloss_contour, altitude, .. } = &mut glossy {
+		*gloss_contour = core_types::transfer_curve::TransferCurve::new(vec![glam::DVec2::Y, glam::DVec2::X]);
+		*altitude = 60.;
+	}
+	let Some(pixels) = render_square(glossy.clone()) else { return };
+	let [red, green, blue, _] = pixel(&pixels, size, 55, 55);
+	assert!(red < 60 && green < 60 && blue > 200, "the flat top is shaded blue: {:?}", pixel(&pixels, size, 55, 55));
+
+	// With no slopes at all, the gloss contour still shades the flat surface alike
+	let mut flat = glossy;
+	if let EffectOperation::BevelAndEmboss { size: bevel_size, .. } = &mut flat {
+		*bevel_size = 0.;
+	}
+	let Some(flat_pixels) = render_square(flat) else { return };
+	assert_eq!(pixel(&flat_pixels, size, 55, 55), pixel(&pixels, size, 55, 55), "the flat top is shaded the same without slopes");
 }
 
 #[test]
@@ -1106,6 +1145,39 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		highlight_blend_mode: BlendMode::Screen,
 		shadow_color,
 		shadow_blend_mode: BlendMode::Multiply,
+		gloss_contour: TransferCurve::default(),
+		gloss_antialiased: false,
+		slope_contour: TransferCurve::default(),
+		slope_antialiased: false,
+		slope_range: 100.,
+		texture: Graphic::default(),
+		texture_depth: 100.,
+	};
+	// A bevel with its gloss contour, slope contour and its range, and texture and its depth
+	let with_options = |bevel: EffectOperation, options: (TransferCurve, TransferCurve, f64, Graphic, f64)| {
+		let mut bevel = bevel;
+		if let EffectOperation::BevelAndEmboss {
+			gloss_contour,
+			slope_contour,
+			slope_range,
+			texture,
+			texture_depth,
+			..
+		} = &mut bevel
+		{
+			(*gloss_contour, *slope_contour, *slope_range, *texture, *texture_depth) = options;
+		}
+		bevel
+	};
+	let antialiased = |bevel: EffectOperation| {
+		let mut bevel = bevel;
+		if let EffectOperation::BevelAndEmboss {
+			gloss_antialiased, slope_antialiased, ..
+		} = &mut bevel
+		{
+			(*gloss_antialiased, *slope_antialiased) = (true, true);
+		}
+		bevel
 	};
 	let identity = LevelsRecord {
 		shadows: 0.,
@@ -1312,6 +1384,50 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		vec![outline(radial.clone(), 8., StrokeAlign::Center, false)],
 		vec![outline(checkerboard(min - 10, max + 10), 9., StrokeAlign::Center, false)],
 	]);
+	// Bevels with gloss contours, contours, and textures
+	let cone = TransferCurve::new(vec![DVec2::ZERO, DVec2::new(0.5, 1.), DVec2::X]);
+	let sag = TransferCurve::new(vec![DVec2::ZERO, DVec2::new(0.5, 0.25), DVec2::ONE]);
+	let straight = TransferCurve::default;
+	paint_cases.extend([
+		vec![with_options(
+			bevel(BevelStyle::InnerBevel, BevelTechnique::ChiselHard, BevelDirection::Up, 10., 0.),
+			(cone.clone(), straight(), 100., Graphic::default(), 100.),
+		)],
+		vec![with_options(
+			bevel(BevelStyle::InnerBevel, BevelTechnique::Smooth, BevelDirection::Up, 10., 0.),
+			(straight(), cone.clone(), 50., Graphic::default(), 100.),
+		)],
+		vec![antialiased(with_options(
+			bevel(BevelStyle::InnerBevel, BevelTechnique::ChiselHard, BevelDirection::Up, 12., 0.),
+			(cone.clone(), cone.clone(), 50., Graphic::default(), 100.),
+		))],
+		vec![with_options(
+			bevel(BevelStyle::Emboss, BevelTechnique::ChiselSoft, BevelDirection::Down, 12., 1.),
+			(sag.clone(), sag, 100., Graphic::default(), 100.),
+		)],
+		vec![with_options(
+			bevel(BevelStyle::OuterBevel, BevelTechnique::ChiselHard, BevelDirection::Up, 8., 0.),
+			(straight(), cone, 50., Graphic::default(), 100.),
+		)],
+		vec![with_options(
+			bevel(BevelStyle::InnerBevel, BevelTechnique::Smooth, BevelDirection::Up, 6., 0.),
+			(straight(), straight(), 100., checker.clone(), 150.),
+		)],
+		vec![with_options(
+			bevel(BevelStyle::PillowEmboss, BevelTechnique::ChiselHard, BevelDirection::Up, 10., 0.),
+			(straight(), straight(), 100., radial.clone(), -100.),
+		)],
+		// A texture reaching past the content, with the shading beneath the content fading out across the slopes' foot
+		vec![with_options(
+			bevel(BevelStyle::OuterBevel, BevelTechnique::Smooth, BevelDirection::Up, 10., 0.),
+			(straight(), straight(), 100., linear.clone(), 100.),
+		)],
+		// A wide straight contour across a quarter of the slope
+		vec![with_options(
+			bevel(BevelStyle::InnerBevel, BevelTechnique::ChiselHard, BevelDirection::Up, 20., 0.),
+			(straight(), straight(), 25., Graphic::default(), 100.),
+		)],
+	]);
 
 	// Content in a color of its own, so every mode has colors to blend
 	let content = [217, 140, 89];
@@ -1369,6 +1485,10 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 					..
 				}) => 8,
 				Some(operation @ EffectOperation::Outline { .. }) if operation.drawn_paint().is_some() => 3,
+				// A texture's paint rounds to eight bits, which the two renderers can land a level apart, moving the surface by its depth times its span over 255
+				Some(EffectOperation::BevelAndEmboss { texture, .. }) if !matches!(texture, Graphic::None(_)) => 6,
+				// A slope contour steeper than a straight line amplifies the rounding of the GPU's half-float heights
+				Some(EffectOperation::BevelAndEmboss { slope_contour, .. }) if !slope_contour.is_identity() => 4,
 				_ => 2,
 			};
 			assert!(worst <= tolerance, "{effects:?} at fill {fill} differs from the GPU by up to {worst} levels");

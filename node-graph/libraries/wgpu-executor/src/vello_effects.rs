@@ -5,7 +5,7 @@ use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use core_types::blending::BlendMode;
 use core_types::transfer_curve::TransferCurve;
-use glam::{DMat2, DVec2, DVec3, UVec2};
+use glam::{DMat2, DVec2, UVec2};
 use graphic_types::effect_layers::{EffectLayers, EffectPiece, LayerPart, PiecePlace, is_pixel_filter};
 use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GRADIENT_TABLE_SIZE, GlowFill, OutlineFill, bevel_light, contour_gradient_span, grow_and_tent, outline_extents, shadow_offset};
 use graphic_types::{Adjustment, BevelDirection, BevelStyle, BevelTechnique, EffectOperation, Effects, GlowSource, GlowTechnique};
@@ -476,21 +476,52 @@ impl EffectPasses {
 					highlight_blend_mode,
 					shadow_color,
 					shadow_blend_mode,
+					ref gloss_contour,
+					gloss_antialiased,
+					ref slope_contour,
+					slope_antialiased,
+					slope_range,
+					texture_depth,
+					..
 				} => {
+					let texture = match operation.drawn_paint() {
+						Some(_) => match paints.next() {
+							Some(texture) => Some(texture),
+							None => continue,
+						},
+						None => None,
+					};
 					let size = size * length_scale;
-					if size < NEGLIGIBLE_LENGTH {
+					if size < NEGLIGIBLE_LENGTH && gloss_contour.is_identity() {
 						continue;
 					}
 
-					// The surface's height, lit from the light's direction into its highlights and shadows
-					let silhouette = recorder.silhouette(full.as_ref().unwrap_or(content), DVec2::ZERO, false);
-					let (height, rise) = recorder.bevel_height(silhouette, style, technique, size);
+					// The surface's height, reshaped by the contour and sunk by the texture, lit from the light's direction into its highlights and shadows
+					let (height, rise) = recorder.bevel_height(full.as_ref().unwrap_or(content), style, technique, size);
 					let rise = rise * depth / 100. * if direction == BevelDirection::Down { -1. } else { 1. };
+
+					// Under a gloss contour or texture, the shading beneath the content fades out across the slopes' foot
+					let fades_at_foot = !gloss_contour.is_identity() || texture.is_some();
+
+					let surface = styles::BevelSurface {
+						style,
+						slope_contour,
+						slope_range,
+						slope_antialiased,
+						texture,
+						texture_depth,
+					};
+					let gloss = (!gloss_contour.is_identity()).then(|| (recorder.contour_samples(gloss_contour), gloss_antialiased));
 					let light = bevel_light(angle, altitude, lengths_to_pixels);
 					let (_, soften) = grow_and_tent(soften * length_scale, 0.);
-					let lit = |recorder: &mut PassRecorder, rise: f64| {
+					// How much brighter the slopes are lit, needed only by a gloss contour or the fade at the foot, without which the highlight and shadow are lit directly
+					let lit = |recorder: &mut PassRecorder, rise: f64| (gloss.is_some() || fades_at_foot).then(|| recorder.bevel_lit(&height, &surface, rise, light, None));
+					let amounts = |recorder: &mut PassRecorder, brighter: Option<&wgpu::Texture>, rise: f64, fades_at_foot: bool| {
 						[false, true].map(|shadow| {
-							let amount = recorder.bevel_shading(&height, rise, light, shadow);
+							let amount = match brighter {
+								Some(brighter) => recorder.bevel_amount(brighter, &height, gloss.as_ref(), light.z, shadow, fades_at_foot),
+								None => recorder.bevel_lit(&height, &surface, rise, light, Some(shadow)),
+							};
 							match soften >= NEGLIGIBLE_LENGTH {
 								true => recorder.blur(amount, BlurKernel::Tent { radius: soften }, false),
 								false => amount,
@@ -499,7 +530,8 @@ impl EffectPasses {
 					};
 
 					// The slopes inside the content are lit over it, and those outside lie beneath it, mirrored for a pillow so they rise away from the edge
-					let inside = (style != BevelStyle::OuterBevel).then(|| lit(&mut recorder, rise));
+					let brighter = lit(&mut recorder, rise);
+					let inside = (style != BevelStyle::OuterBevel).then(|| amounts(&mut recorder, brighter.as_ref(), rise, false));
 					let colors = [(highlight_color, highlight_blend_mode), (shadow_color, shadow_blend_mode)];
 					if let Some(inside) = &inside {
 						for (plane, (amount, (color, blend_mode))) in inside.iter().zip(colors).enumerate() {
@@ -515,13 +547,20 @@ impl EffectPasses {
 					}
 					let outside = match style {
 						BevelStyle::InnerBevel => None,
-						BevelStyle::OuterBevel => Some(lit(&mut recorder, rise)),
-						BevelStyle::Emboss => inside,
+						BevelStyle::Emboss if !fades_at_foot => inside,
+						BevelStyle::OuterBevel | BevelStyle::Emboss => {
+							inside.into_iter().flatten().for_each(|amount| recorder.textures.release(amount));
+							Some(amounts(&mut recorder, brighter.as_ref(), rise, fades_at_foot))
+						}
 						BevelStyle::PillowEmboss => {
 							inside.into_iter().flatten().for_each(|amount| recorder.textures.release(amount));
-							Some(lit(&mut recorder, -rise))
+							let mirrored = lit(&mut recorder, -rise);
+							let outside = amounts(&mut recorder, mirrored.as_ref(), -rise, fades_at_foot);
+							mirrored.into_iter().for_each(|mirrored| recorder.textures.release(mirrored));
+							Some(outside)
 						}
 					};
+					brighter.into_iter().for_each(|brighter| recorder.textures.release(brighter));
 					for (plane, (amount, (color, _))) in outside.into_iter().flatten().zip(colors).enumerate() {
 						let amount = recorder.knock_out(amount, full.as_ref().unwrap_or(content), knockout_fill);
 						capture_plane(&mut recorder, plane + 2, &amount, false);
@@ -905,11 +944,12 @@ fn draw_covering(encoder: &mut wgpu::CommandEncoder, label: &str, pipeline: &wgp
 /// Whether an operation leaves the content as it is, by its settings alone or as a blur or bevel too slight to see at this scale.
 fn changes_nothing(operation: &EffectOperation, length_scale: f64) -> bool {
 	// Each drawn paint is matched to its operation by order, so only those without one are left out for their size here
-	operation.changes_nothing()
-		|| match operation {
-			EffectOperation::Blur { radius: length, .. } | EffectOperation::BevelAndEmboss { size: length, .. } => length * length_scale < NEGLIGIBLE_LENGTH,
-			_ => false,
-		}
+	let too_slight = match operation {
+		EffectOperation::Blur { radius, .. } => radius * length_scale < NEGLIGIBLE_LENGTH,
+		EffectOperation::BevelAndEmboss { size, gloss_contour, .. } => size * length_scale < NEGLIGIBLE_LENGTH && gloss_contour.is_identity(),
+		_ => false,
+	};
+	operation.changes_nothing() || (too_slight && operation.drawn_paint().is_none())
 }
 
 /// Which pixels seed a distance pass, and how far from each one its edge lies.
@@ -1323,17 +1363,28 @@ impl PassRecorder<'_> {
 		self.replace_or_fill(full, composited);
 	}
 
-	/// A bevel's height from 0 to 1 over the `style`'s slopes `size` pixels wide, shaped by the `technique`, with how many pixels a height of 1 rises, matching the CPU's `bevel_height`.
-	fn bevel_height(&mut self, silhouette: wgpu::Texture, style: BevelStyle, technique: BevelTechnique, size: f64) -> (wgpu::Texture, f64) {
+	/// A bevel's height over the `style`'s slopes `size` pixels wide, shaped by the `technique`, from -0.5 at their foot to 0.5 at their top, with how many pixels they rise.
+	/// It's cast from the `content`'s silhouette and centered on the edge, where half floats are finest. Matches the CPU's `bevel_height`.
+	fn bevel_height(&mut self, content: &wgpu::Texture, style: BevelStyle, technique: BevelTechnique, size: f64) -> (wgpu::Texture, f64) {
 		let span = match style {
 			BevelStyle::InnerBevel | BevelStyle::OuterBevel => size,
 			BevelStyle::Emboss | BevelStyle::PillowEmboss => size / 2.,
 		};
 
+		// Slopes too narrow to see leave a flat surface, of the coverage less a half, which only a gloss contour shades
+		if span < NEGLIGIBLE_LENGTH {
+			let parameters = Parameters { amount: 0.5, ..Default::default() };
+			return (self.run("cast_silhouette", COVERAGE_FORMAT, self.size, content, None, None, parameters), 0.);
+		}
+
+		// A smooth bevel blurs the coverage less a half, cast that way
 		if technique == BevelTechnique::Smooth {
 			let (_, tent) = grow_and_tent(span, 0.);
-			return (self.blur(silhouette, BlurKernel::Tent { radius: tent }, false), span);
+			let parameters = Parameters { amount: 0.5, ..Default::default() };
+			let centered = self.run("cast_silhouette", COVERAGE_FORMAT, self.size, content, None, None, parameters);
+			return (self.blur(centered, BlurKernel::Tent { radius: tent }, false), span);
 		}
+		let silhouette = self.silhouette(content, DVec2::ZERO, false);
 
 		// The height spans only the part across the edge the style lights
 		let near = if technique == BevelTechnique::ChiselSoft { 3. } else { 2. };
@@ -1368,23 +1419,12 @@ impl PassRecorder<'_> {
 		};
 
 		let parameters = Parameters {
-			values: [low as f32, high as f32, if technique == BevelTechnique::ChiselSoft { 1. } else { 0. }, 0.],
+			values: [low as f32, high as f32, if technique == BevelTechnique::ChiselSoft { 1. } else { 0. }, (span + 1.) as f32],
 			..Default::default()
 		};
 		let height = self.run("chisel_height", COVERAGE_FORMAT, self.size, &inward, Some(&outward), None, parameters);
 		[inward, outward, silhouette].into_iter().for_each(|texture| self.textures.release(texture));
-		(height, span / (2. * (span + 1.)) * (high - low))
-	}
-
-	/// How much each pixel of a bevel's surface is lit by the `light` past a flat surface's brightness, or if `shadow`, how much it falls short, matching the CPU's `bevel_shading`.
-	fn bevel_shading(&mut self, height: &wgpu::Texture, rise: f64, light: DVec3, shadow: bool) -> wgpu::Texture {
-		let light = light.as_vec3();
-		let parameters = Parameters {
-			amount: if shadow { 1. } else { 0. },
-			values: [light.x, light.y, light.z, rise as f32],
-			..Default::default()
-		};
-		self.run("bevel_shading", COVERAGE_FORMAT, self.size, height, None, None, parameters)
+		(height, span)
 	}
 
 	/// The image (of any format a shader can load from) with a pass of adjustments carried out on it into a texture of `format`, reading what was `prepared` for the pass,
@@ -1676,6 +1716,28 @@ mod tests {
 			textures.drawn_passes.clone()
 		};
 		assert_eq!(drawn(true), drawn(false));
+	}
+
+	#[test]
+	fn a_bevel_without_a_gloss_contour_or_texture_lights_its_highlight_and_shadow_directly() {
+		use graphic_types::effects::EffectKind;
+
+		let Some(context) = futures::executor::block_on(crate::WgpuContext::for_tests()) else { return };
+		let passes = EffectPasses::new(&context.device, &context.adapter);
+		if !passes.renders_working_formats {
+			return;
+		}
+
+		let effects = Effects::from_operations([EffectOperation::default_for(EffectKind::BevelAndEmboss)]);
+		let mut textures = EffectTextures::default();
+		let content = textures.acquire(&context.device, UVec2::splat(16), wgpu::TextureFormat::Rgba8Unorm);
+		let queue = context.queue.lock();
+		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., false);
+		let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, 1., 1., DMat2::IDENTITY, &[], None);
+		results.into_iter().for_each(|(result, _)| textures.release(result));
+
+		let drawn = |label: &str| textures.drawn_passes.iter().filter(|&&drawn| drawn == label).count();
+		assert_eq!((drawn("bevel_lit"), drawn("bevel_amount")), (2, 0));
 	}
 
 	#[test]
