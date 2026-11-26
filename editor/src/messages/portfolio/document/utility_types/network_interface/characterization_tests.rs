@@ -2,7 +2,7 @@ use super::{
 	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, LayerClickTargetTypes, NodeLocator, NodeNetworkInterface, NodeNetworkTemplate, NodePersistentMetadata, NodePosition,
 	NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionStatus,
 };
-use crate::consts::{GRID_SIZE, STACK_VERTICAL_GAP, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
+use crate::consts::{GRID_SIZE, LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
@@ -4215,4 +4215,43 @@ async fn grouping_a_group_moves_the_layer_below_it_past_all_of_its_contents() {
 
 	assert_eq!(overlapping_layers(&editor), Vec::new());
 	assert_invariants(&editor, "after grouping a group");
+}
+
+fn indent_below_parent(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> Option<i32> {
+	let interface = &editor.active_document().network_interface;
+	let parent = layer.parent(interface.document_metadata())?;
+	Some(interface.position(&parent.to_node(), &[])?.x - interface.position(&layer.to_node(), &[])?.x)
+}
+
+#[tokio::test]
+async fn reordering_the_layers_of_a_group_keeps_them_indented_below_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.handle_message(new_artboard_message(NodeId::new())).await;
+	for x in [0., 50., 100.] {
+		editor.draw_rect(x, 0., x + 40., 40.).await;
+	}
+
+	let artboard = LayerNodeIdentifier::ROOT_PARENT
+		.children(editor.active_document().metadata())
+		.next()
+		.expect("the artboard should be a layer");
+	let top_two = artboard.children(editor.active_document().metadata()).take(2).map(LayerNodeIdentifier::to_node).collect();
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: top_two }).await;
+	group_selected_layers(&mut editor).await;
+
+	let group = artboard
+		.children(editor.active_document().metadata())
+		.next()
+		.expect("the group should be the top layer of the artboard");
+	for insert_index in [0, 2] {
+		let moved = group.children(editor.active_document().metadata()).nth(1 - insert_index / 2).expect("the group should hold two layers");
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![moved.to_node()] }).await;
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: group, insert_index }).await;
+
+		for layer in group.children(editor.active_document().metadata()).chain([group]) {
+			assert_eq!(indent_below_parent(&editor, layer), Some(LAYER_INDENT_OFFSET), "moving a layer to index {insert_index} of the group");
+		}
+	}
+	assert_eq!(overlapping_layers(&editor), Vec::new());
 }
