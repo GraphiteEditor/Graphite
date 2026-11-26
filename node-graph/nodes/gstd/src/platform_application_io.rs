@@ -6,7 +6,7 @@ use core_types::ops::ConvertAsync;
 use core_types::transform::Footprint;
 use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, NodeError};
 use glam::{DAffine2, UVec2};
-pub use graph_craft::application_io::resource::{Resource, ResourceHash};
+pub use graph_craft::application_io::resource::{Resource, ResourceHash, ResourceId};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
@@ -302,19 +302,21 @@ async fn resource(
 	application_io: Item<Arc<PlatformApplicationIo>>,
 ) -> Result<Item<Resource>, ResourceError> {
 	let hash = hash.into_element();
-
-	// The empty resource needs no storage, and stands in for one the document can't find so its consumers draw a fallback
-	let empty = Resource::empty();
-	if hash == empty.hash() {
-		return Ok(Item::new_from_element(empty));
-	}
-
 	let resource = application_io.element().load_resource(hash).await.ok_or(ResourceError(hash))?;
 	Ok(Item::new_from_element(resource))
 }
 
 fn pending_stored_resource(_hash: &Item<ResourceHash>, _application_io: &Item<Arc<PlatformApplicationIo>>) -> Item<Resource> {
 	Item::new_from_element(Resource::empty())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("Resource {0} is missing")]
+pub struct MissingResourceError(ResourceId);
+
+#[node_macro::node(category(""))]
+fn missing_resource(_: impl Ctx, id: Item<ResourceId>) -> Result<Item<Resource>, (Item<Resource>, MissingResourceError)> {
+	Err((Item::new_from_element(Resource::empty()), MissingResourceError(id.into_element())))
 }
 
 #[node_macro::node(category(""), inject_scope)]

@@ -989,16 +989,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			} => {
 				let document_id = self.active_document_id.expect("Tried to render non-existent document");
 				let document = self.documents.get_mut(&document_id).expect("Tried to render non-existent document");
-
-				// An export now would capture the fallbacks drawn in place of fonts and images still loading
-				if document.resources.awaiting_resources() {
-					responses.add(DialogMessage::DisplayDialogError {
-						title: "Unable to export document".to_string(),
-						description: "The document's fonts or images are still loading. Try again once they finish.".to_string(),
-					});
-					return;
-				}
-
 				let export_config = ExportConfig {
 					name,
 					file_type,
@@ -1035,7 +1025,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 
-				// Skip rendering while a resource is still loading, so its fallback isn't drawn in the meantime.
+				// Skip rendering while a resource is still loading, so its error isn't shown in the meantime.
 				// Each load queues `RunDocumentGraph` when it succeeds or fails, so the render goes ahead once none are left.
 				if document.resources.awaiting_resources() {
 					return;

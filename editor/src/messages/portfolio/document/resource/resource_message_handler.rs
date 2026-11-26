@@ -22,7 +22,6 @@ pub struct ResourceMessageHandler {
 	pub embedded: EmbeddedResources,
 	#[serde(skip)]
 	pending_resolves: HashSet<ResourceId>,
-	/// Resources that failed to load, which rendering no longer waits on, even during a retry.
 	#[serde(skip)]
 	failed_resolves: HashSet<ResourceId>,
 }
@@ -219,8 +218,6 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 			ResourceMessage::ResolveFailed { resource_id } => {
 				self.pending_resolves.remove(&resource_id);
 				self.failed_resolves.insert(resource_id);
-
-				// Rendering stops waiting on the resource and draws a fallback in its place
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 		}
@@ -234,20 +231,6 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 impl ResourceMessageHandler {
 	pub fn is_empty(&self) -> bool {
 		self.registry.is_empty() && self.embedded.is_empty()
-	}
-
-	/// Whether a resource lacks its data and hasn't failed to load, which rendering waits for.
-	pub fn awaiting_resources(&self) -> bool {
-		self.registry.unresolved().any(|info| !self.failed_resolves.contains(&info.id))
-	}
-
-	/// Changes whenever a resource gains, loses, or changes its data. Summed per resource since the registry's order isn't stable. O(resolved resources).
-	pub fn resolved_hash(&self) -> u64 {
-		self.registry.resolved().fold(0, |sum, info| {
-			let mut hasher = DefaultHasher::new();
-			(info.id, info.hash).hash(&mut hasher);
-			sum.wrapping_add(hasher.finish())
-		})
 	}
 
 	pub async fn embed_resources(&mut self, resources_load_handle: Box<dyn LoadResource>) {
@@ -274,6 +257,18 @@ impl ResourceMessageHandler {
 		unused.into_iter().for_each(|id| {
 			self.registry.delete(&id);
 		});
+	}
+
+	pub fn awaiting_resources(&self) -> bool {
+		self.registry.unresolved().any(|info| !self.failed_resolves.contains(&info.id))
+	}
+
+	pub fn resolved_hash(&self) -> u64 {
+		self.registry.resolved().fold(0, |sum, info| {
+			let mut hasher = DefaultHasher::new();
+			(info.id, info.hash).hash(&mut hasher);
+			sum.wrapping_add(hasher.finish())
+		})
 	}
 }
 

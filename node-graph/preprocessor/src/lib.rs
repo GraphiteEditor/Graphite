@@ -51,9 +51,9 @@ impl Preprocessor {
 		network.validate_definitions().map_err(PreprocessorError::Definition)?;
 		self.insert_inject_scopes(network);
 
-		self.replace_inputs_with_producer_nodes(network, resolve_resource)?;
+		self.replace_inputs_with_producer_nodes(network, resolve_resource);
 		for definition in network.definitions.values_mut() {
-			self.replace_inputs_with_producer_nodes(definition, resolve_resource)?;
+			self.replace_inputs_with_producer_nodes(definition, resolve_resource);
 		}
 
 		let mut substitutes = HashMap::new();
@@ -81,13 +81,13 @@ impl Preprocessor {
 	}
 
 	/// Replace every `TaggedValue::Resource(hash)` and `TaggedValue::AnimationCurve(curve)` input with a reference to a freshly inserted `resource` / `evaluate_curve` proto node.
-	fn replace_inputs_with_producer_nodes(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
+	fn replace_inputs_with_producer_nodes(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) {
 		let mut hash_to_node_id: HashMap<ResourceHash, NodeId> = HashMap::new();
 		let mut new_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 		for (&consumer_id, node) in &mut network.nodes {
 			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-				self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
+				self.replace_inputs_with_producer_nodes(nested, resolve_resource);
 				continue;
 			}
 
@@ -98,7 +98,15 @@ impl Preprocessor {
 					TaggedValue::Resource(resource_id) => {
 						let resource_id = *resource_id;
 						let Some(hash) = resolve_resource(resource_id) else {
-							return Err(PreprocessorError::ResourceNotFound(resource_id));
+							let id = producer_node_id(&platform_application_io::missing_resource::IDENTIFIER, resource_id);
+							let missing_resource_node = DocumentNode {
+								inputs: vec![NodeInput::value(TaggedValue::Resource(resource_id), false)],
+								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::missing_resource::IDENTIFIER),
+								..Default::default()
+							};
+							new_nodes.push((id, missing_resource_node));
+							*input = NodeInput::node(id, 0);
+							continue;
 						};
 
 						*hash_to_node_id.entry(hash).or_insert_with(|| {
@@ -135,8 +143,6 @@ impl Preprocessor {
 		for (id, node) in new_nodes {
 			network.nodes.insert(id, node);
 		}
-
-		Ok(())
 	}
 
 	/// Replaces each proto node that has a substitution with the table entry `substitutes` holds for its identifier and compile metadata.
@@ -445,7 +451,6 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 
 #[derive(Debug)]
 pub enum PreprocessorError {
-	ResourceNotFound(ResourceId),
 	Definition(DefinitionError),
 }
 
@@ -709,7 +714,6 @@ mod destructure_tests {
 impl std::fmt::Display for PreprocessorError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			PreprocessorError::ResourceNotFound(id) => write!(f, "Resource not found: {id:?}"),
 			PreprocessorError::Definition(error) => write!(f, "{error}"),
 		}
 	}
@@ -894,5 +898,47 @@ mod tests {
 		for identifier in [graphene_core::memo::memoize::IDENTIFIER, ops::passthrough::IDENTIFIER] {
 			assert!(compile_metadata(&identifier).forwards_input, "{identifier:?} should forward its input");
 		}
+	}
+
+	#[test]
+	fn a_resource_without_a_hash_evaluates_to_the_empty_resource_with_a_missing_resource_error() {
+		use graph_craft::graphene_compiler::Compiler;
+		use graphene_std::platform_application_io::MissingResourceError;
+		use interpreted_executor::dynamic_executor::DynamicExecutor;
+
+		let color_lookup = DocumentNode {
+			inputs: vec![
+				NodeInput::value(TaggedValue::Color(Color::RED), false),
+				NodeInput::value(TaggedValue::Resource(ResourceId::from(1)), false),
+			],
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::raster_nodes::adjustments::color_lookup::IDENTIFIER),
+			..Default::default()
+		};
+		// Stub of the "editor-api" scope injection, which preprocessing requires and `wrap_network_in_scope` normally provides
+		let editor_api = DocumentNode {
+			inputs: vec![NodeInput::value(TaggedValue::EditorApi(std::sync::Arc::default()), false)],
+			implementation: DocumentNodeImplementation::ProtoNode(ops::passthrough::IDENTIFIER),
+			..Default::default()
+		};
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(0), 0)],
+			nodes: [(NodeId(0), color_lookup), (NodeId(1), editor_api)].into_iter().collect(),
+			scope_injections: [("editor-api".to_string(), (NodeId(1), concrete!(&graph_craft::application_io::PlatformEditorApi)))]
+				.into_iter()
+				.collect(),
+			..Default::default()
+		};
+		Preprocessor::new().preprocess(&mut network, &|_| None).unwrap();
+
+		let proto_network = Compiler {}.compile_single(network).unwrap().network;
+		let mut executor = DynamicExecutor::default();
+		let (output, _) = executor.update(proto_network).unwrap();
+		let context: core_types::Context = None;
+		let Ok(core_types::Poll::Fallback(boxed)) = executor.execute(&output, context) else {
+			panic!("The color lookup should evaluate with an error");
+		};
+		let (color, error) = *boxed;
+		assert_eq!(color, TaggedValue::Color(Color::RED));
+		assert!(error.error().is::<MissingResourceError>());
 	}
 }

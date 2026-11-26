@@ -7,7 +7,7 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
-use graph_craft::proto::{GraphErrorType, GraphErrors};
+use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::color::SRGBA8;
@@ -284,7 +284,6 @@ impl NodeGraphExecutor {
 			self.inspect_context_overrides = ContextOverrides::default();
 		}
 
-		// The compile looks up each resource's data in the registry, so a resource that loads reruns it like an edit to the network does
 		let graph_hash = document.network_interface.network_hash().wrapping_add(document.resources.resolved_hash());
 		if graph_hash != self.node_graph_hash || self.node_graph_document != Some(document_id) || ignore_hash {
 			let network = document.network_interface.document_network().clone();
@@ -700,13 +699,6 @@ impl NodeGraphExecutor {
 					if self.gradient_migration.is_some() {
 						if let Err((_, e)) = &result {
 							log::trace!("Gradient migration measurement compile: {e}");
-						}
-
-						// A fallback drawn in place of a missing font or image would be measured instead, so the fills wait for a later open
-						if node_graph_warnings.iter().any(|warning| matches!(warning.error, GraphErrorType::MissingResource { .. })) {
-							self.cancel_gradient_migration();
-							self.gradient_migration_attempted.insert(document_id);
-							responses.add(NodeGraphMessage::RunDocumentGraph);
 						}
 						continue;
 					}
