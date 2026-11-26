@@ -83,6 +83,28 @@ fn mask<T>(
 	content
 }
 
+/// Softens the edges of the input graphics inward, fading them out to nothing at their outlines.
+///
+/// The fade follows the outlines around curves and corners, and parts thinner than the distance fade away entirely.
+#[node_macro::node(category("Raster: Filter"))]
+fn feather<T>(
+	_: impl Ctx,
+	/// The content to feather.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
+	content: Item<T>,
+	/// How far in from the edges the fade reaches full strength.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..100)]
+	#[default(10.)]
+	distance: Item<f64>,
+) -> Item<T> {
+	let mut content = content;
+	stamp_effect(&mut content, Effect::new(&EffectOperation::Feather { distance: distance.into_element() }));
+	content
+}
+
 #[cfg(test)]
 mod test {
 	use core_types::Color;

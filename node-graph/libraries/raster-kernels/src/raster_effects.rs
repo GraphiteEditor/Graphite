@@ -6,7 +6,7 @@ use crate::blending::blend_gamma;
 use crate::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, Plane};
 use crate::generators::pattern_sampler;
 use crate::layer_blending::blend_layer;
-use crate::masks::{mask_strength, masked};
+use crate::masks::{feather_strength, mask_strength, masked};
 use crate::value_effects::{adjustments, evaluate_gradient_effects, filled_color};
 use core_types::FallibleVec2Operations;
 use core_types::blending::BlendMode;
@@ -115,6 +115,10 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 		.map(|(operation, effect_to_pixels, _)| operation.painted_reach() * spans_along_axes(*effect_to_pixels))
 		.sum();
 	let mut margin = reach_in_pixels.ceil();
+	// A feather needs the pixels past the image's edges, which are absent, to find those edges
+	if rows.iter().any(|(operation, ..)| matches!(operation, EffectOperation::Feather { distance } if *distance > 0.)) {
+		margin = margin.max(DVec2::ONE);
+	}
 	if (size + 2. * margin).element_product() > MAX_PIXELS_WITH_MARGIN {
 		let reach_in_pixels = margin.max_element();
 		margin = (margin * margin_fraction_that_fits(size, margin)).floor();
@@ -158,6 +162,8 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 		if operation.changes_nothing() {
 			continue;
 		}
+		// TODO: Unlike the GPU and SVG, this ignores skew, and the distance-based effects (spread, choke, Precise, Outline, Bevel & Emboss, Feather) average the axes' scales.
+		// Delete this baking once its callers read back the GPU's renders, which are exact.
 		let pixels_per_length = spans_along_axes(effect_to_pixels);
 
 		// A layered effect's coverages become pieces, which the content knocks out once its layer is drawn, and a flattened one is knocked out by the faded content now
@@ -461,6 +467,15 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				}
 
 				merge_beneath(&mut full, &mut filled, &mut beneath);
+				full = masked(&full, &strength);
+				filled = filled.map(|filled| masked(&filled, &strength));
+			}
+			EffectOperation::Feather { distance } => {
+				merge_beneath(&mut full, &mut filled, &mut beneath);
+
+				// Distances run in the image's pixels, so an image scaled unevenly takes the mean of its two scales, as an outline does
+				let mean_scale = (pixels_per_length.x * pixels_per_length.y).sqrt();
+				let strength = feather_strength(&full, distance * mean_scale);
 				full = masked(&full, &strength);
 				filled = filled.map(|filled| masked(&filled, &strength));
 			}
@@ -833,7 +848,7 @@ fn knocked_out_by_layer(tinted: &Plane<[f32; 4]>, full_content: &Plane<[f32; 4]>
 	knocked_out
 }
 
-/// Places what lies `beneath` under the full-strength content and the faded fill, so a pixel filter after it (a blur, an adjustment, or a mask) processes them together.
+/// Places what lies `beneath` under the full-strength content and the faded fill, so a pixel filter after it (a blur, an adjustment, a mask, or a feather) processes them together.
 fn merge_beneath(full: &mut Plane<[f32; 4]>, filled: &mut Option<Plane<[f32; 4]>>, beneath: &mut Option<Plane<[f32; 4]>>) {
 	let Some(beneath) = beneath.take() else { return };
 

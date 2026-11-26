@@ -997,7 +997,9 @@ struct DeferredMarkup {
 /// Opens markup standing in for an image the GPU renders of an item, if SVG filters can't carry out all its effects, which [`finish_deferred_markup`] then closes.
 /// `bounds` gives the content's extent in the current user space.
 fn start_deferred_markup(render: &mut SvgRender, render_params: &RenderParams, compositing: &ItemCompositing, bounds: impl FnOnce() -> RenderBoundingBox) -> Option<DeferredMarkup> {
-	// Masks and paints are nested markup no image can replace, and content inside deferred content is in its image already
+	// Masks and paints are nested markup no image can replace, and content inside deferred content is in its image already.
+	// TODO: Paints (patterns) whose effects need the GPU's maps then draw wrongly or not at all, unlike Vello. Embed a GPU render of such a paint,
+	// filled in by `svg_readback.rs` like its images, maps, and planned generators (see the values and renders plan's boundary work).
 	let replaceable = !render.drawing_deferred_markup && !render_params.for_mask && !render_params.inside_pattern && !render_params.thumbnail;
 	if !replaceable || compositing.svg_expresses_effects() || !render.transform.matrix2.determinant().is_normal() {
 		return None;
@@ -1093,7 +1095,7 @@ impl SvgFilterPrimitives {
 		self.push("feComposite", &format!(r#"in="{first}" in2="{second}" operator="arithmetic" k2="1" k3="1""#), "")
 	}
 
-	/// Places what lies `beneath` under the full-strength content and the faded fill, so a pixel filter after it (a blur, an adjustment, or a mask) processes them together.
+	/// Places what lies `beneath` under the full-strength content and the faded fill, so a pixel filter after it (a blur, an adjustment, a mask, or a feather) processes them together.
 	fn merge_beneath(&mut self, full: &mut String, filled: &mut Option<String>, beneath: Option<String>) {
 		let Some(beneath) = beneath else { return };
 
@@ -1471,7 +1473,7 @@ fn write_svg_effects_filter(
 
 	let operations: Vec<EffectOperation> = effects.operations().collect();
 	let last_pixel_filter = (operations[..layers.flattened].iter()).rposition(|operation| !operation.changes_nothing() && is_pixel_filter(operation));
-	// Shadows beneath the content reach its alpha only through a later blur, adjustment, or mask
+	// Shadows beneath the content reach its alpha only through a later pixel filter (see `is_pixel_filter`)
 	let flattened_shown = |index: usize, within: bool| shows_content || (cuts_within && !within && last_pixel_filter.is_some_and(|last| index < last));
 
 	for (index, operation) in operations.into_iter().enumerate().filter(|(_, operation)| !operation.changes_nothing()) {
@@ -1632,6 +1634,20 @@ fn write_svg_effects_filter(
 
 				filled = filled.map(|filled| masked(&filled));
 				full = masked(&full);
+				continue;
+			}
+			// The strength the content is faded by measures distances no filter can, so the GPU renders it as a map
+			EffectOperation::Feather { .. } => {
+				if !(shows_content || cuts_within) {
+					continue;
+				}
+				primitives.merge_beneath(&mut full, &mut filled, beneath.take());
+
+				// Until the GPU resolves it, the map leaves the content unfeathered
+				let strength = primitives.map_unresolved_as(map_capture(0), 1.);
+				let mut faded = |image: &str| primitives.push("feComposite", &format!(r#"in="{image}" in2="{strength}" operator="in""#), "");
+				filled = filled.map(|filled| faded(&filled));
+				full = faded(&full);
 				continue;
 			}
 			EffectOperation::Adjustment(ref adjustment) => {
@@ -2459,9 +2475,9 @@ unsafe impl dyn_any::StaticType for dyn Render + Send + Sync {
 	type Static = dyn Render + Send + Sync;
 }
 
-/// Leaves only the masks among a clipping base's effects, which shape what clips to it as they shape the base, unlike the shadows and glows it casts, which don't widen it.
-fn keep_only_masks<T>(masker: &mut Item<T>) {
-	match masker.attribute::<Effects>(ATTR_EFFECTS).and_then(Effects::masks_only) {
+/// Leaves only the masks and feathers among a clipping base's effects, which shape what clips to it as they shape the base, unlike the shadows and glows it casts, which don't widen it.
+fn keep_only_shaping<T>(masker: &mut Item<T>) {
+	match masker.attribute::<Effects>(ATTR_EFFECTS).and_then(Effects::shaping_only) {
 		Some(masks) => masker.set_attribute(ATTR_EFFECTS, masks),
 		None => {
 			masker.remove_attribute::<Effects>(ATTR_EFFECTS);
@@ -2469,9 +2485,9 @@ fn keep_only_masks<T>(masker: &mut Item<T>) {
 	}
 }
 
-/// The clipping base an item makes of its `element` placed by `item_transform`: the element alone, or nested in a group taking the item's masks if it has any (see [`keep_only_masks`]).
+/// The clipping base an item makes of its `element` placed by `item_transform`: the element alone, or nested in a group taking the item's masks and feathers if it has any (see [`keep_only_shaping`]).
 fn clipping_base<'a>(element: &'a Graphic, item_transform: DAffine2, effects: Option<&Effects>) -> Cow<'a, Graphic> {
-	match effects.and_then(Effects::masks_only) {
+	match effects.and_then(Effects::shaping_only) {
 		Some(masks) => Cow::Owned(Graphic::Graphic(Box::new(
 			Item::new_from_element(element.clone())
 				.with_attribute(ATTR_TRANSFORM, item_transform)
@@ -3511,7 +3527,7 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 
 	if next_clips && clip_mask_state.is_none() {
 		let mut masker = Item::from_parts(vector.clone(), item.clone_item_attributes());
-		keep_only_masks(&mut masker);
+		keep_only_shaping(&mut masker);
 		let masker = Graphic::VectorList(List::new_from_item(masker));
 		let mask_type = if masker.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 		let uuid = generate_uuid();
@@ -3520,6 +3536,7 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 		masker_svg.transform = render.transform;
 		masker.render_svg(&mut masker_svg, &render_params.for_clipper());
 		render.svg_defs.push_str(&masker_svg.svg_defs);
+		render.effect_maps.extend(masker_svg.effect_maps);
 		mask_type.write_to_defs(&mut render.svg_defs, uuid, masker_svg.svg.to_svg_string(), masker_region(&masker, DAffine2::IDENTITY));
 
 		*clip_mask_state = Some((uuid, mask_type));
@@ -3683,7 +3700,7 @@ fn render_vector_item_to_vello(
 	if !overlaps_scene(scene, layer_bounds, multiplied_transform, stroke_inflation, element_transform, compositing.reach().length()) {
 		if next_clips && clip_masker.is_none() {
 			let mut masker = Item::from_parts(element.clone(), item.clone_item_attributes());
-			keep_only_masks(&mut masker);
+			keep_only_shaping(&mut masker);
 			*clip_masker = Some(List::new_from_item(masker));
 		} else if clip_masker.is_some() && !next_clips {
 			*clip_masker = None;
@@ -3731,7 +3748,7 @@ fn render_vector_item_to_vello(
 	let mut clip_layers = false;
 	if next_clips && clip_masker.is_none() {
 		let mut masker = Item::from_parts(element.clone(), item.clone_item_attributes());
-		keep_only_masks(&mut masker);
+		keep_only_shaping(&mut masker);
 		*clip_masker = Some(List::new_from_item(masker));
 	} else if let Some(masker) = clip_masker.as_ref() {
 		if let Some((layer_affine, layer_rect)) = layer_geometry {
@@ -4490,8 +4507,11 @@ fn render_generator_item_svg(item: ItemRef<'_, Generator>, render: &mut SvgRende
 	let Some(&generator) = item.element() else { return };
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
-	// An image of the area in view, grown by how far the filters of the groups around it read around each pixel, so they find no edges in view, stands in for it
-	let Some((area, width, height)) = generator_area_in_view(transform, render.ancestors_reach, render, render_params) else {
+	// An image of the area in view, grown by how far its own effects and the filters of the groups around it read, so they find no edges in view, stands in for it
+	let own_reach = item
+		.attribute::<Effects>(ATTR_EFFECTS)
+		.map_or(0., |effects| effects.reach_along_axes_by(render.transform * transform, EffectOperation::working_reach).max_element());
+	let Some((area, width, height)) = generator_area_in_view(transform, render.ancestors_reach + own_reach, render, render_params) else {
 		return;
 	};
 
@@ -7164,6 +7184,28 @@ mod tests {
 			.find(|mask| mask.contains(r#"<g mask="url(#mask-"#))
 			.expect("the clip's mask nests the base's");
 		assert!(!clip.contains("filter="), "the base's shadow doesn't reach the clip: {clip}");
+	}
+
+	#[test]
+	fn svg_feathers_fade_the_content_by_a_map_of_their_strength() {
+		use graphic_types::EffectOperation;
+
+		let mut defs = String::new();
+		let effects = Effects::from_operations([EffectOperation::Feather { distance: 4. }]);
+		let [filter] = write_filters(&mut defs, &effects, 0.5, [DVec2::ZERO, DVec2::splat(10.)], 0, &[])
+			.try_into()
+			.unwrap_or_else(|_| panic!("a feather draws one layer"));
+
+		// One map the GPU renders fades both the full-strength content and the faded fill
+		assert_eq!(filter.maps.len(), 1);
+		assert_eq!(filter.maps[0].capture, EffectCapture { index: 0, plane: 0 });
+		assert_eq!(defs.matches(&format!(r#"in2="{}" operator="in""#, filter.maps[0].result)).count(), 2, "{defs}");
+
+		// In a later run, the map names the feather by its place among all the effects
+		let [filter] = write_filters(&mut String::new(), &effects, 0.5, [DVec2::ZERO, DVec2::splat(10.)], 2, &[])
+			.try_into()
+			.unwrap_or_else(|_| panic!("a feather draws one layer"));
+		assert_eq!(filter.maps[0].capture, EffectCapture { index: 2, plane: 0 });
 	}
 
 	#[test]

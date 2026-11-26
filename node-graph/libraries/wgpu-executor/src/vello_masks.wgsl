@@ -1,4 +1,4 @@
-// The passes that mask content by another graphic, appended to `vello_effects.wgsl` and sharing its bindings and parameters
+// The passes that mask content by another graphic and feather it toward its edges, appended to `vello_effects.wgsl` and sharing its bindings and parameters
 
 // SVG's `luminanceToAlpha` weights, taken on gamma-encoded channels, matching `MASK_LUMINANCE_WEIGHTS`
 const MASK_LUMINANCE_WEIGHTS: vec3<f32> = vec3<f32>(0.2125, 0.7154, 0.0721);
@@ -30,4 +30,43 @@ fn apply_mask(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> 
 fn content_with_layer_fade(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let pixel = vec2<i32>(position.xy);
 	return vec4<f32>(textureLoad(secondary, pixel, 0).r, 0., 0., textureLoad(source, pixel, 0).a);
+}
+
+// The alpha at or below which a feather counts content as absent, matching `FEATHER_FOOTPRINT_ALPHA`
+const FEATHER_FOOTPRINT_ALPHA: f32 = 0.5 / 255.;
+
+// The coverage of the area outside the footprint of the content in `source`, with its edge falling within the texels bordering it by their alpha relative to the largest beside them
+@fragment
+fn feather_outside(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let size = vec2<i32>(textureDimensions(source));
+	let alpha = textureLoad(source, pixel, 0).a;
+	if alpha <= FEATHER_FOOTPRINT_ALPHA {
+		return vec4<f32>(1.);
+	}
+
+	var borders_absence = false;
+	var largest = alpha;
+	for (var neighbor_y = -1; neighbor_y <= 1; neighbor_y++) {
+		for (var neighbor_x = -1; neighbor_x <= 1; neighbor_x++) {
+			let neighbor = pixel + vec2<i32>(neighbor_x, neighbor_y);
+			if any(neighbor < vec2<i32>(0)) || any(neighbor >= size) {
+				continue;
+			}
+			let neighbor_alpha = textureLoad(source, neighbor, 0).a;
+			borders_absence = borders_absence || neighbor_alpha <= FEATHER_FOOTPRINT_ALPHA;
+			largest = max(largest, neighbor_alpha);
+		}
+	}
+	return vec4<f32>(select(0., 1. - min(alpha / largest, 1.), borders_absence));
+}
+
+// How much the footprint eroded by `values.x` texels covers each texel, given its distance to the area outside the footprint plus half a texel in `source`,
+// relative to its own coverage of the footprint (one less the outside coverage in `secondary`), matching the CPU's `erode`
+@fragment
+fn feather_erode(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let coverage = 1. - textureLoad(secondary, pixel, 0).r;
+	let eroded = clamp(textureLoad(source, pixel, 0).r - parameters.values.x, 0., 1.);
+	return vec4<f32>(select(eroded, min(eroded / coverage, 1.), coverage > 0.));
 }

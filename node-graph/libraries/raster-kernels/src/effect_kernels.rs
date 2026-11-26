@@ -254,7 +254,7 @@ impl Plane<f32> {
 	/// Each pixel's least `distance` to a seed, given its offset from the seed and the seed's value, or infinity past `reach`.
 	/// Jump flooding finds them in a pass for each halving of a step that starts past `reach`, so farther pixels may find none.
 	/// Seeds of differing values leave near misses, mostly settled by two more halving passes and then those of [`chamfer_passes`] along the chamfer steps. O(width × height × log(reach)).
-	fn jump_flood(&self, reach: f64, is_seed: impl Fn(f32) -> bool, distance: impl Fn([i32; 2], f32) -> f32 + Sync) -> Self {
+	pub(crate) fn jump_flood(&self, reach: f64, is_seed: impl Fn(f32) -> bool, distance: impl Fn([i32; 2], f32) -> f32 + Sync) -> Self {
 		let mut nearest: Vec<Option<[i32; 2]>> = self.data.iter().map(|&value| is_seed(value).then_some([0, 0])).collect();
 
 		let (columns, rows) = (self.width as i32, self.height as i32);

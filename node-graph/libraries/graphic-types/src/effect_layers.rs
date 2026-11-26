@@ -265,7 +265,7 @@ impl EffectLayers {
 }
 
 /// Whether an effect row can draw as layered pieces, rather than being carried out within the content's image.
-/// Blurs, adjustments, and masks process the pixels of everything before them, and blend modes CSS lacks can't blend against the backdrop in SVG or a GPU layer,
+/// Blurs, adjustments, masks, and feathers process the pixels of everything before them, and blend modes CSS lacks can't blend against the backdrop in SVG or a GPU layer,
 /// though interior pieces that `blend_into_content` blend with the content alone, which the renderers do themselves.
 fn can_be_layered(operation: &EffectOperation, blend_into_content: bool) -> bool {
 	let layers_in = |(piece, blend_mode): (EffectPiece, BlendMode)| blend_mode.to_svg_style_name().is_some() || (blend_into_content && piece.place == PiecePlace::Within);
@@ -277,12 +277,13 @@ fn is_straight_along_backdrop(blend_mode: BlendMode) -> bool {
 	matches!(blend_mode, BlendMode::Normal | BlendMode::Multiply | BlendMode::Screen | BlendMode::Exclusion | BlendMode::HardLight)
 }
 
-/// Whether an effect row processes the pixels of the content and everything drawn with it so far, as a blur, an adjustment, or a mask does.
+/// Whether an effect row processes the pixels of the content and everything drawn with it so far, as a blur, an adjustment, a mask, or a feather does.
 /// A solid paint overlay decodes into the color overlay adjustment, but it paints within the content like any other paint overlay.
 pub fn is_pixel_filter(operation: &EffectOperation) -> bool {
 	match operation {
-		// TODO: Make a mask between other effects fade each layer drawn before it too, as the trailing masks do, rather than flattening those layers
-		EffectOperation::Blur { .. } | EffectOperation::Mask { .. } => true,
+		// TODO: Make a mask between other effects fade each layer drawn before it too, as the trailing masks do, rather than flattening those layers.
+		// TODO: Likewise for a trailing feather, faded by the footprint of every layer drawn together (not the content's alone, which would erase shadows past it).
+		EffectOperation::Blur { .. } | EffectOperation::Mask { .. } | EffectOperation::Feather { .. } => true,
 		EffectOperation::Adjustment(adjustment) => !matches!(adjustment, Adjustment::ColorOverlay { .. }),
 		_ => false,
 	}
@@ -358,7 +359,7 @@ fn pieces(index: usize, operation: &EffectOperation) -> Vec<(EffectPiece, BlendM
 		}
 		EffectOperation::PaintOverlay { blend_mode, .. } => vec![piece(0, Within, None, *blend_mode)],
 		EffectOperation::Adjustment(Adjustment::ColorOverlay { color, blend_mode, .. }) => vec![piece(0, Within, Some(*color), *blend_mode)],
-		EffectOperation::Blur { .. } | EffectOperation::Mask { .. } | EffectOperation::Adjustment(_) => Vec::new(),
+		EffectOperation::Blur { .. } | EffectOperation::Mask { .. } | EffectOperation::Feather { .. } | EffectOperation::Adjustment(_) => Vec::new(),
 	};
 	pieces.into_iter().flatten().collect()
 }

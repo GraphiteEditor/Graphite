@@ -1,4 +1,4 @@
-//! The definitions shared by every renderer for masking content by another graphic.
+//! The definitions shared by every renderer for masking content by another graphic and feathering it toward its edges.
 
 use core_types::graphene_hash::CacheHash;
 use dyn_any::DynAny;
@@ -44,4 +44,19 @@ pub fn mask_density_line(density: f64, invert: bool) -> (f32, f32) {
 /// For PSD interop, this is the feather radius, within 4 levels on hard edges of PSD's own kernel, which approximates the same Gaussian.
 pub fn mask_feather_sigma(feather: f64) -> f64 {
 	feather.max(0.)
+}
+
+/// The alpha at or below which a feather counts content as absent, half an 8-bit level, so the faint tail of a blur doesn't count as content, though an 8-bit image's faintest alpha does.
+pub const FEATHER_FOOTPRINT_ALPHA: f32 = 0.5 / 255.;
+
+/// How far a feather of `distance` erodes the content's footprint, and the standard deviation of the Gaussian softening the eroded footprint, in the same units.
+///
+/// A feather multiplies the content by a strength made this way. The footprint is where the content's alpha exceeds [`FEATHER_FOOTPRINT_ALPHA`].
+/// Its edge falls within the pixels bordering the absent area by their alpha relative to the largest beside them, so translucent content places it as opaque content does.
+/// It is eroded by half the distance, measured in straight lines, then blurred by a Gaussian reaching three standard deviations, which end at the footprint's edge.
+/// Across a straight edge, the strength rises along the normal distribution's cumulative curve from nothing at the edge, through half at half the distance, to full at the distance. Parts thinner than the distance fade away entirely.
+/// A gap between parts counts as an edge only once it swallows a whole pixel, so gaps one to two pixels wide feather or not depending on where they fall on the pixel grid.
+pub fn feather_parts(distance: f64) -> (f64, f64) {
+	let distance = distance.max(0.);
+	(distance / 2., distance / 6.)
 }

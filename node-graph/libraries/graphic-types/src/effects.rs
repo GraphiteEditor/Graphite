@@ -46,6 +46,8 @@ pub enum EffectKind {
 	PaintOverlay,
 	/// Hides the content where another graphic is dark or transparent.
 	Mask,
+	/// Fades the content out toward its edges, reaching nothing at them.
+	Feather,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
 	Desaturate,
 	GammaCorrection,
@@ -81,6 +83,7 @@ impl std::fmt::Display for EffectKind {
 			Self::BevelAndEmboss => "Bevel & Emboss",
 			Self::PaintOverlay => "Paint Overlay",
 			Self::Mask => "Mask",
+			Self::Feather => "Feather",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
 			Self::MakeOpaque => "Make Opaque",
@@ -360,7 +363,7 @@ impl Effect {
 	}
 }
 
-/// An item's ordered list of effects. A blur, adjustment, or mask acts on the result of those before it, shadows and glows included, while shadows and glows are cast from the content and stack in order beneath it (or within it, for an inner shadow).
+/// An item's ordered list of effects. A pixel filter (like a blur, adjustment, mask, or feather) acts on the result of those before it, shadows and glows included, while shadows and glows are cast from the content and stack in order beneath it (or within it, for an inner shadow).
 #[derive(Clone, Debug, Default, PartialEq, CacheHash)]
 pub struct Effects(pub List<Effect>);
 
@@ -455,11 +458,11 @@ impl Effects {
 		}
 	}
 
-	/// The mask rows alone, with the transforms they were stamped at, or `None` without any. They shape what clips to the content as they shape the content itself, unlike the other effects.
-	pub fn masks_only(&self) -> Option<Effects> {
-		let is_mask = |index: &usize| self.0.element(*index).is_some_and(|effect| effect.kind() == EffectKind::Mask);
-		let masks: List<Effect> = (0..self.len()).filter(is_mask).filter_map(|index| self.0.clone_item(index)).collect();
-		(!masks.is_empty()).then_some(Effects(masks))
+	/// The mask and feather rows alone, with the transforms they were stamped at, or `None` without any. They shape what clips to the content as they shape the content itself, unlike the other effects.
+	pub fn shaping_only(&self) -> Option<Effects> {
+		let shapes = |index: &usize| self.0.element(*index).is_some_and(|effect| matches!(effect.kind(), EffectKind::Mask | EffectKind::Feather));
+		let shaping: List<Effect> = (0..self.len()).filter(shapes).filter_map(|index| self.0.clone_item(index)).collect();
+		(!shaping.is_empty()).then_some(Effects(shaping))
 	}
 
 	/// The effects of a run of rows, borrowed when the run is every row.
@@ -860,6 +863,11 @@ pub enum EffectOperation {
 		feather: f64,
 		invert: bool,
 	},
+	/// Multiplies the content by the strength [`crate::masks::feather_parts`] defines, after what lies beneath the content joins it.
+	Feather {
+		/// How far in from the edges the fade reaches full strength.
+		distance: f64,
+	},
 	Adjustment(Adjustment),
 }
 
@@ -881,6 +889,7 @@ impl EffectOperation {
 			Self::BevelAndEmboss { .. } => EffectKind::BevelAndEmboss,
 			Self::PaintOverlay { .. } => EffectKind::PaintOverlay,
 			Self::Mask { .. } => EffectKind::Mask,
+			Self::Feather { .. } => EffectKind::Feather,
 			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
 	}
@@ -903,6 +912,7 @@ impl EffectOperation {
 			Self::PaintOverlay { opacity, .. } => *opacity <= 0.,
 			Self::Adjustment(Adjustment::ColorOverlay { color, opacity, .. }) => color.a() <= 0. || *opacity <= 0.,
 			Self::Mask { density, .. } => *density <= 0.,
+			Self::Feather { distance } => *distance <= 0.,
 			Self::Adjustment(_) => false,
 		}
 	}
@@ -911,15 +921,26 @@ impl EffectOperation {
 	pub fn reads_pixels_around(&self) -> bool {
 		match self {
 			Self::Blur { .. } => true,
-			// Cast from the content's shape, reading a mask's own image, or changing each pixel alone
-			Self::DropShadow { .. } | Self::InnerShadow { .. } | Self::OuterGlow { .. } | Self::InnerGlow { .. } | Self::Satin { .. } | Self::Outline { .. } | Self::BevelAndEmboss { .. } => false,
+			// Cast from the content's shape, reading a mask's own image or a feather's map, or changing each pixel alone
+			Self::DropShadow { .. }
+			| Self::InnerShadow { .. }
+			| Self::OuterGlow { .. }
+			| Self::InnerGlow { .. }
+			| Self::Satin { .. }
+			| Self::Outline { .. }
+			| Self::BevelAndEmboss { .. }
+			| Self::Feather { .. } => false,
 			Self::PaintOverlay { .. } | Self::Mask { .. } | Self::Adjustment(_) => false,
 		}
 	}
 
-	/// How far past the content this operation paints, which is nowhere for an operation that changes nothing or for a mask.
+	/// How far past the content this operation paints, which is nowhere for an operation that changes nothing, a mask, or a feather.
 	pub fn painted_reach(&self) -> f64 {
-		if self.changes_nothing() || matches!(self, Self::Mask { .. }) { 0. } else { self.reach() }
+		if self.changes_nothing() || matches!(self, Self::Mask { .. } | Self::Feather { .. }) {
+			0.
+		} else {
+			self.reach()
+		}
 	}
 
 	/// How far past the content this operation paints or reads from, which the region it's worked out over covers, and nowhere for an operation that changes nothing.
@@ -942,6 +963,8 @@ impl EffectOperation {
 			Self::BevelAndEmboss { size, soften, .. } => size.max(0.) + soften.max(0.) + 2.,
 			// A mask paints nothing past the content, but its feather reads the mask this far past it
 			Self::Mask { feather, .. } => 3. * mask_feather_sigma(*feather),
+			// A feather paints nothing past the content, but finds edges up to this far past it, which a render cut short there would miss
+			Self::Feather { distance } => distance.max(0.) + 1.,
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => 0.,
 		}
 	}
@@ -1019,6 +1042,7 @@ impl EffectOperation {
 				..
 			} => [depth, size, soften, angle, altitude, slope_range, texture_depth].into_iter().for_each(finite),
 			Self::Mask { density, feather, .. } => [density, feather].into_iter().for_each(finite),
+			Self::Feather { distance } => finite(distance),
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => {}
 		}
 		self
@@ -1119,6 +1143,7 @@ impl EffectOperation {
 				feather: 0.,
 				invert: false,
 			},
+			EffectKind::Feather => Self::Feather { distance: 0. },
 			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
 			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
 			EffectKind::MakeOpaque => Self::Adjustment(Adjustment::MakeOpaque),
@@ -1324,6 +1349,7 @@ impl EffectOperation {
 				visitor.parameter("feather", feather, 0.);
 				visitor.parameter("invert", invert, false);
 			}
+			Self::Feather { distance } => visitor.parameter("distance", distance, 10.),
 			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
@@ -1435,6 +1461,7 @@ mod tests {
 				feather: 3.5,
 				invert: true,
 			},
+			EffectOperation::Feather { distance: 4.5 },
 			EffectOperation::Adjustment(Adjustment::ColorOverlay {
 				color: Color::GREEN,
 				blend_mode: BlendMode::Screen,
