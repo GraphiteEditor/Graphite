@@ -40,7 +40,7 @@ use graphene_std::vector::style::{
 	build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
-use graphene_std::{Artboard, BevelDirection, BevelStyle, BevelTechnique, GlowSource, GlowTechnique, Graphic, Vector};
+use graphene_std::{Artboard, BevelDirection, BevelStyle, BevelTechnique, GlowSource, GlowTechnique, Graphic, MaskMode, Vector};
 use graphene_std::{NodeParameter, ParameterRef};
 use math_parser::parser::{MessagePart, ParseError};
 use std::path::PathBuf;
@@ -452,6 +452,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<DesaturateMethod>(x) => enum_choice::<DesaturateMethod>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<GlowTechnique>(x) => enum_choice::<GlowTechnique>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<GlowSource>(x) => enum_choice::<GlowSource>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<MaskMode>(x) => enum_choice::<MaskMode>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<BevelStyle>(x) => enum_choice::<BevelStyle>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<BevelDirection>(x) => enum_choice::<BevelDirection>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<BevelTechnique>(x) => enum_choice::<BevelTechnique>().for_socket(default_info).inspector_row(),

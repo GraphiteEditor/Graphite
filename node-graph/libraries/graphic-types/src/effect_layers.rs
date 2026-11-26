@@ -6,6 +6,7 @@ use crate::adjustment::Adjustment;
 use crate::effects::{BevelStyle, EffectCapture, EffectOperation, Effects, GlowFill, OutlineFill, outline_extents};
 use core_types::Color;
 use core_types::blending::BlendMode;
+use std::ops::Range;
 
 /// Which side of the content a piece of an effect draws on, and how.
 /// For PSD interop, an interior piece blends within the content's share of each pixel onto the content's color mixed with what lies beneath by the fill, so it splits by the fill.
@@ -61,6 +62,8 @@ pub struct EffectLayers {
 	/// How many of the effects, from the first, are carried out within the content's image.
 	pub flattened: usize,
 	pub layers: Vec<EffectLayer>,
+	/// The rows from the first mask after every other effect to the end, which fade each finished layer at each pixel like the item's opacity. Empty where those masks flatten what's before them instead.
+	pub trailing_masks: Range<usize>,
 }
 
 impl EffectLayers {
@@ -74,9 +77,13 @@ impl EffectLayers {
 		let shares_content = blend_mode == BlendMode::Normal;
 		let blends_into_content = shares_content && fill >= 1.;
 
+		// The masks after every other effect fade the layers rather than the content's image, so they flatten nothing before them
+		let no_rows = operations.len()..operations.len();
+		let mut trailing_masks = if layered { trailing_masks(&operations) } else { no_rows.clone() };
+
 		// Rows that change nothing, like a blur of no radius, flatten nothing before them
 		let mut flattened = match layered {
-			true => (operations.iter())
+			true => (operations[..trailing_masks.start].iter())
 				.rposition(|operation| !operation.changes_nothing() && !can_be_layered(operation, blends_into_content))
 				.map_or(0, |index| index + 1),
 			false => operations.len(),
@@ -91,7 +98,7 @@ impl EffectLayers {
 		};
 		let has_beneath = |pieces: &[(EffectPiece, BlendMode)]| pieces.iter().any(|(piece, _)| piece.place == PiecePlace::Beneath);
 
-		// Flattened shadows and glows that no later blur or adjustment merges into the content would draw over the layered ones, so then everything is flattened
+		// Flattened shadows and glows that no later pixel filter merges into the content would draw over the layered ones, so then everything is flattened
 		let last_pixel_filter = (operations[..flattened].iter())
 			.rposition(|operation| !operation.changes_nothing() && is_pixel_filter(operation))
 			.map_or(0, |index| index + 1);
@@ -99,6 +106,7 @@ impl EffectLayers {
 		let mut pieces = pieces_from(flattened, operations.len());
 		if has_beneath(&unmerged) && has_beneath(&pieces) {
 			flattened = operations.len();
+			trailing_masks = no_rows.clone();
 			pieces.clear();
 		}
 
@@ -168,10 +176,11 @@ impl EffectLayers {
 			return Self {
 				flattened: operations.len(),
 				layers: vec![content],
+				trailing_masks: no_rows,
 			};
 		}
 
-		Self { flattened, layers }
+		Self { flattened, layers, trailing_masks }
 	}
 
 	/// Like [`Self::plan`], for effects stamped in more than one space (see [`Effects::runs`]), as renderers draw them.
@@ -184,6 +193,7 @@ impl EffectLayers {
 
 		let mut planned = Self::plan(&effects.run(last_run.clone()), blend_mode, 1., layered);
 		planned.flattened += last_run.start;
+		planned.trailing_masks = planned.trailing_masks.start + last_run.start..planned.trailing_masks.end + last_run.start;
 		for part in planned.layers.iter_mut().flat_map(|layer| &mut layer.parts) {
 			if let LayerPart::Piece(piece) = part {
 				piece.capture.index += last_run.start;
@@ -195,6 +205,16 @@ impl EffectLayers {
 	/// The index of the layer holding the content.
 	pub fn content_layer(&self) -> Option<usize> {
 		self.layers.iter().position(EffectLayer::holds_content)
+	}
+
+	/// Whether the masks after every other effect fade each finished layer (see [`Self::trailing_masks`]).
+	pub fn fades_layers(&self) -> bool {
+		!self.trailing_masks.is_empty()
+	}
+
+	/// Whether the trailing masks fade the cover [`Self::knockout_cover`] gives the piece that `capture` names, as they do where the content's layer covers it from another layer.
+	pub fn masks_fade_knockout_cover(&self, capture: EffectCapture) -> bool {
+		self.fades_layers() && self.layer_of(capture).is_some_and(|layer| Some(layer) != self.content_layer())
 	}
 
 	/// How strongly the content's layer covers the layered piece beneath it that `capture` names, as a multiple of that layer's alpha, which a knockout hides the piece behind:
@@ -245,7 +265,7 @@ impl EffectLayers {
 }
 
 /// Whether an effect row can draw as layered pieces, rather than being carried out within the content's image.
-/// Blurs and adjustments process the pixels of everything before them, and blend modes CSS lacks can't blend against the backdrop in SVG or a GPU layer,
+/// Blurs, adjustments, and masks process the pixels of everything before them, and blend modes CSS lacks can't blend against the backdrop in SVG or a GPU layer,
 /// though interior pieces that `blend_into_content` blend with the content alone, which the renderers do themselves.
 fn can_be_layered(operation: &EffectOperation, blend_into_content: bool) -> bool {
 	let layers_in = |(piece, blend_mode): (EffectPiece, BlendMode)| blend_mode.to_svg_style_name().is_some() || (blend_into_content && piece.place == PiecePlace::Within);
@@ -257,14 +277,27 @@ fn is_straight_along_backdrop(blend_mode: BlendMode) -> bool {
 	matches!(blend_mode, BlendMode::Normal | BlendMode::Multiply | BlendMode::Screen | BlendMode::Exclusion | BlendMode::HardLight)
 }
 
-/// Whether an effect row processes the pixels of the content and everything drawn with it so far, as a blur or an adjustment does.
+/// Whether an effect row processes the pixels of the content and everything drawn with it so far, as a blur, an adjustment, or a mask does.
 /// A solid paint overlay decodes into the color overlay adjustment, but it paints within the content like any other paint overlay.
 pub fn is_pixel_filter(operation: &EffectOperation) -> bool {
 	match operation {
-		EffectOperation::Blur { .. } => true,
+		// TODO: Make a mask between other effects fade each layer drawn before it too, as the trailing masks do, rather than flattening those layers
+		EffectOperation::Blur { .. } | EffectOperation::Mask { .. } => true,
 		EffectOperation::Adjustment(adjustment) => !matches!(adjustment, Adjustment::ColorOverlay { .. }),
 		_ => false,
 	}
+}
+
+/// The rows from the first mask after every other effect that changes something to the end, or none without such a mask or an effect before it.
+fn trailing_masks(operations: &[EffectOperation]) -> Range<usize> {
+	let no_rows = operations.len()..operations.len();
+	let is_mask = |operation: &EffectOperation| matches!(operation, EffectOperation::Mask { .. });
+
+	let Some(last_other) = operations.iter().rposition(|operation| !operation.changes_nothing() && !is_mask(operation)) else {
+		return no_rows;
+	};
+	let first_mask = operations[last_other + 1..].iter().position(|operation| !operation.changes_nothing());
+	first_mask.map_or(no_rows, |offset| last_other + 1 + offset..operations.len())
 }
 
 /// The pieces the effect at `index` draws, each with the mode it blends by, leaving out those painting no color.
@@ -325,7 +358,7 @@ fn pieces(index: usize, operation: &EffectOperation) -> Vec<(EffectPiece, BlendM
 		}
 		EffectOperation::PaintOverlay { blend_mode, .. } => vec![piece(0, Within, None, *blend_mode)],
 		EffectOperation::Adjustment(Adjustment::ColorOverlay { color, blend_mode, .. }) => vec![piece(0, Within, Some(*color), *blend_mode)],
-		EffectOperation::Blur { .. } | EffectOperation::Adjustment(_) => Vec::new(),
+		EffectOperation::Blur { .. } | EffectOperation::Mask { .. } | EffectOperation::Adjustment(_) => Vec::new(),
 	};
 	pieces.into_iter().flatten().collect()
 }
@@ -548,6 +581,61 @@ mod tests {
 		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 0.5, true);
 		assert_eq!(layers.flattened, 0);
 		assert_eq!(parts(&layers), [[Some((0, 0, PiecePlace::Beneath)), None, Some((2, 0, PiecePlace::Within))]]);
+	}
+
+	fn mask() -> EffectOperation {
+		EffectOperation::default_for(EffectKind::Mask)
+	}
+
+	#[test]
+	fn masks_between_other_effects_flatten_those_before_them_into_the_content() {
+		// The shadow before the mask is hidden with the content, while the one after it is cast from the masked content as a layer of its own
+		let effects = Effects::from_operations([drop_shadow(RED, BlendMode::Multiply), mask(), drop_shadow(RED, BlendMode::Screen)]);
+		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., true);
+		assert_eq!(layers.flattened, 2);
+		assert_eq!(modes(&layers), [BlendMode::Screen, BlendMode::Normal]);
+		assert!(!layers.fades_layers());
+
+		// Masks with no other effect before them shape the content alone
+		let layers = EffectLayers::plan(&Effects::from_operations([mask(), mask()]), BlendMode::Normal, 0.5, true);
+		assert_eq!((layers.flattened, layers.fades_layers()), (2, false));
+	}
+
+	#[test]
+	fn trailing_masks_fade_each_layer_in_its_own_blend_mode() {
+		let no_blur = EffectOperation::Blur {
+			radius: 0.,
+			box_blur: false,
+			gamma: false,
+		};
+
+		// The shadow before the masks keeps its layer and its mode, and the content's layer covers it as far as the masks leave of that layer
+		let effects = Effects::from_operations([drop_shadow(RED, BlendMode::Multiply), mask()]);
+		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., true);
+		assert_eq!((layers.flattened, layers.trailing_masks.clone()), (0, 1..2));
+		assert_eq!(modes(&layers), [BlendMode::Multiply, BlendMode::Normal]);
+		assert!(layers.masks_fade_knockout_cover(capture(0, 0)));
+
+		// Rows that change nothing don't end the trailing masks, and a mask before the other effects still shapes the content
+		let effects = Effects::from_operations([mask(), drop_shadow(RED, BlendMode::Multiply), mask(), no_blur, mask()]);
+		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., true);
+		assert_eq!((layers.flattened, layers.trailing_masks.clone()), (1, 2..5));
+		assert_eq!(modes(&layers), [BlendMode::Multiply, BlendMode::Normal]);
+
+		// A piece in the content's own layer fades with it as a whole
+		let normal = Effects::from_operations([drop_shadow(RED, BlendMode::Normal), mask()]);
+		let layers = EffectLayers::plan(&normal, BlendMode::Normal, 0.5, true);
+		assert_eq!((layers.flattened, layers.trailing_masks.clone()), (0, 1..2));
+		assert!(!layers.masks_fade_knockout_cover(capture(0, 0)));
+
+		// With everything flattened, the masks are carried out within the content's image like any other
+		let layers = EffectLayers::plan(&normal, BlendMode::Normal, 1., true);
+		assert_eq!((layers.flattened, layers.trailing_masks.clone()), (2, 2..2));
+		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., false);
+		assert_eq!((layers.flattened, layers.trailing_masks.clone()), (5, 5..5));
+		let unmerged = Effects::from_operations([drop_shadow(RED, BlendMode::LinearBurn), drop_shadow(RED, BlendMode::Multiply), mask()]);
+		let layers = EffectLayers::plan(&unmerged, BlendMode::Normal, 1., true);
+		assert_eq!((layers.flattened, layers.trailing_masks.clone()), (3, 3..3));
 	}
 
 	#[test]

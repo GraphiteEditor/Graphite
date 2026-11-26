@@ -541,6 +541,7 @@ tagged_value! {
 	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
 	GlowTechnique(graphic_types::GlowTechnique),
 	GlowSource(graphic_types::GlowSource),
+	MaskMode(graphic_types::MaskMode),
 	BevelStyle(graphic_types::BevelStyle),
 	BevelDirection(graphic_types::BevelDirection),
 	BevelTechnique(graphic_types::BevelTechnique),

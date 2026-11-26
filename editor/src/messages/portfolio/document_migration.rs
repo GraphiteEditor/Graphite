@@ -654,8 +654,13 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_raster_nodes::std_nodes::MandelbrotNode", "graphene_std::raster::MandelbrotNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::std_nodes::mask::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::std_nodes::MaskNode", "graphene_std::raster::MaskNode", "graphene_std::raster::MaskImageNode"],
+		node: graphene_std::blending_nodes::masks::mask::IDENTIFIER,
+		aliases: &[
+			"raster_nodes::std_nodes::MaskNode",
+			"graphene_raster_nodes::std_nodes::MaskNode",
+			"graphene_std::raster::MaskNode",
+			"graphene_std::raster::MaskImageNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::posterize::IDENTIFIER,
@@ -2204,6 +2209,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
 		}
 		inputs_count = 3;
+	}
+
+	// 'Mask' gained its mode, density, feather, and invert inputs when it learned to mask any graphic, which take the definition's defaults
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::masks::mask::IDENTIFIER) && inputs_count == 2 {
+		let definition = resolve_document_node_type(&reference)?;
+		let mut template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
+		for (index, input) in old_inputs.into_iter().enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+		inputs_count = 6;
 	}
 
 	// Split the legacy combined "Blending" node into a chain of separate Blend Mode, Opacity (now also covers fill), and Clip nodes.

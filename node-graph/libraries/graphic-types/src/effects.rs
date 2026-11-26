@@ -4,6 +4,7 @@
 
 use crate::Graphic;
 use crate::adjustment::Adjustment;
+use crate::masks::{MaskMode, mask_feather_sigma};
 use crate::parameters::{ParameterVisitor, ReadParameters, WriteParameters};
 use core_types::ATTR_TRANSFORM;
 use core_types::Color;
@@ -43,6 +44,8 @@ pub enum EffectKind {
 	BevelAndEmboss,
 	/// Paints over the content within its silhouette, mixing with its colors by a blend mode. A solid color paint is the color overlay adjustment.
 	PaintOverlay,
+	/// Hides the content where another graphic is dark or transparent.
+	Mask,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
 	Desaturate,
 	GammaCorrection,
@@ -77,6 +80,7 @@ impl std::fmt::Display for EffectKind {
 			Self::Outline => "Outline",
 			Self::BevelAndEmboss => "Bevel & Emboss",
 			Self::PaintOverlay => "Paint Overlay",
+			Self::Mask => "Mask",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
 			Self::MakeOpaque => "Make Opaque",
@@ -280,15 +284,19 @@ pub fn texture_gray([red, green, blue, _]: [f32; 4]) -> f32 {
 	0.299 * red + 0.587 * green + 0.114 * blue
 }
 
-/// An effect's drawn paint with its unit square fitted to `content_bounds`, the extent it fills in the space it's drawn in, if it's a gradient or image without its own placement.
-pub fn fitted_paint(paint: &Graphic, content_bounds: [DVec2; 2]) -> Option<Graphic> {
-	let unplaced = match paint {
+/// Whether a paint is a gradient or image without its own placement, which stretches across the content it paints.
+pub fn is_unplaced_paint(paint: &Graphic) -> bool {
+	match paint {
 		Graphic::Gradient(item) => item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none(),
 		Graphic::RasterCPU(item) => item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none(),
 		Graphic::RasterGPU(item) => item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none(),
 		_ => false,
-	};
-	if !unplaced {
+	}
+}
+
+/// An effect's drawn paint with its unit square fitted to `content_bounds`, the extent it fills in the space it's drawn in, if it's a gradient or image without its own placement.
+pub fn fitted_paint(paint: &Graphic, content_bounds: [DVec2; 2]) -> Option<Graphic> {
+	if !is_unplaced_paint(paint) {
 		return None;
 	}
 
@@ -301,6 +309,15 @@ pub fn fitted_paint(paint: &Graphic, content_bounds: [DVec2; 2]) -> Option<Graph
 		_ => {}
 	}
 	Some(paint)
+}
+
+/// The `graphic` expressed in the own space of content placed by `placement`, for an effect with a drawn graphic that follows the content (see [`EffectOperation::drawn_paint_follows_content`]).
+/// A gradient or image without its own placement stays as it is, since it stretches across the content wherever that lies.
+pub fn linked_to_content(graphic: Graphic, placement: DAffine2) -> Graphic {
+	if is_unplaced_paint(&graphic) || placement == DAffine2::IDENTITY || !placement.matrix2.determinant().is_normal() {
+		return graphic;
+	}
+	Graphic::Graphic(Box::new(Item::new_from_element(graphic).with_attribute(ATTR_TRANSFORM, placement.inverse())))
 }
 
 /// One image operation of an [`Effects`] list: an [`EffectKind`] plus its parameters, carried as attributes on the inner item.
@@ -343,7 +360,7 @@ impl Effect {
 	}
 }
 
-/// An item's ordered list of effects. A blur or adjustment acts on the result of those before it, shadows and glows included, while shadows and glows are cast from the content and stack in order beneath it (or within it, for an inner shadow).
+/// An item's ordered list of effects. A blur, adjustment, or mask acts on the result of those before it, shadows and glows included, while shadows and glows are cast from the content and stack in order beneath it (or within it, for an inner shadow).
 #[derive(Clone, Debug, Default, PartialEq, CacheHash)]
 pub struct Effects(pub List<Effect>);
 
@@ -387,6 +404,11 @@ impl Effects {
 		self.operations().map(|operation| operation.painted_reach()).sum()
 	}
 
+	/// How far past the content the effects together paint or read from, in the effect space of a run of them, which the region they're worked out over covers.
+	pub fn working_reach(&self) -> f64 {
+		self.operations().map(|operation| operation.working_reach()).sum()
+	}
+
 	/// Splits the rows into runs stamped in the same space, in order, each with the transform its effects were stamped at.
 	/// A transform applied between two effects starts a new run, which renders around the result of those before it.
 	/// Effects that change nothing join the run they're in, and a run of only those takes the space of the next effect.
@@ -413,11 +435,31 @@ impl Effects {
 		runs
 	}
 
-	/// Moves the transforms the effects were stamped at onto content whose `baked` transform went into its geometry.
+	/// Moves the transforms the effects were stamped at onto content whose `baked` transform went into its geometry, and the graphics that follow the content with them.
 	pub fn rebase_stamped_transforms(&mut self, baked: DAffine2) {
 		if let Some(transforms) = self.0.iter_attribute_values_mut::<DAffine2>(ATTR_TRANSFORM) {
 			transforms.for_each(|transform| *transform = rebased_stamped_transform(*transform, baked));
 		}
+
+		// A mask's graphic lies in the content's own space, which `baked` now places within the geometry
+		if baked == DAffine2::IDENTITY || !baked.matrix2.determinant().is_normal() {
+			return;
+		}
+		for effect in self.0.iter_element_values_mut() {
+			if effect.kind() == EffectKind::Mask
+				&& let Some(mask) = effect.0.attribute_mut::<Graphic>("mask")
+				&& !is_unplaced_paint(mask)
+			{
+				*mask = Graphic::Graphic(Box::new(Item::new_from_element(std::mem::take(mask)).with_attribute(ATTR_TRANSFORM, baked)));
+			}
+		}
+	}
+
+	/// The mask rows alone, with the transforms they were stamped at, or `None` without any. They shape what clips to the content as they shape the content itself, unlike the other effects.
+	pub fn masks_only(&self) -> Option<Effects> {
+		let is_mask = |index: &usize| self.0.element(*index).is_some_and(|effect| effect.kind() == EffectKind::Mask);
+		let masks: List<Effect> = (0..self.len()).filter(is_mask).filter_map(|index| self.0.clone_item(index)).collect();
+		(!masks.is_empty()).then_some(Effects(masks))
 	}
 
 	/// The effects of a run of rows, borrowed when the run is every row.
@@ -438,6 +480,13 @@ impl Effects {
 		(self.runs().into_iter())
 			.map(|(stamped_transform, rows)| self.operations_in(rows).map(|operation| reach(&operation)).sum::<f64>() * spans_along_axes(effect_space(content_transform, stamped_transform).matrix2))
 			.sum()
+	}
+
+	/// How far a unit of each effect's lengths spans along each axis of the space `content_transform` places the content in, in order.
+	pub fn length_spans(&self, content_transform: DAffine2) -> Vec<DVec2> {
+		(self.runs().into_iter())
+			.flat_map(|(stamped_transform, rows)| std::iter::repeat_n(spans_along_axes(effect_space(content_transform, stamped_transform).matrix2), rows.len()))
+			.collect()
 	}
 
 	/// How far past the content the effects reading around each pixel (see [`EffectOperation::reads_pixels_around`]) together read, along the axis of the space `content_transform` places the content in that they read furthest along.
@@ -800,6 +849,17 @@ pub enum EffectOperation {
 		/// Percent.
 		opacity: f64,
 	},
+	/// Multiplies the content by how much the mask graphic shows it, after what lies beneath the content joins it.
+	Mask {
+		/// Lies in the content's own space, so it moves with the content.
+		mask: Graphic,
+		mode: MaskMode,
+		/// The percentage of how much the mask hides that it keeps.
+		density: f64,
+		/// How much the mask is softened, which [`mask_feather_sigma`] makes a Gaussian's standard deviation.
+		feather: f64,
+		invert: bool,
+	},
 	Adjustment(Adjustment),
 }
 
@@ -820,6 +880,7 @@ impl EffectOperation {
 			Self::Outline { .. } => EffectKind::Outline,
 			Self::BevelAndEmboss { .. } => EffectKind::BevelAndEmboss,
 			Self::PaintOverlay { .. } => EffectKind::PaintOverlay,
+			Self::Mask { .. } => EffectKind::Mask,
 			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
 	}
@@ -841,6 +902,7 @@ impl EffectOperation {
 			} => (highlight_color.a() <= 0. && shadow_color.a() <= 0.) || (*size <= 0. && gloss_contour.is_identity()),
 			Self::PaintOverlay { opacity, .. } => *opacity <= 0.,
 			Self::Adjustment(Adjustment::ColorOverlay { color, opacity, .. }) => color.a() <= 0. || *opacity <= 0.,
+			Self::Mask { density, .. } => *density <= 0.,
 			Self::Adjustment(_) => false,
 		}
 	}
@@ -849,14 +911,19 @@ impl EffectOperation {
 	pub fn reads_pixels_around(&self) -> bool {
 		match self {
 			Self::Blur { .. } => true,
-			// Cast from the content's shape or changing each pixel alone
+			// Cast from the content's shape, reading a mask's own image, or changing each pixel alone
 			Self::DropShadow { .. } | Self::InnerShadow { .. } | Self::OuterGlow { .. } | Self::InnerGlow { .. } | Self::Satin { .. } | Self::Outline { .. } | Self::BevelAndEmboss { .. } => false,
-			Self::PaintOverlay { .. } | Self::Adjustment(_) => false,
+			Self::PaintOverlay { .. } | Self::Mask { .. } | Self::Adjustment(_) => false,
 		}
 	}
 
-	/// How far past the content this operation paints, which is nowhere for an operation that changes nothing.
+	/// How far past the content this operation paints, which is nowhere for an operation that changes nothing or for a mask.
 	pub fn painted_reach(&self) -> f64 {
+		if self.changes_nothing() || matches!(self, Self::Mask { .. }) { 0. } else { self.reach() }
+	}
+
+	/// How far past the content this operation paints or reads from, which the region it's worked out over covers, and nowhere for an operation that changes nothing.
+	pub fn working_reach(&self) -> f64 {
 		if self.changes_nothing() { 0. } else { self.reach() }
 	}
 
@@ -873,11 +940,13 @@ impl EffectOperation {
 			Self::Satin { distance, size, .. } => distance.abs() + size.max(0.) + 1.,
 			Self::Outline { weight, .. } => weight.max(0.) + 1.,
 			Self::BevelAndEmboss { size, soften, .. } => size.max(0.) + soften.max(0.) + 2.,
+			// A mask paints nothing past the content, but its feather reads the mask this far past it
+			Self::Mask { feather, .. } => 3. * mask_feather_sigma(*feather),
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => 0.,
 		}
 	}
 
-	/// The graphic this operation paints with that renderers draw over the content's pixels on their own: a paint overlay's paint, an outline's drawn paint, or a bevel's texture.
+	/// The graphic this operation paints with that renderers draw over the content's pixels on their own: a paint overlay's paint, an outline's drawn paint, a bevel's texture, or a mask's graphic.
 	/// An operation that changes nothing draws none, since renderers skip it.
 	pub fn drawn_paint(&self) -> Option<&Graphic> {
 		if self.changes_nothing() {
@@ -891,8 +960,15 @@ impl EffectOperation {
 				_ => None,
 			},
 			Self::BevelAndEmboss { texture, .. } => (!matches!(texture, Graphic::None(_) | Graphic::NoneList(_))).then_some(texture),
+			Self::Mask { mask, .. } => Some(mask),
 			_ => None,
 		}
+	}
+
+	/// Whether the graphic this operation draws with is placed in the content's own space, so it moves with the content, rather than in the space the content's item is placed in.
+	/// The nodes stamping such operations express the graphic relative to the content's placement at that time with [`linked_to_content`].
+	pub fn drawn_paint_follows_content(&self) -> bool {
+		matches!(self, Self::Mask { .. })
 	}
 
 	/// The bounds a drawn paint without its own placement is fitted to, given the content's bounds and the length a document pixel spans along each of their axes.
@@ -942,6 +1018,7 @@ impl EffectOperation {
 				texture_depth,
 				..
 			} => [depth, size, soften, angle, altitude, slope_range, texture_depth].into_iter().for_each(finite),
+			Self::Mask { density, feather, .. } => [density, feather].into_iter().for_each(finite),
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => {}
 		}
 		self
@@ -1034,6 +1111,13 @@ impl EffectOperation {
 				paint: Graphic::default(),
 				blend_mode: BlendMode::default(),
 				opacity: 0.,
+			},
+			EffectKind::Mask => Self::Mask {
+				mask: Graphic::default(),
+				mode: MaskMode::default(),
+				density: 0.,
+				feather: 0.,
+				invert: false,
 			},
 			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
 			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
@@ -1233,6 +1317,13 @@ impl EffectOperation {
 				visitor.parameter("blend_mode", blend_mode, BlendMode::default());
 				visitor.parameter("opacity", opacity, 100.);
 			}
+			Self::Mask { mask, mode, density, feather, invert } => {
+				visitor.parameter("mask", mask, Graphic::default());
+				visitor.parameter("mode", mode, MaskMode::default());
+				visitor.parameter("density", density, 100.);
+				visitor.parameter("feather", feather, 0.);
+				visitor.parameter("invert", invert, false);
+			}
 			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
@@ -1336,6 +1427,13 @@ mod tests {
 				}))),
 				blend_mode: BlendMode::Multiply,
 				opacity: 60.,
+			},
+			EffectOperation::Mask {
+				mask: Graphic::from(Color::WHITE),
+				mode: MaskMode::Alpha,
+				density: 40.,
+				feather: 3.5,
+				invert: true,
 			},
 			EffectOperation::Adjustment(Adjustment::ColorOverlay {
 				color: Color::GREEN,
@@ -1609,5 +1707,58 @@ mod tests {
 		let mut envelope = Item::new_from_element(Graphic::default());
 		stamp_effect(&mut envelope, invert);
 		assert!(matches!(paint_with_envelope_effects(envelope), Graphic::None(_)));
+	}
+
+	#[test]
+	fn a_mask_paints_nothing_past_the_content_but_its_feather_reads_past_it() {
+		let mask = EffectOperation::Mask {
+			mask: Graphic::Color(Item::new_from_element(Color::WHITE)),
+			mode: MaskMode::default(),
+			density: 100.,
+			feather: 4.,
+			invert: false,
+		};
+		assert_eq!(mask.painted_reach(), 0.);
+		assert_eq!(mask.working_reach(), 3. * mask_feather_sigma(4.));
+
+		let effects = Effects::from_operations([mask]);
+		assert_eq!((effects.reach(), effects.working_reach()), (0., 3. * mask_feather_sigma(4.)));
+	}
+
+	#[test]
+	fn baking_the_content_placement_into_its_geometry_keeps_its_mask_in_place() {
+		fn nested_placement(graphic: &Graphic) -> DAffine2 {
+			match graphic {
+				Graphic::Graphic(item) => item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM) * nested_placement(item.element()),
+				_ => DAffine2::IDENTITY,
+			}
+		}
+		let masked_by = |mask: Graphic| {
+			Effects::from_operations([EffectOperation::Mask {
+				mask,
+				mode: MaskMode::default(),
+				density: 100.,
+				feather: 0.,
+				invert: false,
+			}])
+		};
+		let mask_of = |effects: &Effects| match effects.operations().next() {
+			Some(EffectOperation::Mask { mask, .. }) => mask,
+			_ => panic!("the row should stay a mask"),
+		};
+
+		// A mask drawn at (5, 7) beside content placed by `placement`, which then goes into the content's geometry, leaving it unplaced
+		let placement = DAffine2::from_scale_angle_translation(DVec2::splat(2.), 0.5, DVec2::new(200., 100.));
+		let drawn_at = DAffine2::from_translation(DVec2::new(5., 7.));
+		let mask = Graphic::Graphic(Box::new(Item::new_from_element(Graphic::default()).with_attribute(ATTR_TRANSFORM, drawn_at)));
+		let mut effects = masked_by(linked_to_content(mask, placement));
+		effects.rebase_stamped_transforms(placement);
+		assert!(nested_placement(&mask_of(&effects)).abs_diff_eq(drawn_at, 1e-9));
+
+		// A gradient without its own placement stretches across the content wherever it lies, so it's left as it is
+		let unplaced = Graphic::Gradient(Item::new_from_element(Gradient::default()));
+		let mut effects = masked_by(unplaced.clone());
+		effects.rebase_stamped_transforms(placement);
+		assert_eq!(mask_of(&effects), unplaced);
 	}
 }

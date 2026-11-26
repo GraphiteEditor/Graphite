@@ -308,9 +308,15 @@ fn composite_within(@builtin(position) position: vec4<f32>) -> @location(0) vec4
 	if part == 0u {
 		plain = share - image.a;
 	} else if part == 2u {
-		strength *= 1. - parameters.amount * through_share(share, image.a, parameters.amount);
+		let opacity = layer_opacity(pixel);
+		strength *= 1. - opacity * through_share(share, image.a, opacity);
 	}
 	return vec4<f32>((1. - strength) * image.rgb + strength * (plain * color + blended), image.a + strength * plain);
+}
+
+// The opacity or cover in `amount` as the trailing masks leave it at a pixel, with `values.w` 1 and their strength in the red of `content` (see `content_with_layer_fade`)
+fn layer_opacity(pixel: vec2<i32>) -> f32 {
+	return parameters.amount * select(1., textureLoad(content, pixel, 0).r, parameters.values.w > 0.5);
 }
 
 // The share of a pixel within the content of full-strength alpha `share` that what lies beneath shows through, given the content's layer's alpha, drawn at `opacity`
@@ -324,7 +330,7 @@ fn through_share(share: f32, layer_alpha: f32, opacity: f32) -> f32 {
 @fragment
 fn through_mask(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let pixel = vec2<i32>(position.xy);
-	let share = through_share(textureLoad(content, pixel, 0).a, textureLoad(secondary, pixel, 0).a, parameters.amount);
+	let share = through_share(textureLoad(content, pixel, 0).a, textureLoad(secondary, pixel, 0).a, layer_opacity(pixel));
 	if parameters.values.x > 0.5 {
 		return vec4<f32>(0., 0., 0., share);
 	}
@@ -336,7 +342,7 @@ fn through_mask(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32
 @fragment
 fn knock_out_by_layer(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let pixel = vec2<i32>(position.xy);
-	let shown = (1. - textureLoad(content, pixel, 0).a) / max(1. - parameters.amount * textureLoad(secondary, pixel, 0).a, 1e-6);
+	let shown = (1. - textureLoad(content, pixel, 0).a) / max(1. - layer_opacity(pixel) * textureLoad(secondary, pixel, 0).a, 1e-6);
 	return textureLoad(source, pixel, 0) * min(shown, 1.);
 }
 
