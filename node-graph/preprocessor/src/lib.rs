@@ -931,9 +931,10 @@ mod tests {
 		Preprocessor::new().preprocess(&mut network, &|_| None).unwrap();
 
 		let proto_network = Compiler {}.compile_single(network).unwrap().network;
-		let executor = DynamicExecutor::new(proto_network).unwrap();
+		let mut executor = DynamicExecutor::default();
+		let (output, _) = executor.update(proto_network).unwrap();
 		let context: core_types::Context = None;
-		let Ok(core_types::Poll::Fallback(boxed)) = executor.tree().eval_tagged_value(executor.output(), &context) else {
+		let Ok(core_types::Poll::Fallback(boxed)) = executor.execute(&output, context) else {
 			panic!("The color lookup should evaluate with an error");
 		};
 		let (color, error) = *boxed;
