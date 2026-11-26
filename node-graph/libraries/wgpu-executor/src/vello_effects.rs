@@ -7,12 +7,14 @@ use core_types::blending::BlendMode;
 use core_types::transfer_curve::TransferCurve;
 use glam::{DMat2, DVec2, DVec3, UVec2};
 use graphic_types::effect_layers::{EffectLayers, EffectPiece, LayerPart, PiecePlace, is_pixel_filter};
-use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GlowFill, bevel_light, grow_and_tent, outline_extents, shadow_offset};
+use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GRADIENT_TABLE_SIZE, GlowFill, OutlineFill, bevel_light, contour_gradient_span, grow_and_tent, outline_extents, shadow_offset};
 use graphic_types::{Adjustment, BevelDirection, BevelStyle, BevelTechnique, EffectOperation, Effects, GlowSource, GlowTechnique};
 use raster_kernels::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH, chamfer_passes};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 use wgpu::util::DeviceExt;
+
+mod styles;
 
 /// The format of the images the passes produce, with the precision to keep soft gradients smooth.
 pub(crate) const WORKING_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -22,8 +24,8 @@ const COVERAGE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
 
 /// How many samples of a contour the shaders interpolate between, enough to follow its spline to well within a level.
 const CONTOUR_SAMPLES: u32 = 256;
-/// How many samples of a glow's gradient the shaders interpolate between.
-const GRADIENT_SAMPLES: u32 = 256;
+/// How many samples of a glow's or outline's gradient the shaders read.
+const GRADIENT_SAMPLES: u32 = GRADIENT_TABLE_SIZE as u32;
 
 /// The most taps one kernel pass weighs, matching the length of the shader's array, which holds a kernel of [`MAX_KERNEL_REACH`] texels to each side in pairs.
 const MAX_TAPS: usize = 1 + 2 * MAX_KERNEL_REACH.div_ceil(2);
@@ -124,7 +126,10 @@ impl EffectPasses {
 			log::warn!("This GPU can't render into the formats layer effects need, so content draws without its effects");
 		}
 
-		let shader = device.create_shader_module(wgpu::include_wgsl!("vello_effects.wgsl"));
+		let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+			label: Some("vello_effects.wgsl"),
+			source: wgpu::ShaderSource::Wgsl(concat!(include_str!("vello_effects.wgsl"), include_str!("vello_styles.wgsl")).into()),
+		});
 
 		let texture_entry = |binding| wgpu::BindGroupLayoutEntry {
 			binding,
@@ -198,7 +203,7 @@ impl EffectPasses {
 
 	/// Carries out `effects` on `content`, a texture of premultiplied pixels, returning each of the `layers` they draw in a pooled texture of [`WORKING_FORMAT`] the same size, with the mode it blends by.
 	/// `lengths_to_pixels` maps the effects' lengths onto the texture's pixels, `fill` fades the content but not the shadows and glows cast from it, and `opacity` fades the layers.
-	/// `paints` holds the paint overlays' paints that aren't solid colors, in order, each rendered over the same pixels as the content.
+	/// `paints` holds the effects' drawn paints in order, each rendered over the same pixels as the content.
 	/// With a `capture`, the only result is instead that effect's coverage, as black with it in alpha, or the share [`EffectCapture::THROUGH_MASK`] names.
 	#[expect(clippy::too_many_arguments)]
 	pub(crate) fn apply(
@@ -405,22 +410,57 @@ impl EffectPasses {
 					capture_plane(&mut recorder, 0, &strength, false);
 					recorder.place_within(layered.then_some((&mut pieces, piece(0))), content, &mut full, &mut filled, strength, Some(color), blend_mode);
 				}
-				EffectOperation::Outline { color, blend_mode, weight, align } => {
-					// The band outside lies beneath the content like a shadow, and the band inside over it like an inner shadow
+				EffectOperation::Outline {
+					ref paint,
+					blend_mode,
+					weight,
+					align,
+					contour_gradient,
+				} => {
+					let Some(outline_fill) = OutlineFill::of(paint, contour_gradient) else { continue };
+					let drawn_paint = match outline_fill {
+						OutlineFill::Drawn(_) => match paints.next() {
+							Some(paint) => Some(paint),
+							None => continue,
+						},
+						_ => None,
+					};
+
 					let (outside, inside) = outline_extents(weight * length_scale, align);
-					if outside >= NEGLIGIBLE_LENGTH {
-						let full_content = full.as_ref().unwrap_or(content);
-						let silhouette = recorder.silhouette(full_content, DVec2::ZERO, false);
-						let band = recorder.grown(silhouette, outside);
-						let band = recorder.knock_out(band, full_content, knockout_fill);
-						capture_plane(&mut recorder, 0, &band, false);
-						recorder.place_beneath(layered.then_some((&mut pieces, piece(0))), &mut beneath, band, Some(color));
+					let contour_span = matches!(outline_fill, OutlineFill::ContourGradient(_))
+						.then(|| contour_gradient_span(weight, align))
+						.map(|(start, span)| (start * length_scale, span * length_scale));
+					let bands = recorder.outline_bands(full.as_ref().unwrap_or(content), outside, inside, contour_span);
+					if let Some(positions) = &bands.positions {
+						capture_plane(&mut recorder, 2, positions, false);
 					}
-					if inside >= NEGLIGIBLE_LENGTH {
-						let outside_content = recorder.silhouette(full.as_ref().unwrap_or(content), DVec2::ZERO, true);
-						let band = recorder.grown(outside_content, inside);
+
+					// A solid color tints each band as it's composited, and other paints color it beforehand
+					let color = match outline_fill {
+						OutlineFill::Solid(color) => Some(color),
+						_ => None,
+					};
+					let painted = |recorder: &mut PassRecorder, band: wgpu::Texture| match (&outline_fill, drawn_paint, &bands.positions) {
+						(OutlineFill::Drawn(_), Some(paint), _) => recorder.paint_band(band, paint),
+						(OutlineFill::ContourGradient(gradient), _, Some(positions)) => recorder.contour_gradient_band(band, positions, gradient),
+						_ => band,
+					};
+
+					// The band outside lies beneath the content like a shadow, and the band inside over it like an inner shadow
+					if let Some(band) = bands.outside {
+						let band = recorder.knock_out(band, full.as_ref().unwrap_or(content), knockout_fill);
+						capture_plane(&mut recorder, 0, &band, false);
+
+						let band = painted(&mut recorder, band);
+						recorder.place_beneath(layered.then_some((&mut pieces, piece(0))), &mut beneath, band, color);
+					}
+					if let Some(band) = bands.inside {
 						capture_plane(&mut recorder, 1, &band, false);
-						recorder.place_within(layered.then_some((&mut pieces, piece(1))), content, &mut full, &mut filled, band, Some(color), blend_mode);
+						let band = painted(&mut recorder, band);
+						recorder.place_within(layered.then_some((&mut pieces, piece(1))), content, &mut full, &mut filled, band, color, blend_mode);
+					}
+					if let Some(positions) = bands.positions {
+						recorder.textures.release(positions);
 					}
 				}
 				EffectOperation::BevelAndEmboss {
@@ -862,17 +902,14 @@ fn draw_covering(encoder: &mut wgpu::CommandEncoder, label: &str, pipeline: &wgp
 	pass.draw(0..3, 0..1);
 }
 
-/// Whether an operation leaves the content as it is: a blur, bevel, or outline too slight to see, or a glow with nothing to paint.
+/// Whether an operation leaves the content as it is, by its settings alone or as a blur or bevel too slight to see at this scale.
 fn changes_nothing(operation: &EffectOperation, length_scale: f64) -> bool {
-	match operation {
-		EffectOperation::Blur { radius: length, .. } | EffectOperation::BevelAndEmboss { size: length, .. } => length * length_scale < NEGLIGIBLE_LENGTH,
-		EffectOperation::OuterGlow { color, .. } | EffectOperation::InnerGlow { color, .. } => GlowFill::of(color).is_none_or(|fill| fill.is_invisible()),
-		EffectOperation::Outline { color, weight, align, .. } => {
-			let (outside, inside) = outline_extents(weight * length_scale, *align);
-			color.a() <= 0. || (outside < NEGLIGIBLE_LENGTH && inside < NEGLIGIBLE_LENGTH)
+	// Each drawn paint is matched to its operation by order, so only those without one are left out for their size here
+	operation.changes_nothing()
+		|| match operation {
+			EffectOperation::Blur { radius: length, .. } | EffectOperation::BevelAndEmboss { size: length, .. } => length * length_scale < NEGLIGIBLE_LENGTH,
+			_ => false,
 		}
-		_ => false,
-	}
 }
 
 /// Which pixels seed a distance pass, and how far from each one its edge lies.

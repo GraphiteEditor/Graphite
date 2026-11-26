@@ -18,14 +18,16 @@ use graphic_types::Graphic;
 use graphic_types::adjustment::Adjustment;
 use graphic_types::effect_layers::{EffectLayers, LayerPart, PiecePlace};
 use graphic_types::effects::{
-	BevelDirection, BevelStyle, BevelTechnique, EffectCapture, EffectOperation, Effects, GlowFill, GlowSource, GlowTechnique, bevel_light, bevel_lighting, effect_space, fitted_paint, grow_and_tent,
-	outline_extents, precise_falloff, shadow_offset, shape_strength, spans_along_axes,
+	BevelDirection, BevelStyle, BevelTechnique, EffectCapture, EffectOperation, Effects, GlowFill, GlowSource, GlowTechnique, OutlineFill, bevel_light, bevel_lighting, contour_gradient_span,
+	effect_space, fitted_paint, grow_and_tent, outline_extents, precise_falloff, shadow_offset, shape_strength, spans_along_axes,
 };
 use graphic_types::generator::GeneratorPattern;
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Image, Raster};
 use std::collections::HashMap;
 use vector_types::gradient::{Gradient, GradientForm, GradientSettings};
+
+mod styles;
 
 /// The most pixels an image may grow to with the margin its effects cast into, beyond which the margin is cut short.
 const MAX_PIXELS_WITH_MARGIN: f64 = (1 << 24) as f64;
@@ -150,6 +152,9 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 			};
 			run_fill = 1.;
 		}
+		if operation.changes_nothing() {
+			continue;
+		}
 		let pixels_per_length = spans_along_axes(effect_to_pixels);
 
 		// A layered effect's coverages become pieces, which the content knocks out once its layer is drawn, and a flattened one is knocked out by the faded content now
@@ -273,20 +278,54 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				let strength = shaped(if invert { difference.map(|difference| 1. - difference) } else { difference }, 100., contour);
 				place_within(&mut pieces, piece(0), &mut full, &mut filled, tinted(&strength, color), blend_mode);
 			}
-			EffectOperation::Outline { color, blend_mode, weight, align } => {
+			EffectOperation::Outline {
+				ref paint,
+				blend_mode,
+				weight,
+				align,
+				contour_gradient,
+			} => {
+				let Some(outline_fill) = OutlineFill::of(paint, contour_gradient) else { continue };
+
 				// Straight-line distances can't stretch along one axis, so an image scaled unevenly takes the mean of its two scales
 				let mean_scale = (pixels_per_length.x * pixels_per_length.y).sqrt();
 				let (outside, inside) = outline_extents(weight * mean_scale, align);
-				let silhouette = full.map(|[_, _, _, alpha]| alpha);
+				let contour_span = matches!(outline_fill, OutlineFill::ContourGradient(_))
+					.then(|| contour_gradient_span(weight, align))
+					.map(|(start, span)| (start * mean_scale, span * mean_scale));
+				let bands = styles::outline_bands(&full.map(|[_, _, _, alpha]| alpha), outside, inside, contour_span);
+
+				// The premultiplied colors the bands take before their coverage, unless a solid color tints them
+				let colors = match &outline_fill {
+					OutlineFill::Solid(_) => None,
+					OutlineFill::Drawn(_) => {
+						let Some(colors) = drawn_paint_colors(operation, transform, size, effect_to_pixels, (margin_x, margin_y), full.width, full.height) else {
+							continue;
+						};
+						Some(Plane {
+							width: full.width,
+							height: full.height,
+							data: colors.into_iter().map(premultiplied_gamma_channels).collect(),
+						})
+					}
+					OutlineFill::ContourGradient(gradient) => {
+						let Some(positions) = &bands.positions else { continue };
+						Some(styles::contour_gradient_colors(gradient, positions))
+					}
+				};
+				let painted = |coverage: &Plane<f32>| match (&outline_fill, &colors) {
+					(OutlineFill::Solid(color), _) => tinted(coverage, *color),
+					(_, Some(colors)) => coverage.zip(colors, |coverage, color| color.map(|channel| channel * coverage)),
+					(_, None) => coverage.map(|_| [0.; 4]),
+				};
 
 				// The band outside lies beneath the content like a shadow, and the band inside over it like an inner shadow
-				if outside >= NEGLIGIBLE_LENGTH {
-					let band = knocked_out(tinted(&silhouette.grown(outside), color), &full, knockout_fill);
+				if let Some(band) = &bands.outside {
+					let band = knocked_out(painted(band), &full, knockout_fill);
 					place_beneath(&mut pieces, piece(0), &mut beneath, band);
 				}
-				if inside >= NEGLIGIBLE_LENGTH {
-					let band = silhouette.map(|alpha| 1. - alpha).grown(inside);
-					place_within(&mut pieces, piece(1), &mut full, &mut filled, tinted(&band, color), blend_mode);
+				if let Some(band) = &bands.inside {
+					place_within(&mut pieces, piece(1), &mut full, &mut filled, painted(band), blend_mode);
 				}
 			}
 			EffectOperation::BevelAndEmboss {
@@ -339,20 +378,10 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 					place_beneath(&mut pieces, piece(plane + 2), &mut beneath, slope);
 				}
 			}
-			EffectOperation::PaintOverlay { ref paint, blend_mode, opacity } => {
-				let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|corner| transform.transform_point2(corner));
-				let content_bounds = [corners.into_iter().reduce(DVec2::min).unwrap(), corners.into_iter().reduce(DVec2::max).unwrap()];
-				let fitted = fitted_paint(paint, content_bounds);
-				let Some(sample_paint) = paint_sampler(fitted.as_ref().unwrap_or(paint)) else { continue };
-
-				// The paint at each pixel's center, in the space the image is placed in
-				let pixels_to_placement = transform * DAffine2::from_scale(size.recip()) * DAffine2::from_translation(-DVec2::new(margin_x as f64, margin_y as f64));
-				let mut paint_colors = vec![Color::TRANSPARENT; full.data.len()];
-				fill_rows(&mut paint_colors, full.width, |y, row| {
-					for (x, color) in row.iter_mut().enumerate() {
-						*color = sample_paint(pixels_to_placement.transform_point2(DVec2::new(x as f64 + 0.5, y as f64 + 0.5)));
-					}
-				});
+			EffectOperation::PaintOverlay { blend_mode, opacity, .. } => {
+				let Some(paint_colors) = drawn_paint_colors(operation, transform, size, effect_to_pixels, (margin_x, margin_y), full.width, full.height) else {
+					continue;
+				};
 
 				let opacity = (opacity / 100.) as f32;
 				let data = paint_colors.iter().map(|&paint| premultiplied_gamma_channels(paint).map(|channel| channel * opacity)).collect();
@@ -789,6 +818,28 @@ fn bevel_shading(height: &Plane<f32>, rise: f64, light: DVec3) -> [Plane<f32>; 2
 	[lighting.map(|[highlight, ..]| highlight), lighting.map(|[_, shadow, ..]| shadow)]
 }
 
+/// The color of the operation's drawn paint at each pixel's center in an image `width` by `height`, which is the image of `size` pixels that `transform` places grown by `margin` on each side.
+/// A paint without its own placement is fitted to the operation's paint bounds around the ungrown image, whose lengths `effect_to_pixels` maps. `None` if the operation has no paint the CPU can draw.
+#[allow(clippy::too_many_arguments)]
+fn drawn_paint_colors(operation: &EffectOperation, transform: DAffine2, size: DVec2, effect_to_pixels: DMat2, (margin_x, margin_y): (usize, usize), width: usize, height: usize) -> Option<Vec<Color>> {
+	let paint = operation.drawn_paint()?;
+	let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|corner| transform.transform_point2(corner));
+	let content_bounds = [corners.into_iter().reduce(DVec2::min)?, corners.into_iter().reduce(DVec2::max)?];
+	let length_spans = spans_along_axes(transform.matrix2 * DMat2::from_diagonal(size.recip()) * effect_to_pixels);
+	let fitted = fitted_paint(paint, operation.drawn_paint_bounds(content_bounds, length_spans));
+	let sample_paint = paint_sampler(fitted.as_ref().unwrap_or(paint))?;
+
+	// The paint at each pixel's center, in the space the image is placed in
+	let pixels_to_placement = transform * DAffine2::from_scale(size.recip()) * DAffine2::from_translation(-DVec2::new(margin_x as f64, margin_y as f64));
+	let mut colors = vec![Color::TRANSPARENT; width * height];
+	fill_rows(&mut colors, width, |y, row| {
+		for (x, color) in row.iter_mut().enumerate() {
+			*color = sample_paint(pixels_to_placement.transform_point2(DVec2::new(x as f64 + 0.5, y as f64 + 0.5)));
+		}
+	});
+	Some(colors)
+}
+
 /// Samples the paint's color at points in the space its placement maps into, faded by its opacity, for the paints the CPU can draw: colors, images, generators, and linear or radial gradients.
 fn paint_sampler(paint: &Graphic) -> Option<Box<dyn Fn(DVec2) -> Color + Sync + '_>> {
 	let inverse = |placement: DAffine2| (placement.matrix2.determinant() != 0.).then(|| placement.inverse());
@@ -861,6 +912,36 @@ mod tests {
 
 		assert!(grown_area <= MAX_PIXELS_WITH_MARGIN, "the grown image has {grown_area} pixels");
 		assert!(grown_area > 0.99 * MAX_PIXELS_WITH_MARGIN, "the grown image has only {grown_area} pixels");
+	}
+
+	#[test]
+	fn contour_gradient_outlines_measure_their_span_in_document_units() {
+		use core_types::list::ATTR_GRADIENT_SPACE;
+		use vector_types::gradient::{GradientSpace, GradientStop};
+
+		// A gradient from black to white in gamma, so a pixel's gray is its place across the outline
+		let stops = [(0., Color::BLACK), (1., Color::WHITE)].map(|(position, color)| GradientStop { position, midpoint: 0.5, color });
+		let paint = Graphic::from(Item::new_from_element(Gradient::new(stops)).with_attribute(ATTR_GRADIENT_SPACE, GradientSpace::RgbGamma));
+
+		// At two pixels per unit, an outline of 3 aligned outside spans 8 pixels from 7 past the edge
+		let mut item = Item::new_from_element(Raster::new_cpu(Image::new(20, 20, Color::WHITE))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(10.)));
+		let outline = EffectOperation::Outline {
+			paint,
+			blend_mode: BlendMode::Normal,
+			weight: 3.,
+			align: graphic_types::vector_types::vector::style::StrokeAlign::Outside,
+			contour_gradient: true,
+		};
+		graphic_types::stamp_effect(&mut item, graphic_types::Effect::new(&outline));
+		let evaluated = evaluate_raster_effects(item);
+		let raster = evaluated.element();
+		let width = raster.width as usize;
+		let margin = (width - 20) / 2;
+		let gray = |x: usize| raster.data[(margin + 10) * width + x].to_gamma_srgb_channels()[0];
+
+		// The first pixel outside lies half a pixel past the edge, (7 - 0.5) / 8 across, and the band's last lies 5.5 past it
+		assert!((gray(margin - 1) - 207. / 255.).abs() < 1e-3, "the first pixel outside is {}", gray(margin - 1) * 255.);
+		assert!((gray(margin - 6) - 48. / 255.).abs() < 1e-3, "the band's last pixel is {}", gray(margin - 6) * 255.);
 	}
 
 	#[test]

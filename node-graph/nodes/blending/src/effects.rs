@@ -152,7 +152,7 @@ fn inner_shadow<T>(
 	content
 }
 
-/// A glow's color or gradient paint with its own effects carried out.
+/// A glow's or outline's paint with its own effects carried out, if it's a color or gradient.
 fn glow_paint(paint: Item<Graphic>) -> Graphic {
 	match paint_with_envelope_effects(paint) {
 		Graphic::Color(color) => Graphic::Color(evaluate_color_effects(color)),
@@ -323,16 +323,16 @@ fn satin<T>(
 	content
 }
 
-/// Draws a band of color along the edge of the input graphics, outside, inside, or centered on it.
-#[node_macro::node(category("Raster: Effect"), icon("NodeOutline"), version(2))]
+/// Paints a band along the edge of the input graphics, outside, inside, or centered on it.
+#[node_macro::node(category("Raster: Effect"), icon("NodeOutline"), version(3))]
 fn outline<T>(
 	_: impl Ctx,
 	/// The content to outline.
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
-	/// The outline's color, with its opacity.
+	/// The color, gradient, image, or other graphic to paint the outline with. A gradient or image without its own placement stretches across the content and its outline.
 	#[default(Color::BLACK)]
-	color: Item<Color>,
+	paint: Item<Graphic>,
 	/// How the outline mixes with the colors beneath it, or with the content's colors inside its edge.
 	blend_mode: Item<BlendMode>,
 	/// How thick the outline is.
@@ -345,15 +345,19 @@ fn outline<T>(
 	/// Whether the outline is drawn outside the edge, inside it, or centered on it.
 	#[default(StrokeAlign::Outside)]
 	align: Item<StrokeAlign>,
+	/// Runs a gradient paint across the outline's width, from its outer edge to its inner edge, rather than by the gradient's own placement.
+	contour_gradient: Item<bool>,
 ) -> Item<T> {
+	// Stamped even with no paint, which draws nothing, so whether the content has effects doesn't depend on a value
 	let mut content = content;
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::Outline {
-			color: evaluate_color_effects(color).into_element(),
+			paint: glow_paint(paint),
 			blend_mode: *blend_mode.element(),
 			weight: *weight.element(),
 			align: *align.element(),
+			contour_gradient: *contour_gradient.element(),
 		}),
 	);
 	content

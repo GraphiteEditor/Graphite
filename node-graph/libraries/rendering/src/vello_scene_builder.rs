@@ -53,7 +53,7 @@ pub trait EffectsRenderer: Send {
 	/// Whether the GPU can carry out effects, without which effects groups draw their content faded by their fill.
 	fn renders_effects(&self) -> bool;
 
-	/// Renders the content `draw` draws, and each paint overlay's paint `draw_paint` draws by index, placed by `view` in premultiplied textures of `size`,
+	/// Renders the content `draw` draws, and each of the effects' drawn paints `draw_paint` draws by index, placed by `view` in premultiplied textures of `size`,
 	/// returning one for each of the `layers` that `effects` carried out on it draw, with the mode it blends by.
 	/// `effect_to_pixels` places the effects' space on the texture's pixels, `fill` fades the content but not the shadows and glows cast from it, and `opacity` fades the layers.
 	/// With a `capture`, the only texture instead holds that effect's coverage, as black with it in alpha.
@@ -374,7 +374,7 @@ impl<'a> VelloSceneBuilder<'a> {
 	}
 
 	/// Draws the content `draw` draws with `effects` carried out on it in their `effect_space` (placed in the space of the drawn content), within `bounds` in that space (or everywhere for `None`),
-	/// drawing again for each part of a split render. `draw_paint` draws each paint overlay's paint by its index among them, and `fill` fades the content but not the shadows and glows cast from it.
+	/// drawing again for each part of a split render. `draw_paint` draws each of the effects' drawn paints by its index among them, and `fill` fades the content but not the shadows and glows cast from it.
 	/// The content blends by `blend_mode` and the effects by their own modes, each faded by `opacity`, onto what lies beneath, or with every effect flattened into the content's image if not `layered`.
 	#[expect(clippy::too_many_arguments)]
 	pub fn draw_effects(

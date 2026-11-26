@@ -3,7 +3,7 @@
 
 use crate::Graphic;
 use crate::adjustment::Adjustment;
-use crate::effects::{BevelStyle, EffectCapture, EffectOperation, Effects, GlowFill, outline_extents};
+use crate::effects::{BevelStyle, EffectCapture, EffectOperation, Effects, GlowFill, OutlineFill, outline_extents};
 use core_types::Color;
 use core_types::blending::BlendMode;
 
@@ -293,10 +293,20 @@ fn pieces(index: usize, operation: &EffectOperation) -> Vec<(EffectPiece, BlendM
 		EffectOperation::OuterGlow { color, blend_mode, .. } => vec![piece(0, Beneath, glow_color(color), *blend_mode)],
 		EffectOperation::InnerShadow { color, blend_mode, .. } | EffectOperation::Satin { color, blend_mode, .. } => vec![piece(0, Within, Some(*color), *blend_mode)],
 		EffectOperation::InnerGlow { color, blend_mode, .. } => vec![piece(0, Within, glow_color(color), *blend_mode)],
-		EffectOperation::Outline { color, blend_mode, weight, align } => {
+		EffectOperation::Outline {
+			paint,
+			blend_mode,
+			weight,
+			align,
+			contour_gradient,
+		} => {
+			let color = match OutlineFill::of(paint, *contour_gradient) {
+				Some(OutlineFill::Solid(color)) => Some(color),
+				_ => None,
+			};
 			let (outside, inside) = outline_extents(*weight, *align);
-			let outside = (outside > 0.).then(|| piece(0, Beneath, Some(*color), *blend_mode));
-			let inside = (inside > 0.).then(|| piece(1, Within, Some(*color), *blend_mode));
+			let outside = (outside > 0.).then(|| piece(0, Beneath, color, *blend_mode));
+			let inside = (inside > 0.).then(|| piece(1, Within, color, *blend_mode));
 			outside.into_iter().chain(inside).collect()
 		}
 		// Planes 0 and 1 light the slopes inside the content with the highlight and shadow, and 2 and 3 those outside it
@@ -498,10 +508,11 @@ mod tests {
 	#[test]
 	fn outlines_and_bevels_draw_pieces_on_both_sides_of_the_content() {
 		let outline = EffectOperation::Outline {
-			color: RED,
+			paint: Graphic::from(RED),
 			blend_mode: BlendMode::Multiply,
 			weight: 4.,
 			align: vector_types::vector::style::StrokeAlign::Center,
+			contour_gradient: false,
 		};
 		let mut bevel = EffectOperation::default_for(EffectKind::BevelAndEmboss);
 		if let EffectOperation::BevelAndEmboss { style, highlight_color, .. } = &mut bevel {
