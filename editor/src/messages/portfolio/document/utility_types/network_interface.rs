@@ -20,6 +20,7 @@ mod hit_tests;
 mod invalidation;
 mod layout;
 mod layout_pass;
+mod node_parts;
 mod memo_network;
 mod mutations;
 mod queries;
@@ -36,6 +37,7 @@ mod view;
 
 pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
 pub use layout_pass::NetworkLayout;
+pub use node_parts::{Part, PartTarget};
 pub use reconcile::{ReconcileError, Reconciled};
 use store::Guarded;
 pub use store::NodeLocator;
@@ -52,10 +54,10 @@ use crate::consts::{
 	STACK_VERTICAL_GAP,
 };
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_proto_node_definition, resolve_proto_node_type};
-use crate::messages::portfolio::document::node_graph::utility_types::{FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
+use crate::messages::portfolio::document::node_graph::utility_types::{FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
 use crate::messages::portfolio::document::utility_types::text_metrics::text_width;
-use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_thick_wire_center_line, build_vector_wire};
+use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, build_thick_wire_center_line, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;

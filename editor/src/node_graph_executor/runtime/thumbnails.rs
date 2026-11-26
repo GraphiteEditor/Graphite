@@ -18,7 +18,7 @@ use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Color, Context, ContextFeatures, Graphic};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::layer_paths::layer_content;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 mod atlas;
@@ -41,22 +41,17 @@ pub struct Thumbnails {
 	sources: HashMap<NodeId, NodeId>,
 	/// The layers whose content changed since their thumbnail was last rendered.
 	stale: HashSet<NodeId>,
-	/// The layers whose thumbnails the frontend shows, the only ones rendered.
+	unshown: HashSet<NodeId>,
 	in_view: HashSet<NodeId>,
+	in_layers_panel: HashSet<NodeId>,
 	/// The device pixel ratio thumbnails are rendered at.
 	scale: f64,
 	#[cfg(all(target_family = "wasm", feature = "wasm"))]
-	canvases: HashMap<NodeId, ThumbnailCanvases>,
+	canvases: HashMap<NodeId, CanvasHandle>,
 	/// The layers whose thumbnails were sent to a page that can't show the runtime's canvases.
 	#[cfg(not(all(target_family = "wasm", feature = "wasm")))]
 	sent: HashSet<NodeId>,
-}
-
-/// A layer's thumbnail is shown in both the Layers panel and the node graph, but a canvas element can only be in one place.
-#[cfg(all(target_family = "wasm", feature = "wasm"))]
-struct ThumbnailCanvases {
-	layers_panel: CanvasHandle,
-	node_graph: CanvasHandle,
+	graphics: BTreeMap<NodeId, Graphic>,
 }
 
 impl Thumbnails {
@@ -64,8 +59,14 @@ impl Thumbnails {
 		Self { scale: 1., ..Default::default() }
 	}
 
-	pub fn set_in_view(&mut self, layers: HashSet<NodeId>) {
+	pub fn set_in_view(&mut self, layers: HashSet<NodeId>, layers_panel: HashSet<NodeId>) {
+		self.stale.extend(self.unshown.extract_if(|layer| layers_panel.contains(layer)));
 		self.in_view = layers;
+		self.in_layers_panel = layers_panel;
+	}
+
+	pub fn graphics(&self) -> Vec<(NodeId, Graphic)> {
+		self.graphics.iter().map(|(layer, graphic)| (*layer, graphic.clone())).collect()
 	}
 
 	/// Whether the layer's thumbnail is waiting to be rendered.
@@ -94,6 +95,7 @@ impl Thumbnails {
 		let changed = sources.iter().filter(|(layer, source)| self.sources.get(layer) != Some(source));
 		self.stale.extend(changed.map(|(layer, _)| *layer));
 		self.stale.retain(|layer| sources.contains_key(layer));
+		self.unshown.retain(|layer| sources.contains_key(layer));
 
 		self.sources = sources;
 	}
@@ -115,11 +117,13 @@ impl Thumbnails {
 		#[cfg(not(all(target_family = "wasm", feature = "wasm")))]
 		self.sent.retain(|layer| keep_sourced(layer));
 
+		self.graphics.retain(|layer, _| sources.contains_key(layer));
+
 		dropped
 	}
 
 	/// Renders the thumbnails of the layers in view whose content changed since they were last rendered, keeping the others stale until they come into view.
-	pub async fn render_stale(&mut self, executor: &DynamicExecutor, editor_api: &PlatformEditorApi, responses: &mut VecDeque<FrontendMessage>) {
+	pub async fn render_stale(&mut self, executor: &DynamicExecutor, editor_api: &PlatformEditorApi, responses: &mut VecDeque<FrontendMessage>) -> bool {
 		let mut contents = HashMap::new();
 		for layer in std::mem::take(&mut self.stale) {
 			let Some(&source) = self.sources.get(&layer) else { continue };
@@ -136,10 +140,12 @@ impl Thumbnails {
 			contents.insert(layer, content);
 		}
 		if contents.is_empty() {
-			return;
+			return false;
 		}
+		self.unshown.extend(contents.keys().filter(|layer| !self.in_layers_panel.contains(layer)));
 
 		self.render_with_vello(&contents, editor_api, responses).await;
+		true
 	}
 
 	/// Renders the thumbnails into atlases with Vello and shows them.
@@ -167,39 +173,55 @@ impl Thumbnails {
 				}
 			};
 
-			self.show_atlas(&layout, texture, executor, responses).await;
+			self.keep_cells(&layout, &texture, executor);
+			let shown: Vec<(usize, NodeId)> = layout.layers.iter().copied().enumerate().filter(|(_, layer)| self.in_layers_panel.contains(layer)).collect();
+			if !shown.is_empty() {
+				self.show_atlas(&layout, &shown, texture, executor, responses).await;
+			}
 		}
 	}
 
-	/// Reads the atlas back and draws each cell into the canvases the layer's rows show.
+	/// Copies each layer's cell out of the atlas into a texture of its own for the node graph.
+	fn keep_cells(&mut self, layout: &ThumbnailAtlasLayout, atlas: &Texture, executor: &wgpu_executor::WgpuExecutor) {
+		let mut encoder = executor.context().device.create_command_encoder(&Default::default());
+		for (index, &layer) in layout.layers.iter().enumerate() {
+			let cell = executor.request_texture(layout.cell_size);
+			let mut source = atlas.as_image_copy();
+			let origin = layout.cell_origin(index);
+			(source.origin.x, source.origin.y) = (origin.x, origin.y);
+			encoder.copy_texture_to_texture(source, cell.as_image_copy(), cell.size());
+			self.graphics.insert(layer, Graphic::RasterGPU(Item::new_from_element(Raster::new_gpu(cell))));
+		}
+		executor.context().queue.submit([encoder.finish()]);
+	}
+
+	/// Reads the atlas back and draws each shown cell into the canvas the layer's row in the Layers panel shows.
 	#[cfg(all(target_family = "wasm", feature = "wasm"))]
-	async fn show_atlas(&mut self, layout: &ThumbnailAtlasLayout, atlas: Texture, executor: &wgpu_executor::WgpuExecutor, responses: &mut VecDeque<FrontendMessage>) {
+	async fn show_atlas(&mut self, layout: &ThumbnailAtlasLayout, shown: &[(usize, NodeId)], atlas: Texture, executor: &wgpu_executor::WgpuExecutor, responses: &mut VecDeque<FrontendMessage>) {
 		let raster = Raster::new_gpu(atlas).convert(Footprint::BOUNDLESS, executor.clone()).await;
 		let (pixels, _, _) = raster.to_flat_u8();
 
-		for (index, &layer) in layout.layers.iter().enumerate() {
+		for &(index, layer) in shown {
 			let cell_pixels = layout.cell_pixels(&pixels, index);
 			let Ok(image) = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&cell_pixels), layout.cell_size.x, layout.cell_size.y) else {
 				continue;
 			};
 
-			let canvases = self.canvases(layer);
-			for canvas in [&mut canvases.layers_panel, &mut canvases.node_graph] {
-				canvas.set_resolution(layout.cell_size);
-				let _ = canvas.context().put_image_data(&image, 0, 0);
-			}
+			let canvas = self.canvas(layer);
+			canvas.set_resolution(layout.cell_size);
+			let _ = canvas.context().put_image_data(&image, 0, 0);
 
-			responses.push_back(canvases.update_message(layer));
+			responses.push_back(canvas_message(layer, canvas));
 		}
 	}
 
-	/// Reads the atlas back for a page that can't show the runtime's canvases, like the desktop app's, and sends each layer its cell's pixels.
+	/// Reads the atlas back for a page that can't show the runtime's canvases, like the desktop app's, and sends each shown layer its cell's pixels.
 	#[cfg(not(all(target_family = "wasm", feature = "wasm")))]
-	async fn show_atlas(&mut self, layout: &ThumbnailAtlasLayout, atlas: Texture, executor: &wgpu_executor::WgpuExecutor, responses: &mut VecDeque<FrontendMessage>) {
+	async fn show_atlas(&mut self, layout: &ThumbnailAtlasLayout, shown: &[(usize, NodeId)], atlas: Texture, executor: &wgpu_executor::WgpuExecutor, responses: &mut VecDeque<FrontendMessage>) {
 		let raster = Raster::new_gpu(atlas).convert(Footprint::BOUNDLESS, executor.clone()).await;
 		let (pixels, _, _) = raster.to_flat_u8();
 
-		for (index, &layer) in layout.layers.iter().enumerate() {
+		for &(index, layer) in shown {
 			self.sent.insert(layer);
 			responses.push_back(FrontendMessage::UpdateNodeThumbnailPixels {
 				id: layer,
@@ -211,23 +233,14 @@ impl Thumbnails {
 	}
 
 	#[cfg(all(target_family = "wasm", feature = "wasm"))]
-	fn canvases(&mut self, layer: NodeId) -> &mut ThumbnailCanvases {
-		self.canvases.entry(layer).or_insert_with(|| ThumbnailCanvases {
-			layers_panel: CanvasHandle::new(),
-			node_graph: CanvasHandle::new(),
-		})
+	fn canvas(&mut self, layer: NodeId) -> &mut CanvasHandle {
+		self.canvases.entry(layer).or_insert_with(CanvasHandle::new)
 	}
 }
 
 #[cfg(all(target_family = "wasm", feature = "wasm"))]
-impl ThumbnailCanvases {
-	fn update_message(&mut self, layer: NodeId) -> FrontendMessage {
-		FrontendMessage::UpdateNodeThumbnailCanvases {
-			id: layer,
-			layers_panel_canvas_id: self.layers_panel.id(),
-			node_graph_canvas_id: self.node_graph.id(),
-		}
-	}
+fn canvas_message(layer: NodeId, canvas: &mut CanvasHandle) -> FrontendMessage {
+	FrontendMessage::UpdateNodeThumbnailCanvas { id: layer, canvas_id: canvas.id() }
 }
 
 enum ThumbnailContent {
@@ -398,7 +411,9 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 
 #[cfg(test)]
 mod tests {
+	use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 	use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, shipped_node_id};
+	use crate::node_graph_executor::NodeGraphUpdate;
 	use crate::test_utils::test_prelude::*;
 	use glam::UVec2;
 	use graph_craft::document::NodeId;
@@ -411,7 +426,7 @@ mod tests {
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
 		let document = documents.get_mut(&document_id).unwrap();
 		executor
-			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO)
+			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO, None)
 			.unwrap();
 		editor.runtime.update();
 		editor.runtime.run().await;
@@ -450,5 +465,63 @@ mod tests {
 		let content_output = compiled_id(&editor, &[content_node]);
 		assert!(content_output.is_some(), "The content node should be compiled");
 		assert_eq!(editor.runtime.thumbnails.sources.get(&content_node).copied(), content_output, "Any other layer shows its output");
+	}
+
+	async fn layer_in_view_only_in_the_node_graph(editor: &mut EditorTestUtils) -> NodeId {
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 10., 10.).await;
+		let layer = editor.get_selected_layer().await.expect("The drawn rectangle should be selected").to_node();
+
+		let mut responses = VecDeque::new();
+		editor.active_document_mut().layers_in_view.set_node_graph(HashSet::from([layer]), &mut responses);
+		for message in responses {
+			editor.dispatch(message);
+		}
+		editor.runtime.update();
+		editor.runtime.run().await;
+		layer
+	}
+
+	#[tokio::test]
+	async fn a_layer_in_view_only_in_the_node_graph_gets_its_frontend_thumbnail_once_it_comes_into_view_in_the_layers_panel() {
+		let mut editor = EditorTestUtils::create();
+		let layer = layer_in_view_only_in_the_node_graph(&mut editor).await;
+		let updates: Vec<NodeGraphUpdate> = editor.portfolio_message_handler().executor.receiver.try_iter().collect();
+		assert!(
+			!updates.iter().any(|update| matches!(update, NodeGraphUpdate::Thumbnails { .. })),
+			"A layer in view only in the node graph should get no frontend thumbnail"
+		);
+		assert!(editor.runtime.thumbnails.graphics.contains_key(&layer), "The node graph should get the layer's thumbnail");
+
+		editor.dispatch(DocumentMessage::SetLayersPanelView {
+			layers: vec![layer],
+			layers_missing_details: Vec::new(),
+		});
+		editor.runtime.update();
+		editor.runtime.run().await;
+		let messages = editor.dispatch(Message::Wake);
+		assert!(
+			messages.iter().any(|message| LayersInView::thumbnail_layer(message) == Some(layer)),
+			"The layer should get its frontend thumbnail once it comes into view in the Layers panel"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_hidden_layer_has_no_thumbnail_for_the_node_graph() {
+		let mut editor = EditorTestUtils::create();
+		let layer = layer_in_view_only_in_the_node_graph(&mut editor).await;
+		assert!(editor.runtime.thumbnails.graphics.contains_key(&layer));
+
+		editor
+			.handle_message(NodeGraphMessage::SetVisibility {
+				node_id: layer,
+				network_path: Vec::new(),
+				visible: false,
+			})
+			.await;
+		assert!(
+			!editor.runtime.thumbnails.graphics.contains_key(&layer),
+			"A hidden layer shows nothing, so the node graph draws no thumbnail for it"
+		);
 	}
 }

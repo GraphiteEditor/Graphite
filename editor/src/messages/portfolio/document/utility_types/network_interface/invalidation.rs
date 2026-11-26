@@ -6,10 +6,6 @@
 use super::*;
 
 impl NodeNetworkInterface {
-	pub(crate) fn invalidate_positions(&mut self, network_path: &[NodeId]) {
-		self.unload_all_nodes_bounding_box(network_path);
-	}
-
 	/// Unloads the network's import and export ports.
 	pub(crate) fn invalidate_import_export(&mut self, network_path: &[NodeId]) {
 		self.unload_import_export_ports(network_path);
@@ -17,6 +13,5 @@ impl NodeNetworkInterface {
 
 	pub(crate) fn invalidate_node_appearance(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		self.try_unload_layer_width(node_id, network_path);
-		self.unload_all_nodes_bounding_box(network_path);
 	}
 }

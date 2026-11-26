@@ -21,7 +21,7 @@ use graphene_std::{Color, Context};
 use gungraun::prelude::*;
 use gungraun::{Callgrind, EntryPoint};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, OutputHandle};
-use interpreted_executor::util::wrap_network_in_scope;
+use interpreted_executor::util::wrap_network_with_render_node_in_scope;
 use std::hint::black_box;
 use std::sync::Arc;
 use wgpu_executor::{WgpuContextBuilder, WgpuExecutor};
@@ -70,7 +70,7 @@ impl Session {
 
 	/// Recompiles the document graph into the executor and renders the viewport, as the runtime does after an edit.
 	fn update(&mut self, document: NodeNetwork) {
-		let mut network = wrap_network_in_scope(document, self.editor_api.clone(), self.runtime.handle());
+		let mut network = wrap_network_with_render_node_in_scope(document, self.editor_api.clone(), self.runtime.handle());
 		self.preprocessor.preprocess(&mut network, &|_| None).expect("Failed to preprocess the document");
 		let proto_network = Compiler {}.compile_single(network).expect("Failed to compile the document").network;
 		(self.output, _) = self.executor.update(proto_network).expect("Failed to update the executor");

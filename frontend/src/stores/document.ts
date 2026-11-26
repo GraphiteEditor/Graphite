@@ -14,7 +14,6 @@ type DocumentStoreState = {
 	workingColorsLayout: Layout;
 	nodeGraphControlBarLayout: Layout;
 	graphViewOverlayOpen: boolean;
-	fadeArtwork: number;
 	renderStatus: RenderStatus;
 };
 const initialState: DocumentStoreState = {
@@ -24,7 +23,6 @@ const initialState: DocumentStoreState = {
 	workingColorsLayout: createLayout(),
 	nodeGraphControlBarLayout: createLayout(),
 	graphViewOverlayOpen: false,
-	fadeArtwork: 100,
 	renderStatus: "Rendering",
 };
 
@@ -43,13 +41,6 @@ export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 	destroyDocumentStore();
 
 	subscriptionsRouter = subscriptions;
-
-	subscriptions.subscribeFrontendMessage("UpdateGraphFadeArtwork", (data) => {
-		update((state) => {
-			state.fadeArtwork = data.percentage;
-			return state;
-		});
-	});
 
 	subscriptions.subscribeLayoutUpdate("ToolOptions", (data) => {
 		patchLayout(get(store).toolOptionsLayout, data);
@@ -99,7 +90,6 @@ export function destroyDocumentStore() {
 	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
-	subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
 	subscriptions.unsubscribeFrontendMessage("UpdateRenderStatus");
 	subscriptions.unsubscribeFrontendMessage("UpdateRemoteCursors");

@@ -88,34 +88,15 @@ impl NodeNetworkInterface {
 		*network_metadata.transient_metadata.glide_offsets.borrow_mut() = glide_offsets;
 	}
 
-	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
-		self.load_import_export_ports(network_path);
-
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in import_export_ports");
-			return None;
-		};
-		let Some(ports) = transient.import_export_ports.get_loaded_mut() else {
-			log::error!("Could not load import export ports in import_export_ports");
-			return None;
-		};
-		Some(ports)
-	}
-
-	/// Reads the import/export ports through &self, loading them first if needed.
+	/// Reads the import/export ports through &self, building them again first if the layout they were placed by has changed.
 	pub(crate) fn with_import_export_ports<R>(&self, network_path: &[NodeId], read: impl FnOnce(&Ports) -> R) -> Option<R> {
-		self.network_metadata(network_path)?
-			.transient_metadata
-			.import_export_ports
-			.with_loaded_or(|| self.compute_import_export_ports(network_path), read)
-	}
+		let generation = self.with_layout(network_path, NetworkLayout::generation)?;
+		let cache = &self.network_metadata(network_path)?.transient_metadata.import_export_ports;
+		if cache.with_loaded(|(placed_by, _)| *placed_by != generation) == Some(true) {
+			cache.unload();
+		}
 
-	pub fn load_import_export_ports(&self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in load_import_export_ports");
-			return;
-		};
-		network_metadata.transient_metadata.import_export_ports.ensure_loaded(|| self.compute_import_export_ports(network_path));
+		cache.with_loaded_or(|| Some((generation, self.compute_import_export_ports(network_path)?)), |(_, ports)| read(ports))
 	}
 
 	pub(crate) fn unload_import_export_ports(&mut self, network_path: &[NodeId]) {
@@ -126,78 +107,13 @@ impl NodeNetworkInterface {
 		transient.import_export_ports.unload();
 	}
 
-	pub fn all_nodes_bounding_box(&self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in all_nodes_bounding_box");
-			return None;
-		};
-
-		let bounding_box = network_metadata
-			.transient_metadata
-			.all_nodes_bounding_box
-			.with_loaded_or(|| self.compute_all_nodes_bounding_box(network_path), |bounds| *bounds);
-		if bounding_box.is_none() {
-			log::error!("Could not load all nodes bounding box in all_nodes_bounding_box");
-		}
-		bounding_box
-	}
-
 	/// The combined bounds of every node in the network, in node graph space.
-	fn compute_all_nodes_bounding_box(&self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		let network_metadata = self.network_metadata(network_path)?;
-		let nodes = network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>();
-
-		Some(
-			nodes
-				.iter()
-				.filter_map(|node_id| self.node_bounding_box(node_id, network_path))
-				.reduce(Quad::combine_bounds)
-				.unwrap_or([DVec2::new(0., 0.), DVec2::new(0., 0.)]),
-		)
-	}
-
-	pub fn unload_all_nodes_bounding_box(&mut self, network_path: &[NodeId]) {
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in unload_all_nodes_bounding_box");
-			return;
-		};
-		transient.all_nodes_bounding_box.unload();
-		transient.import_export_clearance.unload();
-		self.unload_import_export_ports(network_path);
+	pub fn all_nodes_bounding_box(&self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
+		self.with_layout(network_path, NetworkLayout::bounds)
 	}
 
 	pub(crate) fn import_export_clearance(&self, network_path: &[NodeId]) -> Option<ImportExportClearance> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in import_export_clearance");
-			return None;
-		};
-
-		network_metadata
-			.transient_metadata
-			.import_export_clearance
-			.with_loaded_or(|| self.compute_import_export_clearance(network_path), |clearance| *clearance)
-	}
-
-	/// The horizontal extents of the nodes in the network, with the redirect dots measured by their centers apart from the rest.
-	fn compute_import_export_clearance(&self, network_path: &[NodeId]) -> Option<ImportExportClearance> {
-		let network_metadata = self.network_metadata(network_path)?;
-		let widen = |span: Option<[f64; 2]>, left: f64, right: f64| Some(span.map_or([left, right], |[min, max]| [min.min(left), max.max(right)]));
-
-		let mut clearance = ImportExportClearance::default();
-		for node_id in network_metadata.persistent_metadata.node_metadata.keys() {
-			let Some([top_left, bottom_right]) = self.node_bounding_box(node_id, network_path) else {
-				continue;
-			};
-
-			if self.is_redirect_dot(node_id, network_path) {
-				let center = (top_left.x + bottom_right.x) / 2.;
-				clearance.dot_centers = widen(clearance.dot_centers, center, center);
-			} else {
-				clearance.node_sides = widen(clearance.node_sides, top_left.x, bottom_right.x);
-			}
-		}
-
-		Some(clearance)
+		self.with_layout(network_path, NetworkLayout::clearance)
 	}
 
 	pub fn outward_wires(&mut self, network_path: &[NodeId]) -> Option<&HashMap<OutputConnector, Vec<InputConnector>>> {
@@ -364,6 +280,10 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn layer_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
+		self.layer_width_and_name_width(node_id, network_path).map(|(layer_width, _)| layer_width)
+	}
+
+	pub(super) fn layer_width_and_name_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<(u32, f64)> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in layer_width");
 			return None;
@@ -376,7 +296,7 @@ impl NodeNetworkInterface {
 		node_metadata
 			.transient_metadata
 			.layer_width
-			.with_loaded_or(|| Some(self.compute_layer_width(node_id, network_path)), |layer_width| *layer_width)
+			.with_loaded_or(|| Some(self.compute_layer_width(node_id, network_path)), |widths| *widths)
 	}
 
 	/// Unloads layer width if the node is a layer.
@@ -398,21 +318,6 @@ impl NodeNetworkInterface {
 
 	pub fn get_output_center(&self, output: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
 		self.output_position(output, network_path)
-	}
-
-	/// The wire into the input as the frontend draws it, with its ends following anything drawn gliding into place.
-	pub fn wire_update_from_input(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<WirePathUpdate> {
-		let wire = self.wire_path_from_input(input, graph_wire_style, false, glide_offsets, network_path)?;
-		let (id, input_index) = match input {
-			InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
-			InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
-		};
-
-		Some(WirePathUpdate {
-			id,
-			input_index,
-			wire_path_update: Some(wire),
-		})
 	}
 
 	pub fn all_input_connectors(&self, network_path: &[NodeId]) -> Vec<InputConnector> {
@@ -439,20 +344,8 @@ impl NodeNetworkInterface {
 			.collect()
 	}
 
-	/// Maps to the frontend representation of a wire start. Includes disconnected value wire inputs.
-	pub fn node_graph_wire_inputs(&self, network_path: &[NodeId]) -> Vec<(NodeId, usize)> {
-		self.node_graph_input_connectors(network_path)
-			.iter()
-			.map(|input| match input {
-				InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
-				InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
-			})
-			.chain(std::iter::once((NodeId(u64::MAX), u32::MAX as usize)))
-			.collect()
-	}
-
 	/// The dashed wire from the previewed node to the export, drawn alongside the export's own wire.
-	pub fn wire_to_preview(&self, graph_wire_style: GraphWireStyle, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+	pub fn vector_wire_to_preview(&self, graph_wire_style: GraphWireStyle, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<(OutputConnector, BezPath, BezPath, bool)> {
 		let input = InputConnector::Export(0);
 
 		let Previewing::Yes { previewed } = self.previewing(network_path) else { return None };
@@ -476,29 +369,10 @@ impl NodeNetworkInterface {
 		let thick = vertical_end && vertical_start;
 		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
 		let center_line = build_thick_wire_center_line(output_position, input_position, vertical_start, vertical_end);
-
-		let path_string = vector_wire.to_svg();
-		let center_path_string = center_line.to_svg();
-		let output_type = self.output_type(&upstream_output, network_path);
-		let data_type = output_type.displayed_type();
-		let is_list = output_type.is_list();
-		let wire_path_update = Some(WirePath {
-			path_string,
-			data_type,
-			thick,
-			dashed: true,
-			is_list,
-			center_path_string,
-		});
-
-		Some(WirePathUpdate {
-			id: NodeId(u64::MAX),
-			input_index: u32::MAX as usize,
-			wire_path_update,
-		})
+		Some((upstream_output, vector_wire, center_line, thick))
 	}
 
-	/// Returns the wire subpath, its thick center-line subpath, and whether the wire should be thick.
+	/// Returns the wire subpath, its thick center-line subpath, and whether the wire should be thick, or None if nothing feeds the input.
 	pub fn vector_wire_from_input(&self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, BezPath, bool)> {
 		self.gliding_vector_wire_from_input(input, wire_style, &GlideOffsets::default(), network_path)
 	}
@@ -510,10 +384,7 @@ impl NodeNetworkInterface {
 			return None;
 		};
 		let input_position = input_position + glide_offsets.input(input);
-		// An upstream output could not be found, so the wire does not exist, but it should still be loaded as as empty vector
-		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
-			return Some((BezPath::new(), BezPath::new(), false));
-		};
+		let upstream_output = self.upstream_output_connector(input, network_path)?;
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
 			log::error!("Could not get output port for wire start: {upstream_output:?}");
 			return None;
@@ -527,39 +398,11 @@ impl NodeNetworkInterface {
 		Some((vector_wire, center_line, thick))
 	}
 
-	pub fn wire_path_from_input(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<WirePath> {
-		let (vector_wire, center_line, thick) = self.gliding_vector_wire_from_input(input, graph_wire_style, glide_offsets, network_path)?;
-		let path_string = vector_wire.to_svg();
-		let center_path_string = center_line.to_svg();
-		let (data_type, is_list) = self
-			.upstream_output_connector(input, network_path)
-			.map(|output| {
-				let output_type = self.output_type(&output, network_path);
-				(output_type.displayed_type(), output_type.is_list())
-			})
-			.unwrap_or((FrontendGraphDataType::General, false));
-		Some(WirePath {
-			path_string,
-			data_type,
-			thick,
-			dashed,
-			is_list,
-			center_path_string,
-		})
-	}
-
 	/// The node's body, ports, and handles, built where it is drawn now.
-	pub fn node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<DocumentNodeClickTargets> {
-		self.compute_node_click_targets(node_id, network_path)
-	}
-
-	pub(crate) fn with_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
-		self.compute_node_click_targets(node_id, network_path).as_ref().map(read)
-	}
-
+	/// The box around the node's body where it sits in its grid cell, in node graph space.
 	pub fn node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		self.with_node_click_targets(node_id, network_path, |click_targets| click_targets.node_click_target.bounding_box())
-			.flatten()
+		let body = self.with_layout(network_path, |layout| layout.body(node_id)).flatten()?;
+		Some([body.min, body.max])
 	}
 }
 

@@ -1,35 +1,6 @@
-use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use glam::{DVec2, IVec2};
-use graphene_std::{uuid::NodeId, vector::misc::dvec2_to_point};
+use graphene_std::vector::misc::dvec2_to_point;
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, Point, Shape};
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WirePath {
-	#[serde(rename = "pathString")]
-	pub path_string: String,
-	#[serde(rename = "dataType")]
-	pub data_type: FrontendGraphDataType,
-	pub thick: bool,
-	pub dashed: bool,
-	// A rank-1 `List<T>` wire renders as a doubled-up pair of parallel lines to distinguish it from a rank-0 `Item<T>` wire
-	#[serde(rename = "isList")]
-	pub is_list: bool,
-	// A thick wire's center line reaches past the wire into the cleaved connector slots, so it needs its own longer path; empty otherwise
-	#[serde(rename = "centerPathString")]
-	pub center_path_string: String,
-}
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WirePathUpdate {
-	pub id: NodeId,
-	#[serde(rename = "inputIndex")]
-	pub input_index: usize,
-	// If none, then remove the wire from the map
-	#[serde(rename = "wirePathUpdate")]
-	pub wire_path_update: Option<WirePath>,
-}
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]

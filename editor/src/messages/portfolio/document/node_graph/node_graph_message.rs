@@ -1,3 +1,4 @@
+use super::graph_ui::GraphName;
 use super::utility_types::{Direction, NodeEvaluationError};
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -202,13 +203,9 @@ pub enum NodeGraphMessage {
 	SelectedNodesSet {
 		nodes: Vec<NodeId>,
 	},
-	SendClickTargets,
-	EndSendClickTargets,
-	UnloadWires,
 	SendWires,
 	UpdateVisibleNodes,
 	SendGraph,
-	SendNodePositions,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,
@@ -218,10 +215,12 @@ pub enum NodeGraphMessage {
 		input_connector: InputConnector,
 		input: NodeInput,
 	},
-	/// Asks the frontend to enter inline-rename mode for the given layer's display name in the graph view.
-	/// Triggered by double-clicking the layer's name area.
-	BeginEditLayerName {
-		node_id: NodeId,
+	BeginEditName {
+		name: GraphName,
+	},
+	/// Ends the name edit, renaming unless `name` is `None` (cancelled) or unchanged.
+	EndEditName {
+		name: Option<String>,
 	},
 	SetDisplayName {
 		node_id: NodeId,
@@ -324,7 +323,7 @@ pub enum NodeGraphMessage {
 		network_path: Vec<NodeId>,
 	},
 	UpdateBoxSelection,
-	/// Shows hovered the connector a press at the pointer would grab, or none.
+	/// Updates what the pointer hovers in the graph: the connector a press would grab, a layer button, dot or error badge, and the tooltip there.
 	UpdateHoveredConnector,
 	/// Highlights the wire a dragged node would be inserted onto if dropped where it is, or stops highlighting one.
 	UpdateWireInsertionPreview,
@@ -349,7 +348,6 @@ pub enum NodeGraphMessage {
 	},
 	UpdateActionButtons,
 	UpdateGraphBarRight,
-	UpdateInSelectedNetwork,
 	UpdateHints,
 	SendSelectedNodes,
 }
@@ -377,6 +375,7 @@ impl NodeGraphMessage {
 			| Self::MergeSelectedNodes
 			| Self::ReorderImport { .. }
 			| Self::ReorderExport { .. }
+			| Self::BeginEditName { .. }
 			| Self::SetImportExportName { .. }
 			| Self::SetImportExportNameImpl { .. }
 			| Self::SetImportExportDescription { .. }
@@ -412,7 +411,6 @@ impl NodeGraphMessage {
 			| Self::RemoveImportExport { .. }
 			| Self::SetInputValue { .. }
 			| Self::SetInput { .. }
-			| Self::BeginEditLayerName { .. }
 			| Self::MakeUnique { .. }
 			| Self::SetToNodeOrLayer { .. }
 			| Self::ShiftNodePosition { .. }
@@ -442,13 +440,10 @@ impl NodeGraphMessage {
 			| Self::SelectedNodesAdd { .. }
 			| Self::SelectedNodesRemove { .. }
 			| Self::SelectedNodesSet { .. }
-			| Self::SendClickTargets
-			| Self::EndSendClickTargets
-			| Self::UnloadWires
 			| Self::SendWires
 			| Self::UpdateVisibleNodes
 			| Self::SendGraph
-			| Self::SendNodePositions
+			| Self::EndEditName { .. }
 			| Self::TogglePreview { .. }
 			| Self::TogglePreviewImpl { .. }
 			| Self::UpdateBoxSelection
@@ -462,7 +457,6 @@ impl NodeGraphMessage {
 			| Self::UpdateEvaluationErrors { .. }
 			| Self::UpdateActionButtons
 			| Self::UpdateGraphBarRight
-			| Self::UpdateInSelectedNetwork
 			| Self::UpdateHints
 			| Self::SendSelectedNodes => None,
 		}

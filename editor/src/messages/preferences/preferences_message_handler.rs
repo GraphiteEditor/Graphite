@@ -126,7 +126,6 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 			PreferencesMessage::GraphWireStyle { style } => {
 				self.graph_wire_style = style;
-				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendWires);
 			}
 			PreferencesMessage::ViewportZoomWheelRate { rate } => {

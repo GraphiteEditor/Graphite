@@ -1,7 +1,7 @@
 //! Times laying out the demo artworks, building their click targets, and hit testing them, as the editor does on demand.
 
 use super::test_support::open_demo;
-use crate::messages::portfolio::document::utility_types::network_interface::{GlideOffsets, InputConnector, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector, Part};
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use glam::DVec2;
 use graphene_std::uuid::NodeId;
@@ -20,20 +20,32 @@ const DEMOS: [&str; 8] = [
 const REPETITIONS: u32 = 200;
 
 #[test]
-fn wire_anchors_match_the_ports_of_every_demo_node() {
+fn wire_anchors_lie_on_the_ports_of_every_demo_node() {
 	for demo in DEMOS {
 		let document = open_demo(demo);
 		let interface = &document.network_interface;
 
 		for node_id in interface.document_network().nodes.keys() {
-			let ports = interface.compute_node_ports(node_id, &[]).expect("every node has ports");
+			// A redirect dot's wires attach at its center, between the gutters they're grabbed from
+			let body = interface.node_bounding_box(node_id, &[]).expect("every node has a body");
+			let is_redirect_dot = interface.is_redirect_dot(node_id, &[]);
+			let on_port = |wanted: Part, anchor: Option<DVec2>| {
+				let port = interface.find_node_part(node_id, &[], |part, target| (part == wanted).then_some(*target));
+				match (port, anchor) {
+					(Some(_), Some(anchor)) if is_redirect_dot => anchor == (body[0] + body[1]) / 2.,
+					(Some(port), Some(anchor)) => port.contains(anchor),
+					(None, None) => true,
+					_ => false,
+				}
+			};
+
 			for index in 0..interface.number_of_inputs(node_id, &[]) {
-				let input = InputConnector::node_at_index(*node_id, index);
-				assert_eq!(interface.input_position(&input, &[]), ports.input_port_position(index), "{demo}: input {index} of node {node_id}");
+				let anchor = interface.input_position(&InputConnector::node_at_index(*node_id, index), &[]);
+				assert!(on_port(Part::Input(index as u32), anchor), "{demo}: input {index} of node {node_id} attaches at {anchor:?}");
 			}
 			for index in 0..interface.number_of_outputs(node_id, &[]) {
-				let output = OutputConnector::node(*node_id, index);
-				assert_eq!(interface.output_position(&output, &[]), ports.output_port_position(index), "{demo}: output {index} of node {node_id}");
+				let anchor = interface.output_position(&OutputConnector::node(*node_id, index), &[]);
+				assert!(on_port(Part::Output(index as u32), anchor), "{demo}: output {index} of node {node_id} attaches at {anchor:?}");
 			}
 		}
 	}
@@ -60,7 +72,7 @@ fn time_the_layout_click_targets_and_hit_tests() {
 		let start = Instant::now();
 		for _ in 0..REPETITIONS {
 			for node_id in &node_ids {
-				std::hint::black_box(interface.node_click_targets(node_id, &[]));
+				std::hint::black_box(interface.find_node_part(node_id, &[], |_, target| std::hint::black_box(target).part.eq(&Part::Name).then_some(())));
 			}
 		}
 		let all_click_targets = start.elapsed() / REPETITIONS;
@@ -69,7 +81,7 @@ fn time_the_layout_click_targets_and_hit_tests() {
 		let start = Instant::now();
 		for _ in 0..REPETITIONS {
 			for input in &inputs {
-				std::hint::black_box(interface.wire_update_from_input(input, GraphWireStyle::default(), &GlideOffsets::default(), &[]));
+				std::hint::black_box(interface.vector_wire_from_input(input, GraphWireStyle::default(), &[]));
 			}
 		}
 		let all_wires = start.elapsed() / REPETITIONS;

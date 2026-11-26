@@ -19,16 +19,6 @@ pub fn rounded_rectangle_path(corner1: DVec2, corner2: DVec2, radii: [f64; 4]) -
 	kurbo::RoundedRect::from_rect(rect, kurbo::RoundedRectRadii::new(top_left, top_right, bottom_right, bottom_left)).to_path(DEFAULT_ACCURACY)
 }
 
-/// Ellipse inscribed in the box spanning the two opposite corners.
-pub fn ellipse_path(corner1: DVec2, corner2: DVec2) -> BezPath {
-	let rect = kurbo::Rect::from_points(dvec2_to_point(corner1), dvec2_to_point(corner2));
-	let mut path = kurbo::Ellipse::new(rect.center(), (rect.width() / 2., rect.height() / 2.), 0.).to_path(DEFAULT_ACCURACY);
-
-	// Kurbo emits the ellipse as an unclosed 360 degree arc, but hit testing only fills explicitly closed contours
-	path.close_path();
-	path
-}
-
 /// A copy of a node from a layer's chain, which can be inserted into a chain in this or another document.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChainNodeCopy {
@@ -292,13 +282,6 @@ pub(crate) fn side_port_bounds(center: DVec2, is_input: bool) -> [DVec2; 2] {
 	[center - DVec2::new(left_reach, HALF_HEIGHT), center + DVec2::new(right_reach, HALF_HEIGHT)]
 }
 
-/// The corners of the click target for a layer's top output or bottom input, which reaches only 8 px toward the connector it faces in a stack.
-fn stack_port_bounds(center: DVec2) -> [DVec2; 2] {
-	const HALF_SIZE: DVec2 = DVec2::new(12., 8.);
-
-	[center - HALF_SIZE, center + HALF_SIZE]
-}
-
 pub(crate) fn port_click_target([corner1, corner2]: [DVec2; 2]) -> ClickTarget {
 	const CORNER_RADIUS: f64 = 4.;
 
@@ -365,55 +348,12 @@ impl Ports {
 		self.output_ports.push((output_index, click_target));
 	}
 
-	pub(crate) fn insert_node_input(&mut self, input_index: usize, row_index: usize, node_top_left: DVec2) {
-		// The center of the click target is always 24 px down from the top left corner of the node
-		let center = node_top_left + DVec2::new(0., 24. + 24. * row_index as f64);
-		self.insert_input_port_at_center(input_index, center);
-	}
-
-	pub(crate) fn insert_node_output(&mut self, output_index: usize, node_top_left: DVec2) {
-		// The center of the click target is always 24 px down from the top left corner of the node
-		let center = node_top_left + DVec2::new(5. * 24., 24. + 24. * output_index as f64);
-		self.insert_output_port_at_center(output_index, center);
-	}
-
-	pub(crate) fn insert_layer_input(&mut self, input_index: usize, node_top_left: DVec2) {
-		// The primary input sits beneath the layer's thumbnail, and the secondary input on its left side
-		if input_index == 0 {
-			let center = node_top_left + DVec2::new(2. * 24., 24. * 2. + 8.);
-			self.insert_custom_input_port(input_index, port_click_target(stack_port_bounds(center)));
-		} else {
-			self.insert_input_port_at_center(input_index, node_top_left + DVec2::new(0., 24. * 1.));
-		}
-	}
-
-	pub(crate) fn insert_layer_output(&mut self, node_top_left: DVec2) {
-		// The center of the click target is 8 px above the layer, over its thumbnail
-		let center = node_top_left + DVec2::new(2. * 24., -8.);
-		self.insert_custom_output_port(0, port_click_target(stack_port_bounds(center)));
-	}
-
 	pub fn clicked_input_port_from_point(&self, point: DVec2) -> Option<usize> {
 		self.input_ports.iter().find_map(|(port, click_target)| click_target.intersect_point_no_stroke(point).then_some(*port))
 	}
 
 	pub fn clicked_output_port_from_point(&self, point: DVec2) -> Option<usize> {
 		self.output_ports.iter().find_map(|(port, click_target)| click_target.intersect_point_no_stroke(point).then_some(*port))
-	}
-
-	/// Adds the input and output of a redirect dot. Its wires both attach at its center, but they're grabbed from the gutters on either side of its body.
-	pub(crate) fn insert_dot_ports(&mut self, center: DVec2) {
-		const GUTTER_OFFSET: f64 = 10.;
-		const GUTTER_RADIUS: f64 = 5.;
-
-		let gutter = |x_offset: f64| {
-			let gutter_center = center + DVec2::new(x_offset, 0.);
-			ClickTarget::new_with_path(ellipse_path(gutter_center - DVec2::splat(GUTTER_RADIUS), gutter_center + DVec2::splat(GUTTER_RADIUS)), 0.)
-		};
-		self.insert_custom_input_port(0, gutter(-GUTTER_OFFSET));
-		self.insert_custom_output_port(0, gutter(GUTTER_OFFSET));
-		self.input_anchors.push((0, center));
-		self.output_anchors.push((0, center));
 	}
 
 	pub fn input_port_position(&self, index: usize) -> Option<DVec2> {
@@ -747,16 +687,12 @@ impl<T> TransientCache<T> {
 #[derive(Debug, Default, Clone)]
 pub struct NodeNetworkTransientMetadata {
 	pub selected_nodes: SelectedNodes,
-	/// Cache for the bounding box around all nodes in node graph space.
-	pub(crate) all_nodes_bounding_box: TransientCache<[DVec2; 2]>,
-	/// Cache for what the imports and exports keep their distance from, unloaded along with `all_nodes_bounding_box`.
-	pub(crate) import_export_clearance: TransientCache<ImportExportClearance>,
 	/// Cache for all outward wire connections
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	pub(crate) layout: TransientCache<NetworkLayout>,
 	pub(crate) drag: Option<super::layout_pass::DragPreview>,
-	/// All export connector click targets
-	pub(crate) import_export_ports: TransientCache<Ports>,
+	/// The import and export connector click targets, with the generation of the layout they were placed by.
+	pub(crate) import_export_ports: TransientCache<(u64, Ports)>,
 
 	/// How far whatever is gliding into the place it just moved to is drawn from that place, which hit tests account for.
 	pub(crate) glide_offsets: std::cell::RefCell<GlideOffsets>,
@@ -1173,40 +1109,8 @@ impl From<LegacyNodePosition> for NodePosition {
 /// Cached metadata that should be calculated when creating a node, and should be recalculated when modifying a node property that affects one of the cached fields.
 #[derive(Debug, Default, Clone)]
 pub struct DocumentNodeTransientMetadata {
-	/// Width in grid units from the left edge of the layer's thumbnail to its left end, cached since text measurement is slow. Only loaded for layers.
-	pub(crate) layer_width: TransientCache<u32>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DocumentNodeClickTargets {
-	/// In order to keep the displayed position of the node in sync with the click target, the displayed position of a node is derived from the top left of the click target
-	/// Ensure node_click_target is kept in sync when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
-	pub node_click_target: ClickTarget,
-	/// Stores all port click targets in node graph space.
-	pub port_click_targets: Ports,
-	// Click targets that are specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
-	pub node_type_metadata: NodeTypeClickTargets,
-}
-
-#[derive(Debug, Clone)]
-pub enum NodeTypeClickTargets {
-	Layer(Box<LayerClickTargets>),
-	Node, // No transient click targets are stored exclusively for nodes
-}
-
-/// All fields in TransientLayerMetadata should automatically be updated by using the network interface API
-#[derive(Debug, Clone)]
-pub struct LayerClickTargets {
-	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
-	pub visibility_click_target: ClickTarget,
-	/// Cache for the lock icon button, only present when the layer is locked.
-	pub lock_click_target: Option<ClickTarget>,
-	/// Cache for the grip icon, which is next to the visibility button.
-	pub grip_click_target: ClickTarget,
-	/// Cache for the layer's display-name text bounds. Used to detect double-click rename and
-	/// to skip the drill-into-subgraph behavior when the click lands on the name itself.
-	/// `None` for layers whose display name is empty.
-	pub name_click_target: Option<ClickTarget>,
+	/// Width in grid units from the left edge of the layer's thumbnail to its left end, and the measured width of its name, cached since text measurement is slow. Only loaded for layers.
+	pub(crate) layer_width: TransientCache<(u32, f64)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

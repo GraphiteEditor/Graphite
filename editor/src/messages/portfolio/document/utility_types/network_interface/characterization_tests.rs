@@ -1,6 +1,6 @@
 use super::{
-	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, LayerClickTargetTypes, NodeLocator, NodeNetworkInterface, NodeNetworkTemplate, NodePersistentMetadata, NodePosition,
-	NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionStatus,
+	ChainInsertionPoint, FlowType, ImportOrExport, InputConnector, LayerClickTargetTypes, NodeLocator, NodeNetworkInterface, NodeNetworkTemplate, NodePersistentMetadata, NodePosition, NodeTemplate,
+	NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionStatus,
 };
 use crate::consts::{GRID_SIZE, STACK_VERTICAL_GAP, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
@@ -11,6 +11,7 @@ use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput};
+use graph_ui::wire::WireKey;
 use graphene_std::uuid::NodeId;
 
 fn assert_invariants(editor: &EditorTestUtils, context: &str) {
@@ -330,7 +331,6 @@ async fn a_relative_node_follows_its_readers_until_it_loses_the_last_one() {
 	}
 	let relative = NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Relative(IVec2::new(-7, 3))));
 	network_interface.node_mut(NodeLocator::new(node, &[])).expect("the node exists").set_node_type(relative);
-	network_interface.invalidate_positions(&[]);
 
 	assert_eq!(network_interface.position(&node, &[]), Some(IVec2::new(13, 7)));
 
@@ -3668,7 +3668,7 @@ async fn a_dragged_layer_keeps_its_wires_where_it_is_drawn_in_the_frame_it_moves
 
 	let left_input = InputConnector::layer_secondary_input(layer);
 	let network_interface = &editor.active_document().network_interface;
-	let wire_before = network_interface.wire_path_from_input(&left_input, GraphWireStyle::default(), false, &GlideOffsets::default(), &[]);
+	let wire_before = network_interface.vector_wire_from_input(&left_input, GraphWireStyle::default(), &[]).map(|(path, _, _)| path);
 	let bounds = network_interface.node_bounding_box(&layer, &[]).expect("the layer should have bounds");
 	let press = DVec2::new(bounds[1].x - 30., (bounds[0].y + bounds[1].y) / 2.);
 	let node_graph_to_viewport = network_interface
@@ -3689,31 +3689,26 @@ async fn a_dragged_layer_keeps_its_wires_where_it_is_drawn_in_the_frame_it_moves
 		})
 		.await;
 
-	// One grid cell right, through the input preprocessor so the frontend messages of the move itself are returned
+	// One grid cell right
 	let moved = node_graph_to_viewport.transform_point2(press + DVec2::new(GRID_SIZE as f64, 0.));
 	let editor_mouse_state = EditorPointerState {
 		editor_position: moved,
 		mouse_keys: MouseKeys::LEFT,
 		..Default::default()
 	};
-	let messages = editor
+	editor
 		.handle_message(InputPreprocessorMessage::PointerMove {
 			editor_mouse_state,
 			modifier_keys: ModifierKeys::empty(),
 		})
 		.await;
 
-	// Still drawn a whole cell back as it starts gliding, so the last wire sent to its left input is the one from before the move
-	let last_wire_sent = messages
-		.into_iter()
-		.filter_map(|message| match message {
-			FrontendMessage::UpdateNodeGraphWires { wires } => Some(wires),
-			_ => None,
-		})
-		.flatten()
-		.rfind(|wire| wire.id == layer && wire.input_index == 1)
-		.and_then(|wire| wire.wire_path_update);
-	assert_eq!(last_wire_sent.map(|wire| wire.path_string), wire_before.map(|wire| wire.path_string));
+	// Still drawn a whole cell back as it starts gliding, so the wire into its left input is drawn as it was before the move
+	let scene = editor.portfolio_message_handler().executor.graph_ui_scene();
+	let glide = scene.layers().get(&layer).map(|row| row.glide);
+	assert_eq!(glide, Some(DVec2::new(-(GRID_SIZE as f64), 0.)), "the row is rebuilt for the move, drawn a cell back");
+	let wire_drawn = scene.wires().get(&WireKey::Input { node: layer, index: 1 }).map(|wire| wire.path.clone());
+	assert_eq!(wire_drawn, wire_before);
 }
 
 /// Nudges the only node of a new document while its graph is open, so the node starts gliding into the cell it moved to.

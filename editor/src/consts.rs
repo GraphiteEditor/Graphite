@@ -1,5 +1,5 @@
 // GRAPH
-pub const GRID_SIZE: u32 = 24;
+pub const GRID_SIZE: u32 = graph_ui::metrics::GRID_SIZE as u32;
 pub const HALF_GRID_SIZE: u32 = GRID_SIZE / 2;
 pub const EXPORTS_TO_TOP_EDGE_PIXEL_GAP: u32 = 72;
 pub const EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP: u32 = 120;
