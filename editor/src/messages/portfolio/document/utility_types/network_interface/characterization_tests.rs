@@ -4255,3 +4255,31 @@ async fn reordering_the_layers_of_a_group_keeps_them_indented_below_it() {
 	}
 	assert_eq!(overlapping_layers(&editor), Vec::new());
 }
+
+#[tokio::test]
+async fn releasing_a_drag_of_a_layer_in_a_stack_leaves_every_layer_where_the_drag_drew_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.handle_message(new_artboard_message(NodeId::new())).await;
+	for x in [0., 50., 100., 150.] {
+		editor.draw_rect(x, 0., x + 40., 40.).await;
+	}
+	let artboard = LayerNodeIdentifier::ROOT_PARENT
+		.children(editor.active_document().metadata())
+		.next()
+		.expect("the artboard should be a layer");
+	let third = artboard.children(editor.active_document().metadata()).nth(2).expect("the artboard should hold four layers");
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![third.to_node()] }).await;
+
+	let interface = &mut editor.active_document_mut().network_interface;
+	let layers: Vec<NodeId> = interface.document_network().nodes.keys().copied().filter(|node_id| interface.is_layer(node_id, &[])).collect();
+	for keep_upstream in [false, true] {
+		for offset in [IVec2::new(0, -2), IVec2::new(0, 3), IVec2::new(5, 0)] {
+			interface.drag_selected_nodes(offset, keep_upstream, &[]);
+			let dragging = interface.positions(layers.iter().copied(), &[]);
+			interface.finish_drag(&[]);
+
+			assert_eq!(interface.positions(layers.iter().copied(), &[]), dragging, "dragging by {offset} keeping upstream: {keep_upstream}");
+		}
+	}
+}

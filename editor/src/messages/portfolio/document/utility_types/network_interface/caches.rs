@@ -475,7 +475,7 @@ impl NodeNetworkInterface {
 		let vertical_start: bool = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
 		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
-		let center_line = build_thick_wire_center_line(output_position, input_position, vertical_start, vertical_end);
+		let center_line = build_thick_wire_center_line(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
 
 		let path_string = vector_wire.to_svg();
 		let center_path_string = center_line.to_svg();
@@ -523,7 +523,7 @@ impl NodeNetworkInterface {
 		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
 		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style);
-		let center_line = build_thick_wire_center_line(output_position, input_position, vertical_start, vertical_end);
+		let center_line = build_thick_wire_center_line(output_position, input_position, vertical_start, vertical_end, wire_style);
 		Some((vector_wire, center_line, thick))
 	}
 
