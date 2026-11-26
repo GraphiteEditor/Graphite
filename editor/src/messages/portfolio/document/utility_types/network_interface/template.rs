@@ -38,6 +38,14 @@ pub struct NodeTemplate {
 }
 
 impl NodeTemplate {
+	/// A new subgraph with nothing in it, which names no definition since it becomes its own entry in the document's definitions table.
+	pub fn empty_subgraph() -> Self {
+		Self {
+			implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate::default()),
+			..Default::default()
+		}
+	}
+
 	/// The input slot named by the given parameter symbol, mirroring [`DocumentNode::input`].
 	pub fn input<P: graphene_std::NodeParameter>(&self, _parameter: P) -> Option<&NodeInput> {
 		self.inputs.get(P::INDEX)

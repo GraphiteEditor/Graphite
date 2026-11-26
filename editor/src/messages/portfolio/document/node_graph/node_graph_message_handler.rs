@@ -5,13 +5,14 @@ use crate::messages::input_mapper::utility_types::macros::{action_shortcut, acti
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, NodeInspectorContext, resolve_document_node_type, resolve_network_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, NodeInspectorContext, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType, NodeEvaluationError, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, GlideOffsets, ImportOrExport, InputConnector, LayerClickTargetTypes, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, TransactionCheckpoint, TransactionStatus,
+	self, FlowType, GlideOffsets, ImportOrExport, InputConnector, LayerClickTargetTypes, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, TransactionCheckpoint,
+	TransactionStatus,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
@@ -422,6 +423,23 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				});
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			NodeGraphMessage::CreateEmptySubgraph { node_id, xy } => {
+				let node_id = node_id.unwrap_or_else(NodeId::new);
+				let (x, y) = xy.unwrap_or_else(|| {
+					network_interface
+						.node_graph_ptz(breadcrumb_network_path)
+						.map_or((0, 0), |ptz| ((-ptz.pan.x / GRID_SIZE as f64) as i32, (-ptz.pan.y / GRID_SIZE as f64) as i32))
+				});
+
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(NodeGraphMessage::InsertNode {
+					node_id,
+					node_template: Box::new(NodeTemplate::empty_subgraph()),
+				});
+				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x, y });
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
+				responses.add(NodeGraphMessage::SendGraph);
+			}
 			NodeGraphMessage::ConnectUpstreamOutputToInput { downstream_input, input_connector } => {
 				let Some(upstream_node) = network_interface.upstream_output_connector(&downstream_input, selection_network_path) else {
 					log::error!("Failed to find upstream node for downstream_input");
@@ -769,24 +787,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 				}
 
-				// Use the network interface to add a default node, then set the imports, exports, paste the nodes inside, and connect them to the imports/exports
+				// Add an empty subgraph, then set its imports and exports, paste the nodes inside, and connect them to the imports and exports
 				let encapsulating_node_id = NodeId::new();
-				let mut default_node_template = resolve_network_node_type("Custom Node").expect("Custom Node should exist").default_node_template();
+				let mut subgraph_template = NodeTemplate::empty_subgraph();
 				let Some(center_of_selected_nodes) = network_interface.selected_nodes_bounding_box(breadcrumb_network_path).map(|[a, b]| (a + b) / 2.) else {
 					log::error!("Could not get center of selected_nodes");
 					return;
 				};
 				let center_of_selected_nodes_grid_space = IVec2::new((center_of_selected_nodes.x / 24. + 0.5).floor() as i32, (center_of_selected_nodes.y / 24. + 0.5).floor() as i32);
-				default_node_template.node_type_metadata = NodeTypePersistentMetadata::node(center_of_selected_nodes_grid_space - IVec2::new(3, 1));
+				subgraph_template.node_type_metadata = NodeTypePersistentMetadata::node(center_of_selected_nodes_grid_space - IVec2::new(3, 1));
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id: encapsulating_node_id,
-					node_template: Box::new(default_node_template),
-				});
-				responses.add(NodeGraphMessage::SetDisplayNameImpl {
-					node_id: encapsulating_node_id,
-					network_path: selection_network_path.to_vec(),
-					alias: "Untitled Node".to_string(),
+					node_template: Box::new(subgraph_template),
 				});
 
 				responses.add(DocumentMessage::EnterNestedNetwork { node_id: encapsulating_node_id });
@@ -3424,6 +3437,13 @@ impl NodeGraphMessageHandler {
 						.widget_instance();
 					Layout(vec![LayoutGroup::row(vec![node_chooser])])
 				})
+				.disabled(read_only)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("New Custom Node")
+				.tooltip_label("New Custom Node")
+				.tooltip_description("Add an empty subgraph, which can be entered to build a node of your own out of other nodes.")
+				.on_update(|_| NodeGraphMessage::CreateEmptySubgraph { node_id: None, xy: None }.into())
 				.disabled(read_only)
 				.widget_instance(),
 			//

@@ -169,7 +169,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 			.ok()
 			.flatten()
 			.map(|identifier| identifier.implementation_name_from_identifier())
-			.unwrap_or("Custom Node".to_string())
+			.unwrap_or("Subgraph".to_string())
 	}
 
 	/// The display name of the node, falling back to "Untitled Layer" or the implementation name when unnamed.
