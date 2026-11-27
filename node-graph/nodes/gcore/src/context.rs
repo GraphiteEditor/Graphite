@@ -1,10 +1,11 @@
-use core_types::list::Item;
-use core_types::{Color, ExtractVarArgs};
+use core_types::list::{Item, List, NodeIdPath};
+use core_types::transform::Footprint;
+use core_types::{ATTR_EDITOR_FOOTPRINT_AREAS, ATTR_TRANSFORM, CloneVarArgs, Color, Context, ExtractAll, ExtractVarArgs, InjectFootprint, Interrupt, OwnedContextImpl};
 use core_types::{Ctx, ExtractIndex, ExtractPosition};
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::Gradient;
-use graphic_types::{Graphic, Vector};
-use raster_types::{CPU, Raster};
+use graphic_types::{Artboard, Generator, Graphic, Vector};
+use raster_types::{CPU, GPU, Raster};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ReadContextError {
@@ -94,6 +95,96 @@ fn read_index(
 	let Some(indices) = ctx.try_index() else { return Ok(Item::new_from_element(0.)) };
 
 	Ok(Item::new_from_element(at_loop_level(indices, *loop_level.element())? as f64))
+}
+
+/// Evaluates the content with a fixed footprint in place of the one requested by the renderer, so the result no longer depends on the view.
+#[node_macro::node(category("Data: Context"))]
+fn bake_footprint<T>(
+	ctx: impl Ctx + ExtractAll + CloneVarArgs + InjectFootprint,
+	#[implementations(
+		Context -> Item<bool>,
+		Context -> Item<i64>,
+		Context -> Item<f64>,
+		Context -> Item<String>,
+		Context -> Item<DAffine2>,
+		Context -> Item<Footprint>,
+		Context -> Item<DVec2>,
+		Context -> Item<Vector>,
+		Context -> Item<Graphic>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Raster<GPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
+		Context -> Item<Artboard>,
+		Context -> List<String>,
+		Context -> List<f64>,
+		Context -> List<DVec2>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+		Context -> List<Generator>,
+		Context -> List<Artboard>,
+	)]
+	value: impl Node<Context<'static>, Output = T>,
+	/// The area of the document and the resolution the content is evaluated at.
+	#[default(0., 0., 1000., 1000.)]
+	footprint: Item<Footprint>,
+	#[node_path] node_path: Item<NodeIdPath>,
+) -> Result<T, Interrupt>
+where
+	T: RecordFootprintArea,
+{
+	let area = footprint.into_element();
+	let unit_square_to_pixels = DAffine2::from_scale(area.resolution.as_dvec2());
+	let footprint = Footprint {
+		transform: unit_square_to_pixels * area.transform.inverse(),
+		..area
+	};
+
+	let new_context = OwnedContextImpl::from(ctx).with_footprint(footprint);
+	let mut content = value.eval(Some(new_context.into()))?;
+
+	content.record_footprint_area(node_path.element(), area.transform);
+	Ok(content)
+}
+
+/// Content whose items can record the footprint areas they were evaluated in.
+pub trait RecordFootprintArea {
+	/// Appends the area of the node at `node_path` to each item. `area` maps the unit square into the space the items are placed in.
+	fn record_footprint_area(&mut self, node_path: &NodeIdPath, area: DAffine2);
+}
+
+impl<T> RecordFootprintArea for Item<T> {
+	fn record_footprint_area(&mut self, node_path: &NodeIdPath, area: DAffine2) {
+		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let Some(footprint_area) = footprint_area_row(node_path, item_transform, area) else { return };
+
+		self.attribute_mut_or_insert_default::<List<NodeIdPath>>(ATTR_EDITOR_FOOTPRINT_AREAS).push(footprint_area);
+	}
+}
+
+impl<T> RecordFootprintArea for List<T> {
+	fn record_footprint_area(&mut self, node_path: &NodeIdPath, area: DAffine2) {
+		for index in 0..self.len() {
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let Some(footprint_area) = footprint_area_row(node_path, item_transform, area) else { continue };
+
+			self.with_attribute_mut_or_default::<List<NodeIdPath>, _, _>(ATTR_EDITOR_FOOTPRINT_AREAS, index, |footprint_areas| footprint_areas.push(footprint_area));
+		}
+	}
+}
+
+/// The row recording the area relative to the item, so it follows the transforms later applied to the item.
+fn footprint_area_row(node_path: &NodeIdPath, item_transform: DAffine2, area: DAffine2) -> Option<Item<NodeIdPath>> {
+	if item_transform.matrix2.determinant() == 0. {
+		return None;
+	}
+
+	Some(Item::new_from_element(node_path.clone()).with_attribute(ATTR_TRANSFORM, item_transform.inverse() * area))
 }
 
 /// The value of the loop `level` loops out from the innermost one, given the loops' values from the innermost outwards.

@@ -46,6 +46,8 @@ pub struct DocumentMetadata {
 	pub text_frames: HashMap<LayerNodeIdentifier, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, VectorGeometry>,
+	/// Per node with a footprint input, the unit square mapped onto its area in document space.
+	pub footprint_areas: HashMap<NodeId, DAffine2>,
 	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
 	/// This provides accurate SegmentIds for layers without explicit Path nodes.
 	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Item<Vector>>>,

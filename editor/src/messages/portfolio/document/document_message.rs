@@ -319,6 +319,9 @@ pub enum DocumentMessage {
 	UpdateTextFrames {
 		text_frames: HashMap<NodeId, DAffine2>,
 	},
+	UpdateFootprintAreas {
+		footprint_areas: HashMap<NodeId, DAffine2>,
+	},
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
 	},

@@ -601,6 +601,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			Some(path) => quote!(Some(#path(#(&#declared_field_names),*))),
 			None => quote!(None),
 		};
+		let keep_previous = attributes.flags.keep_previous;
 		let data_clones = data_field_names.iter().map(|name| quote!(let #name = self.#name.clone();));
 		let landed_call = landed(quote!(self::#fn_name(__context #(, &#data_field_names)* #(, #regular_field_names)*).await));
 		quote! {
@@ -632,7 +633,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let __runtime = _runtime.element().clone();
 				let __context = __input.clone();
 				#(#data_clones)*
-				let __state = self.slots.resolve(__key, &__runtime, __source, __placeholder, move || async move { #landed_call });
+				let __state = self.slots.resolve(__key, &__runtime, __source, __placeholder, #keep_previous, move || async move { #landed_call });
 				__cell.merge(__state)
 			}
 		}

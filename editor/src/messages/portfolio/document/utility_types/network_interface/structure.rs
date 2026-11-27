@@ -138,6 +138,7 @@ impl NodeNetworkInterface {
 		self.document_metadata.upstream_footprints.retain(|node, _| nodes.contains(node));
 		self.document_metadata.local_transforms.retain(|node, _| nodes.contains(node));
 		self.document_metadata.vector_modify.retain(|node, _| nodes.contains(node));
+		self.document_metadata.footprint_areas.retain(|node, _| nodes.contains(node));
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 		self.document_metadata.outlines.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 		self.document_metadata.text_frames.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
@@ -187,6 +188,11 @@ impl NodeNetworkInterface {
 	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, VectorGeometry>) {
 		self.document_metadata.mark_changed();
 		self.document_metadata.vector_modify = new_vector_modify;
+	}
+
+	/// Update the cached document space areas of the nodes with a footprint input
+	pub fn update_footprint_areas(&mut self, new_footprint_areas: HashMap<NodeId, DAffine2>) {
+		self.document_metadata.footprint_areas = new_footprint_areas;
 	}
 
 	/// Update the layer vector data (for layers without Path nodes)

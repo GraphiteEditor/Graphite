@@ -1,5 +1,4 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage, RenderStatus};
-use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::NodeEvaluationError;
 use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
@@ -11,20 +10,23 @@ use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::color::SRGBA8;
-use graphene_std::list::{Item, List};
+use graphene_std::list::List;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
-use graphene_std::vector::{Vector, VectorGeometry, graphic_types, no_paths, path, paths_from_list_row_attributes};
-use graphene_std::{ATTR_TRANSFORM, ContextOverrides, Graphic, NodeParameter};
+use graphene_std::vector::{Vector, graphic_types, no_paths, paths_from_list_row_attributes};
+use graphene_std::{ATTR_TRANSFORM, ContextOverrides, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
+mod observations;
 #[cfg(test)]
 mod recompile_tests;
 mod runtime;
+pub use observations::ObservationKey;
+use observations::{path_content_observations, path_contents};
 pub use runtime::*;
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -41,18 +43,6 @@ pub struct ExecutionResponse {
 	dropped_thumbnails: Vec<NodeId>,
 	/// The latest result of each observation.
 	observations: HashMap<ObservationKey, InspectResult>,
-}
-
-/// Names an observation so it can be changed or stopped without touching the others.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum ObservationKey {
-	/// The node the Data panel inspects.
-	DataPanel,
-	/// The content of a 'Path' node, which is the geometry the Pen and Path tools edit.
-	PathContent(NodeId),
-	// TODO: Eventually remove this document upgrade code
-	/// The "Fill" node whose geometry a gradient migration measures.
-	FillMeasurement,
 }
 
 #[derive(Debug)]
@@ -641,6 +631,7 @@ impl NodeGraphExecutor {
 							document.network_interface.update_click_targets(HashMap::new(), HashSet::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
+							document.network_interface.update_footprint_areas(HashMap::new());
 							if let Some(message) = &message {
 								log::error!("Node graph evaluation failed:\n{message}");
 							}
@@ -710,6 +701,7 @@ impl NodeGraphExecutor {
 							document.network_interface.update_click_targets(HashMap::new(), HashSet::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
+							document.network_interface.update_footprint_areas(HashMap::new());
 
 							// The graph only shows errors tied to nodes, so the console gets the others
 							if node_graph_errors.is_empty() {
@@ -1057,12 +1049,16 @@ impl NodeGraphExecutor {
 			outlines,
 			group_layers,
 			text_frames,
+			footprint_areas,
 			clip_targets,
 			vector_data,
 			appearance_attributes,
 			effects_reach,
 			backgrounds: _,
 		} = render_output.metadata;
+
+		let viewport_to_document = document_to_viewport.inverse();
+		let footprint_areas = footprint_areas.into_iter().map(|(node_id, area)| (node_id, viewport_to_document * area)).collect();
 
 		// Run these update state messages immediately
 		responses.add(DocumentMessage::UpdateUpstreamTransforms {
@@ -1074,6 +1070,7 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets, group_layers });
 		responses.add(DocumentMessage::UpdateOutlines { outlines });
 		responses.add(DocumentMessage::UpdateTextFrames { text_frames });
+		responses.add(DocumentMessage::UpdateFootprintAreas { footprint_areas });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::UpdateVectorData { vector_data });
 		responses.add(DocumentMessage::UpdateAppearanceAttributes { appearance_attributes });
@@ -1220,37 +1217,6 @@ fn export_failure_dialog(evaluation_error: Option<String>) -> DialogMessage {
 		title: "Unable to export document".to_string(),
 		description: evaluation_error.unwrap_or_else(|| "The node graph has errors that prevent it from rendering.".to_string()),
 	}
-}
-
-fn path_content_observations(network_interface: &NodeNetworkInterface) -> impl Iterator<Item = (ObservationKey, Observation)> {
-	let path_nodes = network_interface.node_paths_with_reference(&DefinitionIdentifier::ProtoNode(path::IDENTIFIER));
-
-	path_nodes.into_iter().filter_map(|node_path| {
-		let key = ObservationKey::PathContent(*node_path.last()?);
-		let observation = Observation {
-			node_path,
-			connector: ObservedConnector::Input(path::ContentInput::INDEX),
-			overrides: ContextOverrides::default(),
-		};
-		Some((key, observation))
-	})
-}
-
-/// The incoming geometry of each 'Path' node, read from its observed content.
-fn path_contents(observations: &HashMap<ObservationKey, InspectResult>) -> HashMap<NodeId, VectorGeometry> {
-	observations
-		.iter()
-		.filter_map(|(key, result)| {
-			let ObservationKey::PathContent(path_node) = *key else { return None };
-			let value = result.data.as_ref()?;
-
-			let geometry = match value.downcast_ref::<List<Vector>>() {
-				Some(list) => VectorGeometry::new(list.element(0).cloned().unwrap_or_default(), paths_from_list_row_attributes(list, 0).cloned().unwrap_or_default()),
-				None => VectorGeometry::from_item(value.downcast_ref::<Item<Vector>>()?),
-			};
-			Some((path_node, geometry))
-		})
-		.collect()
 }
 
 // Re-export for usage by tests in other modules
