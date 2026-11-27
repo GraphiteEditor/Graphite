@@ -1,40 +1,54 @@
+use crate::masks::single_graphic;
 use core_types::blending::BlendMode;
-use core_types::list::Item;
+use core_types::list::{Item, List};
 use core_types::transfer_curve::TransferCurve;
-use core_types::{ATTR_OPACITY, ATTR_OPACITY_FILL, Color, Ctx};
+use core_types::{ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx};
+use glam::DAffine2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{BevelDirection, BevelStyle, BevelTechnique, Effect, EffectOperation, Generator, GlowSource, GlowTechnique, Graphic, Vector, paint_with_envelope_effects, stamp_effect};
+use graphic_types::{
+	BevelDirection, BevelStyle, BevelTechnique, Effect, EffectOperation, Generator, GlowSource, GlowTechnique, Graphic, Vector, linked_to_content, paint_with_envelope_effects, stamp_effect,
+};
 use raster_kernels::{evaluate_color_effects, evaluate_gradient_effects};
 use vector_types::Gradient;
 use vector_types::vector::style::StrokeAlign;
 
 /// Blurs the input graphics, whether vector shapes, images, or text.
-#[node_macro::node(category("Raster: Filter"), icon("NodeBlur"), version(2))]
+///
+/// A radius mask varies the blur across the content, such as along a gradient fading from sharp to blurry.
+#[node_macro::node(category("Raster: Filter"), icon("NodeBlur"), version(3))]
 fn blur<T>(
 	_: impl Ctx,
 	/// The content to blur.
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
-	/// How far the blur spreads each point of the content.
+	/// How far the blur spreads each point of the content (where the radius mask is white, if there is one).
 	#[unit(" px")]
 	#[range]
 	#[hard(0..)]
 	#[soft(..100)]
 	radius: Item<f64>,
+	/// Optional graphics that vary the radius by their brightness, together as one, from no blur where black or transparent to the full radius where white. A gradient or image without its own placement stretches across the content, and an image continues past it as its edge pixels. Past the edges of a placed image, the content stays sharp.
+	///
+	/// The radius mask moves with the content when it is transformed afterward.
+	radius_mask: List<Graphic>,
 	/// Use a box kernel instead of a circular Gaussian kernel, which averages evenly and leaves boxy artifacts.
 	box_blur: Item<bool>,
 	/// Opt to incorrectly blend the colors in gamma space for compatibility with the results from other software.
 	gamma: Item<bool>,
 ) -> Item<T> {
+	// No radius mask, or one drawing nothing, leaves the empty default out of the row, blurring the whole content evenly
+	let content_placement = content.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+	let radius_mask = single_graphic(radius_mask).map(|radius_mask| linked_to_content(radius_mask, content_placement)).unwrap_or_default();
+
+	let operation = EffectOperation::Blur {
+		radius_mask,
+		radius: radius.into_element(),
+		box_blur: box_blur.into_element(),
+		gamma: gamma.into_element(),
+	};
+
 	let mut content = content;
-	stamp_effect(
-		&mut content,
-		Effect::new(&EffectOperation::Blur {
-			radius: *radius.element(),
-			box_blur: *box_blur.element(),
-			gamma: *gamma.element(),
-		}),
-	);
+	stamp_effect(&mut content, Effect::new(&operation));
 	content
 }
 
@@ -522,6 +536,50 @@ mod test {
 	use core_types::list::Item;
 	use graphic_types::Graphic;
 	use graphic_types::raster_types::{Image, Raster};
+
+	#[test]
+	fn a_blur_stamps_its_radius_mask_only_when_it_draws_something() {
+		use core_types::list::{ATTR_EFFECTS, List};
+		use graphic_types::{EffectOperation, Effects};
+
+		let content = Item::new_from_element(Raster::new_cpu(Image::new(1, 1, Color::WHITE)));
+		let rows = |radius_mask: List<Graphic>| {
+			let blurred = super::blur((), content.clone(), 4_f64.into(), radius_mask, true.into(), true.into());
+			blurred.attribute::<Effects>(ATTR_EFFECTS).cloned().unwrap_or_default()
+		};
+		let stamps_radius_mask = |effects: &Effects| effects.effects().map(|effect| effect.0.attribute::<Graphic>("radius_mask").is_some()).collect::<Vec<_>>();
+
+		// Without a radius mask, or with one drawing nothing, the row leaves it out and the whole content blurs by the radius
+		let no_pixels = Graphic::RasterCPU(Box::new(Item::new_from_element(Raster::new_cpu(Image::new(0, 0, Color::BLACK)))));
+		for radius_mask in [List::new(), List::new_from_element(no_pixels)] {
+			let effects = rows(radius_mask);
+			let even = EffectOperation::Blur {
+				radius_mask: Graphic::default(),
+				radius: 4.,
+				box_blur: true,
+				gamma: true,
+			};
+			assert_eq!(stamps_radius_mask(&effects), [false]);
+			assert_eq!(effects.operations().collect::<Vec<_>>(), [even]);
+		}
+
+		// A radius mask varies it, keeping the box and gamma choices
+		let effects = rows(List::new_from_element(Graphic::from(Color::WHITE)));
+		let varied: Vec<_> = effects.operations().collect();
+		assert_eq!(stamps_radius_mask(&effects), [true]);
+		assert!(
+			matches!(
+				varied.as_slice(),
+				[operation @ EffectOperation::Blur {
+					radius: 4.,
+					box_blur: true,
+					gamma: true,
+					..
+				}] if operation.varies_blur_radius()
+			),
+			"{varied:?}"
+		);
+	}
 
 	#[test]
 	fn paint_overlay_multiplies_a_color_into_the_content() {

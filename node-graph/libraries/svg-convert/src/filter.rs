@@ -29,6 +29,7 @@ fn operation(primitives: &[Primitive]) -> Option<EffectOperation> {
 
 	match primitive.kind() {
 		Kind::GaussianBlur(blur) if *blur.input() == Input::SourceGraphic => Some(EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: standard_deviation(blur.std_dev_x().get(), blur.std_dev_y().get()),
 			box_blur: false,
 			gamma: primitive.color_interpolation() == ColorInterpolation::SRGB,

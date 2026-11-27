@@ -2179,6 +2179,7 @@ mod tests {
 		stamp_effect(
 			&mut item,
 			Effect::new(&EffectOperation::Blur {
+				radius_mask: Graphic::default(),
 				radius: 1.,
 				box_blur: false,
 				gamma: false,

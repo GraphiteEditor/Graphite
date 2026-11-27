@@ -314,6 +314,7 @@ fn a_gaussian_blur_filter_becomes_a_blur_of_the_geometric_mean_of_its_standard_d
 	assert_eq!(
 		effects,
 		Some(&Effects::from_operations([EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 2.,
 			box_blur: false,
 			gamma: false

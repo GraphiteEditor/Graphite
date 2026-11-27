@@ -564,6 +564,7 @@ mod tests {
 	#[test]
 	fn rows_that_change_nothing_neither_flatten_nor_split_the_others() {
 		let no_blur = EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 0.,
 			box_blur: false,
 			gamma: false,
@@ -605,6 +606,7 @@ mod tests {
 	#[test]
 	fn trailing_masks_fade_each_layer_in_its_own_blend_mode() {
 		let no_blur = EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 0.,
 			box_blur: false,
 			gamma: false,
@@ -642,6 +644,7 @@ mod tests {
 	#[test]
 	fn effects_before_a_blur_or_a_mode_css_lacks_are_flattened() {
 		let blur = EffectOperation::Blur {
+			radius_mask: Graphic::default(),
 			radius: 2.,
 			box_blur: false,
 			gamma: false,

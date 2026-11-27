@@ -398,17 +398,36 @@ fn render_square_over_backdrop_in(
 	let square = Rect::new(min, min, max, max);
 
 	// The effects' drawn paints, drawn as the renderer does for content placed in the scene's space
-	let paints: Vec<graphic_types::Graphic> = (effects.iter())
+	let paints: Vec<(graphic_types::Graphic, Option<(DAffine2, f32)>)> = (effects.iter())
 		.filter_map(|operation| {
 			let paint = operation.drawn_paint()?;
-			let bounds = operation.drawn_paint_bounds([glam::DVec2::splat(min), glam::DVec2::splat(max)], glam::DVec2::ONE);
-			Some(graphic_types::fitted_paint(paint, bounds).unwrap_or_else(|| paint.clone()))
+			let bounds = [glam::DVec2::splat(min), glam::DVec2::splat(max)];
+			let continued = match paint {
+				graphic_types::Graphic::RasterCPU(map) if matches!(operation, graphic_types::EffectOperation::Blur { .. }) => {
+					let size = glam::DVec2::new(map.element().width as f64, map.element().height as f64);
+					graphic_types::continued_map_pixels(paint, size, bounds).zip(raster_kernels::raster_effects::continued_map_raster(map))
+				}
+				_ => None,
+			};
+			Some(match continued {
+				Some((map_pixels, (raster, opacity))) => (graphic_types::Graphic::from(raster), Some((map_pixels, opacity))),
+				None => (
+					graphic_types::fitted_paint(paint, operation.drawn_paint_bounds(bounds, glam::DVec2::ONE)).unwrap_or_else(|| paint.clone()),
+					None,
+				),
+			})
 		})
 		.collect();
-	let mut draw_paint = |index: usize, scene: &mut VelloSceneBuilder| {
-		if let Some(paint) = paints.get(index) {
-			paint.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default().for_pattern());
+	let mut draw_paint = |index: usize, scene: &mut VelloSceneBuilder| match paints.get(index) {
+		Some((graphic_types::Graphic::RasterCPU(map), Some((map_pixels, opacity)))) => {
+			let image = rendering::vello_scene_builder::SceneImage::Raster {
+				raster: map.element().clone(),
+				adjustments: Vec::new(),
+			};
+			scene.draw_image_continued(image, Affine::new(map_pixels.to_cols_array()), peniko::Extend::Pad, *opacity)
 		}
+		Some((paint, _)) => paint.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default().for_pattern()),
+		None => {}
 	};
 
 	let effects = graphic_types::Effects::from_operations(effects);
@@ -454,6 +473,7 @@ fn gaussian_blur_follows_the_normal_distribution() {
 	// Small kernels run directly, and larger ones on halved textures
 	for sigma in [2., 6., 20.] {
 		let blur = EffectOperation::Blur {
+			radius_mask: Default::default(),
 			radius: sigma,
 			box_blur: false,
 			gamma: false,
@@ -478,6 +498,7 @@ fn blurs_stretch_with_an_effect_space_scaled_unevenly() {
 	// Three times as wide as it is tall, the effect space renders in a texture of its own, so the blur of 4 spreads 12 pixels across and 4 down
 	let size = UVec2::new(512, 512);
 	let blur = EffectOperation::Blur {
+		radius_mask: Default::default(),
 		radius: 4.,
 		box_blur: false,
 		gamma: false,
@@ -984,6 +1005,125 @@ fn feathers_fade_the_content_to_nothing_at_its_edges() {
 }
 
 #[test]
+fn masked_radius_blurs_blur_as_much_as_their_map_is_bright() {
+	use core_types::Color as GraphicColor;
+	use graphic_types::{EffectOperation, Graphic};
+
+	let size = UVec2::new(160, 160);
+	let radius = 8.;
+	let masked_by = |radius_mask: Graphic, box_blur: bool| EffectOperation::Blur {
+		radius_mask,
+		radius,
+		box_blur,
+		gamma: false,
+	};
+	let masked_by_color = |radius_mask: GraphicColor| masked_by(Graphic::from(radius_mask), false);
+	let render = |effect| render_square_with_effects(vec![effect], 1., 50., 110., size);
+	let column = |pixels: &[[u8; 4]], x: u32| pixel(pixels, size, x, 80)[3] as f64 / 255.;
+
+	// A white map blurs fully, the same as a blur of the radius
+	let Some(white) = render(masked_by_color(GraphicColor::WHITE)) else { return };
+	for x in 30..70 {
+		let expected = normal_cdf((x as f64 + 0.5 - 50.) / radius);
+		assert!((column(&white, x) - expected).abs() < 0.03, "at {x} a white map blurs to {} rather than {expected}", column(&white, x));
+	}
+
+	// Likewise as a box blur, the same as an even box blur of the radius
+	let Some(white_box) = render(masked_by(Graphic::from(GraphicColor::WHITE), true)) else { return };
+	let Some(even_box) = render(masked_by(Graphic::default(), true)) else { return };
+	for x in 30..70 {
+		assert!(
+			(column(&white_box, x) - column(&even_box, x)).abs() <= 1. / 255.,
+			"at {x} a white map's box blur differs from an even one"
+		);
+	}
+
+	// A white image without a placement stretches across the content and continues past it, so it too blurs like a blur of the radius
+	let white_image = Graphic::from(core_types::list::Item::new_from_element(graphic_types::raster_types::Raster::new_cpu(
+		graphic_types::raster_types::Image::new(1, 1, GraphicColor::WHITE),
+	)));
+	let Some(pixels) = render(masked_by(white_image, false)) else { return };
+	for x in 30..70 {
+		let expected = normal_cdf((x as f64 + 0.5 - 50.) / radius);
+		assert!(
+			(column(&pixels, x) - expected).abs() < 0.03,
+			"at {x} a white image map blurs to {} rather than {expected}",
+			column(&pixels, x)
+		);
+	}
+
+	// A black map leaves the content sharp
+	let Some(black) = render(masked_by_color(GraphicColor::BLACK)) else { return };
+	assert_eq!(column(&black, 49), 0.);
+	assert_eq!(column(&black, 50), 1.);
+
+	// A middle gray blurs about as much as a blur of the fraction of the radius its luminance gives, which the interpolation between levels approximates
+	let gray = GraphicColor::from_gamma_srgb_channels(0.4, 0.4, 0.4, 1.);
+	let Some(pixels) = render(masked_by_color(gray)) else { return };
+	for x in 40..60 {
+		let expected = normal_cdf((x as f64 + 0.5 - 50.) / (0.4 * radius));
+		assert!(
+			(column(&pixels, x) - expected).abs() < 0.06,
+			"at {x} a gray map blurs to {} rather than about {expected}",
+			column(&pixels, x)
+		);
+	}
+}
+
+#[test]
+fn blurs_without_a_radius_mask_drawing_something_blur_evenly() {
+	use core_types::Color as GraphicColor;
+	use core_types::list::{Item, List};
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{Effect, EffectOperation, Graphic};
+
+	let size = UVec2::new(160, 160);
+	let blur = |radius_mask: Graphic| EffectOperation::Blur {
+		radius_mask,
+		radius: 8.,
+		box_blur: false,
+		gamma: false,
+	};
+	let render = |radius_mask| render_square_with_effects(vec![blur(radius_mask)], 1., 50., 110., size);
+
+	// A radius mask left out of the row, and those the row carries that draw nothing, render the very same even blur
+	let Some(plain) = render(Graphic::default()) else { return };
+	let no_pixels = Graphic::from(Item::new_from_element(Raster::new_cpu(Image::new(0, 0, GraphicColor::WHITE))));
+	let nested_nothing = Graphic::Graphic(Box::new(Item::new_from_element(Graphic::default())));
+	for radius_mask in [Graphic::GraphicList(List::new()), no_pixels, nested_nothing] {
+		assert!(Effect::new(&blur(radius_mask.clone())).0.attribute::<Graphic>("radius_mask").is_some());
+		let Some(pixels) = render(radius_mask) else { return };
+		assert!(pixels == plain, "a radius mask drawing nothing changes the blur");
+	}
+}
+
+#[test]
+fn zoomed_in_masked_radius_blurs_blur_by_the_fraction_of_their_radius_without_ghosting() {
+	use core_types::Color as GraphicColor;
+	use graphic_types::{EffectOperation, Graphic};
+
+	// Zoomed in to 400%, a quarter of the radius of 2 spans 2 pixels, half a document pixel, which a level of its own blurs to rather than a sharp copy mixed with a wider blur
+	let (size, radius, zoom) = (UVec2::new(160, 160), 2., 4.);
+	let gray = GraphicColor::from_gamma_srgb_channels(0.25, 0.25, 0.25, 1.);
+	let effect = EffectOperation::Blur {
+		radius_mask: Graphic::from(gray),
+		radius,
+		box_blur: false,
+		gamma: false,
+	};
+	let Some(pixels) = render_square_with_effects_in(vec![effect], DAffine2::from_scale(glam::DVec2::splat(zoom)), 1., 50., 110., size) else {
+		return;
+	};
+
+	let sigma = 64. / 255. * radius * zoom;
+	for x in 40..60 {
+		let alpha = pixel(&pixels, size, x, 80)[3] as f64 / 255.;
+		let expected = normal_cdf((x as f64 + 0.5 - 50.) / sigma);
+		assert!((alpha - expected).abs() < 0.03, "at {x} the zoomed blur reaches {alpha} rather than {expected}");
+	}
+}
+
+#[test]
 fn later_shadows_stack_over_earlier_ones_beneath_the_content() {
 	use core_types::Color as GraphicColor;
 	use glam::DVec2;
@@ -1318,6 +1458,7 @@ fn nested_effects_groups_render_inside_out() {
 	// A hard shadow around a group with content that is itself a blurred square
 	let shadow = Effects::from_operations([drop_shadow(GraphicColor::BLACK, DVec2::new(20., 0.), 0., 0.)]);
 	let blur = Effects::from_operations([EffectOperation::Blur {
+		radius_mask: Default::default(),
 		radius: 3.,
 		box_blur: false,
 		gamma: false,
@@ -1388,7 +1529,12 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 	let size = UVec2::new(160, 160);
 	let (min, max) = (50, 100);
 	let shadow_color = GraphicColor::from_rgbaf32_unchecked(0.1, 0.2, 0.8, 0.75);
-	let blur = |radius, box_blur, gamma| EffectOperation::Blur { radius, box_blur, gamma };
+	let blur = |radius, box_blur, gamma| EffectOperation::Blur {
+		radius_mask: Graphic::default(),
+		radius,
+		box_blur,
+		gamma,
+	};
 	let bevel = |style, technique, direction, size, soften| EffectOperation::BevelAndEmboss {
 		style,
 		technique,
@@ -1707,6 +1853,17 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		data: (0..25).map(|index| if (index % 5 + index / 5) % 2 == 0 { GraphicColor::BLACK } else { GraphicColor::WHITE }).collect(),
 	};
 	let resampled = Graphic::from(Item::new_from_element(Raster::new_cpu(resampled)).with_attribute(ATTR_TRANSFORM, square_placement));
+
+	// Opaque checks of black and white with a pixel for each of the square's
+	let checks = Image {
+		width: 50,
+		height: 50,
+		data: (0..2500)
+			.map(|index| if (index % 50 / 5 + index / 250) % 2 == 0 { GraphicColor::BLACK } else { GraphicColor::WHITE })
+			.collect(),
+	};
+	let checks = Graphic::from(Item::new_from_element(Raster::new_cpu(checks)).with_attribute(ATTR_TRANSFORM, square_placement));
+
 	let mask = |mask: &Graphic, mode, density, feather, invert| EffectOperation::Mask {
 		mask: mask.clone(),
 		mode,
@@ -1725,6 +1882,17 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		size: 7.,
 		range: 50.,
 		contour: TransferCurve::default(),
+	};
+	let masked_radius_blur = |radius_mask: &Graphic, radius, box_blur, gamma| EffectOperation::Blur {
+		radius_mask: radius_mask.clone(),
+		radius,
+		box_blur,
+		gamma,
+	};
+	let painted = |paint: &Graphic| EffectOperation::PaintOverlay {
+		paint: paint.clone(),
+		blend_mode: BlendMode::Normal,
+		opacity: 100.,
 	};
 	let mask_cases = [
 		vec![mask(&mask_image, MaskMode::Luminance, 100., 0., false)],
@@ -1753,6 +1921,21 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		// Masks first give the feather curved, translucent, and holed outlines
 		vec![mask(&radial, MaskMode::Alpha, 100., 0., false), EffectOperation::Feather { distance: 6. }],
 		vec![mask(&radial, MaskMode::Luminance, 100., 0., true), EffectOperation::Feather { distance: 5. }],
+		vec![masked_radius_blur(&linear, 10., false, false)],
+		vec![masked_radius_blur(&mask_image, 6., false, true)],
+		vec![masked_radius_blur(&radial, 16., false, false), blur(1., false, false)],
+		vec![masked_radius_blur(&linear, 40., false, false)],
+		vec![masked_radius_blur(&linear, 10., true, false)],
+		vec![masked_radius_blur(&radial, 24., true, true)],
+		// Hard edges between colors and alphas, which the levels interpolate across in their power space unless in gamma
+		vec![
+			painted(&checks),
+			masked_radius_blur(&Graphic::from(GraphicColor::from_gamma_srgb_channels(0.4, 0.4, 0.4, 1.)), 12., false, false),
+		],
+		vec![painted(&checks), masked_radius_blur(&radial, 20., false, false)],
+		vec![painted(&checks), masked_radius_blur(&linear, 12., false, true)],
+		vec![painted(&checker), masked_radius_blur(&linear, 12., false, false)],
+		vec![painted(&checker), masked_radius_blur(&mask_image, 8., true, false)],
 	];
 
 	// Content in a color of its own, so every mode has colors to blend
@@ -1786,6 +1969,12 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 						density,
 						feather,
 						invert,
+					},
+					EffectOperation::Blur { radius_mask, radius, box_blur, gamma } => EffectOperation::Blur {
+						radius_mask: graphic_types::linked_to_content(radius_mask, placement),
+						radius,
+						box_blur,
+						gamma,
 					},
 					operation => operation,
 				})
@@ -1831,6 +2020,8 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 				Some(EffectOperation::BevelAndEmboss { texture, .. }) if !matches!(texture, Graphic::None(_)) => 6,
 				// A slope contour steeper than a straight line amplifies the rounding of the GPU's half-float heights
 				Some(EffectOperation::BevelAndEmboss { slope_contour, .. }) if !slope_contour.is_identity() => 4,
+				// A rendered map's code apart shifts the interpolation between wide levels of a blur varied by its radius mask
+				Some(operation @ EffectOperation::Blur { .. }) if operation.varies_blur_radius() => 3,
 				_ => 2,
 			};
 			assert!(worst <= tolerance, "{effects:?} at fill {fill} differs from the GPU by up to {worst} levels");

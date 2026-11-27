@@ -742,6 +742,22 @@ impl Graphic {
 			Graphic::StrokeList(list) => list.is_empty(),
 		}
 	}
+
+	/// Whether this graphic draws nothing at all, such as an empty list or an image without pixels.
+	pub fn draws_nothing(&self) -> bool {
+		use raster_types::Storage;
+
+		let no_pixels = |raster: &Raster<CPU>| raster.width == 0 || raster.height == 0;
+		match self {
+			Graphic::Graphic(item) => item.element().draws_nothing(),
+			Graphic::GraphicList(list) => list.iter_element_values().all(Graphic::draws_nothing),
+			Graphic::RasterCPU(item) => no_pixels(item.element()),
+			Graphic::RasterCPUList(list) => list.iter_element_values().all(no_pixels),
+			Graphic::RasterGPU(item) => item.element().is_empty(),
+			Graphic::RasterGPUList(list) => list.iter_element_values().all(Raster::<GPU>::is_empty),
+			graphic => graphic.is_empty(),
+		}
+	}
 }
 
 /// Whether a vector object's own opacity and paint let a clipper reduce to an SVG `<clipPath>` instead of a `<mask>`.

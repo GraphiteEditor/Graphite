@@ -1,4 +1,4 @@
-// The passes that mask content by another graphic and feather it toward its edges, appended to `vello_effects.wgsl` and sharing its bindings and parameters
+// The passes that mask, feather, and blur content by a radius mask, appended to `vello_effects.wgsl` and sharing its bindings and parameters
 
 // SVG's `luminanceToAlpha` weights, taken on gamma-encoded channels, matching `MASK_LUMINANCE_WEIGHTS`
 const MASK_LUMINANCE_WEIGHTS: vec3<f32> = vec3<f32>(0.2125, 0.7154, 0.0721);
@@ -69,4 +69,39 @@ fn feather_erode(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f3
 	let coverage = 1. - textureLoad(secondary, pixel, 0).r;
 	let eroded = clamp(textureLoad(source, pixel, 0).r - parameters.values.x, 0., 1.);
 	return vec4<f32>(select(eroded, min(eroded / coverage, 1.), coverage > 0.));
+}
+
+// The luminance of a masked radius blur's map in `source`, premultiplied, rounded to its 8-bit code, matching `masked_radius_blur_code`
+@fragment
+fn masked_radius_blur_luminance(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let map = textureLoad(source, vec2<i32>(position.xy), 0);
+	return vec4<f32>(round(clamp(dot(map.rgb, MASK_LUMINANCE_WEIGHTS), 0., 1.) * 255.) / 255.);
+}
+
+// The level below the map luminance in `source` and the share of the level above, looked up in the `secondary` row by the luminance's 8-bit code, matching `masked_radius_blur_interpolation`
+@fragment
+fn masked_radius_blur_interpolation(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let code = i32(round(textureLoad(source, vec2<i32>(position.xy), 0).r * 255.));
+	return textureLoad(secondary, vec2<i32>(code, 0), 0);
+}
+
+// Adds the masked radius blur's level `values.x` in `source`, weighed by its share of each texel's interpolation in `secondary`, to the sum so far in `content` (with `values.y` 1)
+@fragment
+fn accumulate_masked_radius_blur_level(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let interpolation = textureLoad(secondary, pixel, 0);
+	let level = parameters.values.x;
+
+	var weight = 0.;
+	if abs(interpolation.r - level) < 0.5 {
+		weight = 1. - interpolation.g;
+	} else if abs(interpolation.r + 1. - level) < 0.5 {
+		weight = interpolation.g;
+	}
+
+	var sum = vec4<f32>(0.);
+	if parameters.values.y > 0.5 {
+		sum = textureLoad(content, pixel, 0);
+	}
+	return sum + textureLoad(source, pixel, 0) * weight;
 }

@@ -1,5 +1,5 @@
 //! SVG masks of content by another graphic: SVG's own `<mask>` for the masks before and after the other effects, and filter primitives for those between them.
-//! Both forms run the same steps as the GPU's passes: the coverage, its feather, then its density.
+//! Both forms run the same steps as the GPU's passes: the coverage, its feather, then its density. Also the masked radius blur's filter primitives.
 
 use super::{ENDLESS_EXTENT, Render, RenderParams, RenderSvgSegmentList, SvgFilterPrimitives, SvgRender, drawn_bounding_box, nested_effects_reach, svg_drawn_paint, svg_effects_region};
 use core_types::ATTR_TRANSFORM;
@@ -7,8 +7,8 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::list::{ATTR_APPEARANCE, ATTR_EFFECTS, Item, List};
 use core_types::uuid::generate_uuid;
 use glam::{DAffine2, DVec2};
-use graphic_types::effects::{EffectOperation, Effects, spans_along_axes};
-use graphic_types::masks::{MaskMode, mask_density_line, mask_feather_sigma};
+use graphic_types::effects::{EffectOperation, Effects, is_unplaced_paint, spans_along_axes};
+use graphic_types::masks::{MaskMode, mask_density_line, mask_feather_sigma, masked_radius_blur_weight};
 use graphic_types::{Appearance, Graphic};
 use raster_kernels::effect_kernels::NEGLIGIBLE_LENGTH;
 use std::fmt::Write;
@@ -72,6 +72,13 @@ pub(super) fn holds_effects(graphic: &Graphic) -> bool {
 		Graphic::GeneratorList(list) => list_holds_effects(list, |_| false),
 		Graphic::TextList(list) => list_holds_effects(list, |_| false),
 	}
+}
+
+/// Whether SVG draws a blur's `radius_mask` as markup in its filter, keeping the blur resolution-independent, rather than taking its luminance as the GPU's map.
+/// Markup embedded as an image reaches no maps of the radius mask's own effects, and can't continue an unplaced image's edge pixels past the content as the GPU does.
+pub(super) fn radius_mask_draws_as_markup(radius_mask: &Graphic) -> bool {
+	let unplaced_image = matches!(radius_mask, Graphic::RasterCPU(_) | Graphic::RasterGPU(_)) && is_unplaced_paint(radius_mask);
+	!unplaced_image && !holds_effects(radius_mask)
 }
 
 /// A mask's graphic placed by its content's `placement`, which it follows.
@@ -249,6 +256,48 @@ fn write_combined_mask(svg_defs: &mut String, masks: &[&NativeMask], endless: bo
 }
 
 impl SvgFilterPrimitives {
+	/// Each level's parts of a masked radius blur's interpolation, in the alpha of its result, from the radius mask's 8-bit `luminance` (in alpha) for the `levels` of its radius, matching `masked_radius_blur_interpolation`.
+	pub(super) fn masked_radius_blur_weights(&mut self, luminance: &str, levels: &[f64]) -> Vec<String> {
+		(0..levels.len())
+			.map(|level| {
+				// A quarter of a level past each whole one lands on it whether a browser rounds or truncates, and none stays exactly none for one that doesn't
+				let table = (0..=255_u8)
+					.map(|code| {
+						let weight = masked_radius_blur_weight(level, code, levels) as f64;
+						let biased = if weight > 0. { weight + 0.25 } else { 0. };
+						format!("{:.6}", (biased / 255.).min(1.))
+					})
+					.collect::<Vec<_>>()
+					.join(" ");
+				self.push("feComponentTransfer", &format!(r#"in="{luminance}""#), &format!(r#"<feFuncA type="table" tableValues="{table}" />"#))
+			})
+			.collect()
+	}
+
+	/// The `image` blurred by each of a masked radius blur's `levels` (in user units) weighed by its `weights` and summed, matching the GPU's `masked_radius_blur`.
+	/// The levels are boxes if `box_blur` and Gaussians otherwise, blurring in gamma if `gamma` and in linear light otherwise.
+	pub(super) fn masked_radius_blur(&mut self, image: &str, weights: &[String], levels: &[f64], box_blur: bool, gamma: bool) -> String {
+		let space = if gamma { "sRGB" } else { "linearRGB" };
+
+		let mut sum: Option<String> = None;
+		for (&level, weight) in levels.iter().zip(weights) {
+			// SVG has no box blur, so a box becomes the Gaussian of the same variance, as for an even blur
+			let sigma = if box_blur { (level * (level + 1.) / 3.).sqrt() } else { level };
+			let blurred = match level >= NEGLIGIBLE_LENGTH {
+				true => self.push("feGaussianBlur", &format!(r#"in="{image}" stdDeviation="{sigma} {sigma}" color-interpolation-filters="{space}""#), ""),
+				false => image.to_string(),
+			};
+			// Weighed and summed in gamma, the filter's own space, on purpose (see `masked_radius_blur_interpolation`)
+			let weighted = self.push("feComposite", &format!(r#"in="{blurred}" in2="{weight}" operator="in""#), "");
+
+			sum = Some(match sum {
+				Some(sum) => self.add(&sum, &weighted),
+				None => weighted,
+			});
+		}
+		sum.unwrap_or_else(|| image.to_string())
+	}
+
 	/// The `mode`'s coverage of a mask graphic's `image`, in the alpha of the result, matching the GPU's `mask_coverage`.
 	pub(super) fn mask_coverage(&mut self, image: &str, mode: MaskMode) -> String {
 		match mode {

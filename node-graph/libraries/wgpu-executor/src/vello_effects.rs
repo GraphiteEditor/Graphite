@@ -8,7 +8,7 @@ use core_types::transfer_curve::TransferCurve;
 use glam::{DMat2, DVec2, UVec2};
 use graphic_types::effect_layers::{EffectLayers, EffectPiece, LayerPart, PiecePlace, is_pixel_filter};
 use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GRADIENT_TABLE_SIZE, GlowFill, OutlineFill, bevel_light, contour_gradient_span, grow_and_tent, outline_extents, shadow_offset};
-use graphic_types::masks::mask_feather_sigma;
+use graphic_types::masks::{mask_feather_sigma, masked_radius_blur_levels};
 use graphic_types::{Adjustment, BevelDirection, BevelStyle, BevelTechnique, EffectOperation, Effects, GlowSource, GlowTechnique};
 use raster_kernels::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH, chamfer_passes};
 use std::collections::HashMap;
@@ -276,7 +276,7 @@ impl EffectPasses {
 			};
 
 			match *operation {
-				EffectOperation::Blur { radius, box_blur, gamma } => {
+				EffectOperation::Blur { radius, box_blur, gamma, .. } if !operation.varies_blur_radius() => {
 					let radius = radius * length_scale;
 					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
 
@@ -285,6 +285,27 @@ impl EffectPasses {
 					let unblurred = full.take().unwrap_or_else(|| recorder.scale(content, 1.));
 					full = Some(recorder.blur(unblurred, kernel, !gamma));
 					filled = filled.map(|filled| recorder.blur(filled, kernel, !gamma));
+				}
+				// A blur varying its radius by its radius mask
+				EffectOperation::Blur { radius, box_blur, gamma, .. } => {
+					let Some(map) = paints.next() else { continue };
+					if radius * length_scale < NEGLIGIBLE_LENGTH {
+						continue;
+					}
+					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
+
+					// The map's luminance picks each pixel's interpolation between levels, which a map gives SVG where it can't draw the radius mask as markup
+					let luminance = recorder.run("masked_radius_blur_luminance", COVERAGE_FORMAT, recorder.size, map, None, None, Parameters::default());
+					capture_plane(&mut recorder, 0, &luminance, false);
+					if capture == Some(piece(0)) && !capture_needs_content_layer {
+						recorder.textures.release(luminance);
+						break;
+					}
+					let levels: Vec<f64> = masked_radius_blur_levels(radius, length_scale).into_iter().map(|level| level * length_scale).collect();
+					// The content at full strength is read only by an operation after this one, or shown as the result where no fill fades it
+					let full_is_read = filled.is_none() || position + 1 < operations.len();
+					recorder.masked_radius_blur(content, &mut full, &mut filled, &luminance, &levels, box_blur, !gamma, full_is_read);
+					recorder.textures.release(luminance);
 				}
 				EffectOperation::DropShadow {
 					color,
@@ -1667,6 +1688,7 @@ mod tests {
 		];
 		let second_run = [Adjustment::Invert, Adjustment::Posterize { levels: 3 }];
 		let blur = |radius| EffectOperation::Blur {
+			radius_mask: Default::default(),
 			radius,
 			box_blur: false,
 			gamma: false,
