@@ -891,7 +891,7 @@ pub fn graphic_list_painted_bounds(list: &List<Graphic>, maps_resolved: bool) ->
 	}
 }
 
-/// The effects' runs (see [`Effects::runs`]), split before each blur varying its radius with other effects before it in its run, which it flattens anyway.
+/// The effects' runs (see [`Effects::runs`]), split before each Gaussian blur varying its radius with other effects before it in its run, which it flattens anyway.
 /// One reads its input once per level, and browsers redo a filter's input for each read, so a fresh source keeps chained ones from multiplying the work.
 fn svg_runs(effects: &Effects) -> Vec<(DAffine2, Range<usize>)> {
 	let operations: Vec<EffectOperation> = effects.operations().collect();
@@ -900,7 +900,8 @@ fn svg_runs(effects: &Effects) -> Vec<(DAffine2, Range<usize>)> {
 	for (stamped_transform, rows) in effects.runs() {
 		let mut start = rows.start;
 		for index in rows.start + 1..rows.end {
-			let masked_radius_blur = operations[index].varies_blur_radius() && !operations[index].changes_nothing();
+			let gaussian = matches!(operations[index], EffectOperation::Blur { box_blur: false, .. });
+			let masked_radius_blur = gaussian && operations[index].varies_blur_radius() && !operations[index].changes_nothing();
 			if masked_radius_blur && operations[start..index].iter().any(|operation| !operation.changes_nothing()) {
 				runs.push((stamped_transform, start..index));
 				start = index;
@@ -1332,6 +1333,18 @@ impl SvgFilterPrimitives {
 		result
 	}
 
+	/// Like [`Self::map`], with a primitive `tag` of `attributes` standing for the map until the GPU resolves it, such as an approximation of the effect.
+	fn map_standing_in(&mut self, capture: EffectCapture, tag: &str, attributes: &str) -> String {
+		self.count += 1;
+		let result = format!("effect-{}", self.count);
+		let id = generate_uuid();
+
+		let stand_in = format!(r#"<{tag} {attributes} result="{result}" />"#);
+		self.markup.push_str(&deferred_image::map_placeholder_primitive(id, &stand_in));
+		self.maps.push(SvgEffectMap { id, capture, result: result.clone() });
+		result
+	}
+
 	/// The coverage tinted `color`.
 	fn tint(&mut self, coverage: &str, color: Color) -> String {
 		let flood = self.push(
@@ -1525,12 +1538,12 @@ fn write_svg_effects_filter(
 	write_svg_effects_filter_on_lattice(svg_defs, effects, layers, layer, fill, opacity, bounds, capture_offset, paints, filtered, pixels_per_length, true)
 }
 
-/// The drawn paint of an effect that SVG draws as markup, which is any but a bevel's texture or a radius mask markup can't draw (see [`masks::radius_mask_draws_as_markup`]), since SVG takes those through the GPU's maps.
+/// The drawn paint of an effect that SVG draws as markup, which is any but a bevel's texture, a box blur's radius mask, or a radius mask markup can't draw (see [`masks::radius_mask_draws_as_markup`]), since SVG takes those through the GPU's maps.
 fn svg_drawn_paint(operation: &EffectOperation) -> Option<&Graphic> {
 	let paint = operation.drawn_paint()?;
 	match operation {
 		EffectOperation::BevelAndEmboss { .. } => None,
-		EffectOperation::Blur { radius_mask, .. } if !masks::radius_mask_draws_as_markup(radius_mask) => None,
+		EffectOperation::Blur { radius_mask, box_blur, .. } if *box_blur || !masks::radius_mask_draws_as_markup(radius_mask) => None,
 		_ => Some(paint),
 	}
 }
@@ -1601,6 +1614,7 @@ fn write_svg_effects_filter_on_lattice(
 
 	let operations: Vec<EffectOperation> = effects.operations().collect();
 	let last_pixel_filter = (operations[..layers.flattened].iter()).rposition(|operation| !operation.changes_nothing() && is_pixel_filter(operation));
+	let last_operation = operations.iter().rposition(|operation| !operation.changes_nothing());
 	// Shadows beneath the content reach its alpha only through a later pixel filter (see `is_pixel_filter`)
 	let flattened_shown = |index: usize, within: bool| shows_content || (cuts_within && !within && last_pixel_filter.is_some_and(|last| index < last));
 
@@ -1628,12 +1642,15 @@ fn write_svg_effects_filter_on_lattice(
 				}
 
 				primitives.merge_beneath(&mut full, &mut filled, beneath.take());
-
-				// SVG has no box blur, so a box becomes the Gaussian of the same variance
-				let sigma = pair(if box_blur { (radius * (radius + 1.) / 3.).map(f64::sqrt) } else { radius });
 				let space = if gamma { "sRGB" } else { "linearRGB" };
-				let attributes = |input: &str| format!(r#"in="{input}" stdDeviation="{sigma}" color-interpolation-filters="{space}""#);
 
+				if box_blur {
+					filled = filled.map(|filled| primitives.box_blur(&filled, radius.x, space, pixel_exact, map_capture(1)));
+					full = primitives.box_blur(&full, radius.x, space, pixel_exact, map_capture(0));
+					continue;
+				}
+
+				let attributes = |input: &str| format!(r#"in="{input}" stdDeviation="{}" color-interpolation-filters="{space}""#, pair(radius));
 				filled = filled.map(|filled| primitives.push("feGaussianBlur", &attributes(&filled), ""));
 				full = primitives.push("feGaussianBlur", &attributes(&full), "");
 				continue;
@@ -1645,6 +1662,17 @@ fn write_svg_effects_filter_on_lattice(
 				}
 				primitives.merge_beneath(&mut full, &mut filled, beneath.take());
 
+				// No SVG primitive sizes a box by each pixel, so the results come from the GPU as maps, leaving the content unblurred until they resolve
+				if box_blur {
+					// The full-strength content takes a map only where it shows unfaded or a later effect reads it
+					let full_is_read = filled.is_none() || last_operation.is_some_and(|last| index < last);
+					filled = filled.map(|filled| primitives.map_standing_in(map_capture(1), "feOffset", &format!(r#"in="{filled}""#)));
+					if full_is_read {
+						full = primitives.map_standing_in(map_capture(0), "feOffset", &format!(r#"in="{full}""#));
+					}
+					continue;
+				}
+
 				// The radius mask's luminance as the 8-bit codes the GPU interpolates between levels by, from its markup, or the GPU's map where markup can't draw it
 				let luminance = match paint_markup {
 					Some(markup) => {
@@ -1655,8 +1683,8 @@ fn write_svg_effects_filter_on_lattice(
 				};
 				let levels = masked_radius_blur_levels(radius, pixels_per_length);
 				let weights = primitives.masked_radius_blur_weights(&luminance, &levels);
-				filled = filled.map(|filled| primitives.masked_radius_blur(&filled, &weights, &levels, box_blur, gamma));
-				full = primitives.masked_radius_blur(&full, &weights, &levels, box_blur, gamma);
+				filled = filled.map(|filled| primitives.masked_radius_blur(&filled, &weights, &levels, gamma));
+				full = primitives.masked_radius_blur(&full, &weights, &levels, gamma);
 				continue;
 			}
 			EffectOperation::DropShadow { color, .. } => shade(BENEATH, Some(color), BlendMode::Normal),
@@ -7600,14 +7628,19 @@ mod tests {
 		assert_eq!(deviations(&zoomed_defs), [0.25, 0.5, 1., 2., 4., 8., 16.], "{zoomed_defs}");
 		assert_eq!(masked_radius_blur_levels(16., 0.25), levels);
 
-		// A box blur's levels are boxes of those half widths, which SVG blurs as Gaussians of the same variance like an even box blur
+		// A box blur takes its result from the GPU as a map, with no levels, leaving the content unblurred until the map resolves
 		let mut box_defs = String::new();
-		write(&mut box_defs, &masked_radius_blur(true), 1.);
-		let box_deviations = deviations(&box_defs);
-		assert_eq!(box_deviations.len(), levels.len() - 1, "{box_defs}");
-		for (deviation, half_width) in box_deviations.into_iter().zip(&levels[1..]) {
-			assert!((deviation - (half_width * (half_width + 1.) / 3.).sqrt()).abs() < 1e-9, "{box_defs}");
-		}
+		let box_filter = write(&mut box_defs, &masked_radius_blur(true), 1.);
+		assert_eq!(box_filter.maps.iter().map(|map| map.capture).collect::<Vec<_>>(), [EffectCapture { index: 0, plane: 0 }]);
+		assert!(deviations(&box_defs).is_empty() && !box_defs.contains("feFuncA"), "{box_defs}");
+		assert!(box_defs.contains(&format!(r#"<feOffset in="SourceGraphic" result="{}" />"#, box_filter.maps[0].result)), "{box_defs}");
+
+		// With a fill, the faded content takes a map of its own, and the full-strength content none when nothing after reads it
+		let mut faded_defs = String::new();
+		let [faded] = write_filters(&mut faded_defs, &masked_radius_blur(true), 0.5, [DVec2::ZERO, DVec2::splat(10.)], 0, &paints)
+			.try_into()
+			.unwrap_or_else(|_| panic!("a masked radius blur draws one layer"));
+		assert_eq!(faded.maps.iter().map(|map| map.capture.plane).collect::<Vec<_>>(), [1]);
 
 		// A larger radius or zoom halves further, and every luminance code's parts across the levels add up to the whole, with none of the sharp level for a white map
 		for (radius, pixels_per_length) in [(0.5, 1.), (16., 1.), (100., 1.), (0.5, 8.), (16., 3.), (100., 1e9)] {
@@ -7721,6 +7754,15 @@ mod tests {
 		// Rows changing nothing, before it or as it, split nothing
 		assert_eq!(rows_of(vec![blur(0.), masked_radius_blur(8.)]).len(), 1);
 		assert_eq!(rows_of(vec![blur(2.), masked_radius_blur(0.)]).len(), 1);
+
+		// A box blur takes its result as a map, reading nothing of its input, so it splits nothing either
+		let masked_box_blur = EffectOperation::Blur {
+			radius_mask: Graphic::from(Color::WHITE),
+			radius: 8.,
+			box_blur: true,
+			gamma: false,
+		};
+		assert_eq!(rows_of(vec![blur(2.), masked_box_blur]).len(), 1);
 	}
 
 	#[test]

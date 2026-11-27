@@ -744,7 +744,8 @@ pub fn rebased_stamped_transform(stamped_transform: DAffine2, baked: DAffine2) -
 /// An effect's parameters decoded from its row, the form that renderers carry it out from. Lengths are in its [`effect_space`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum EffectOperation {
-	/// Blurs the content after what lies beneath it joins it, evenly or by the interpolation between blurs [`crate::masks::masked_radius_blur_interpolation`] defines.
+	/// Blurs the content after what lies beneath it joins it, evenly or as its radius mask varies the radius: by the interpolation between Gaussians [`crate::masks::masked_radius_blur_interpolation`] defines,
+	/// or as a box blur, by a box at each pixel as wide as its fraction of the radius.
 	Blur {
 		/// Lies in the content's own space, so it moves with the content, with its luminance setting each point's fraction of the radius.
 		/// One that draws nothing, the default, blurs the whole content by the radius.
@@ -1023,7 +1024,8 @@ impl EffectOperation {
 	/// How far past the content this operation can paint, or reads from, in its effect space.
 	pub fn reach(&self) -> f64 {
 		match self {
-			// A Gaussian is negligible past three standard deviations
+			// A box reaches its half width, and the pixel past it for a fractional one, while a Gaussian fades out over three standard deviations
+			Self::Blur { radius, box_blur: true, .. } => radius.max(0.) + 1.,
 			Self::Blur { radius, .. } => 3. * radius.max(0.),
 			// An inner shadow paints within the content but reads this far out to find the edges it casts from.
 			// Shadows and glows end within their size, past which a precise glow fades over one more unit.

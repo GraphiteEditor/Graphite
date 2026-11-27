@@ -10,7 +10,7 @@ use graphic_types::effect_layers::{EffectLayers, EffectPiece, LayerPart, PiecePl
 use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GRADIENT_TABLE_SIZE, GlowFill, OutlineFill, bevel_light, contour_gradient_span, grow_and_tent, outline_extents, shadow_offset};
 use graphic_types::masks::{mask_feather_sigma, masked_radius_blur_levels};
 use graphic_types::{Adjustment, BevelDirection, BevelStyle, BevelTechnique, EffectOperation, Effects, GlowSource, GlowTechnique};
-use raster_kernels::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, chamfer_passes};
+use raster_kernels::effect_kernels::{BlurKernel, MAX_DIRECT_BOX_RADIUS, NEGLIGIBLE_LENGTH, chamfer_passes};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 use wgpu::util::DeviceExt;
@@ -266,8 +266,13 @@ impl EffectPasses {
 		let knocks_out_by_layer = |piece: &EffectPiece| piece.knocks_out && (fill < 1. || layers.knockout_cover(piece.capture, opacity) < 1. || layers.masks_fade_knockout_cover(piece.capture));
 		let capture_needs_content_layer = capture == Some(EffectCapture::THROUGH_MASK) || captured_piece.as_ref().is_some_and(knocks_out_by_layer);
 
-		// Each operation with its index, for a capture to name, leaving out those that change nothing so they don't split the runs of adjustments around them
-		let operations: Vec<(usize, EffectOperation)> = effects.operations().enumerate().filter(|(_, operation)| !changes_nothing(operation, length_scale)).collect();
+		// Each operation with its index, for a capture to name, leaving out those that change nothing so they don't split the runs of adjustments around them.
+		// A blur whose result is captured runs however slight, so its map still holds the content.
+		let captured_blur =
+			|index: usize, operation: &EffectOperation| matches!(operation, EffectOperation::Blur { .. }) && !operation.changes_nothing() && capture.is_some_and(|capture| capture.index == index);
+		let operations: Vec<(usize, EffectOperation)> = (effects.operations().enumerate())
+			.filter(|(index, operation)| captured_blur(*index, operation) || !changes_nothing(operation, length_scale))
+			.collect();
 		let mut paints = paints.iter();
 		for (position, (index, operation)) in operations.iter().enumerate() {
 			let index = *index;
@@ -295,31 +300,77 @@ impl EffectPasses {
 					let radius = radius * length_scale;
 					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
 
-					// The blur gives its input back to the pool, so it takes a copy of the content rather than the content itself
-					let kernel = if box_blur { BlurKernel::Box { radius } } else { BlurKernel::Gaussian { sigma: radius } };
-					let unblurred = full.take().unwrap_or_else(|| recorder.scale(content, 1.));
-					full = Some(recorder.blur(unblurred, kernel, !gamma));
-					filled = filled.map(|filled| recorder.blur(filled, kernel, !gamma));
+					if box_blur && radius > MAX_DIRECT_BOX_RADIUS {
+						// Past the widest box blurred directly, a box sums running sums as a masked box does with every pixel at the full radius, exact rather than blurred on a halved image
+						let every_pixel = Parameters { color: [1.; 4], ..Default::default() };
+						let full_radius = recorder.run("flood", COVERAGE_FORMAT, recorder.size, content, None, None, every_pixel);
+						recorder.masked_box_blur(content, &mut full, &mut filled, &full_radius, DVec2::splat(radius), !gamma, true);
+						recorder.textures.release(full_radius);
+					} else {
+						// The blur gives its input back to the pool, so it takes a copy of the content rather than the content itself
+						let kernel = if box_blur { BlurKernel::Box { radius } } else { BlurKernel::Gaussian { sigma: radius } };
+						let unblurred = full.take().unwrap_or_else(|| recorder.scale(content, 1.));
+						full = Some(recorder.blur(unblurred, kernel, !gamma));
+						filled = filled.map(|filled| recorder.blur(filled, kernel, !gamma));
+					}
+
+					// SVG takes the results of a box blur it can't run natively as maps
+					if let Some(full) = &full {
+						capture_plane(&mut recorder, 0, full, true);
+					}
+					if let Some(filled) = &filled {
+						capture_plane(&mut recorder, 1, filled, true);
+					}
 				}
 				// A blur varying its radius by its radius mask
 				EffectOperation::Blur { radius, box_blur, gamma, .. } => {
 					let Some(map) = paints.next() else { continue };
-					if radius * length_scale < NEGLIGIBLE_LENGTH {
+					if radius * length_scale < NEGLIGIBLE_LENGTH && !captured_blur(index, operation) {
 						continue;
 					}
 					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
 
-					// The map's luminance picks each pixel's interpolation between levels, which a map gives SVG where it can't draw the radius mask as markup
-					let luminance = recorder.run("masked_radius_blur_luminance", COVERAGE_FORMAT, recorder.size, map, None, None, Parameters::default());
-					capture_plane(&mut recorder, 0, &luminance, false);
-					if capture == Some(piece(0)) && !capture_needs_content_layer {
-						recorder.textures.release(luminance);
-						break;
+					// The map's luminance picks each pixel's blur, which a map gives SVG where it can't draw the radius mask as markup.
+					// A box takes it unrounded, since SVG reads the box's result rather than its luminance.
+					let unrounded = Parameters {
+						values: [if box_blur { 1. } else { 0. }, 0., 0., 0.],
+						..Default::default()
+					};
+					let luminance = recorder.run("masked_radius_blur_luminance", COVERAGE_FORMAT, recorder.size, map, None, None, unrounded);
+					if !box_blur {
+						capture_plane(&mut recorder, 0, &luminance, false);
+						if capture == Some(piece(0)) && !capture_needs_content_layer {
+							recorder.textures.release(luminance);
+							break;
+						}
 					}
-					let levels: Vec<f64> = masked_radius_blur_levels(radius, length_scale).into_iter().map(|level| level * length_scale).collect();
-					// The content at full strength is read only by an operation after this one, or shown as the result where no fill fades it
-					let full_is_read = filled.is_none() || position + 1 < operations.len();
-					recorder.masked_radius_blur(content, &mut full, &mut filled, &luminance, &levels, box_blur, !gamma, full_is_read);
+
+					// The full-strength content is read by a later operation, as the unfaded result, or as a box blur's map, and capturing one plane ends the passes
+					let captures_only = |plane: usize| capture == Some(piece(plane)) && !capture_needs_content_layer;
+					let full_is_read = !captures_only(1) && (filled.is_none() || position + 1 < operations.len() || (box_blur && capture == Some(piece(0))));
+					match box_blur {
+						true => {
+							if captures_only(0)
+								&& let Some(filled) = filled.take()
+							{
+								recorder.textures.release(filled);
+							}
+							let radius = DVec2::splat(radius * length_scale);
+							recorder.masked_box_blur(content, &mut full, &mut filled, &luminance, radius, !gamma, full_is_read);
+
+							// SVG has no box of each pixel's own width, so it takes the results as maps
+							if let Some(full) = &full {
+								capture_plane(&mut recorder, 0, full, true);
+							}
+							if let Some(filled) = &filled {
+								capture_plane(&mut recorder, 1, filled, true);
+							}
+						}
+						false => {
+							let levels: Vec<f64> = masked_radius_blur_levels(radius, length_scale).into_iter().map(|level| level * length_scale).collect();
+							recorder.masked_radius_blur(content, &mut full, &mut filled, &luminance, &levels, !gamma, full_is_read);
+						}
+					}
 					recorder.textures.release(luminance);
 				}
 				EffectOperation::DropShadow {

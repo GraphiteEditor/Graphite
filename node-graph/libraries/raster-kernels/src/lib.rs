@@ -10,7 +10,7 @@ pub mod generators;
 mod kernel;
 pub mod layer_blending;
 pub mod mandelbrot;
-mod masks;
+pub mod masks;
 pub mod raster_effects;
 pub mod value_effects;
 

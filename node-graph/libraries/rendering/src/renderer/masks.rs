@@ -274,16 +274,14 @@ impl SvgFilterPrimitives {
 			.collect()
 	}
 
-	/// The `image` blurred by each of a masked radius blur's `levels` (in user units) weighed by its `weights` and summed, matching the GPU's `masked_radius_blur`.
-	/// The levels are boxes if `box_blur` and Gaussians otherwise, blurring in gamma if `gamma` and in linear light otherwise.
-	pub(super) fn masked_radius_blur(&mut self, image: &str, weights: &[String], levels: &[f64], box_blur: bool, gamma: bool) -> String {
+	/// The `image` blurred by each of a masked radius blur's Gaussian `levels` (in user units) weighed by its `weights` and summed, matching the GPU's `masked_radius_blur`.
+	/// The levels blur in gamma if `gamma` and in linear light otherwise.
+	pub(super) fn masked_radius_blur(&mut self, image: &str, weights: &[String], levels: &[f64], gamma: bool) -> String {
 		let space = if gamma { "sRGB" } else { "linearRGB" };
 
 		let mut sum: Option<String> = None;
-		for (&level, weight) in levels.iter().zip(weights) {
-			// SVG has no box blur, so a box becomes the Gaussian of the same variance, as for an even blur
-			let sigma = if box_blur { (level * (level + 1.) / 3.).sqrt() } else { level };
-			let blurred = match level >= NEGLIGIBLE_LENGTH {
+		for (&sigma, weight) in levels.iter().zip(weights) {
+			let blurred = match sigma >= NEGLIGIBLE_LENGTH {
 				true => self.push("feGaussianBlur", &format!(r#"in="{image}" stdDeviation="{sigma} {sigma}" color-interpolation-filters="{space}""#), ""),
 				false => image.to_string(),
 			};
