@@ -1,3 +1,4 @@
+import { fileHandlesSupported } from "/src/utility-functions/files";
 import type { DocumentInfo, EditorWrapper, PersistedState } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const PERSISTENCE_DB = "graphite";
@@ -53,7 +54,22 @@ export async function writePersistedState(state: PersistedState, writtenDocument
 		request.onsuccess = () => {
 			const stored: PersistedState | undefined = request.result;
 			const others = (stored?.documents ?? []).filter((entry) => !writtenDocuments.has(entry.id));
-			store.put({ ...state, documents: [...state.documents, ...others] }, "state");
+			const documents = [...state.documents, ...others];
+			store.put({ ...state, documents }, "state");
+
+			// Drop handles no document uses anymore
+			const paths = new Set(documents.map((entry) => entry.path));
+			const unused = (stored?.documents ?? []).flatMap((entry) => (entry.path && !paths.has(entry.path) ? [entry.path] : []));
+			if (unused.length === 0) return;
+
+			const handlesRequest = store.get("file_handles");
+			handlesRequest.onsuccess = () => {
+				const handles: Record<string, FileSystemFileHandle> | undefined = handlesRequest.result;
+				if (!handles) return;
+
+				unused.forEach((path) => delete handles[path]);
+				store.put(handles, "file_handles");
+			};
 		};
 		transaction.oncomplete = () => resolve();
 		transaction.onerror = () => reject(transaction.error);
@@ -64,6 +80,8 @@ export async function readPersistedState(editor: EditorWrapper) {
 	await migrateToNewFormat();
 	await migrateDocumentsToStore();
 
+	// A failed cleanup only leaves unused handles behind, so it doesn't block restoring the session
+	if (fileHandlesSupported()) await fileHandlesPrune().catch(() => undefined);
 	const state = await databaseGet<PersistedState>("state");
 	editor.loadPersistedState(state ?? emptyPersistedState());
 }
@@ -75,6 +93,53 @@ export async function saveEditorPreferences(preferences: unknown) {
 export async function loadEditorPreferences(editor: EditorWrapper) {
 	const preferences = await databaseGet<Record<string, unknown>>("preferences");
 	editor.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
+}
+
+// ============
+// File handles
+// ============
+
+// Handles to documents on disk, keyed by the path the editor knows each document by
+export async function fileHandleGet(path: string): Promise<FileSystemFileHandle | undefined> {
+	const handles = await databaseGet<Record<string, FileSystemFileHandle>>("file_handles");
+	return handles?.[path];
+}
+
+// Reuses the path of a stored handle to the same file, so reopening it switches to its open document
+export async function fileHandleStore(handle: FileSystemFileHandle): Promise<string> {
+	const handles = (await databaseGet<Record<string, FileSystemFileHandle>>("file_handles")) ?? {};
+	for (const [path, stored] of Object.entries(handles)) {
+		if (await stored.isSameEntry(handle)) return path;
+	}
+
+	const path = `/${crypto.randomUUID()}/${handle.name}`;
+	await databaseUpdate<Record<string, FileSystemFileHandle>>("file_handles", (current) => ({ ...current, [path]: handle }));
+	return path;
+}
+
+// Drops handles no listed document uses, e.g. from a failed open
+async function fileHandlesPrune() {
+	const db = await databaseOpen();
+	await new Promise<void>((resolve, reject) => {
+		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
+		const store = transaction.objectStore(PERSISTENCE_STORE);
+		const stateRequest = store.get("state");
+		const handlesRequest = store.get("file_handles");
+		handlesRequest.onsuccess = () => {
+			const stored: PersistedState | undefined = stateRequest.result;
+			const handles: Record<string, FileSystemFileHandle> | undefined = handlesRequest.result;
+			if (!handles) return;
+
+			const paths = new Set((stored?.documents ?? []).map((entry) => entry.path));
+			const unused = Object.keys(handles).filter((path) => !paths.has(path));
+			if (unused.length === 0) return;
+
+			unused.forEach((path) => delete handles[path]);
+			store.put(handles, "file_handles");
+		};
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = () => reject(transaction.error);
+	});
 }
 
 // =========================
@@ -146,6 +211,7 @@ export async function wipeDocuments() {
 	await databaseDelete("state");
 	await databaseDelete("documents");
 	await databaseDelete("documents_migrated");
+	await databaseDelete("file_handles");
 	await wipeStoredDocuments();
 
 	await wipeOldFormat();
@@ -265,6 +331,19 @@ async function databaseSet(key: string, value: unknown): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
 		transaction.objectStore(PERSISTENCE_STORE).put(value, key);
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = () => reject(transaction.error);
+	});
+}
+
+// Reads and writes in one transaction, so another tab's write in between isn't lost
+async function databaseUpdate<T>(key: string, update: (value: T | undefined) => T): Promise<void> {
+	const db = await databaseOpen();
+	return new Promise((resolve, reject) => {
+		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
+		const store = transaction.objectStore(PERSISTENCE_STORE);
+		const request = store.get(key);
+		request.onsuccess = () => store.put(update(request.result), key);
 		transaction.oncomplete = () => resolve();
 		transaction.onerror = () => reject(transaction.error);
 	});

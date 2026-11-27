@@ -2,10 +2,12 @@ import { SvelteMap } from "svelte/reactivity";
 import { get, writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { acceptStringFromFilters, downloadFile, upload } from "/src/utility-functions/files";
+import { acceptStringFromFilters, browseFileHandles, downloadFile, fileHandlesSupported, saveFileHandle, upload, writeFileHandle } from "/src/utility-functions/files";
+import type { UploadResult } from "/src/utility-functions/files";
 import { createLayout } from "/src/utility-functions/layout-state.svelte";
+import { fileHandleGet, fileHandleStore } from "/src/utility-functions/persistence";
 import { deepEqual, patchLayout } from "/src/utility-functions/widgets";
-import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { EditorWrapper, DocumentInfo, FileFilter, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
 
@@ -91,13 +93,70 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerBrowse", async ({ options, action }) => {
+		if (action === "Open" && fileHandlesSupported()) {
+			const files = await browseFilesWithHandles(editor, options.filters, options.multiple);
+			if (files) {
+				files.forEach((file) => editor.ingestPicked(file.filename, file.type, file.content, action));
+				return;
+			}
+		}
+
 		const accept = acceptStringFromFilters(options.filters);
 		const files = options.multiple ? await upload(accept, "data", true) : [await upload(accept, "data")];
 		files.forEach((file) => editor.ingestPicked(file.filename, file.type, file.content, action));
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerSaveDocument", (data) => {
-		downloadFile(data.name, data.content);
+	// Picked when Save is pressed, since the picker needs a recent user interaction and the export can take longer than that
+	const saveTargets = new Map<bigint, Promise<SaveTarget | undefined>>();
+
+	subscriptions.subscribeFrontendMessage("TriggerPrepareSaveDocument", ({ save_id: saveId, name, path, filters }) => {
+		if (!fileHandlesSupported()) return;
+
+		const target = pickSaveTarget(name, path, filters);
+		// Handled when the save arrives
+		target.catch(() => undefined);
+		saveTargets.set(saveId, target);
+	});
+
+	subscriptions.subscribeFrontendMessage("TriggerSaveDocument", async (data) => {
+		const { document_id: documentId, save_id: saveId, name, path, filters, content, hash } = data;
+
+		if (!fileHandlesSupported()) {
+			downloadFile(name, content);
+			editor.savedDocument(documentId, path, hash);
+			return;
+		}
+
+		const pendingTarget = saveTargets.get(saveId) ?? pickSaveTarget(name, path, filters);
+		saveTargets.delete(saveId);
+
+		let target: SaveTarget | undefined;
+		try {
+			target = await pendingTarget;
+		} catch {
+			// The picker couldn't open, so download instead
+			downloadFile(name, content);
+			editor.savedDocument(documentId, undefined, hash);
+			return;
+		}
+		if (!target) return;
+
+		const { handle, existing, granted } = target;
+		if (!granted) {
+			editor.errorDialog("Failed to save document", `Permission to edit "${handle.name}" was not granted, so the document was not saved. Use File > Save As… to save it to another file.`);
+			return;
+		}
+
+		try {
+			await writeFileHandle(handle, content);
+		} catch {
+			editor.errorDialog("Failed to save document", `"${handle.name}" could not be written, so the document was not saved. Use File > Save As… to save it to another file.`);
+			return;
+		}
+
+		// If the handle can't be stored, the next save asks where to save
+		const savedPath = existing ? path : await fileHandleStore(handle).catch(() => undefined);
+		editor.savedDocument(documentId, savedPath, hash);
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerSaveFile", (data) => {
@@ -189,6 +248,7 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateActiveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerFetchAndOpenDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerBrowse");
+	subscriptions.unsubscribeFrontendMessage("TriggerPrepareSaveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
@@ -203,4 +263,45 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomRightBar");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
+}
+
+// Names each picked file after the path of its stored file handle, which the startup cleanup drops unless it was opened as a document, or returns undefined if the picker can't open
+async function browseFilesWithHandles(editor: EditorWrapper, filters: FileFilter[], multiple: boolean): Promise<UploadResult<Uint8Array>[] | undefined> {
+	let handles: FileSystemFileHandle[];
+	try {
+		handles = await browseFileHandles(filters, multiple);
+	} catch {
+		// Fails in cross-origin iframes, where the file input still works
+		return undefined;
+	}
+
+	// Failures are reported, since the file input fallback would need another user interaction
+	const files: UploadResult<Uint8Array>[] = [];
+	const unreadable: string[] = [];
+	for (const handle of handles) {
+		try {
+			const file = await handle.getFile();
+			const content = new Uint8Array(await file.arrayBuffer());
+			const filename = await fileHandleStore(handle).catch(() => file.name);
+			files.push({ filename, type: file.type, content });
+		} catch {
+			unreadable.push(`"${handle.name}"`);
+		}
+	}
+	if (unreadable.length > 0) editor.errorDialog("Failed to open file", `${unreadable.join(", ")} could not be read.`);
+
+	return files;
+}
+
+type SaveTarget = { handle: FileSystemFileHandle; existing: boolean; granted: boolean };
+
+// Resolves to undefined if the user cancels the picker
+async function pickSaveTarget(name: string, path: string | undefined, filters: FileFilter[]): Promise<SaveTarget | undefined> {
+	const existing = path ? await fileHandleGet(path) : undefined;
+	const handle = existing ?? (await saveFileHandle(name, filters));
+	if (!handle) return undefined;
+
+	// Throws without a recent user interaction
+	const permission = await handle.requestPermission({ mode: "readwrite" }).catch(() => "denied");
+	return { handle, existing: existing !== undefined, granted: permission === "granted" };
 }

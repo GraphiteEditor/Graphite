@@ -92,13 +92,28 @@ pub enum FrontendMessage {
 		options: FileDialogOptions,
 		action: IngestAction,
 	},
+	/// Sent on web before the export, so the file picker opens while the Save key press still counts as a user interaction
+	TriggerPrepareSaveDocument {
+		document_id: DocumentId,
+		/// Matches the `save_id` of the `TriggerSaveDocument` that follows, since exports can finish out of order
+		#[cfg_attr(feature = "wasm", tsify(type = "bigint"))]
+		save_id: u64,
+		name: String,
+		path: Option<PathBuf>,
+		filters: Vec<FileFilter>,
+	},
 	TriggerSaveDocument {
 		document_id: DocumentId,
+		#[cfg_attr(feature = "wasm", tsify(type = "bigint"))]
+		save_id: u64,
 		name: String,
 		path: Option<PathBuf>,
 		folder: Option<PathBuf>,
 		filters: Vec<FileFilter>,
 		content: serde_bytes::ByteBuf,
+		/// Hash of the document state in `content`, sent back with `SavedDocument`
+		#[cfg_attr(feature = "wasm", tsify(type = "bigint"))]
+		hash: u64,
 	},
 	TriggerSaveFile {
 		name: String,

@@ -83,3 +83,49 @@ export type UploadResult<T> = { filename: string; type: string; content: T };
 export function acceptStringFromFilters(filters: FileFilter[]): string {
 	return filters.flatMap((filter) => [...filter.mimeTypes, ...filter.extensions.map((extension) => `.${extension}`)]).join(",");
 }
+
+// Firefox and Safari lack the File System Access API
+export function fileHandlesSupported(): boolean {
+	return "showOpenFilePicker" in window && "showSaveFilePicker" in window;
+}
+
+function pickerTypes(filters: FileFilter[]): FilePickerAcceptType[] {
+	return filters.map((filter) => {
+		const extensions = filter.extensions.map((extension) => `.${extension}`);
+		const mimeTypes = filter.mimeTypes.length > 0 ? filter.mimeTypes : ["application/octet-stream"];
+		return { description: filter.name, accept: Object.fromEntries(mimeTypes.map((mimeType) => [mimeType, extensions])) };
+	});
+}
+
+// Resolves to undefined if the user cancels the picker
+async function picked<T>(picker: Promise<T>): Promise<T | undefined> {
+	try {
+		return await picker;
+	} catch (error) {
+		if (error instanceof DOMException && error.name === "AbortError") return undefined;
+		throw error;
+	}
+}
+
+export async function browseFileHandles(filters: FileFilter[], multiple: boolean): Promise<FileSystemFileHandle[]> {
+	return (await picked(window.showOpenFilePicker({ multiple, types: pickerTypes(filters) }))) ?? [];
+}
+
+export async function saveFileHandle(suggestedName: string, filters: FileFilter[]): Promise<FileSystemFileHandle | undefined> {
+	return picked(window.showSaveFilePicker({ suggestedName, types: pickerTypes(filters) }));
+}
+
+// Write permission must already be granted
+export async function writeFileHandle(handle: FileSystemFileHandle, content: Uint8Array) {
+	if (!(content.buffer instanceof ArrayBuffer)) throw new TypeError("Document content is not backed by an ArrayBuffer");
+
+	const writable = await handle.createWritable();
+	try {
+		await writable.write(new Uint8Array(content.buffer, content.byteOffset, content.byteLength));
+		await writable.close();
+	} catch (error) {
+		// Discards the partial write and releases the file
+		await writable.abort();
+		throw error;
+	}
+}

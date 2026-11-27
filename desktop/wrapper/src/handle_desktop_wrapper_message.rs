@@ -18,11 +18,11 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			dispatcher.queue_editor_message(IngestMessage::Ingest { content, action });
 		}
 		DesktopWrapperMessage::SaveFileDialogResult { path, context } => match context {
-			SaveFileDialogContext::Document { document_id, content } => {
+			SaveFileDialogContext::Document { document_id, content, hash } => {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path: path.clone(), content });
 				dispatcher.queue_editor_message(EditorMessage::Portfolio(PortfolioMessage::DocumentPassMessage {
 					document_id,
-					message: DocumentMessage::SavedDocument { path: Some(path) },
+					message: DocumentMessage::SavedDocument { path: Some(path), hash },
 				}));
 			}
 			SaveFileDialogContext::File { content } => {

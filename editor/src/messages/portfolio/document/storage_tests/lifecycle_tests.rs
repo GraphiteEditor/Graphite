@@ -137,6 +137,90 @@ async fn saving_writes_a_zip_archive_with_the_graphite_extension() {
 	assert_eq!(ArchiveFormat::detect(&content), Some(ArchiveFormat::Zip));
 }
 
+/// Returns the hash sent with the save
+fn save_as(editor: &mut EditorTestUtils) -> u64 {
+	let responses = dispatch(editor, DocumentMessage::SaveDocumentAs);
+	responses
+		.iter()
+		.find_map(|message| match message {
+			FrontendMessage::TriggerSaveDocument { hash, .. } => Some(*hash),
+			_ => None,
+		})
+		.expect("the save is sent to the frontend")
+}
+
+#[tokio::test]
+async fn edits_made_while_saving_stay_unsaved() {
+	let mut editor = EditorTestUtils::create();
+	new_document(&mut editor, "Saving");
+
+	let first = save_as(&mut editor);
+	editor.draw_rect(0., 0., 100., 100.).await;
+	let second = save_as(&mut editor);
+
+	dispatch(&mut editor, DocumentMessage::SavedDocument { path: None, hash: first });
+	assert!(!editor.active_document().is_saved(), "the first file lacks the edit made before the second save");
+
+	dispatch(&mut editor, DocumentMessage::SavedDocument { path: None, hash: second });
+	assert!(editor.active_document().is_saved());
+}
+
+#[tokio::test]
+async fn confirming_a_save_marks_that_document_rather_than_the_active_one() {
+	let mut editor = EditorTestUtils::create();
+	let saving = new_document(&mut editor, "Saving");
+	let hash = save_as(&mut editor);
+	let active = new_document(&mut editor, "Active");
+
+	dispatch(
+		&mut editor,
+		PortfolioMessage::DocumentPassMessage {
+			document_id: saving,
+			message: DocumentMessage::SavedDocument { path: None, hash },
+		},
+	);
+
+	assert!(portfolio(&editor).documents[&saving].is_saved());
+	assert!(!portfolio(&editor).documents[&active].is_saved());
+}
+
+/// Returns the path sent with the web save, after the document was opened from (or saved to) `opened_path`
+fn web_save_path(opened_path: &str) -> Option<std::path::PathBuf> {
+	use crate::application::{Environment, Host, Platform};
+
+	let mut editor = EditorTestUtils::create_with_environment(Environment {
+		platform: Platform::Web,
+		host: Host::Linux,
+		url: "https://editor.graphite.art/",
+	});
+	new_document(&mut editor, "Saving");
+	let hash = editor.active_document().current_hash();
+	dispatch(&mut editor, DocumentMessage::SavedDocument { path: Some(opened_path.into()), hash });
+
+	let responses = dispatch(&mut editor, DocumentMessage::SaveDocument);
+	let prepared_path = responses.iter().find_map(|message| match message {
+		FrontendMessage::TriggerPrepareSaveDocument { path, .. } => Some(path.clone()),
+		_ => None,
+	});
+	let saved_path = responses.iter().find_map(|message| match message {
+		FrontendMessage::TriggerSaveDocument { path, .. } => Some(path.clone()),
+		_ => None,
+	});
+	assert_eq!(prepared_path, saved_path, "the picker is prepared for the file the save writes");
+	saved_path.expect("the save is sent to the frontend")
+}
+
+#[tokio::test]
+async fn web_saves_write_back_to_the_opened_graphite_file() {
+	assert_eq!(web_save_path("/key/Saving.graphite"), Some("/key/Saving.graphite".into()));
+	assert_eq!(web_save_path("/key/Saving.GRAPHITE"), Some("/key/Saving.GRAPHITE".into()));
+}
+
+#[tokio::test]
+async fn web_saves_of_a_gdd_file_ask_where_to_save_the_graphite_file() {
+	assert_eq!(web_save_path("/key/Saving.gdd"), None);
+}
+
 #[tokio::test]
 async fn opening_a_file_moves_its_resources_into_the_resource_storage() {
 	use graphene_std::raster::{Color, Image};

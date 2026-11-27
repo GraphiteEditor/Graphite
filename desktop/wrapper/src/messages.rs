@@ -84,7 +84,7 @@ pub enum DesktopWrapperMessage {
 }
 
 pub enum SaveFileDialogContext {
-	Document { document_id: DocumentId, content: Vec<u8> },
+	Document { document_id: DocumentId, content: Vec<u8>, hash: u64 },
 	File { content: Vec<u8> },
 }
 

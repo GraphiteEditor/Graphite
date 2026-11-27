@@ -159,7 +159,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SaveDocument))
 							.on_commit(|_| DocumentMessage::SaveDocument.into())
 							.disabled(no_active_document),
-						#[cfg(not(target_family = "wasm"))]
 						MenuListEntry::new("Save As…")
 							.label("Save As…")
 							.icon("Save")
