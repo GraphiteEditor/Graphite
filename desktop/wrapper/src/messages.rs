@@ -55,6 +55,9 @@ pub enum DesktopFrontendMessage {
 	ClipboardRead,
 	ClipboardWrite(DataTransfer),
 	PointerLock,
+	PointerWrap {
+		enabled: bool,
+	},
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,

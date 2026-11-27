@@ -1,3 +1,4 @@
+use glam::DVec2;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 use winit::dpi::PhysicalPosition;
@@ -26,6 +27,7 @@ pub(crate) struct InputState {
 	modifiers: ModifiersState,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_state: PointerState,
+	pointer_wrap: Option<PointerWrap>,
 	click_tracker: ClickTracker,
 	shake_tracker: ShakeTracker,
 }
@@ -39,6 +41,7 @@ impl InputState {
 			modifiers: ModifiersState::default(),
 			pointer_position: PhysicalPosition::default(),
 			pointer_state: PointerState::Hover { route: Route::Ui },
+			pointer_wrap: None,
 			click_tracker: ClickTracker::default(),
 			shake_tracker: ShakeTracker::default(),
 		}
@@ -88,6 +91,37 @@ impl InputState {
 		matches!(self.pointer_state, PointerState::Locked { .. })
 	}
 
+	pub(crate) fn set_pointer_wrap(&mut self, enabled: bool) {
+		self.pointer_wrap = enabled.then(PointerWrap::default);
+	}
+
+	/// Returns where to move the pointer to wrap it around the viewport.
+	pub(crate) fn wrap_pointer(&mut self, position: PhysicalPosition<f64>, can_warp: bool) -> Option<PhysicalPosition<f64>> {
+		// Without direct input the UI forwards positions to the editor, which would see wraps as jumps
+		if !self.direct_input {
+			return None;
+		}
+		let viewport = self.viewport_info.as_ref()?;
+		let wrap = self.pointer_wrap.as_mut()?;
+
+		let target = wrap.update(DVec2::new(position.x, position.y), viewport, can_warp)?;
+		Some(PhysicalPosition::new(target.x, target.y))
+	}
+
+	/// Marks the pending wrap as applied, so the next position shows if it was ignored.
+	pub(crate) fn settle_pointer_wrap(&mut self) {
+		if let Some(wrap) = &mut self.pointer_wrap {
+			wrap.settle();
+		}
+	}
+
+	/// Stops wrapping while keeping the editor's position continuous.
+	pub(crate) fn stop_pointer_wrap(&mut self) {
+		if let Some(wrap) = &mut self.pointer_wrap {
+			wrap.warp = Warp::Unsupported;
+		}
+	}
+
 	pub(crate) fn modifiers(&self) -> ModifiersState {
 		self.modifiers
 	}
@@ -120,7 +154,7 @@ impl InputState {
 							_ => self.pointer_state(),
 						};
 						let modifier_keys = self.modifier_keys();
-						if self.shake_tracker.detect(*position, self.start.elapsed()) {
+						if self.shake_tracker.detect(self.editor_pointer_position(), self.start.elapsed()) {
 							editor_callback(InputMessage::PointerShake { editor_mouse_state, modifier_keys });
 						}
 						editor_callback(InputMessage::PointerMove { editor_mouse_state, modifier_keys });
@@ -270,6 +304,11 @@ impl InputState {
 	}
 
 	fn route(&self, position: PhysicalPosition<f64>) -> Route {
+		// Outside the viewport only until it's wrapped back in
+		if self.direct_input && self.pointer_wrap.as_ref().is_some_and(PointerWrap::active) {
+			return Route::Editor;
+		}
+
 		if self.ui_captures(position) { Route::Ui } else { Route::Editor }
 	}
 
@@ -280,9 +319,16 @@ impl InputState {
 		}
 	}
 
+	/// Carries on past the viewport's edges as the pointer wraps around them.
+	fn editor_pointer_position(&self) -> PhysicalPosition<f64> {
+		let offset = self.pointer_wrap.as_ref().map_or(DVec2::ZERO, |wrap| wrap.offset);
+		PhysicalPosition::new(self.pointer_position.x + offset.x, self.pointer_position.y + offset.y)
+	}
+
 	fn pointer_state(&self) -> EditorPointerState {
+		let position = self.editor_pointer_position();
 		EditorPointerState {
-			editor_position: (self.pointer_position.x / self.scale(), self.pointer_position.y / self.scale()).into(),
+			editor_position: (position.x / self.scale(), position.y / self.scale()).into(),
 			mouse_keys: self.pointer_keys(),
 			time: Some(self.start.elapsed().as_secs_f64() * 1000.),
 			..Default::default()
@@ -335,6 +381,80 @@ impl ViewportInfo {
 	fn contains(&self, position: PhysicalPosition<f64>) -> bool {
 		position.x >= self.x && position.y >= self.y && position.x <= self.x + self.width && position.y <= self.y + self.height
 	}
+
+	/// Where a pointer outside the viewport comes back in from the opposite edges.
+	fn wrap(&self, position: DVec2) -> Option<DVec2> {
+		let start = DVec2::new(self.x, self.y);
+		let size = DVec2::new(self.width, self.height);
+		let end = start + size;
+
+		let outside = position.cmplt(start) | position.cmpgt(end);
+		if !outside.any() || size.min_element() <= 2. {
+			return None;
+		}
+
+		let wrapped = DVec2::select(outside, start + (position - start).rem_euclid(size), position);
+		// Inset a pixel so rounding can't leave it outside
+		Some(wrapped.clamp(start + 1., end - 1.))
+	}
+}
+
+/// Wraps the pointer around the viewport, in physical pixels, while the editor sees it carry on past the edges.
+#[derive(Default)]
+struct PointerWrap {
+	/// Added to the OS position to get the editor's.
+	offset: DVec2,
+	warp: Warp,
+}
+
+impl PointerWrap {
+	fn active(&self) -> bool {
+		!matches!(self.warp, Warp::Unsupported)
+	}
+
+	/// Returns where to move the pointer if it has left the viewport.
+	fn update(&mut self, position: DVec2, viewport: &ViewportInfo, can_warp: bool) -> Option<DVec2> {
+		match self.warp {
+			Warp::Idle => {}
+			Warp::Pending { from, to, settled } => {
+				// Reported before the move, or the move was ignored
+				if position.distance_squared(from) < position.distance_squared(to) {
+					if settled {
+						tracing::warn!("The platform ignored moving the pointer to wrap it around the viewport");
+						self.warp = Warp::Unsupported;
+					}
+					return None;
+				}
+
+				self.offset += from - to;
+				self.warp = Warp::Idle;
+			}
+			Warp::Unsupported => return None,
+		}
+		if !can_warp {
+			return None;
+		}
+
+		let to = viewport.wrap(position)?;
+		self.warp = Warp::Pending { from: position, to, settled: false };
+		Some(to)
+	}
+
+	fn settle(&mut self) {
+		if let Warp::Pending { settled, .. } = &mut self.warp {
+			*settled = true;
+		}
+	}
+}
+
+#[derive(Clone, Copy, Default)]
+enum Warp {
+	#[default]
+	Idle,
+	/// The OS may report positions from before the move until `settled`.
+	Pending { from: DVec2, to: DVec2, settled: bool },
+	/// The platform can't move the pointer.
+	Unsupported,
 }
 
 #[derive(Default)]
@@ -445,5 +565,68 @@ impl ShakeTracker {
 		}
 
 		false
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::InputState;
+	use winit::dpi::PhysicalPosition;
+
+	/// Wraps around a viewport spanning (100, 50) to (300, 150).
+	fn wrapping_input_state() -> InputState {
+		let mut input_state = InputState::new();
+		input_state.set_viewport_info(100., 50., 200., 100., 1.);
+		input_state.set_direct_input(true);
+		input_state.set_pointer_wrap(true);
+		input_state
+	}
+
+	/// Reports a position as `App::window_event` does, returning where to move the pointer and where the editor sees it.
+	fn report(input_state: &mut InputState, x: f64, y: f64, focused: bool) -> (Option<(f64, f64)>, (f64, f64)) {
+		let position = PhysicalPosition::new(x, y);
+		let target = input_state.wrap_pointer(position, focused);
+		input_state.pointer_position = position;
+		let editor_position = input_state.editor_pointer_position();
+		(target.map(|target| (target.x, target.y)), (editor_position.x, editor_position.y))
+	}
+
+	#[test]
+	fn wraps_around_edges_without_editor_jumps() {
+		let mut input_state = wrapping_input_state();
+
+		assert_eq!(report(&mut input_state, 302., 80., true), (Some((102., 80.)), (302., 80.)));
+		assert_eq!(report(&mut input_state, 103., 80., true), (None, (303., 80.)));
+		assert_eq!(report(&mut input_state, 98., 49., true), (Some((298., 149.)), (298., 49.)));
+		assert_eq!(report(&mut input_state, 297., 148., true), (None, (297., 48.)));
+	}
+
+	#[test]
+	fn reports_from_before_a_wrap_carry_on_from_before_it() {
+		let mut input_state = wrapping_input_state();
+
+		assert_eq!(report(&mut input_state, 302., 80., true), (Some((102., 80.)), (302., 80.)));
+		assert_eq!(report(&mut input_state, 305., 80., true), (None, (305., 80.)));
+		assert_eq!(report(&mut input_state, 106., 80., true), (None, (306., 80.)));
+	}
+
+	#[test]
+	fn ignored_wrap_stops_wrapping() {
+		let mut input_state = wrapping_input_state();
+
+		assert_eq!(report(&mut input_state, 302., 80., true), (Some((102., 80.)), (302., 80.)));
+		input_state.settle_pointer_wrap();
+		assert_eq!(report(&mut input_state, 303., 80., true), (None, (303., 80.)));
+		assert_eq!(report(&mut input_state, 320., 80., true), (None, (320., 80.)));
+	}
+
+	#[test]
+	fn unfocused_positions_carry_on_without_wrapping() {
+		let mut input_state = wrapping_input_state();
+
+		assert_eq!(report(&mut input_state, 302., 80., true), (Some((102., 80.)), (302., 80.)));
+		assert_eq!(report(&mut input_state, 103., 80., false), (None, (303., 80.)));
+		assert_eq!(report(&mut input_state, 99., 80., false), (None, (299., 80.)));
+		assert_eq!(report(&mut input_state, 97., 80., true), (Some((297., 80.)), (297., 80.)));
 	}
 }
