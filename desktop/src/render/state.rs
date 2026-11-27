@@ -234,7 +234,11 @@ impl RenderState {
 			WgpuCurrentSurfaceTexture::Suboptimal(t) => (t, true),
 			WgpuCurrentSurfaceTexture::Occluded => return Ok(()),
 			WgpuCurrentSurfaceTexture::Lost => return Err(RenderError::SurfaceLost),
-			WgpuCurrentSurfaceTexture::Outdated => return Err(RenderError::SurfaceOutdated),
+			WgpuCurrentSurfaceTexture::Outdated => {
+				self.surface.configure(&self.executor.context().device, &self.config);
+				window.request_redraw();
+				return Ok(());
+			}
 			WgpuCurrentSurfaceTexture::Timeout => return Err(RenderError::SurfaceTimeout),
 			WgpuCurrentSurfaceTexture::Validation => return Err(RenderError::SurfaceValidation),
 		};
@@ -327,7 +331,6 @@ impl RenderState {
 pub(crate) enum RenderError {
 	OutdatedUITextureError,
 	SurfaceLost,
-	SurfaceOutdated,
 	SurfaceTimeout,
 	SurfaceValidation,
 }
