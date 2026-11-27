@@ -328,7 +328,10 @@ fn field_deltas(
 	}
 
 	if current_metadata.node_type_metadata != target_metadata.node_type_metadata {
-		deltas.push(metadata(NodeMetadataChange::NodeType(target_metadata.node_type_metadata.clone())));
+		deltas.push(metadata(NodeMetadataChange::placement(
+			&current_metadata.node_type_metadata,
+			target_metadata.node_type_metadata.clone(),
+		)));
 	}
 	if current_metadata.display_name != target_metadata.display_name {
 		deltas.push(metadata(NodeMetadataChange::DisplayName(target_metadata.display_name.clone())));

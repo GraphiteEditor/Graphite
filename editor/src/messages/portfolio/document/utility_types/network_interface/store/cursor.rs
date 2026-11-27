@@ -229,13 +229,14 @@ impl NodeMut<'_> {
 
 	/// Whether the node is displayed as a layer or a node, together with its position.
 	pub(crate) fn set_node_type(&mut self, node_type: NodeTypePersistentMetadata) -> bool {
-		let changed = self.metadata.node_type_metadata != node_type;
-		self.metadata.node_type_metadata = node_type;
-		if changed {
-			let change = NodeMetadataChange::NodeType(self.metadata.node_type_metadata.clone());
-			self.deltas.metadata(change);
+		if self.metadata.node_type_metadata == node_type {
+			return false;
 		}
-		changed
+
+		let change = NodeMetadataChange::placement(&self.metadata.node_type_metadata, node_type.clone());
+		self.metadata.node_type_metadata = node_type;
+		self.deltas.metadata(change);
+		true
 	}
 
 	/// The table entry the node's interface is stored in, or `None` for a node whose definition owns its interface.

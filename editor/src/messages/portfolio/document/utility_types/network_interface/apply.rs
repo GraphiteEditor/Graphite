@@ -93,7 +93,7 @@ impl NodeNetworkInterface {
 			EditorDelta::NodeMetadata { network, node_id, change } => {
 				let Some(mut node) = self.node_mut_at(*network, *node_id) else { return };
 				match change {
-					NodeMetadataChange::NodeType(node_type) => node.set_node_type(node_type.clone()),
+					NodeMetadataChange::NodeType(node_type) | NodeMetadataChange::Position(node_type) => node.set_node_type(node_type.clone()),
 					NodeMetadataChange::DisplayName(display_name) => node.set_display_name(display_name.clone()),
 					NodeMetadataChange::Locked(locked) => node.set_locked(*locked),
 					NodeMetadataChange::Pinned(pinned) => node.set_pinned(*pinned),
