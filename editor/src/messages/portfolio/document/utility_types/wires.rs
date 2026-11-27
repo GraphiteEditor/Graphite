@@ -1,7 +1,7 @@
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use glam::{DVec2, IVec2};
 use graphene_std::{uuid::NodeId, vector::misc::dvec2_to_point};
-use kurbo::{BezPath, DEFAULT_ACCURACY, Line, Point, Shape};
+use kurbo::{BezPath, DEFAULT_ACCURACY, Line, ParamCurve, Point, Shape, Vec2};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -132,11 +132,21 @@ pub fn build_thick_wire_center_line(output_position: DVec2, input_position: DVec
 		return BezPath::new();
 	}
 
-	// The 8px wire trims 3px at each end, so the center line starts that much further out to trim 1.5px and 1px instead
+	let wire = build_vector_wire(output_position, input_position, true, true, graph_wire_style);
+	let (Some(start), Some(end)) = (wire.segments().next().map(|segment| segment.start()), wire.segments().last().map(|segment| segment.end())) else {
+		return BezPath::new();
+	};
+
+	// The 8px wire trims 3px at each end, so the center line reaches further out to trim 1.5px and 1px instead
 	let sign = (input_position.y - output_position.y).signum();
-	let start = output_position - DVec2::new(0., 1.5 * sign);
-	let end = input_position + DVec2::new(0., 2. * sign);
-	build_vector_wire(start, end, true, true, graph_wire_style)
+	let mut center_line = BezPath::new();
+	center_line.move_to(start - Vec2::new(0., 1.5 * sign));
+	center_line.line_to(start);
+	for element in wire.elements().iter().skip(1) {
+		center_line.push(*element);
+	}
+	center_line.line_to(end + Vec2::new(0., 2. * sign));
+	center_line
 }
 
 fn straight_wire_path(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> Vec<IVec2> {
@@ -574,7 +584,7 @@ fn straight_wire_to_bezpath(locations: Vec<IVec2>) -> BezPath {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use kurbo::{Affine, ParamCurve, ParamCurveNearest, Vec2};
+	use kurbo::{Affine, ParamCurveNearest};
 
 	#[test]
 	fn a_grid_aligned_wire_keeps_its_shape_when_moved_along_the_grid() {
@@ -600,7 +610,11 @@ mod tests {
 
 	#[test]
 	fn the_center_line_of_a_stack_wire_runs_inside_it() {
-		let ends = [(DVec2::new(48., 12.), DVec2::new(48., 84.)), (DVec2::new(240., 12.), DVec2::new(48., 132.))];
+		let ends = [
+			(DVec2::new(48., 12.), DVec2::new(48., 84.)),
+			(DVec2::new(240., 12.), DVec2::new(48., 132.)),
+			(DVec2::new(48., 0.), DVec2::new(0., 27.)),
+		];
 		let half_wire_width = 4.;
 
 		for (output, input) in ends {

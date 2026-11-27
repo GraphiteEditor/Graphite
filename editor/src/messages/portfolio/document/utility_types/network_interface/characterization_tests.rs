@@ -4274,10 +4274,13 @@ async fn releasing_a_drag_of_a_layer_in_a_stack_leaves_every_layer_where_the_dra
 	let interface = &mut editor.active_document_mut().network_interface;
 	let layers: Vec<NodeId> = interface.document_network().nodes.keys().copied().filter(|node_id| interface.is_layer(node_id, &[])).collect();
 	for keep_upstream in [false, true] {
-		for offset in [IVec2::new(0, -2), IVec2::new(0, 3), IVec2::new(5, 0)] {
+		for offset in [IVec2::new(0, 3), IVec2::new(0, -2), IVec2::new(5, 0)] {
+			let before = interface.positions(layers.iter().copied(), &[]);
 			interface.drag_selected_nodes(offset, keep_upstream, &[]);
 			let dragging = interface.positions(layers.iter().copied(), &[]);
 			interface.finish_drag(&[]);
+
+			assert_ne!(dragging, before, "dragging by {offset} keeping upstream: {keep_upstream} should move the layers");
 
 			assert_eq!(interface.positions(layers.iter().copied(), &[]), dragging, "dragging by {offset} keeping upstream: {keep_upstream}");
 		}
