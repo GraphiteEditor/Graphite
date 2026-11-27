@@ -3,6 +3,7 @@ use super::editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange
 use super::storage_metadata::StorageMetadataView;
 use super::{InputConnector, NodeTemplate};
 use crate::test_utils::test_prelude::*;
+use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::delta::compute_deltas;
 use document_graph_storage::{PeerId, Registry, RegistryDelta, Session};
 use graph_craft::document::value::TaggedValue;
@@ -184,7 +185,7 @@ async fn per_field_metadata_edits_match_the_diff() {
 		metadata_change(node, NodeMetadataChange::DisplayName(metadata.display_name.clone())),
 		metadata_change(node, NodeMetadataChange::Locked(metadata.locked)),
 		metadata_change(node, NodeMetadataChange::Pinned(metadata.pinned)),
-		metadata_change(node, NodeMetadataChange::NodeType(metadata.node_type_metadata.clone())),
+		metadata_change(node, NodeMetadataChange::Position(metadata.node_type_metadata.clone())),
 		EditorDelta::Graph(RuntimeDelta::SetVisibility {
 			network: None,
 			node_id: node,
@@ -281,6 +282,32 @@ async fn unchanged_writes_emit_nothing() {
 
 	let emitted = committed_deltas(&mut editor);
 	assert!(emitted.is_empty(), "re-writing the same values should emit nothing, got {emitted:#?}");
+}
+
+#[tokio::test]
+async fn moving_a_layer_writes_only_its_position() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 40., 40.).await;
+	let layer = LayerNodeIdentifier::ROOT_PARENT
+		.children(editor.active_document().metadata())
+		.next()
+		.expect("the rectangle should be a layer")
+		.to_node();
+
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.discard_deltas();
+	editor.active_document_mut().network_interface.shift_node(&layer, glam::IVec2::new(3, 5), &[]);
+
+	let emitted = committed_deltas(&mut editor);
+	let written: Vec<String> = construct(&editor, &emitted, &working)
+		.into_iter()
+		.filter_map(|op| match op {
+			RegistryDelta::ChangeNodeAttribute { delta, .. } => Some(delta.key),
+			_ => None,
+		})
+		.collect();
+	assert_eq!(written, [node_attr::ui::POSITION]);
 }
 
 /// Structural writes go through the store too, so inserting and deleting a node must be recorded

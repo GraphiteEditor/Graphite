@@ -14,8 +14,18 @@ impl Stack<'_> {
 		self.climb(node, |layer| self.layer_above(layer))
 	}
 
-	pub(super) fn lowest_layer_with_room_above(&self, layout: &Layout, node: NodeIndex) -> NodeIndex {
-		self.climb(node, |layer| self.layer_above(layer).filter(|above| self.closed_up(layout, layer, *above)))
+	pub(super) fn lowest_layer_with_room_above(&self, layout: &Layout, node: NodeIndex) -> Option<NodeIndex> {
+		let top_of_closed_up_run = self.climb(node, |layer| self.layer_above(layer).filter(|above| self.closed_up(layout, layer, *above)));
+		(!self.closed_up_under_its_parent(layout, top_of_closed_up_run)).then_some(top_of_closed_up_run)
+	}
+
+	fn closed_up_under_its_parent(&self, layout: &Layout, layer: NodeIndex) -> bool {
+		let parent = self
+			.readers
+			.of(self.graph, layer)
+			.find(|wire| wire.is_primary() && self.graph[wire.target].is_layer() && !self.graph.feeds_stack(wire))
+			.map(|wire| wire.target);
+		self.graph[layer].is_layer() && parent.is_some_and(|parent| self.closed_up(layout, layer, parent))
 	}
 
 	fn closed_up(&self, layout: &Layout, layer: NodeIndex, above: NodeIndex) -> bool {

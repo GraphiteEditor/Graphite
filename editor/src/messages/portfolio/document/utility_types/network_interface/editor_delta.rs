@@ -62,9 +62,19 @@ pub enum NodeMetadataChange {
 	/// node do not have the same kinds of position. Encodes to `ui::position` and `ui::is_layer`, which
 	/// merge independently, so a concurrent move and a concurrent layer toggle both survive.
 	NodeType(NodeTypePersistentMetadata),
+	/// Where a node that stays a layer or stays a node sits. Encodes to `ui::position` alone.
+	Position(NodeTypePersistentMetadata),
 	DisplayName(String),
 	Locked(bool),
 	Pinned(bool),
+}
+
+impl NodeMetadataChange {
+	/// The change from `before` to `after`, writing whether the node is a layer only when that changes.
+	pub fn placement(before: &NodeTypePersistentMetadata, after: NodeTypePersistentMetadata) -> Self {
+		let is_layer = |node_type: &NodeTypePersistentMetadata| matches!(node_type, NodeTypePersistentMetadata::Layer(_));
+		if is_layer(before) == is_layer(&after) { Self::Position(after) } else { Self::NodeType(after) }
+	}
 }
 
 /// One field of a network's persistent metadata. The navigation transform and width are absent
@@ -319,6 +329,10 @@ fn node_metadata_ops(global_id: document_graph_storage::NodeId, change: &NodeMet
 				node_attribute(node_attr::ui::IS_LAYER, flag(matches!(node_type, NodeTypePersistentMetadata::Layer(_)))),
 			]
 		}
+		NodeMetadataChange::Position(node_type) => vec![node_attribute(
+			node_attr::ui::POSITION,
+			Some(serialize_attribute(node_attr::ui::POSITION, &position_from_runtime(node_type))?),
+		)],
 		NodeMetadataChange::DisplayName(display_name) => vec![node_attribute(node_attr::ui::DISPLAY_NAME, non_empty(display_name))],
 		NodeMetadataChange::Locked(locked) => vec![node_attribute(node_attr::ui::LOCKED, flag(*locked))],
 		NodeMetadataChange::Pinned(pinned) => vec![node_attribute(node_attr::ui::PINNED, flag(*pinned))],
