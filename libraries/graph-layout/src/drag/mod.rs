@@ -1,10 +1,12 @@
 mod followers;
+mod kept;
 mod mover;
 mod shift;
 mod stack;
 
 use crate::{Graph, Layout, NodeIndex, Placement};
 use glam::IVec2;
+use kept::UpstreamOfDragged;
 use mover::Mover;
 
 /// Nodes dragged from where they are drawn, computing the graph for any offset from the start alone.
@@ -12,7 +14,7 @@ use mover::Mover;
 #[derive(Clone, Debug)]
 pub struct Drag {
 	dragged: Vec<NodeIndex>,
-	keep_upstream: bool,
+	upstream: Option<UpstreamOfDragged>,
 	rows_up: Vec<Graph>,
 	held_in_place: Vec<HeldInPlace>,
 }
@@ -26,8 +28,11 @@ struct HeldInPlace {
 
 impl Drag {
 	/// Holds the `dragged` nodes of `start`. With `keep_upstream`, nodes only carried along by them stay where they are drawn.
+	/// Dragged layers still carry their content and chain, and carry the stacks below them when moved sideways.
+	/// Nodes starting a tree of their own upstream of what moves follow the nodes reading them.
 	#[must_use]
 	pub fn new(start: Graph, start_layout: Layout, dragged: Vec<NodeIndex>, keep_upstream: bool) -> Self {
+		let upstream = keep_upstream.then(|| UpstreamOfDragged::new(&start, &dragged));
 		let stored: Vec<Placement> = start.nodes.iter().map(|node| node.placement).collect();
 		let mut mover = Mover::new(start, Some(start_layout));
 		mover.hold(&dragged);
@@ -45,7 +50,7 @@ impl Drag {
 			.collect();
 		Self {
 			dragged,
-			keep_upstream,
+			upstream,
 			rows_up: vec![held],
 			held_in_place,
 		}
@@ -74,7 +79,7 @@ impl Drag {
 		[IVec2::new(0, offset.y.max(0)), IVec2::new(offset.x, 0)]
 			.into_iter()
 			.filter(|shift| *shift != IVec2::ZERO)
-			.for_each(|shift| mover.shift_step(&self.dragged, shift, self.keep_upstream));
+			.for_each(|shift| mover.shift_step(&self.dragged, shift, self.upstream.as_ref().map(|upstream| upstream.moving_by(shift))));
 		mover.into_graph_and_layout()
 	}
 
@@ -89,7 +94,7 @@ impl Drag {
 	fn one_row_further_up(&self) -> Graph {
 		let highest_so_far = self.rows_up.last().cloned().unwrap_or_default();
 		let mut mover = Mover::new(highest_so_far, None);
-		mover.shift_step(&self.dragged, IVec2::NEG_Y, self.keep_upstream);
+		mover.shift_step(&self.dragged, IVec2::NEG_Y, self.upstream.as_ref().map(|upstream| upstream.moving_by(IVec2::NEG_Y)));
 		mover.into_graph()
 	}
 }

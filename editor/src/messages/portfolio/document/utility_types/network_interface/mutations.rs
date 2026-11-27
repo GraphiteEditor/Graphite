@@ -1126,10 +1126,10 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let reconnected_offset = reconnect_to_input
-			.as_ref()
-			.and_then(NodeInput::as_node)
-			.and_then(|reconnected| Some((reconnected, self.relative_offset(&reconnected, network_path)?)));
+		let reconnected_offset = reconnect_to_input.as_ref().and_then(NodeInput::as_node).and_then(|reconnected| {
+			let offset = self.relative_offset(node_id, network_path).or_else(|| self.relative_offset(&reconnected, network_path))?;
+			Some((reconnected, offset))
+		});
 
 		let mut exports_fed_by_import = Vec::new();
 

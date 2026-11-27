@@ -1,7 +1,7 @@
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use glam::{DVec2, IVec2};
 use graphene_std::{uuid::NodeId, vector::misc::dvec2_to_point};
-use kurbo::{BezPath, DEFAULT_ACCURACY, Line, Point, Shape};
+use kurbo::{BezPath, DEFAULT_ACCURACY, Line, ParamCurve, Point, Shape, Vec2};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -125,23 +125,27 @@ fn thick_wire_spans_single_cell(output_position: DVec2, input_position: DVec2) -
 	(output_position.x - input_position.x).abs() < 1. && (output_position.y - input_position.y).abs() <= grid_spacing
 }
 
-/// The center line that cleaves a thick layer-stack wire. Its ends reach past the wire (1.5px toward the output
-/// connector and 2px toward the input) so the color runs through the full cleaved connector slots. Empty for other wires.
-pub fn build_thick_wire_center_line(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> BezPath {
+/// The center line that cleaves a thick layer-stack wire, following its path. Its ends reach past the wire (1.5px toward the
+/// output connector and 2px toward the input) so the color runs through the full cleaved connector slots. Empty for other wires.
+pub fn build_thick_wire_center_line(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool, graph_wire_style: GraphWireStyle) -> BezPath {
 	if !(vertical_out && vertical_in) || thick_wire_spans_single_cell(output_position, input_position) {
 		return BezPath::new();
 	}
 
-	// The 8px wire trims 3px at each end; the center line trims less so it reaches further into the cleaved slots
-	let sign = (input_position.y - output_position.y).signum();
-	let output_trim = 1.5;
-	let input_trim = 1.;
-	let start = output_position + DVec2::new(0., output_trim * sign);
-	let end = input_position - DVec2::new(0., input_trim * sign);
+	let wire = build_vector_wire(output_position, input_position, true, true, graph_wire_style);
+	let (Some(start), Some(end)) = (wire.segments().next().map(|segment| segment.start()), wire.segments().last().map(|segment| segment.end())) else {
+		return BezPath::new();
+	};
 
+	// The 8px wire trims 3px at each end, so the center line reaches further out to trim 1.5px and 1px instead
+	let sign = (input_position.y - output_position.y).signum();
 	let mut center_line = BezPath::new();
-	center_line.move_to(dvec2_to_point(start));
-	center_line.line_to(dvec2_to_point(end));
+	center_line.move_to(start - Vec2::new(0., 1.5 * sign));
+	center_line.line_to(start);
+	for element in wire.elements().iter().skip(1) {
+		center_line.push(*element);
+	}
+	center_line.line_to(end + Vec2::new(0., 2. * sign));
 	center_line
 }
 
@@ -580,7 +584,7 @@ fn straight_wire_to_bezpath(locations: Vec<IVec2>) -> BezPath {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use kurbo::{Affine, Vec2};
+	use kurbo::{Affine, ParamCurveNearest};
 
 	#[test]
 	fn a_grid_aligned_wire_keeps_its_shape_when_moved_along_the_grid() {
@@ -600,6 +604,32 @@ mod tests {
 				let shifted = build_vector_wire(output + shift, input + shift, vertical_out, vertical_in, GraphWireStyle::GridAligned);
 				let moved = Affine::translate(Vec2::new(shift.x, shift.y)) * wire.clone();
 				assert_eq!(shifted, moved, "the wire from {output} to {input} should keep its shape when moved by {shift}");
+			}
+		}
+	}
+
+	#[test]
+	fn the_center_line_of_a_stack_wire_runs_inside_it() {
+		let ends = [
+			(DVec2::new(48., 12.), DVec2::new(48., 84.)),
+			(DVec2::new(240., 12.), DVec2::new(48., 132.)),
+			(DVec2::new(48., 0.), DVec2::new(0., 27.)),
+		];
+		let half_wire_width = 4.;
+
+		for (output, input) in ends {
+			for style in [GraphWireStyle::Direct, GraphWireStyle::GridAligned] {
+				let wire = build_vector_wire(output, input, true, true, style);
+				let center_line = build_thick_wire_center_line(output, input, true, true, style);
+
+				let samples = center_line.segments().flat_map(|segment| (0..=10).map(move |step| segment.eval(f64::from(step) / 10.)));
+				for sample in samples {
+					let distance = wire
+						.segments()
+						.map(|segment| segment.nearest(sample, DEFAULT_ACCURACY).distance_sq.sqrt())
+						.fold(f64::INFINITY, f64::min);
+					assert!(distance <= half_wire_width, "the center line from {output} to {input} drawn {style:?} leaves its wire at {sample:?}");
+				}
 			}
 		}
 	}
