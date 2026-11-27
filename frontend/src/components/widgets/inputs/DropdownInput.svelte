@@ -6,8 +6,9 @@
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import { openDropdownMenuCount } from "/src/stores/dropdown-menus";
 	import { widgetSizingStyles } from "/src/utility-functions/widgets";
-	import type { MenuListEntry, ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { MenuListEntry, ActionShortcut, WidgetSizing, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
+	export let menuDirection: MenuDirection = "Bottom";
 	const dispatch = createEventDispatcher<{ selectedIndex: number; previewIndex: number; fileDrop: File }>();
 
 	let self: LayoutRow | undefined;
@@ -192,7 +193,7 @@
 		{drawIcon}
 		{virtualScrolling}
 		holdsValue={true}
-		direction="Bottom"
+		direction={menuDirection}
 		scrollableY={true}
 	/>
 </LayoutRow>

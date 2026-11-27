@@ -38,6 +38,7 @@ pub enum WorkspaceMessage {
 	ToggleHistoryPanelOpen,
 	ToggleInspectorOpen,
 	ToggleLayersPanelOpen,
+	TogglePalettePanelOpen,
 	UpdatePanelsLayout,
 	ResetWorkspaceLayout,
 	SetPanelGroupSizes {

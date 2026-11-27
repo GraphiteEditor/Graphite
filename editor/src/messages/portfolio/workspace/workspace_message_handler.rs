@@ -1,4 +1,5 @@
 use crate::messages::layout::utility_types::layout_widget::LayoutTarget;
+use crate::messages::portfolio::document::palette::PaletteMessage;
 use crate::messages::portfolio::persistent_state::PersistentStateMessage;
 use crate::messages::portfolio::utility_types::{PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::messages::prelude::*;
@@ -288,6 +289,14 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				let panel_type = PanelType::Data;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
+			WorkspaceMessage::TogglePalettePanelOpen => {
+				if self.panel_layout.focus_document {
+					return;
+				}
+
+				let panel_type = PanelType::Palette;
+				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
+			}
 			WorkspaceMessage::ToggleCollaborationPanelOpen => {
 				if self.panel_layout.focus_document {
 					return;
@@ -420,7 +429,8 @@ impl WorkspaceMessageHandler {
 			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelBottomLeftBar, LayoutTarget::LayersPanelBottomRightBar],
 			PanelType::Data => &[LayoutTarget::DataPanel, LayoutTarget::DataPanelContext, LayoutTarget::DataPanelPath],
 			PanelType::Collaboration => &[LayoutTarget::CollaborationPanel],
-			PanelType::Document | PanelType::Welcome | PanelType::History => return,
+			// TODO: Fix the destroy process properly for palette
+			PanelType::Document | PanelType::Welcome | PanelType::History | PanelType::Palette => return,
 		};
 
 		for &layout_target in targets {
@@ -445,6 +455,9 @@ impl WorkspaceMessageHandler {
 			}
 			PanelType::Data => {
 				// The Data panel's content is populated automatically as a side effect of the graph run completing, so there's nothing to do here
+			}
+			PanelType::Palette => {
+				responses.add(PaletteMessage::Refresh);
 			}
 			PanelType::Collaboration => {
 				responses.add(SyncMessage::RefreshPanel);

@@ -84,6 +84,8 @@ pub struct DropdownInput {
 	// Sized to the selected entry, rather than the widest, so its width changes with the selection
 	#[serde(rename = "sizedToSelection")]
 	pub sized_to_selection: bool,
+	#[serde(rename = "menuDirection")]
+	pub menu_direction: Option<MenuDirection>,
 
 	// Behavior
 	#[serde(rename = "virtualScrolling")]

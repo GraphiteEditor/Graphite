@@ -1,5 +1,6 @@
 use super::utility_types::{DataTransferItem, DataType, IngestAction, TransferData, TypeFilter};
 use crate::messages::frontend::utility_types::{FileDialogOptions, FileFilter};
+use crate::messages::portfolio::document::palette::PaletteMessage;
 use crate::messages::prelude::*;
 use glam::IVec2;
 use graph_craft::application_io::resource::ResourceId;
@@ -29,6 +30,11 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 				filters: vec![TypeFilter::image()],
 				multiple: false,
 				action: IngestAction::Import,
+			}),
+			IngestMessage::ImportPalette => responses.add(IngestMessage::Browse {
+				filters: vec![TypeFilter::palette()],
+				multiple: true,
+				action: IngestAction::ImportPalette,
 			}),
 			IngestMessage::SetResourceInput {
 				document_id,
@@ -67,7 +73,13 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 				let preferred = items.into_iter().min_by_key(|item| match item.data {
 					TransferData::Svg(_) => 0,
 					TransferData::Raster { .. } => 1,
-					TransferData::Document(_) | TransferData::LegacyDocument(_) | TransferData::Lut(_) | TransferData::Font(_) | TransferData::Other(_) => 2,
+					TransferData::Document(_)
+					| TransferData::LegacyDocument(_)
+					| TransferData::Lut(_)
+					| TransferData::PaletteGPL(_)
+					| TransferData::PaletteKPL(_)
+					| TransferData::Font(_)
+					| TransferData::Other(_) => 2,
 					TransferData::Text(_) => 3,
 					TransferData::ApplicationData(_) => 4,
 				});
@@ -127,7 +139,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						return;
 					}
 					IngestAction::Open | IngestAction::OpenUnique => None,
-					IngestAction::Import | IngestAction::Paste => Some((None, None)),
+					IngestAction::Import | IngestAction::ImportPalette | IngestAction::Paste => Some((None, None)),
 					IngestAction::DropOnCanvas { mouse } => Some((Some(mouse), None)),
 					IngestAction::DropOnLayers { parent, insert_index } => Some((None, Some((parent, insert_index as usize)))),
 				}
@@ -153,6 +165,18 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 							document_path,
 							content,
 							fresh_identity,
+						});
+						return;
+					}
+					TransferData::PaletteGPL(content) => {
+						responses.add(PaletteMessage::InsertPaletteGPL { palette_name: name, content });
+						return;
+					}
+					TransferData::PaletteKPL(content) => {
+						responses.add(PaletteMessage::InsertPaletteKPL {
+							palette_name: name,
+							palette_path: document_path,
+							content,
 						});
 						return;
 					}

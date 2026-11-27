@@ -12,6 +12,7 @@ pub enum PanelType {
 	#[serde(alias = "Properties")]
 	Inspector,
 	Data,
+	Palette,
 	Collaboration,
 	History,
 }
@@ -24,6 +25,8 @@ impl From<String> for PanelType {
 			"Layers" => PanelType::Layers,
 			"Inspector" | "Properties" => PanelType::Inspector,
 			"Data" => PanelType::Data,
+			// TODO: Determine why it is not producing space betwen color and Palette
+			"Palette" => PanelType::Palette,
 			"Collaboration" => PanelType::Collaboration,
 			"History" => PanelType::History,
 			_ => panic!("Unknown panel type: {value}"),
@@ -33,7 +36,7 @@ impl From<String> for PanelType {
 
 impl PanelType {
 	pub fn non_document_panels() -> &'static [PanelType] {
-		&[PanelType::Layers, PanelType::Inspector, PanelType::Data, PanelType::Collaboration, PanelType::History]
+		&[PanelType::Layers, PanelType::Inspector, PanelType::Data, PanelType::Collaboration, PanelType::History, PanelType::Palette]
 	}
 }
 
@@ -336,7 +339,7 @@ impl WorkspacePanelLayout {
 		let (root_child_index, insert_at_end) = match panel_type {
 			PanelType::Data => (0, true),                                  // Left column, after document
 			PanelType::Inspector | PanelType::Collaboration => (1, false), // Right column, at top
-			PanelType::Layers | PanelType::History => (1, true),           // Right column, at bottom
+			PanelType::Layers | PanelType::History | PanelType::Palette => (1, true),           // Right column, at bottom
 			_ => (1, true),
 		};
 

@@ -8,6 +8,7 @@
 	import History from "/src/components/panels/History.svelte";
 	import Inspector from "/src/components/panels/Inspector.svelte";
 	import Layers from "/src/components/panels/Layers.svelte";
+	import Palette from "/src/components/panels/Palette.svelte";
 	import Welcome from "/src/components/panels/Welcome.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
@@ -22,6 +23,7 @@
 		History,
 		Inspector,
 		Data,
+		Palette,
 		Collaboration,
 	};
 	const BUTTON_LEFT = 0;

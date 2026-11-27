@@ -20,6 +20,7 @@ pub enum IngestMessage {
 	},
 	Open,
 	Import,
+	ImportPalette,
 	SetResourceInput {
 		document_id: DocumentId,
 		node_id: NodeId,

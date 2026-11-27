@@ -19,6 +19,8 @@ const GDD_MIME: &str = "application/vnd.graphite.document";
 const GRAPHITE_LEGACY_MIME: &str = "application/graphite+json";
 const SVG_MIME: &str = "image/svg+xml";
 const TEXT_MIME: &str = "text/plain";
+const GPL_PALETTE_MIME: &str = "application/x-gimp-palette";
+const KPL_PALETTE_MIME: &str = "application/x-krita-palette";
 
 const GRAPHITE_PREFIX: &str = "graphite: ";
 const SNIFFED_TEXT_LENGTH: usize = 4096;
@@ -48,6 +50,7 @@ pub enum IngestAction {
 		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
 		accepted_types: Vec<DataType>,
 	},
+	ImportPalette,
 }
 
 impl IngestAction {
@@ -70,6 +73,8 @@ pub enum DataType {
 	Raster(ImageFormat),
 	Font,
 	Lut,
+	PaletteGPL,
+	PaletteKPL,
 	Text,
 	#[default]
 	Unknown,
@@ -91,6 +96,8 @@ impl DataType {
 			GRAPHITE_LEGACY_MIME => Self::GraphiteLegacy,
 			GDD_MIME => Self::Gdd,
 			SVG_MIME => Self::Svg,
+			GPL_PALETTE_MIME => Self::PaletteGPL,
+			KPL_PALETTE_MIME => Self::PaletteKPL,
 			TEXT_MIME => Self::Text,
 			mime => ImageFormat::from_mime_type(mime).map_or(Self::Unknown, Self::Raster),
 		}
@@ -101,6 +108,8 @@ impl DataType {
 			FILE_EXTENSION => Self::GraphiteLegacy,
 			GDD_FILE_EXTENSION => Self::Gdd,
 			"svg" => Self::Svg,
+			"gpl" => Self::PaletteGPL,
+			"kpl" => Self::PaletteKPL,
 			extension if LUT_FILE_EXTENSIONS.contains(&extension) => Self::Lut,
 			extension if FONT_FILE_EXTENSIONS.contains(&extension) => Self::Font,
 			extension => ImageFormat::from_extension(extension).map_or(Self::Unknown, Self::Raster),
@@ -130,11 +139,14 @@ impl DataType {
 			Err(_) => return Self::Unknown,
 		};
 
+		// TODO: Add recongnision for KPL palette format.
 		let text = text.trim_start_matches('\u{feff}').trim_start();
 		if text.starts_with('{') {
 			Self::GraphiteLegacy
 		} else if text.starts_with('<') && text.contains("<svg") {
 			Self::Svg
+		} else if text.starts_with("GIMP Palette") {
+			Self::PaletteGPL
 		} else {
 			Self::Unknown
 		}
@@ -146,6 +158,8 @@ impl DataType {
 			Self::Gdd => GDD_MIME,
 			Self::Svg => SVG_MIME,
 			Self::Raster(format) => format.to_mime_type(),
+			Self::PaletteGPL => GPL_PALETTE_MIME,
+			Self::PaletteKPL => KPL_PALETTE_MIME,
 			Self::Text => TEXT_MIME,
 			Self::Lut | Self::Font | Self::Unknown => return None,
 		})
@@ -158,6 +172,8 @@ impl DataType {
 			Self::Svg => &["svg"],
 			Self::Raster(format) => format.extensions_str(),
 			Self::Lut => LUT_FILE_EXTENSIONS,
+			Self::PaletteGPL => &["gpl"],
+			Self::PaletteKPL => &["kpl"],
 			Self::Font => FONT_FILE_EXTENSIONS,
 			Self::Text | Self::Unknown => &[],
 		}
@@ -198,6 +214,13 @@ impl TypeFilter {
 		}
 	}
 
+	pub fn palette() -> Self {
+		Self {
+			name: "Palette".into(),
+			types: vec![DataType::PaletteGPL, DataType::PaletteKPL],
+		}
+	}
+
 	pub fn font() -> Self {
 		Self {
 			name: "Font".into(),
@@ -235,6 +258,8 @@ pub enum TransferData {
 	Raster { format: ImageFormat, data: Vec<u8> },
 	Document(Vec<u8>),
 	LegacyDocument(String),
+	PaletteGPL(Vec<u8>),
+	PaletteKPL(Vec<u8>),
 	Lut(Vec<u8>),
 	Font(Vec<u8>),
 	Other(Vec<u8>),
@@ -249,6 +274,8 @@ impl TransferData {
 			Self::LegacyDocument(_) => DataType::GraphiteLegacy,
 			Self::Lut(_) => DataType::Lut,
 			Self::Font(_) => DataType::Font,
+			Self::PaletteGPL(_) => DataType::PaletteGPL,
+			Self::PaletteKPL(_) => DataType::PaletteKPL,
 			Self::Text(_) | Self::ApplicationData(_) => DataType::Text,
 			Self::Other(_) => DataType::Unknown,
 		}
@@ -257,7 +284,7 @@ impl TransferData {
 	pub fn into_bytes(self) -> Vec<u8> {
 		match self {
 			Self::Text(text) | Self::Svg(text) | Self::LegacyDocument(text) => text.into_bytes(),
-			Self::Raster { data, .. } | Self::Document(data) | Self::Lut(data) | Self::Font(data) | Self::Other(data) => data,
+			Self::Raster { data, .. } | Self::Document(data) | Self::Lut(data) | Self::Font(data) | Self::Other(data) | Self::PaletteKPL(data) | Self::PaletteGPL(data) => data,
 			Self::ApplicationData(_) => DataTransferItem::from(self).into_raw().map(|(_, data)| data.into_bytes()).unwrap_or_default(),
 		}
 	}
@@ -310,6 +337,8 @@ impl DataTransferItem {
 			DataType::GraphiteLegacy => text(data, TransferData::LegacyDocument),
 			DataType::Gdd => TransferData::Document(data),
 			DataType::Svg => text(data, TransferData::Svg),
+			DataType::PaletteGPL => TransferData::PaletteGPL(data),
+			DataType::PaletteKPL => TransferData::PaletteKPL(data),
 			DataType::Raster(format) => TransferData::Raster { format, data },
 			DataType::Lut => TransferData::Lut(data),
 			DataType::Font => TransferData::Font(data),
@@ -330,7 +359,13 @@ impl DataTransferItem {
 			},
 			TransferData::Svg(svg) => Some((DataType::Svg, RawData::Text(svg))),
 			TransferData::Raster { format, data } => Some((DataType::Raster(format), RawData::Bytes(data))),
-			TransferData::Document(_) | TransferData::LegacyDocument(_) | TransferData::Lut(_) | TransferData::Font(_) | TransferData::Other(_) => None,
+			TransferData::Document(_)
+			| TransferData::LegacyDocument(_)
+			| TransferData::Lut(_)
+			| TransferData::Font(_)
+			| TransferData::Other(_)
+			| TransferData::PaletteGPL(_)
+			| TransferData::PaletteKPL(_) => None,
 		}
 	}
 }

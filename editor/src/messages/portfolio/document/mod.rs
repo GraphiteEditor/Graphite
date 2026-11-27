@@ -12,6 +12,7 @@ pub mod inspector;
 pub mod navigation;
 pub mod node_graph;
 pub mod overlays;
+pub mod palette;
 pub mod resource;
 pub mod utility_types;
 
