@@ -6,6 +6,7 @@ use crate::adjustment::Adjustment;
 use crate::effects::{BevelStyle, EffectCapture, EffectOperation, Effects, GlowFill, OutlineFill, outline_extents};
 use core_types::Color;
 use core_types::blending::BlendMode;
+use std::borrow::Cow;
 use std::ops::Range;
 
 /// Which side of the content a piece of an effect draws on, and how.
@@ -99,9 +100,7 @@ impl EffectLayers {
 		let has_beneath = |pieces: &[(EffectPiece, BlendMode)]| pieces.iter().any(|(piece, _)| piece.place == PiecePlace::Beneath);
 
 		// Flattened shadows and glows that no later pixel filter merges into the content would draw over the layered ones, so then everything is flattened
-		let last_pixel_filter = (operations[..flattened].iter())
-			.rposition(|operation| !operation.changes_nothing() && is_pixel_filter(operation))
-			.map_or(0, |index| index + 1);
+		let last_pixel_filter = merged_into_content(&operations[..flattened]);
 		let unmerged = pieces_from(last_pixel_filter, flattened);
 		let mut pieces = pieces_from(flattened, operations.len());
 		if has_beneath(&unmerged) && has_beneath(&pieces) {
@@ -287,6 +286,26 @@ pub fn is_pixel_filter(operation: &EffectOperation) -> bool {
 		EffectOperation::Adjustment(adjustment) => !matches!(adjustment, Adjustment::ColorOverlay { .. }),
 		_ => false,
 	}
+}
+
+/// How many of the `operations`, from the first, run through the last pixel filter among them, which merges the pieces before it into the content's image.
+fn merged_into_content(operations: &[EffectOperation]) -> usize {
+	(operations.iter())
+		.rposition(|operation| !operation.changes_nothing() && is_pixel_filter(operation))
+		.map_or(0, |index| index + 1)
+}
+
+/// The effects carried out in the content's own image, which make a clipping base's shape: every row through the last pixel filter, which merges the pieces before it into that image, then the trailing masks fading it.
+/// The other pieces are cast from or laid over the content, so for PSD interop they don't shape a clip. Borrowed if nothing is left out.
+pub fn content_image_effects(effects: &Effects) -> Cow<'_, Effects> {
+	let operations: Vec<EffectOperation> = effects.operations().collect();
+	let trailing_masks = trailing_masks(&operations);
+	let merged = merged_into_content(&operations[..trailing_masks.start]);
+	if merged == trailing_masks.start {
+		return Cow::Borrowed(effects);
+	}
+
+	Cow::Owned(Effects((0..merged).chain(trailing_masks).filter_map(|index| effects.0.clone_item(index)).collect()))
 }
 
 /// The rows from the first mask after every other effect that changes something to the end, or none without such a mask or an effect before it.
@@ -669,6 +688,29 @@ mod tests {
 		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., false);
 		assert_eq!(layers.flattened, 2);
 		assert_eq!(parts(&layers), [[None]]);
+	}
+
+	#[test]
+	fn content_images_keep_the_filters_and_what_they_merge_but_not_the_pieces_around_them() {
+		let blur = EffectOperation::Blur {
+			radius_mask: Graphic::default(),
+			radius: 2.,
+			box_blur: false,
+			gamma: false,
+		};
+		let shadow = || drop_shadow(RED, BlendMode::Multiply);
+		let kinds = |operations: Vec<EffectOperation>| -> Vec<EffectKind> { content_image_effects(&Effects::from_operations(operations)).operations().map(|operation| operation.kind()).collect() };
+
+		// A shadow is cast from the content, unless a later filter merges it into the content's image
+		assert!(kinds(vec![shadow()]).is_empty());
+		assert_eq!(kinds(vec![blur.clone(), shadow()]), [EffectKind::Blur]);
+		let merged = Effects::from_operations([shadow(), blur.clone()]);
+		assert!(matches!(content_image_effects(&merged), Cow::Borrowed(_)));
+
+		// Trailing masks fade the content's image as they fade each layer
+		assert_eq!(kinds(vec![shadow(), mask()]), [EffectKind::Mask]);
+		let filtered = vec![mask(), inner_shadow(RED, BlendMode::Screen), blur, shadow(), mask()];
+		assert_eq!(kinds(filtered), [EffectKind::Mask, EffectKind::InnerShadow, EffectKind::Blur, EffectKind::Mask]);
 	}
 
 	#[test]

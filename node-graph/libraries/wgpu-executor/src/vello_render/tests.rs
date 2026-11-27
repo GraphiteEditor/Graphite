@@ -983,6 +983,63 @@ fn a_mask_on_a_clipping_base_shapes_what_clips_to_it() {
 }
 
 #[test]
+fn a_clipping_base_clips_by_its_blur_but_not_by_its_shadow() {
+	use core_types::list::{Item, List};
+	use core_types::{ATTR_CLIPPING_MASK, ATTR_OPACITY_FILL, Color as GraphicColor};
+	use graphic_types::{Appearance, Coverage, Effect, EffectOperation, Graphic, Vector, stamp_effect};
+	use rendering::{Render, RenderParams};
+	use vello_gpu::kurbo::Shape;
+
+	let size = UVec2::new(128, 128);
+	let square = |color: GraphicColor, rect: Rect| {
+		let mut item = Vector::item_from_bezpath(&rect.to_path(0.1));
+		item.set_attribute(
+			core_types::list::ATTR_APPEARANCE,
+			Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(color))),
+		);
+		item
+	};
+
+	// A white base its fill hides, with a red square twice its size clipped to it, as siblings in a list of vectors and as layers of a stack
+	let render_clipped = |effect: &EffectOperation, as_layers: bool| {
+		let mut base = square(GraphicColor::WHITE, Rect::new(40., 40., 80., 80.)).with_attribute(ATTR_OPACITY_FILL, 0.);
+		stamp_effect(&mut base, Effect::new(effect));
+		let clipped = square(GraphicColor::RED, Rect::new(20., 20., 100., 100.)).with_attribute(ATTR_CLIPPING_MASK, true);
+
+		let graphic = match as_layers {
+			true => {
+				let layer = |item: Item<Vector>| Item::new_from_element(Graphic::VectorList(List::new_from_item(item)));
+				Graphic::GraphicList([layer(base), layer(clipped)].into_iter().collect())
+			}
+			false => Graphic::VectorList([base, clipped].into_iter().collect()),
+		};
+		render(size, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default()))
+	};
+
+	let blur = EffectOperation::Blur {
+		radius_mask: Graphic::default(),
+		radius: 4.,
+		box_blur: false,
+		gamma: false,
+	};
+	let shadow = drop_shadow(GraphicColor::BLACK, glam::DVec2::new(10., 10.), 0., 0.);
+	for (name, as_layers) in [("vectors", false), ("layers", true)] {
+		let Some(pixels) = render_clipped(&blur, as_layers) else { return };
+		assert_eq!(
+			pixel(&pixels, size, 60, 60),
+			[255, 0, 0, 255],
+			"{name}: the clipped square shows fully within the base, unfaded by its fill"
+		);
+		let past_edge = pixel(&pixels, size, 82, 60);
+		assert!(past_edge[0] > 200 && past_edge[3] > 0, "{name}: and past its edge, where its blur reaches: {past_edge:?}");
+
+		let Some(pixels) = render_clipped(&shadow, as_layers) else { return };
+		assert_eq!(pixel(&pixels, size, 60, 60), [255, 0, 0, 255], "{name}: the clipped square shows fully within the base");
+		assert_eq!(pixel(&pixels, size, 85, 85), [0, 0, 0, 255], "{name}: but not over the shadow the base casts");
+	}
+}
+
+#[test]
 fn feathers_fade_the_content_to_nothing_at_its_edges() {
 	use graphic_types::EffectOperation;
 

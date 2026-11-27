@@ -520,14 +520,18 @@ fn init_test_logger() {
 	});
 }
 
-/// Creates application IO with the GPU executor shared by every test in the process, since creating a device and its pipelines for each test is slow.
+/// The GPU executor shared by every test in the process, since creating a device and its pipelines for each test is slow.
 /// Panics if no adapter is found, since tests render on the GPU like the app does.
-fn gpu_application_io() -> PlatformApplicationIo {
+pub fn gpu_executor() -> <PlatformApplicationIo as ApplicationIo>::Executor {
 	static GPU_EXECUTOR: LazyLock<Option<<PlatformApplicationIo as ApplicationIo>::Executor>> = LazyLock::new(|| futures::executor::block_on(PlatformApplicationIo::new()).gpu_executor().cloned());
-	let executor = GPU_EXECUTOR.clone().expect(
+	GPU_EXECUTOR.clone().expect(
 		"Editor tests need a GPU adapter. Without a hardware GPU, install Mesa's lavapipe software Vulkan driver and point `VK_ADD_DRIVER_FILES` at its `lvp_icd.<arch>.json` (the Nix dev shell does this).",
-	);
-	PlatformApplicationIo::new_with_executor(executor)
+	)
+}
+
+/// Creates application IO with the GPU executor every test shares (see [`gpu_executor`]).
+fn gpu_application_io() -> PlatformApplicationIo {
+	PlatformApplicationIo::new_with_executor(gpu_executor())
 }
 
 /// Runs `operation`, returning its result along with the errors it logged.

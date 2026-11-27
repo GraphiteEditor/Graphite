@@ -1,4 +1,6 @@
 #[cfg(test)]
+mod clipping_tests;
+#[cfg(test)]
 pub(crate) mod document_diff;
 mod document_history;
 mod document_message;
