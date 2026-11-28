@@ -8,6 +8,7 @@ pub mod generator;
 pub mod graphic;
 pub mod masks;
 pub(crate) mod parameters;
+pub mod resampling;
 
 // Re-export all transitive dependencies so downstream crates only need to depend on graphic-types
 pub use core_types;
@@ -26,6 +27,7 @@ pub use filters::NoiseDistribution;
 pub use generator::Generator;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 pub use masks::MaskMode;
+pub use resampling::RadialBlurMethod;
 
 pub mod migrations {
 	use crate::Vector;

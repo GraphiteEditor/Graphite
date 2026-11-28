@@ -1,3 +1,4 @@
+pub mod distortions;
 pub mod effects;
 pub mod filters;
 pub mod masks;

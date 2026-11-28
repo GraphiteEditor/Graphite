@@ -7,6 +7,7 @@ use crate::effect_kernels::{BlurKernel, MAX_DIRECT_BOX_RADIUS, NEGLIGIBLE_LENGTH
 use crate::generators::pattern_sampler;
 use crate::layer_blending::blend_layer;
 use crate::masks::{feather_strength, mask_strength, masked, masked_box_blur_luminances, masked_radius_blur, masked_radius_blur_codes, variable_box_blur};
+use crate::resample_kernels::{MotionBlurShear, motion_blurred, radial_blurred};
 use crate::value_effects::{adjustments, evaluate_gradient_effects, filled_color};
 use core_types::FallibleVec2Operations;
 use core_types::blending::BlendMode;
@@ -25,6 +26,7 @@ use graphic_types::effects::{
 use graphic_types::filters::sharpens_coverage;
 use graphic_types::generator::GeneratorPattern;
 use graphic_types::masks::masked_radius_blur_levels;
+use graphic_types::resampling::{EffectFrame, RadialBlur};
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Image, Raster};
 use std::collections::HashMap;
@@ -140,10 +142,10 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 	}
 
 	// A margin around the image to hold the blur and shadows cast past its edges and the colors filters read past them, cut short evenly for an image that would grow too large
-	let reach_in_pixels: DVec2 = (rows[leading..].iter())
-		.map(|(operation, effect_to_pixels, _)| operation.required_reach() * spans_along_axes(*effect_to_pixels))
-		.sum();
-	let mut margin = reach_in_pixels.ceil();
+	// Measured along the image's pixels, in which the image spans its own size, since effects relative to its extent reach farther from larger content
+	let content_to_image_pixels = DAffine2::from_mat2(document_to_image_pixels) * transform;
+	let remaining = effects.after(leading);
+	let mut margin = (remaining.reach_around(content_to_image_pixels, size, 0.) + remaining.read_beyond_painted(content_to_image_pixels)).ceil();
 	// A feather needs the pixels past the image's edges, which are absent, to find those edges
 	if rows.iter().any(|(operation, ..)| matches!(operation, EffectOperation::Feather { distance } if *distance > 0.)) {
 		margin = margin.max(DVec2::ONE);
@@ -541,6 +543,30 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				full = masked(&full, &strength);
 				filled = filled.map(|filled| masked(&filled, &strength));
 			}
+			EffectOperation::MotionBlur { angle, distance, gamma } => {
+				// Anchored at the content's origin, the image's corner past the margin, so the shear moves with it
+				let anchor = DVec2::new(margin_x as f64, margin_y as f64);
+				let Some(shear) = MotionBlurShear::new(angle, distance, effect_to_pixels, anchor) else {
+					continue;
+				};
+
+				merge_beneath(&mut full, &mut filled, &mut beneath);
+				full = in_light(full, !gamma, |plane| motion_blurred(&plane, &shear));
+				filled = filled.map(|filled| in_light(filled, !gamma, |plane| motion_blurred(&plane, &shear)));
+			}
+			EffectOperation::RadialBlur { method, amount, center, gamma } => {
+				// The frame is the image's own rectangle in the effect space, which moves with it
+				let effect_to_plane = DAffine2::from_translation(DVec2::new(margin_x as f64, margin_y as f64)) * DAffine2::from_mat2(effect_to_pixels);
+				let Some(frame) = &EffectFrame::new(DAffine2::from_mat2(effect_to_pixels.inverse()) * DAffine2::from_scale(size), effect_to_plane) else {
+					continue;
+				};
+				let blur = RadialBlur::new(method, amount, center, frame.size);
+				let pixels_per_length = effect_to_pixels.determinant().abs().sqrt();
+
+				merge_beneath(&mut full, &mut filled, &mut beneath);
+				full = in_light(full, !gamma, |plane| radial_blurred(&plane, &blur, frame, pixels_per_length));
+				filled = filled.map(|filled| in_light(filled, !gamma, |plane| radial_blurred(&plane, &blur, frame, pixels_per_length)));
+			}
 			EffectOperation::Adjustment(ref adjustment) => {
 				merge_beneath(&mut full, &mut filled, &mut beneath);
 				full = adjust(&full, adjustment);
@@ -651,9 +677,14 @@ pub(crate) fn transferred(transfer: fn(f32) -> f32) -> impl Fn([f32; 4]) -> [f32
 
 /// Blurs premultiplied gamma-encoded pixels by a kernel along each axis, in linear light if `linear`.
 pub(crate) fn blur(plane: Plane<[f32; 4]>, (horizontal, vertical): (BlurKernel, BlurKernel), linear: bool) -> Plane<[f32; 4]> {
+	in_light(plane, linear, |plane| plane.blurred(horizontal, vertical))
+}
+
+/// Runs `operation` on premultiplied gamma-encoded pixels, in linear light if `linear`.
+fn in_light(plane: Plane<[f32; 4]>, linear: bool, operation: impl FnOnce(Plane<[f32; 4]>) -> Plane<[f32; 4]>) -> Plane<[f32; 4]> {
 	match linear {
-		true => plane.map(transferred(srgb_to_linear)).blurred(horizontal, vertical).map(transferred(linear_to_srgb)),
-		false => plane.blurred(horizontal, vertical),
+		true => operation(plane.map(transferred(srgb_to_linear))).map(transferred(linear_to_srgb)),
+		false => operation(plane),
 	}
 }
 
@@ -1354,6 +1385,45 @@ mod tests {
 			let still = evaluated(&operation, DAffine2::IDENTITY);
 			assert_eq!(evaluated(&operation, DAffine2::from_translation(DVec2::new(100.5, 41.25))), still, "{operation:?} moved");
 			assert_eq!(evaluated(&operation, DAffine2::from_scale(DVec2::splat(3.))), still, "{operation:?} scaled");
+		}
+	}
+
+	#[test]
+	fn resampling_effects_scale_and_turn_with_the_content_after_them() {
+		let motion = EffectOperation::MotionBlur {
+			angle: 30.,
+			distance: 7.,
+			gamma: false,
+		};
+		let spin = EffectOperation::RadialBlur {
+			method: graphic_types::RadialBlurMethod::Spin,
+			amount: 20.,
+			center: DVec2::new(10., -5.),
+			gamma: false,
+		};
+
+		// A white square in the middle of a black image, with the blur stamped before a later transform places it
+		let placement = DAffine2::from_translation(DVec2::new(3.3, -7.6)) * DAffine2::from_scale(DVec2::splat(24.));
+		let evaluated = |operation: &EffectOperation, later: DAffine2| {
+			let inside = |index: usize| (8..16).contains(&(index % 24)) && (8..16).contains(&(index / 24));
+			let data = (0..24 * 24).map(|index| if inside(index) { Color::WHITE } else { Color::BLACK }).collect();
+			let mut item = Item::new_from_element(Raster::new_cpu(Image { width: 24, height: 24, data })).with_attribute(ATTR_TRANSFORM, placement);
+			graphic_types::stamp_effect(&mut item, graphic_types::Effect::new(operation));
+			item.set_attribute(ATTR_TRANSFORM, later * placement);
+			evaluate_raster_effects(item).element().data.clone()
+		};
+
+		// Each of the image's pixels blurs alike however the later transform scales and turns it
+		for operation in [motion, spin] {
+			let still = evaluated(&operation, DAffine2::IDENTITY);
+			for later in [DAffine2::from_scale(DVec2::splat(3.)), DAffine2::from_angle(0.7)] {
+				let placed = evaluated(&operation, later);
+				let channels = |color: &Color| color.to_gamma_srgb_channels();
+				let difference = (still.iter().zip(&placed))
+					.flat_map(|(still, placed)| (0..4).map(move |channel| (channels(still)[channel] - channels(placed)[channel]).abs()))
+					.fold(0., f32::max);
+				assert!(placed.len() == still.len() && difference < 1e-3, "{operation:?} differs by {difference} under {later:?}");
+			}
 		}
 	}
 

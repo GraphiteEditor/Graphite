@@ -30,6 +30,16 @@ fn render(size: UVec2, draw: impl FnMut(&mut VelloSceneBuilder)) -> Option<Vec<[
 	render_timed(size, draw).map(|(pixels, _)| pixels)
 }
 
+/// Like [`render`], through a `view` from the document into the render's pixels.
+fn render_in_view(size: UVec2, view: DAffine2, mut draw: impl FnMut(&mut VelloSceneBuilder)) -> Option<Vec<[u8; 4]>> {
+	let executor = executor()?;
+	let _turn = take_turn();
+
+	let texture = executor.render_vello(size, view, &mut draw).unwrap_or_else(|error| panic!("Render failed: {error}"));
+	let pixels = executor.read_texture_pixels(&texture).expect("Failed to read back the render");
+	Some(pixels.as_chunks::<4>().0.to_vec())
+}
+
 /// Renders the scene `draw` draws into straight-alpha RGBA8 pixels, with how long the render and its readback took, or `None` without a GPU.
 fn render_timed(size: UVec2, mut draw: impl FnMut(&mut VelloSceneBuilder)) -> Option<(Vec<[u8; 4]>, std::time::Duration)> {
 	let executor = executor()?;
@@ -437,13 +447,23 @@ fn render_square_over_backdrop_in(
 	};
 
 	let effects = graphic_types::Effects::from_operations(effects);
+	let frame = graphic_types::resampling::frame_of_bounds([glam::DVec2::splat(min), glam::DVec2::splat(max)], DAffine2::IDENTITY);
 	render(size, |scene| {
 		if let Some(backdrop) = backdrop {
 			scene.fill(Fill::NonZero, Affine::IDENTITY, backdrop, None, &Rect::new(0., 0., size.x as f64, size.y as f64));
 		}
-		scene.draw_effects(&effects, fill, opacity, blend_mode, true, Some(square), effect_space, &mut draw_paint, &mut |scene| {
-			scene.fill(Fill::NonZero, Affine::IDENTITY, content, None, &square)
-		});
+		scene.draw_effects(
+			&effects,
+			fill,
+			opacity,
+			blend_mode,
+			true,
+			Some(square),
+			effect_space,
+			Some((frame, 0.)),
+			&mut draw_paint,
+			&mut |scene| scene.fill(Fill::NonZero, Affine::IDENTITY, content, None, &square),
+		);
 	})
 }
 
@@ -1296,6 +1316,44 @@ fn feathers_fade_the_content_to_nothing_at_its_edges() {
 }
 
 #[test]
+fn masked_radius_blur_image_maps_continue_past_the_content_with_their_own_adjustments_and_opacity_on_the_cpu_and_gpu() {
+	use core_types::Color as GraphicColor;
+	use core_types::list::Item;
+	use glam::DVec2;
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{Adjustment, Effect, EffectOperation, Graphic, stamp_effect};
+	use rendering::{Render, RenderParams};
+
+	// Unplaced image maps stretched across the content and continuing past it: plain white, black inverted to white, and white at half opacity
+	let image = |color| Item::new_from_element(Raster::new_cpu(Image::new(4, 4, color)));
+	let mut inverted = image(GraphicColor::BLACK);
+	stamp_effect(&mut inverted, Effect::new(&EffectOperation::Adjustment(Adjustment::Invert)));
+	let faded = image(GraphicColor::WHITE).with_attribute(core_types::ATTR_OPACITY, 0.5_f64);
+
+	// Each blurs a shadow cast 20 right of the content, so its far edge 20 past the content is soft where the map continues
+	let shadow = drop_shadow(GraphicColor::from_rgbaf32_unchecked(0.1, 0.2, 0.8, 1.), DVec2::new(20., 0.), 0., 0.);
+	let size = UVec2::new(160, 160);
+	for (name, map) in [("plain", image(GraphicColor::WHITE)), ("inverted", inverted), ("faded", faded)] {
+		let blur = EffectOperation::Blur {
+			radius_mask: Graphic::from(map),
+			radius: 3.,
+			box_blur: false,
+			gamma: false,
+		};
+		let item = patterned_raster(55., &[shadow.clone(), blur], 1.);
+		let Some(worst) = gpu_and_cpu_difference(item.clone(), size) else { return };
+		assert!(worst <= 3, "the {name} map differs from the GPU by up to {worst} levels");
+
+		let graphic = Graphic::RasterCPU(Box::new(item));
+		let Some(pixels) = render(size, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default())) else {
+			return;
+		};
+		let soft = (118..132).filter(|&x| (10..245).contains(&pixel(&pixels, size, x, 80)[3])).count();
+		assert!(soft >= 3, "only {soft} pixels soften the shadow's far edge with the {name} map");
+	}
+}
+
+#[test]
 fn masked_radius_blurs_blur_as_much_as_their_map_is_bright() {
 	use core_types::Color as GraphicColor;
 	use graphic_types::{EffectOperation, Graphic};
@@ -1466,7 +1524,7 @@ fn gpu_effect_texels(effects: &graphic_types::Effects, texels: &[[half::f16; 4]]
 
 	let mut textures = crate::vello_effects::EffectTextures::default();
 	let layers = graphic_types::effect_layers::EffectLayers::plan(effects, BlendMode::Normal, 1., false);
-	let results = effect_passes.apply(device, &queue, &mut textures, &content, effects, &layers, 1., 1., DAffine2::IDENTITY, &paints, None);
+	let results = effect_passes.apply(device, &queue, &mut textures, &content, effects, &layers, 1., 1., DAffine2::IDENTITY, None, &paints, None);
 	let (result, _) = results.into_iter().next()?;
 	drop(queue);
 
@@ -1980,9 +2038,10 @@ fn nested_effects_groups_render_inside_out() {
 			true,
 			Some(square.inflate(12., 12.)),
 			DAffine2::IDENTITY,
+			None,
 			&mut |_, _| {},
 			&mut |scene| {
-				scene.draw_effects(&blur, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+				scene.draw_effects(&blur, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, None, &mut |_, _| {}, &mut |scene| {
 					scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
 				});
 			},
@@ -2009,7 +2068,7 @@ fn captured_coverages_the_effects_never_reach_cover_nothing() {
 	let outline = Effects::from_operations([EffectOperation::default_for(EffectKind::Outline)]);
 	let draw = |scene: &mut VelloSceneBuilder| {
 		scene.capture_next_effects(EffectCapture { index: 0, plane: 1 });
-		scene.draw_effects(&outline, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+		scene.draw_effects(&outline, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, None, &mut |_, _| {}, &mut |scene| {
 			scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
 		});
 	};
@@ -2034,7 +2093,7 @@ fn captured_box_blurs_hold_their_results_for_svg_however_slight() {
 			if let Some(capture) = capture {
 				scene.capture_next_effects(capture);
 			}
-			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, &mut draw_map, &mut |scene| {
+			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, None, &mut draw_map, &mut |scene| {
 				scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
 			});
 		})
@@ -2852,7 +2911,7 @@ fn gpu_adjusted_texels(run: &[graphic_types::Adjustment], texels: &[[half::f16; 
 	let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
 	let mut textures = crate::vello_effects::EffectTextures::default();
 	let layers = graphic_types::effect_layers::EffectLayers::plan(&effects, core_types::blending::BlendMode::Normal, fill, false);
-	let results = effect_passes.apply(device, &queue, &mut textures, &content, &effects, &layers, fill, 1., DAffine2::IDENTITY, &[], None);
+	let results = effect_passes.apply(device, &queue, &mut textures, &content, &effects, &layers, fill, 1., DAffine2::IDENTITY, None, &[], None);
 	let (adjusted, _) = results.into_iter().next().expect("the adjustments draw one layer");
 	drop(queue);
 
@@ -3874,6 +3933,7 @@ fn gpu_adjustments_of_8_bit_content_match_the_cpu_kernels_at_the_edges_of_their_
 				true,
 				Some(square),
 				DAffine2::IDENTITY,
+				None,
 				&mut |_, _| {},
 				&mut |scene| draw_grays(scene),
 			)
@@ -3935,7 +3995,7 @@ fn steep_adjustments_of_smooth_gradients_stay_smooth() {
 	// A layer just short of opaque is drawn in an intermediate texture of its own
 	for in_layer in [false, true] {
 		let Some(pixels) = render(size, |scene| {
-			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(bounds), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(bounds), DAffine2::IDENTITY, None, &mut |_, _| {}, &mut |scene| {
 				if in_layer {
 					scene.push_layer(Fill::NonZero, peniko::Mix::Normal, 0.999, Affine::IDENTITY, &bounds);
 				}
@@ -4083,7 +4143,7 @@ fn adjustments_leave_the_empty_space_around_content_empty() {
 	for (name, run, alpha_within) in cases {
 		let effects = Effects::from_operations(run.into_iter().map(EffectOperation::Adjustment));
 		let Some(pixels) = render(size, |scene| {
-			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(bounds), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(bounds), DAffine2::IDENTITY, None, &mut |_, _| {}, &mut |scene| {
 				scene.fill(Fill::NonZero, Affine::IDENTITY, RED, None, &circle((64., 64.), 20.))
 			});
 		}) else {
@@ -4130,7 +4190,7 @@ fn soft_chisels_on_translucent_content_match_the_cpu() {
 
 		let square = Rect::new(min as f64, min as f64, max as f64, max as f64);
 		let Some(gpu) = render(size, |scene| {
-			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(square), DAffine2::IDENTITY, None, &mut |_, _| {}, &mut |scene| {
 				scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE.with_alpha(alpha), None, &square)
 			});
 		}) else {
@@ -4247,7 +4307,7 @@ fn adjustments_on_image_textures_and_through_effects_groups_match_the_cpu_kernel
 		let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
 		let through_effects_group = |scene: &mut VelloSceneBuilder| {
 			let bounds = Rect::new(0., 0., size.x as f64, size.y as f64);
-			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(bounds), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+			scene.draw_effects(&effects, 1., 1., BlendMode::Normal, true, Some(bounds), DAffine2::IDENTITY, None, &mut |_, _| {}, &mut |scene| {
 				scene.draw_raster(raster.clone(), Vec::new(), peniko::ImageSampler::new(), Affine::IDENTITY)
 			});
 		};
@@ -4758,4 +4818,314 @@ fn new_generator_tiles_take_over_the_textures_of_freed_ones() {
 		third.len() == freed.len() && third.iter().all(|texture| freed.contains(texture)),
 		"the third pattern's tiles render into the textures of the first's"
 	);
+}
+
+/// A 50 by 50 raster at (`offset`, `offset`), one pixel per document unit, of colors varying across it around a hole, carrying `effects` with `fill`.
+fn patterned_raster(offset: f64, effects: &[graphic_types::EffectOperation], fill: f64) -> core_types::list::Item<graphic_types::raster_types::Raster<graphic_types::raster_types::CPU>> {
+	use core_types::list::Item;
+	use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM};
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{Effect, stamp_effect};
+
+	let data = (0..50 * 50)
+		.map(|index| {
+			let (x, y) = ((index % 50) as f32 + 0.5, (index / 50) as f32 + 0.5);
+			let alpha = if (x - 32.).hypot(y - 20.) < 7. { 0. } else { 1. };
+			core_types::Color::from_gamma_srgb_channels(x / 50., y / 50., ((x * 0.4).sin() * 0.5 + 0.5) * (1. - y / 100.), alpha)
+		})
+		.collect();
+	let placement = DAffine2::from_translation(glam::DVec2::splat(offset)) * DAffine2::from_scale(glam::DVec2::splat(50.));
+
+	let mut item = Item::new_from_element(Raster::new_cpu(Image { width: 50, height: 50, data }))
+		.with_attribute(ATTR_TRANSFORM, placement)
+		.with_attribute(ATTR_OPACITY_FILL, fill);
+	effects.iter().for_each(|operation| stamp_effect(&mut item, Effect::new(operation)));
+	item
+}
+
+/// The most that the GPU's render of `item` and its CPU evaluation differ by at any of the render's pixels, in levels of their premultiplied channels, or `None` without a GPU.
+fn gpu_and_cpu_difference(item: core_types::list::Item<graphic_types::raster_types::Raster<graphic_types::raster_types::CPU>>, size: UVec2) -> Option<u32> {
+	use core_types::ATTR_TRANSFORM;
+	use rendering::{Render, RenderParams};
+
+	let graphic = graphic_types::Graphic::RasterCPU(Box::new(item.clone()));
+	let gpu = render(size, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default()))?;
+
+	let evaluated = raster_kernels::evaluate_raster_effects(item);
+	let placement: DAffine2 = evaluated.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let raster = evaluated.element();
+	let document_to_pixels = DAffine2::from_scale(glam::DVec2::new(raster.width as f64, raster.height as f64)) * placement.inverse();
+
+	let mut worst = 0;
+	for y in 0..size.y {
+		for x in 0..size.x {
+			let point = document_to_pixels.transform_point2(glam::DVec2::new(x as f64 + 0.5, y as f64 + 0.5)).floor();
+			let inside = point.x >= 0. && point.y >= 0. && point.x < raster.width as f64 && point.y < raster.height as f64;
+			let cpu = if inside {
+				raster.data[(point.y as u32 * raster.width + point.x as u32) as usize]
+			} else {
+				core_types::Color::TRANSPARENT
+			};
+			let [red, green, blue, alpha] = cpu.to_gamma_srgb_channels();
+			let cpu = [red * alpha, green * alpha, blue * alpha, alpha].map(|channel| channel * 255.);
+
+			let gpu = pixel(&gpu, size, x, y);
+			let gpu_alpha = gpu[3] as f32 / 255.;
+			for channel in 0..4 {
+				let gpu_channel = if channel == 3 { gpu[3] as f32 } else { gpu[channel] as f32 * gpu_alpha };
+				worst = worst.max((cpu[channel] - gpu_channel).abs().round() as u32);
+			}
+		}
+	}
+	Some(worst)
+}
+
+/// A straight-alpha pixel's levels with its color multiplied by its alpha, which compare meaningfully even where it's nearly transparent.
+fn premultiplied_levels(pixel: [u8; 4]) -> [f32; 4] {
+	let alpha = pixel[3] as f32 / 255.;
+	[pixel[0] as f32 * alpha, pixel[1] as f32 * alpha, pixel[2] as f32 * alpha, pixel[3] as f32]
+}
+
+#[test]
+fn motion_blurs_lean_alike_on_flipped_and_turned_content_on_the_cpu_gpu_and_svg() {
+	use core_types::ATTR_TRANSFORM;
+	use core_types::list::List;
+	use core_types::transform::Footprint;
+	use glam::{DMat2, DVec2};
+	use graphic_types::{Effect, EffectOperation, Graphic, stamp_effect};
+	use rendering::{Render, RenderParams, SvgRender};
+
+	// Lines an odd number of pixels long along their major axis, whose boxes lean a whole half pixel
+	let slanted_distance = 15. / 30_f64.to_radians().cos();
+	let blurs = [(0., 11.), (90., 9.), (30., slanted_distance)].map(|(angle, distance)| EffectOperation::MotionBlur { angle, distance, gamma: false });
+
+	// The content flipped across, flipped down, turned a half, and turned a quarter each way about its middle, which keeps its pixels on the render's
+	let middle = DVec2::splat(80.);
+	let about_middle = |linear: DMat2| DAffine2::from_translation(middle) * DAffine2::from_mat2(linear) * DAffine2::from_translation(-middle);
+	let placements = [
+		("flipped across", DMat2::from_diagonal(DVec2::new(-1., 1.))),
+		("flipped down", DMat2::from_diagonal(DVec2::new(1., -1.))),
+		("turned a half", DMat2::from_diagonal(DVec2::splat(-1.))),
+		("turned a quarter clockwise", DMat2::from_cols(DVec2::Y, -DVec2::X)),
+		("turned a quarter counterclockwise", DMat2::from_cols(-DVec2::Y, DVec2::X)),
+	];
+
+	let size = UVec2::splat(160);
+	for blur in &blurs {
+		for (name, linear) in placements {
+			// Blurred where it lies once placed, or blurred upright and then placed, which carries the blur along with it
+			for blurred_once_placed in [true, false] {
+				let mut item = patterned_raster(55., &[], 1.);
+				let placed = about_middle(linear) * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+				if blurred_once_placed {
+					item.set_attribute(ATTR_TRANSFORM, placed);
+				}
+				stamp_effect(&mut item, Effect::new(blur));
+				item.set_attribute(ATTR_TRANSFORM, placed);
+				let case = format!("{blur:?} on content {name}, blurred {}", if blurred_once_placed { "once placed" } else { "before it's placed" });
+
+				let Some(worst) = gpu_and_cpu_difference(item.clone(), size) else { return };
+				assert!(worst <= 3, "{case} differs between the CPU and GPU by up to {worst} levels");
+
+				// SVG draws the item as an image the GPU renders of it, which has to show what the GPU draws in the view
+				let graphic = Graphic::RasterCPU(Box::new(item.clone()));
+				let Some(gpu) = render(size, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default())) else {
+					return;
+				};
+				let mut svg = SvgRender::new();
+				List::new_from_item(item).render_svg(
+					&mut svg,
+					&RenderParams {
+						for_export: true,
+						..Default::default()
+					},
+				);
+				let footprint = Footprint {
+					transform: DAffine2::IDENTITY,
+					resolution: size,
+					..Default::default()
+				};
+				let Some(executor) = executor() else { return };
+				let (image_placement, image_width, image) = {
+					let _turn = take_turn();
+					let rendered = executor.render_deferred_svg_images(&svg.deferred_images, footprint);
+					let [(placement, texture)] = &rendered[..] else {
+						panic!("expected one image of {case}, got {}", rendered.len())
+					};
+					let pixels = executor.read_texture_pixels(texture).expect("Failed to read back the image");
+					(placement.transform, texture.width(), pixels.as_chunks::<4>().0.to_vec())
+				};
+
+				// The image's pixels lie on the view's from its corner
+				let corner = image_placement.translation.round().as_ivec2();
+				let mut compared = 0;
+				for (index, &image_pixel) in image.iter().enumerate() {
+					let position = corner + glam::IVec2::new((index as u32 % image_width) as i32, (index as u32 / image_width) as i32);
+					if position.cmplt(glam::IVec2::ZERO).any() || position.cmpge(size.as_ivec2()).any() {
+						continue;
+					}
+
+					let (svg_pixel, gpu_pixel) = (premultiplied_levels(image_pixel), premultiplied_levels(pixel(&gpu, size, position.x as u32, position.y as u32)));
+					let difference = (0..4).map(|channel| (svg_pixel[channel] - gpu_pixel[channel]).abs()).fold(0., f32::max);
+					assert!(difference <= 1.5, "{case} differs between SVG's image and the GPU by {difference} levels at {position}");
+					compared += 1;
+				}
+				assert!(compared >= 50 * 50, "SVG's image of {case} covers only {compared} of the view's pixels");
+			}
+		}
+	}
+}
+
+#[test]
+fn long_motion_blurs_spread_their_samples_alike_on_the_cpu_and_gpu() {
+	use glam::{DMat2, DVec2};
+	use graphic_types::{EffectOperation, Effects};
+	use half::f16;
+	use raster_kernels::resample_kernels::{MAX_MOTION_BLUR_SAMPLES, MotionBlurShear, motion_blurred};
+
+	// Stripes repeating every two and three pixels along a strip, which a box sampling the wrong pixels of would average far off
+	let (width, height) = (1400, 48);
+	let texels: Vec<[f16; 4]> = (0..width * height)
+		.map(|index| {
+			let (x, y) = (index % width, index / width);
+			let alpha = if (600..640).contains(&x) && y < 10 { 0. } else { 1. };
+			let straight = [(x % 2) as f32, (x % 3) as f32 / 2., y as f32 / (height - 1) as f32];
+			let [red, green, blue] = straight.map(|channel| channel * alpha);
+			[red, green, blue, alpha].map(f16::from_f32)
+		})
+		.collect();
+	let plane = raster_kernels::effect_kernels::Plane {
+		width,
+		height,
+		data: texels.iter().map(|texel| texel.map(f16::to_f32)).collect(),
+	};
+
+	// Lines past the most samples a box takes, so its samples lie two or three pixels apart, along the strip and slanting across it
+	for (angle, distance) in [(0., 1100.), (0., 2501.5), (4., 1300.)] {
+		let Some(shear) = MotionBlurShear::new(angle, distance, DMat2::IDENTITY, DVec2::ZERO) else {
+			panic!("a line {distance} long has shears")
+		};
+		assert!(shear.stride() > 1. && shear.length > MAX_MOTION_BLUR_SAMPLES, "the box of a line {distance} long takes every pixel");
+
+		let effects = Effects::from_operations([EffectOperation::MotionBlur { angle, distance, gamma: true }]);
+		let Some(gpu) = gpu_effect_texels(&effects, &texels, width, &[]) else { return };
+		let cpu = motion_blurred(&plane, &shear);
+
+		let levels = (gpu.iter().zip(&cpu.data))
+			.flat_map(|(gpu, cpu)| (0..4).map(|channel| (gpu[channel] - cpu[channel]).abs() * 255.))
+			.fold(0_f32, f32::max);
+		assert!(levels <= 1., "a line {distance} long at {angle} degrees strays from the CPU's kernel by {levels} levels");
+	}
+}
+
+#[test]
+fn radial_blurs_reach_as_far_inside_faded_groups_and_from_out_of_view() {
+	use core_types::list::{ATTR_APPEARANCE, ATTR_EFFECTS, Item, List};
+	use core_types::{ATTR_OPACITY, ATTR_TRANSFORM};
+	use glam::DVec2;
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{Appearance, Coverage, EffectOperation, Effects, Graphic, RadialBlurMethod, Vector};
+	use rendering::{Render, RenderParams};
+
+	// A spin about a center two widths to the right of the content, which smears it up, down, and right far past its own bounds
+	let spin = Effects::from_operations([EffectOperation::RadialBlur {
+		method: RadialBlurMethod::Spin,
+		amount: 120.,
+		center: DVec2::new(200., 0.),
+		gamma: false,
+	}]);
+	let size = UVec2::new(160, 160);
+	let draw = |graphic: &Graphic, view: DAffine2| render_in_view(size, view, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default()));
+
+	// Inside a group of nearly full opacity, a square smears as far as on its own
+	let square = Item::new_from_element(Raster::new_cpu(Image::new(1, 1, core_types::Color::WHITE)))
+		.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(20., 64.)) * DAffine2::from_scale(DVec2::splat(32.)))
+		.with_attribute(ATTR_EFFECTS, spin.clone());
+	let grouped = Graphic::Graphic(Box::new(Item::new_from_element(Graphic::RasterCPU(Box::new(square.clone()))).with_attribute(ATTR_OPACITY, 0.999_f64)));
+	let (Some(alone), Some(grouped)) = (draw(&Graphic::RasterCPU(Box::new(square)), DAffine2::IDENTITY), draw(&grouped, DAffine2::IDENTITY)) else {
+		return;
+	};
+	assert!(alone[..(size.x * 56) as usize].iter().any(|pixel| pixel[3] > 20), "the smear reaches well above the square");
+	for (index, (alone, grouped)) in alone.iter().zip(&grouped).enumerate() {
+		let (alone_levels, grouped_levels) = (premultiplied_levels(*alone), premultiplied_levels(*grouped));
+		let difference = (0..4).map(|channel| (alone_levels[channel] - grouped_levels[channel]).abs()).fold(0., f32::max);
+		assert!(
+			difference <= 2.,
+			"at ({}, {}) the group shows {grouped:?} rather than {alone:?}",
+			index as u32 % size.x,
+			index as u32 / size.x
+		);
+	}
+
+	// A circle viewed only where it smears, right of its own bounds, isn't culled
+	let circle_item = Vector::item_from_bezpath(&circle((36., 80.), 16.))
+		.with_attribute(
+			ATTR_APPEARANCE,
+			Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(core_types::Color::WHITE))),
+		)
+		.with_attribute(ATTR_EFFECTS, spin);
+	let Some(beside) = draw(&Graphic::Vector(Box::new(circle_item)), DAffine2::from_translation(DVec2::new(-56., 0.))) else {
+		return;
+	};
+	assert!(beside.iter().any(|pixel| pixel[3] > 20), "the circle's smear shows beside it");
+}
+
+#[test]
+fn resampling_effects_match_on_the_cpu_and_gpu() {
+	use glam::DVec2;
+	use graphic_types::{EffectOperation, RadialBlurMethod};
+
+	let motion = |angle, distance, gamma| EffectOperation::MotionBlur { angle, distance, gamma };
+	let radial = |method, amount, center, gamma| EffectOperation::RadialBlur { method, amount, center, gamma };
+	let shadow = drop_shadow(core_types::Color::from_rgbaf32_unchecked(0.1, 0.2, 0.8, 0.75), DVec2::new(4., 5.), 3., 0.);
+
+	let cases = [
+		vec![motion(0., 12., false)],
+		vec![motion(30., 7.5, true)],
+		// Long enough for the shears to step many whole pixels across the line
+		vec![motion(-70., 90., false)],
+		vec![radial(RadialBlurMethod::Spin, 20., DVec2::ZERO, false)],
+		// A whole turn, and a zoom spanning more than each point's distance from the center
+		vec![radial(RadialBlurMethod::Spin, 360., DVec2::new(10., 5.), false)],
+		vec![radial(RadialBlurMethod::Zoom, 250., DVec2::ZERO, false)],
+		vec![radial(RadialBlurMethod::Zoom, 60., DVec2::new(20., -10.), true)],
+		vec![shadow, radial(RadialBlurMethod::Spin, 45., DVec2::new(-30., 40.), false)],
+	];
+
+	for effects in cases {
+		for fill in [1., 0.5] {
+			let Some(worst) = gpu_and_cpu_difference(patterned_raster(55., &effects, fill), UVec2::new(160, 160)) else {
+				return;
+			};
+			assert!(worst <= 3, "{effects:?} at fill {fill} differs from the GPU by up to {worst} levels");
+		}
+	}
+}
+
+#[test]
+fn frame_relative_effects_read_what_lies_beyond_the_view() {
+	use glam::DVec2;
+	use graphic_types::{EffectOperation, Graphic, RadialBlurMethod};
+	use rendering::{Render, RenderParams};
+
+	// Only the right part of the content is in view, yet its arcs sweep through the part left of the view
+	let spin = EffectOperation::RadialBlur {
+		method: RadialBlurMethod::Spin,
+		amount: 90.,
+		center: DVec2::ZERO,
+		gamma: false,
+	};
+	let graphic = Graphic::RasterCPU(Box::new(patterned_raster(20., &[spin], 1.)));
+	let graphic = &graphic;
+	let draw = |offset: f64| move |scene: &mut VelloSceneBuilder| graphic.render_to_vello(scene, DAffine2::from_translation(DVec2::new(-offset, 0.)), &RenderParams::default());
+
+	let Some(whole) = render(UVec2::new(96, 96), draw(0.)) else { return };
+	let Some(part) = render(UVec2::new(32, 96), draw(56.)) else { return };
+	for y in 0..96 {
+		for x in 0..32 {
+			let (expected, actual) = (pixel(&whole, UVec2::new(96, 96), x + 56, y), pixel(&part, UVec2::new(32, 96), x, y));
+			let difference = expected.iter().zip(actual).map(|(&expected, actual)| expected.abs_diff(actual)).max().unwrap_or_default();
+			assert!(difference <= 1, "at ({x}, {y}) the view shows {actual:?} rather than {expected:?}");
+		}
+	}
 }

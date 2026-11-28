@@ -13,6 +13,7 @@ pub use graphene_application_io as application_io;
 pub use graphene_core;
 pub use graphene_core::debug;
 pub use graphic_nodes;
+pub use graphic_types::RadialBlurMethod;
 pub use graphic_types::{
 	Appearance, Artboard, BevelDirection, BevelStyle, BevelTechnique, Cover, CoverPlacement, Coverage, Effect, EffectKind, EffectOperation, Effects, GlowSource, GlowTechnique, Graphic, MaskMode,
 	MinimumMaximumMode, NoiseDistribution, Vector, stamp_coverage,

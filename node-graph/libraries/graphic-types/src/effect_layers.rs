@@ -282,7 +282,7 @@ pub fn is_pixel_filter(operation: &EffectOperation) -> bool {
 	match operation {
 		// TODO: Make a mask between other effects fade each layer drawn before it too, as the trailing masks do, rather than flattening those layers.
 		// TODO: Likewise for a trailing feather, faded by the footprint of every layer drawn together (not the content's alone, which would erase shadows past it).
-		EffectOperation::Blur { .. } | EffectOperation::Mask { .. } | EffectOperation::Feather { .. } => true,
+		EffectOperation::Blur { .. } | EffectOperation::MotionBlur { .. } | EffectOperation::RadialBlur { .. } | EffectOperation::Mask { .. } | EffectOperation::Feather { .. } => true,
 		operation if crate::filters::is_filter(operation) => true,
 		EffectOperation::Adjustment(adjustment) => !matches!(adjustment, Adjustment::ColorOverlay { .. }),
 		_ => false,
@@ -380,6 +380,8 @@ fn pieces(index: usize, operation: &EffectOperation) -> Vec<(EffectPiece, BlendM
 		EffectOperation::PaintOverlay { blend_mode, .. } => vec![piece(0, Within, None, *blend_mode)],
 		EffectOperation::Adjustment(Adjustment::ColorOverlay { color, blend_mode, .. }) => vec![piece(0, Within, Some(*color), *blend_mode)],
 		EffectOperation::Blur { .. }
+		| EffectOperation::MotionBlur { .. }
+		| EffectOperation::RadialBlur { .. }
 		| EffectOperation::Mask { .. }
 		| EffectOperation::Feather { .. }
 		| EffectOperation::ConvolutionKernel { .. }
