@@ -17,13 +17,13 @@ pub const VISIBLE_ALPHA: f32 = 15.5 / 255.;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Surroundings {
 	/// For PSD interop, a pixel too faint to be visible reads the nearest visible pixel's color (by [`fill_shifts`]) so colors continue past the edges, or with none within reach its own.
-	/// The result keeps the content's coverage.
+	/// The result keeps the content's coverage, unless the convolution weighs that too.
 	Continued,
 	/// The content is composited over an opaque gray of this level and filtered, then lifted back off the gray within its coverage, so its silhouette shows as an edge.
 	Matted(f64),
 }
 
-/// A weighted sum of copies of the content's straight colors, each shifted by a length in document pixels, divided by a divisor and raised by an offset, keeping the content's coverage.
+/// A weighted sum of copies of the content's straight colors, each shifted by a length in document pixels, divided by a divisor and raised by an offset, keeping the content's coverage unless it weighs that too.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Convolution {
 	/// Each copy's shift from the pixel it adds into toward the pixel it reads, in document pixels, with its weight.
@@ -34,6 +34,8 @@ pub struct Convolution {
 	pub offset: f64,
 	/// What the sum reads beyond the content's visible colors, and how the result returns to the content's coverage.
 	pub surroundings: Surroundings,
+	/// Whether the coverage is weighed by the same copies, with none beyond the content and without the offset, then clamped, rather than kept.
+	pub weighs_coverage: bool,
 }
 
 impl Convolution {
@@ -55,6 +57,7 @@ impl Convolution {
 			divisor: 1.,
 			offset: if offset.is_finite() { offset / 255. } else { 0. },
 			surroundings: Surroundings::Continued,
+			weighs_coverage: false,
 		}
 	}
 
@@ -85,6 +88,7 @@ impl Convolution {
 			divisor: 1.,
 			offset: 0.5,
 			surroundings: Surroundings::Matted(0.5),
+			weighs_coverage: false,
 		}
 	}
 
@@ -154,7 +158,12 @@ fn kept_weights(weights: &[f64], columns: usize) -> impl Iterator<Item = (DVec2,
 pub fn is_filter(operation: &EffectOperation) -> bool {
 	matches!(
 		operation,
-		EffectOperation::ConvolutionKernel { .. } | EffectOperation::Emboss { .. } | EffectOperation::FindEdges | EffectOperation::MinimumMaximum { .. }
+		EffectOperation::ConvolutionKernel { .. }
+			| EffectOperation::Emboss { .. }
+			| EffectOperation::FindEdges
+			| EffectOperation::MinimumMaximum { .. }
+			| EffectOperation::Sharpen { .. }
+			| EffectOperation::HighPass { .. }
 	)
 }
 
@@ -174,6 +183,69 @@ pub const SOBEL_TAPS: [(DVec2, [f64; 2]); 8] = [
 	(DVec2::new(0., 1.), [0., 2.]),
 	(DVec2::new(1., 1.), [1., 1.]),
 ];
+
+/// The blurred visibility around a pixel below which unsharp masking compares the pixel against its own color, and above which against the average of the visible colors, easing between the two.
+/// Below it, too little of the blur lands on visible pixels for 8-bit renders to know their average.
+pub const AVERAGE_VISIBILITY_RAMP: [f32; 2] = [8. / 255., 24. / 255.];
+
+/// For PSD interop, the middle gray a high pass centers its differences on, as an 8-bit level.
+pub const HIGH_PASS_GRAY: f32 = 128. / 255.;
+
+/// How much of the visible colors' average a pixel is compared against, the rest being its own color, given how much of the blur around it lands on visible pixels.
+pub fn average_weight(visibility: f32) -> f32 {
+	let [start, end] = AVERAGE_VISIBILITY_RAMP;
+	((visibility - start) / (end - start)).clamp(0., 1.)
+}
+
+/// Whether the filter sharpens or otherwise weighs the content's coverage, so a fill must fade its result rather than its input.
+pub fn sharpens_coverage(operation: &EffectOperation) -> bool {
+	matches!(operation, EffectOperation::Sharpen { .. } | EffectOperation::ConvolutionKernel { apply_to_alpha: true, .. })
+}
+
+/// For PSD interop, the shifts of the four nearest neighbors in document pixels, whose average Edges Only compares each pixel against.
+pub const SHARPEN_NEIGHBORS: [DVec2; 4] = [DVec2::new(0., -1.), DVec2::new(-1., 0.), DVec2::new(1., 0.), DVec2::new(0., 1.)];
+
+/// For PSD interop, the Sobel gradient lengths (as Find Edges measures them, on values from 0 to 1) between which Edges Only ramps from no change to the whole of it.
+/// A step between flat areas has a quarter of that length at a sixteenth of full contrast, and its whole length at a quarter.
+pub const EDGE_GAIN_RAMP: [f32; 2] = [0.25, 1.];
+
+/// For PSD interop, the share of its change that Edges Only makes in a channel whose Sobel gradient has the length `gradient`.
+pub fn edge_gain(gradient: f32) -> f32 {
+	let [start, end] = EDGE_GAIN_RAMP;
+	((gradient - start) / (end - start)).clamp(0., 1.)
+}
+
+/// What unsharp masking or a high pass compares each pixel against.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum UnsharpBlur {
+	/// A Gaussian blur with this standard deviation in document pixels.
+	Gaussian(f64),
+	/// For Edges Only, the average of the four nearest neighbors, [`SHARPEN_NEIGHBORS`], read between pixels where they don't land on one.
+	/// Each channel is moved only part of the way toward it, by its [`edge_gain`], so it changes only along edges.
+	EdgeNeighbors,
+}
+
+/// What a Sharpen or High Pass compares each pixel against, with a Sharpen's amount and threshold as fractions, or `None` for any other operation.
+pub fn unsharp(operation: &EffectOperation) -> Option<(UnsharpBlur, Option<[f64; 2]>)> {
+	match *operation {
+		EffectOperation::Sharpen {
+			amount,
+			radius,
+			threshold,
+			edges_only,
+		} => {
+			let blur = if edges_only { UnsharpBlur::EdgeNeighbors } else { UnsharpBlur::Gaussian(radius) };
+			Some((blur, Some([amount / 100., threshold.max(0.) / 255.])))
+		}
+		EffectOperation::HighPass { radius } => Some((UnsharpBlur::Gaussian(radius), None)),
+		_ => None,
+	}
+}
+
+/// For PSD interop, unsharp masking's change to a value lying `difference` above the blur around it: the difference scaled by `amount`, softened toward none by `threshold`, both fractions.
+pub fn unsharp_change(difference: f32, amount: f32, threshold: f32) -> f32 {
+	difference.signum() * (amount * difference.abs() - threshold).max(0.)
+}
 
 /// The whole radii a neighborhood minimum or maximum of `radius` document pixels mixes between, measured in pixels by `pixels_per_length`, with how far it lies toward the larger.
 pub fn neighborhood_radii(radius: f64, pixels_per_length: f64) -> ([u32; 2], f64) {

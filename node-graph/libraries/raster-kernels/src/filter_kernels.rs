@@ -1,9 +1,11 @@
 //! The pixel filters on the CPU, which mirror the renderer's GPU passes on premultiplied gamma-encoded channels.
 
-use crate::effect_kernels::Plane;
+use crate::effect_kernels::{BlurKernel, Plane};
 use glam::{DMat2, DVec2};
 use graphic_types::effects::spans_along_axes;
-use graphic_types::filters::{Convolution, SOBEL_TAPS, Surroundings, VISIBLE_ALPHA, fill_shifts, neighborhood_radii};
+use graphic_types::filters::{
+	Convolution, HIGH_PASS_GRAY, SHARPEN_NEIGHBORS, SOBEL_TAPS, Surroundings, UnsharpBlur, VISIBLE_ALPHA, average_weight, edge_gain, fill_shifts, neighborhood_radii, unsharp, unsharp_change,
+};
 use graphic_types::{EffectOperation, MinimumMaximumMode};
 use raster_types::parallel_rows::fill_rows;
 
@@ -12,6 +14,11 @@ use raster_types::parallel_rows::fill_rows;
 pub fn filter(plane: Plane<[f32; 4]>, full: Option<&Plane<[f32; 4]>>, operation: &EffectOperation, document_to_pixels: DMat2) -> Plane<[f32; 4]> {
 	if let Some(convolution) = operation.convolution() {
 		return convolve(&plane, full.unwrap_or(&plane), &convolution, document_to_pixels);
+	}
+
+	if let Some((blur, sharpening)) = unsharp(operation) {
+		let sharpening = sharpening.map(|[amount, threshold]| (amount as f32, threshold as f32));
+		return unsharp_mask(&plane, full.unwrap_or(&plane), blur, sharpening, document_to_pixels);
 	}
 
 	match *operation {
@@ -109,6 +116,14 @@ impl SurroundedColors {
 		}
 	}
 
+	/// The coverage of the premultiplied pixels in each channel, read with none beyond the plane's edges and every pixel counted when reading between them.
+	fn coverage(plane: &Plane<[f32; 4]>) -> Self {
+		Self {
+			colors: plane.map(|[.., alpha]| [alpha, alpha, alpha, 1.]),
+			beyond: [0., 0., 0., 1.],
+		}
+	}
+
 	fn at(&self, x: isize, y: isize) -> [f32; 4] {
 		let (columns, rows) = (self.colors.width as isize, self.colors.height as isize);
 		match x >= 0 && y >= 0 && x < columns && y < rows {
@@ -145,7 +160,7 @@ fn uncovered(colors: [f32; 3], alpha: f32, surroundings: Surroundings) -> [f32; 
 }
 
 /// The premultiplied pixels with each one's color replaced by the weighted sum `convolution` describes, with its shifts measured through `document_to_pixels`.
-/// It reads the colors as the convolution's surroundings describe, those visible judged by the `full`-strength content, then divides, raises, and clamps the sum, keeping each pixel's coverage. O(width × height × taps).
+/// It reads the colors as the convolution's surroundings describe, those visible judged by the `full`-strength content, then divides, raises, and clamps the sum, keeping each pixel's coverage unless it weighs that too. O(width × height × taps).
 pub fn convolve(plane: &Plane<[f32; 4]>, full: &Plane<[f32; 4]>, convolution: &Convolution, document_to_pixels: DMat2) -> Plane<[f32; 4]> {
 	let taps: Vec<BilinearTap> = convolution
 		.taps
@@ -154,20 +169,161 @@ pub fn convolve(plane: &Plane<[f32; 4]>, full: &Plane<[f32; 4]>, convolution: &C
 		.collect();
 	let offset = convolution.offset as f32;
 	let colors = SurroundedColors::new(plane, full, convolution.surroundings, convolution.reach(), document_to_pixels);
+	let coverage = convolution.weighs_coverage.then(|| SurroundedColors::coverage(plane));
 
 	let mut result = Plane::new(plane.width, plane.height);
 	fill_rows(&mut result.data, plane.width, |y, row| {
 		for (x, pixel) in row.iter_mut().enumerate() {
-			let alpha = plane.data[y * plane.width + x][3];
+			let (x, y) = (x as isize, y as isize);
+			let alpha = match &coverage {
+				Some(coverage) => coverage.sum(x, y, &taps)[0].clamp(0., 1.),
+				None => plane.data[y as usize * plane.width + x as usize][3],
+			};
 			if alpha <= 0. {
 				continue;
 			}
 
-			let sum = colors.sum(x as isize, y as isize, &taps).map(|channel| channel + offset);
+			let sum = colors.sum(x, y, &taps).map(|channel| channel + offset);
 			*pixel = uncovered(sum, alpha, convolution.surroundings);
 		}
 	});
 	result
+}
+
+/// Each pixel's share of the full-strength content's coverage that the faded fill left, which a filter sharpening the coverage fades its result by. O(width × height).
+pub fn fill_shares(full: &Plane<[f32; 4]>, filled: &Plane<[f32; 4]>) -> Plane<f32> {
+	full.zip(filled, |full, filled| if full[3] > 0. { (filled[3] / full[3]).min(1.) } else { 0. })
+}
+
+/// The fill's filtered straight colors at the coverage of the full-strength content's filtered result, scaled by each pixel's share of it from [`fill_shares`],
+/// so the fill fades the result as if after the filter. O(width × height).
+pub fn faded_by_shares(filtered_filled: &Plane<[f32; 4]>, filtered_full: &Plane<[f32; 4]>, shares: &Plane<f32>) -> Plane<[f32; 4]> {
+	let straight = |[red, green, blue, alpha]: [f32; 4]| [red / alpha, green / alpha, blue / alpha];
+	let colors = filtered_filled.zip(filtered_full, |filled, full| {
+		let [red, green, blue] = if filled[3] > 0. {
+			straight(filled)
+		} else if full[3] > 0. {
+			straight(full)
+		} else {
+			[0.; 3]
+		};
+		[red, green, blue, full[3]]
+	});
+	colors.zip(shares, |[red, green, blue, full_alpha], share| {
+		let alpha = full_alpha * share;
+		[red * alpha, green * alpha, blue * alpha, alpha]
+	})
+}
+
+/// For PSD interop, each straight color and the coverage sharpened against the `blur` around it, measured through `document_to_pixels`, by the `amount` and `threshold` fractions [`unsharp_change`] takes.
+/// The colors are compared against the average of those visible in the `full`-strength content alone (or where too few are, the pixel's own color), so the content's surroundings take no part.
+/// With no amount and threshold, it's a high pass instead: the colors' difference from their blur around middle gray, with the coverage kept. O(width × height) per blur pass.
+pub fn unsharp_mask(plane: &Plane<[f32; 4]>, full: &Plane<[f32; 4]>, blur: UnsharpBlur, sharpening: Option<(f32, f32)>, document_to_pixels: DMat2) -> Plane<[f32; 4]> {
+	// The visible colors made opaque among the others left out, so dividing their blur by its alpha averages the visible colors alone
+	let visible = plane.zip(full, |[red, green, blue, alpha], [.., full_alpha]| match alpha > 0. && full_alpha >= VISIBLE_ALPHA {
+		true => [red / alpha, green / alpha, blue / alpha, 1.],
+		false => [0.; 4],
+	});
+
+	// A high pass keeps the coverage, so only unsharp masking blurs it
+	let (blurred_colors, blurred_coverage) = match blur {
+		UnsharpBlur::Gaussian(radius) => {
+			let sigma = radius.max(0.) * spans_along_axes(document_to_pixels);
+			let kernels = (BlurKernel::Gaussian { sigma: sigma.x }, BlurKernel::Gaussian { sigma: sigma.y });
+			let blurred_coverage = sharpening.is_some().then(|| plane.map(|[.., alpha]| alpha).blurred(kernels.0, kernels.1));
+			(visible.blurred(kernels.0, kernels.1), blurred_coverage)
+		}
+		UnsharpBlur::EdgeNeighbors => {
+			let blurred_coverage = sharpening.is_some().then(|| neighbors_average(plane, document_to_pixels).map(|[.., alpha]| alpha));
+			(neighbors_average(&visible, document_to_pixels), blurred_coverage)
+		}
+	};
+	let gains = (blur == UnsharpBlur::EdgeNeighbors).then(|| edge_gains(plane, full, document_to_pixels));
+
+	let mut result = Plane::new(plane.width, plane.height);
+	fill_rows(&mut result.data, plane.width, |y, row| {
+		for (x, pixel) in row.iter_mut().enumerate() {
+			let index = y * plane.width + x;
+			let [red, green, blue, alpha] = plane.data[index];
+			if alpha <= 0. {
+				continue;
+			}
+
+			// Where too little of the blur lands on visible colors to know their average, the pixel eases into being compared against its own color.
+			// Edges Only moves each channel only its gain's share of the way toward the average.
+			let own = [red / alpha, green / alpha, blue / alpha, alpha];
+			let blurred = blurred_colors.data[index];
+			let weight = average_weight(blurred[3]);
+			let gain = gains.as_ref().map_or([1.; 4], |gains| gains.data[index]);
+			let average: [f32; 3] = std::array::from_fn(|channel| {
+				if weight > 0. {
+					own[channel] + (blurred[channel] / blurred[3] - own[channel]) * weight * gain[channel]
+				} else {
+					own[channel]
+				}
+			});
+			let coverage_average = blurred_coverage.as_ref().map_or(alpha, |blurred_coverage| alpha + (blurred_coverage.data[index] - alpha) * gain[3]);
+			let difference: [f32; 4] = std::array::from_fn(|channel| own[channel] - if channel == 3 { coverage_average } else { average[channel] });
+
+			let sharpened: [f32; 4] = match sharpening {
+				Some((amount, threshold)) => std::array::from_fn(|channel| (own[channel] + unsharp_change(difference[channel], amount, threshold)).clamp(0., 1.)),
+				None => std::array::from_fn(|channel| if channel == 3 { alpha } else { (difference[channel] + HIGH_PASS_GRAY).clamp(0., 1.) }),
+			};
+			let alpha = sharpened[3];
+			*pixel = [sharpened[0] * alpha, sharpened[1] * alpha, sharpened[2] * alpha, alpha];
+		}
+	});
+	result
+}
+
+/// The average of each pixel's four nearest neighbors ([`SHARPEN_NEIGHBORS`], measured through `document_to_pixels`) in every channel, read between pixels with none beyond the plane's edges,
+/// as Edges Only compares against, matching the GPU's `neighbors_average`. O(width × height).
+fn neighbors_average(plane: &Plane<[f32; 4]>, document_to_pixels: DMat2) -> Plane<[f32; 4]> {
+	let taps = SHARPEN_NEIGHBORS.map(|shift| BilinearTap::new(document_to_pixels * shift, 0.25));
+	let (columns, rows) = (plane.width as isize, plane.height as isize);
+	let at = |x: isize, y: isize| match x >= 0 && y >= 0 && x < columns && y < rows {
+		true => plane.data[(y * columns + x) as usize],
+		false => [0.; 4],
+	};
+
+	let mut average = Plane::new(plane.width, plane.height);
+	fill_rows(&mut average.data, plane.width, |y, row: &mut [[f32; 4]]| {
+		for (x, pixel) in row.iter_mut().enumerate() {
+			for tap in &taps {
+				let [x, y] = [x as isize + tap.whole[0], y as isize + tap.whole[1]];
+				let corners = [at(x, y), at(x + 1, y), at(x, y + 1), at(x + 1, y + 1)];
+				for (corner, bilinear) in corners.into_iter().zip(tap.bilinear) {
+					(0..4).for_each(|channel| pixel[channel] += corner[channel] * bilinear * tap.weight);
+				}
+			}
+		}
+	});
+	average
+}
+
+/// For PSD interop, the share of its change Edges Only makes in each channel of each pixel, the [`edge_gain`] of the channel's Sobel gradient there, matching the GPU's `edge_gains`.
+/// The colors are read continued past those visible in the `full`-strength content, and the coverage with none beyond it. O(width × height).
+fn edge_gains(plane: &Plane<[f32; 4]>, full: &Plane<[f32; 4]>, document_to_pixels: DMat2) -> Plane<[f32; 4]> {
+	// A faint pixel the gradient reads finds its nearest visible color within the square of a pixel around it
+	let colors = SurroundedColors::new(plane, full, Surroundings::Continued, 1., document_to_pixels);
+	let coverage = SurroundedColors::coverage(plane);
+	let taps = |axis: usize| SOBEL_TAPS.map(|(shift, weights)| BilinearTap::new(document_to_pixels * shift, weights[axis] as f32));
+	let (across, down) = (taps(0), taps(1));
+
+	let mut gains = Plane::new(plane.width, plane.height);
+	fill_rows(&mut gains.data, plane.width, |y, row: &mut [[f32; 4]]| {
+		for (x, gain) in row.iter_mut().enumerate() {
+			let (x, y) = (x as isize, y as isize);
+			let [colors_across, colors_down] = [colors.sum(x, y, &across), colors.sum(x, y, &down)];
+			let [coverage_across, coverage_down] = [coverage.sum(x, y, &across)[0], coverage.sum(x, y, &down)[0]];
+
+			*gain = std::array::from_fn(|channel| match channel {
+				3 => edge_gain(coverage_across.hypot(coverage_down)),
+				_ => edge_gain(colors_across[channel].hypot(colors_down[channel])),
+			});
+		}
+	});
+	gains
 }
 
 /// For PSD interop, each channel darkened by how steeply it changes, the length of its Sobel gradient, so edges show dark over white.
@@ -452,6 +608,18 @@ mod tests {
 	}
 
 	#[test]
+	fn a_fill_fades_sharpened_coverage_evenly() {
+		// Sharpening the faded square alone would overshoot at its edge, where the full-strength square's clamp at full coverage hides it
+		let square = white_square(16, 4..12);
+		let faded = square.map(|pixel| pixel.map(|channel| channel * 0.5));
+		let sharpen = |plane: &Plane<[f32; 4]>| unsharp_mask(plane, plane, UnsharpBlur::EdgeNeighbors, Some((1., 0.)), DMat2::IDENTITY);
+		assert!(sharpen(&faded).data.iter().any(|pixel| pixel[3] > 0.5));
+
+		let result = faded_by_shares(&sharpen(&faded), &sharpen(&square), &fill_shares(&square, &faded));
+		assert!(result.data.iter().all(|pixel| pixel[3] == 0. || pixel[3] == 0.5), "{:?}", result.data);
+	}
+
+	#[test]
 	fn window_extremes_match_a_direct_search() {
 		let values: Vec<[f32; 4]> = (0..37).map(|index| [((index * 7919) % 31) as f32; 4]).collect();
 		for radius in [1, 2, 5, 40] {
@@ -464,5 +632,82 @@ mod tests {
 				assert_eq!(value[0], direct, "radius {radius} at {index}");
 			}
 		}
+	}
+
+	#[test]
+	fn unsharp_masking_exaggerates_differences_past_its_threshold() {
+		// A gray line with a lighter middle, a step the blur softens
+		let mut line = plane(9, 1, vec![[0.5, 0.5, 0.5, 1.]; 9]);
+		line.data[4] = [0.6, 0.6, 0.6, 1.];
+
+		let gaussian = UnsharpBlur::Gaussian(1.);
+		let sharpened = unsharp_mask(&line, &line, gaussian, Some((1., 0.)), DMat2::IDENTITY);
+		assert!(sharpened.data[4][0] > 0.6 && sharpened.data[3][0] < 0.5, "{:?}", sharpened.data);
+		assert_eq!(sharpened.data[4][3], 1., "full coverage stays full");
+
+		// A threshold past the exaggerated difference leaves every pixel as it is
+		let untouched = unsharp_mask(&line, &line, gaussian, Some((1., 0.2)), DMat2::IDENTITY);
+		assert_eq!(untouched.data, line.data);
+
+		// A high pass of a flat color is middle gray
+		let flat = plane(5, 1, vec![[0.3, 0.3, 0.3, 1.]; 5]);
+		assert_eq!(
+			unsharp_mask(&flat, &flat, UnsharpBlur::Gaussian(2.), None, DMat2::IDENTITY).data[2],
+			[HIGH_PASS_GRAY, HIGH_PASS_GRAY, HIGH_PASS_GRAY, 1.]
+		);
+
+		// A fill faint enough to fall below the visible threshold still averages the colors the full-strength content shows
+		let faint = line.map(|pixel| pixel.map(|channel| channel * 0.05));
+		let faint_sharpened = unsharp_mask(&faint, &line, gaussian, Some((1., 0.)), DMat2::IDENTITY);
+		let straight = |pixel: [f32; 4]| pixel[0] / pixel[3];
+		assert!((straight(faint_sharpened.data[4]) - straight(sharpened.data[4])).abs() < 1e-4, "{:?}", faint_sharpened.data);
+	}
+
+	#[test]
+	fn edges_only_sharpens_against_the_neighbors_as_far_as_an_edge_runs_through() {
+		// A gray step up by `height` between columns, across which the Sobel gradient is four times as long, read along the middle row
+		let step = |height: f32| {
+			let mut columns = plane(6, 3, vec![[0.4, 0.4, 0.4, 1.]; 18]);
+			(0..3).for_each(|y| (3..6).for_each(|x| columns.data[y * 6 + x] = [0.4 + height, 0.4 + height, 0.4 + height, 1.]));
+			columns
+		};
+		let sharpen = |plane: &Plane<[f32; 4]>, amount: f32, threshold: f32| unsharp_mask(plane, plane, UnsharpBlur::EdgeNeighbors, Some((amount, threshold)), DMat2::IDENTITY).data;
+		let close = |actual: f32, expected: f32| (actual - expected).abs() < 1e-5;
+
+		// A strong step sharpens fully, each side moving by its difference from its four neighbors' average, a quarter of the step, while flat areas stay
+		let strong = sharpen(&step(0.4), 1., 0.);
+		assert!(close(strong[8][0], 0.3) && close(strong[9][0], 0.9) && close(strong[7][0], 0.4), "{strong:?}");
+
+		// A step under a sixteenth of full contrast stays as it is, and one of an eighth sharpens a third as much
+		assert!(close(sharpen(&step(0.05), 1., 0.)[8][0], 0.4));
+		assert!(close(sharpen(&step(0.125), 1., 0.)[8][0], 0.4 - 0.125 / 4. / 3.));
+
+		// The threshold softens the change, which half the amount halves
+		assert!(close(sharpen(&step(0.4), 1., 0.05)[8][0], 0.35));
+		assert!(close(sharpen(&step(0.4), 0.5, 0.)[8][0], 0.35));
+	}
+
+	#[test]
+	fn a_kernel_applied_to_alpha_weighs_the_coverage_too() {
+		let mut line = plane(5, 1, vec![[0.; 4]; 5]);
+		line.data[2] = [0.6, 0.3, 0., 1.];
+		let average = Convolution::custom(&[1., 1., 1.], 3, 3., 0.);
+
+		// Averaged with its neighbors, the coverage of a lone pixel spreads a third of itself to each side
+		let spread = convolve(
+			&line,
+			&line,
+			&Convolution {
+				weighs_coverage: true,
+				..average.clone()
+			},
+			DMat2::IDENTITY,
+		);
+		let alphas: Vec<f32> = spread.data.iter().map(|pixel| pixel[3]).collect();
+		assert!(alphas.iter().zip([0., 1., 1., 1., 0.]).all(|(alpha, thirds)| (alpha - thirds / 3.).abs() < 1e-6), "{alphas:?}");
+
+		// Otherwise, the coverage stays as it is
+		let kept = convolve(&line, &line, &average, DMat2::IDENTITY);
+		assert!(kept.data.iter().zip(&line.data).all(|(kept, line)| kept[3] == line[3]));
 	}
 }

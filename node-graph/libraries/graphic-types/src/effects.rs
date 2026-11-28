@@ -57,6 +57,10 @@ pub enum EffectKind {
 	FindEdges,
 	/// Spreads each pixel's darkest or lightest neighboring colors.
 	MinimumMaximum,
+	/// Exaggerates how much each pixel differs from a blur of those around it, or only along edges, from its four neighbors.
+	Sharpen,
+	/// Keeps how much each pixel differs from a blur of those around it, around middle gray.
+	HighPass,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
 	Desaturate,
 	GammaCorrection,
@@ -98,6 +102,8 @@ impl std::fmt::Display for EffectKind {
 			Self::Emboss => "Emboss",
 			Self::FindEdges => "Find Edges",
 			Self::MinimumMaximum => "Minimum/Maximum",
+			Self::Sharpen => "Sharpen",
+			Self::HighPass => "High Pass",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
 			Self::MakeOpaque => "Make Opaque",
@@ -924,6 +930,8 @@ pub enum EffectOperation {
 		scale: f64,
 		/// On a scale of 0 to 255.
 		offset: f64,
+		/// Whether the content's coverage is weighed by the kernel too, rather than kept.
+		apply_to_alpha: bool,
 	},
 	Emboss {
 		/// The direction the light comes from, in degrees counterclockwise from the right.
@@ -939,6 +947,19 @@ pub enum EffectOperation {
 		radius: f64,
 		mode: MinimumMaximumMode,
 	},
+	Sharpen {
+		/// Percent.
+		amount: f64,
+		/// The standard deviation of the Gaussian blur the content is compared against, which Edges Only ignores.
+		radius: f64,
+		/// On a scale of 0 to 255.
+		threshold: f64,
+		/// Whether the content is compared against its four nearest neighbors only along edges, as [`crate::filters::edge_gain`] ramps it, rather than against the blur.
+		edges_only: bool,
+	},
+	HighPass {
+		radius: f64,
+	},
 	Adjustment(Adjustment),
 }
 
@@ -948,9 +969,9 @@ impl EffectOperation {
 		Effect(Item::new_from_element(kind)).operation()
 	}
 
-	/// A convolution kernel of the weights `text` writes (see [`crate::filters::parse_kernel`]), its sums divided by `scale` and raised by `offset` levels out of 255.
+	/// A convolution kernel of the weights `text` writes (see [`crate::filters::parse_kernel`]), its sums divided by `scale` and raised by `offset` levels out of 255, weighing the coverage too if `apply_to_alpha`.
 	/// Without a `scale`, it divides by the [`crate::filters::automatic_scale`].
-	pub fn convolution_kernel(text: &str, scale: Option<f64>, offset: f64) -> Self {
+	pub fn convolution_kernel(text: &str, scale: Option<f64>, offset: f64, apply_to_alpha: bool) -> Self {
 		let (weights, columns) = crate::filters::parse_kernel(text);
 		let scale = scale.unwrap_or_else(|| crate::filters::automatic_scale(&weights, columns));
 
@@ -959,6 +980,7 @@ impl EffectOperation {
 			columns: columns as u32,
 			scale,
 			offset,
+			apply_to_alpha,
 		}
 	}
 
@@ -979,6 +1001,8 @@ impl EffectOperation {
 			Self::Emboss { .. } => EffectKind::Emboss,
 			Self::FindEdges => EffectKind::FindEdges,
 			Self::MinimumMaximum { .. } => EffectKind::MinimumMaximum,
+			Self::Sharpen { .. } => EffectKind::Sharpen,
+			Self::HighPass { .. } => EffectKind::HighPass,
 			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
 	}
@@ -987,9 +1011,18 @@ impl EffectOperation {
 	pub fn convolution(&self) -> Option<Convolution> {
 		match self {
 			// An empty kernel, like the identity, leaves the content as it is
-			Self::ConvolutionKernel { kernel, columns, scale, offset } => {
+			Self::ConvolutionKernel {
+				kernel,
+				columns,
+				scale,
+				offset,
+				apply_to_alpha,
+			} => {
 				let weights: Vec<f64> = kernel.iter_element_values().copied().collect();
-				let convolution = Convolution::custom(&weights, *columns as usize, *scale, *offset);
+				let convolution = Convolution {
+					weighs_coverage: *apply_to_alpha,
+					..Convolution::custom(&weights, *columns as usize, *scale, *offset)
+				};
 				(!weights.is_empty() && !convolution.is_identity()).then_some(convolution)
 			}
 			Self::Emboss { angle, height, amount } => Some(Convolution::emboss(*angle, *height, *amount)),
@@ -1017,7 +1050,9 @@ impl EffectOperation {
 			Self::Mask { density, .. } => *density <= 0.,
 			Self::Feather { distance } => *distance <= 0.,
 			Self::ConvolutionKernel { .. } => self.convolution().is_none(),
-			Self::Emboss { .. } | Self::FindEdges | Self::Adjustment(_) => false,
+			Self::Emboss { .. } | Self::FindEdges | Self::HighPass { .. } | Self::Adjustment(_) => false,
+			// The four neighbors lie a fixed distance away, so only the blur needs a radius
+			Self::Sharpen { amount, radius, edges_only, .. } => *amount <= 0. || (!*edges_only && *radius <= 0.),
 			Self::MinimumMaximum { radius, .. } => *radius <= 0.,
 		}
 	}
@@ -1031,7 +1066,7 @@ impl EffectOperation {
 	pub fn reads_pixels_around(&self) -> bool {
 		match self {
 			Self::Blur { .. } => true,
-			Self::ConvolutionKernel { .. } | Self::Emboss { .. } | Self::FindEdges | Self::MinimumMaximum { .. } => true,
+			Self::ConvolutionKernel { .. } | Self::Emboss { .. } | Self::FindEdges | Self::MinimumMaximum { .. } | Self::Sharpen { .. } | Self::HighPass { .. } => true,
 			// Cast from the content's shape, reading a mask's own image or a feather's map, or changing each pixel alone
 			Self::DropShadow { .. }
 			| Self::InnerShadow { .. }
@@ -1051,13 +1086,15 @@ impl EffectOperation {
 			self,
 			Self::Mask { .. }
 				| Self::Feather { .. }
-				| Self::ConvolutionKernel { .. }
+				| Self::ConvolutionKernel { apply_to_alpha: false, .. }
 				| Self::Emboss { .. }
 				| Self::FindEdges
 				| Self::MinimumMaximum {
 					mode: MinimumMaximumMode::Maximum,
 					..
 				}
+				| Self::Sharpen { .. }
+				| Self::HighPass { .. }
 		);
 		if self.changes_nothing() || keeps_coverage { 0. } else { self.reach() }
 	}
@@ -1091,6 +1128,9 @@ impl EffectOperation {
 			// A feather paints nothing past the content, but finds edges up to this far past it, which a render cut short there would miss
 			Self::Feather { distance } => distance.max(0.) + 1.,
 			Self::ConvolutionKernel { .. } | Self::Emboss { .. } => self.convolution().map_or(0., |convolution| convolution.read_reach()),
+			// The Sobel taps' diagonal, then a faint pixel's nearest visible color within the square of a pixel around that, plus two pixels for rounding and copies between pixels
+			Self::Sharpen { edges_only: true, .. } => 2. * std::f64::consts::SQRT_2 + 2.,
+			Self::Sharpen { radius, .. } | Self::HighPass { radius } => 3. * radius.max(0.) + 1.,
 			// The Sobel taps' diagonal, which a rotation can turn along an axis, plus two pixels for rounding and copies between pixels
 			Self::FindEdges => std::f64::consts::SQRT_2 + 2.,
 			Self::MinimumMaximum { radius, .. } => radius.max(0.).ceil() + 1.,
@@ -1174,7 +1214,8 @@ impl EffectOperation {
 			Self::Mask { density, feather, .. } => [density, feather].into_iter().for_each(finite),
 			Self::Feather { distance } => finite(distance),
 			Self::Emboss { angle, height, amount } => [angle, height, amount].into_iter().for_each(finite),
-			Self::MinimumMaximum { radius, .. } => finite(radius),
+			Self::MinimumMaximum { radius, .. } | Self::HighPass { radius } => finite(radius),
+			Self::Sharpen { amount, radius, threshold, .. } => [amount, radius, threshold].into_iter().for_each(finite),
 			Self::PaintOverlay { .. } | Self::ConvolutionKernel { .. } | Self::FindEdges | Self::Adjustment(_) => {}
 		}
 		self
@@ -1282,6 +1323,7 @@ impl EffectOperation {
 				columns: 0,
 				scale: 0.,
 				offset: 0.,
+				apply_to_alpha: false,
 			},
 			EffectKind::Emboss => Self::Emboss { angle: 0., height: 0., amount: 0. },
 			EffectKind::FindEdges => Self::FindEdges,
@@ -1289,6 +1331,13 @@ impl EffectOperation {
 				radius: 0.,
 				mode: MinimumMaximumMode::default(),
 			},
+			EffectKind::Sharpen => Self::Sharpen {
+				amount: 0.,
+				radius: 0.,
+				threshold: 0.,
+				edges_only: false,
+			},
+			EffectKind::HighPass => Self::HighPass { radius: 0. },
 			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
 			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
 			EffectKind::MakeOpaque => Self::Adjustment(Adjustment::MakeOpaque),
@@ -1497,11 +1546,18 @@ impl EffectOperation {
 				visitor.parameter("invert", invert, false);
 			}
 			Self::Feather { distance } => visitor.parameter("distance", distance, 10.),
-			Self::ConvolutionKernel { kernel, columns, scale, offset } => {
+			Self::ConvolutionKernel {
+				kernel,
+				columns,
+				scale,
+				offset,
+				apply_to_alpha,
+			} => {
 				visitor.parameter("kernel", kernel, List::new_from_elements(vec![0., 0., 0., 0., 1., 0., 0., 0., 0.]));
 				visitor.parameter("columns", columns, 3);
 				visitor.parameter("scale", scale, 1.);
 				visitor.parameter("offset", offset, 0.);
+				visitor.parameter("apply_to_alpha", apply_to_alpha, false);
 			}
 			// For PSD interop, the defaults are those of the filters' dialogs
 			Self::Emboss { angle, height, amount } => {
@@ -1514,6 +1570,18 @@ impl EffectOperation {
 				visitor.parameter("radius", radius, 1.);
 				visitor.parameter("mode", mode, MinimumMaximumMode::default());
 			}
+			Self::Sharpen {
+				amount,
+				radius,
+				threshold,
+				edges_only,
+			} => {
+				visitor.parameter("amount", amount, 50.);
+				visitor.parameter("radius", radius, 1.);
+				visitor.parameter("threshold", threshold, 0.);
+				visitor.parameter("edges_only", edges_only, false);
+			}
+			Self::HighPass { radius } => visitor.parameter("radius", radius, 10.),
 			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
@@ -1638,7 +1706,8 @@ mod tests {
 				blend_mode: BlendMode::Screen,
 				opacity: 100.,
 			}),
-			EffectOperation::convolution_kernel("-1 0 1\n-2 0 2\n-1 0 1", Some(4.), 128.),
+			EffectOperation::convolution_kernel("-1 0 1\n-2 0 2\n-1 0 1", Some(4.), 128., false),
+			EffectOperation::convolution_kernel("0 -1 0\n-1 8 -1\n0 -1 0", None, 0., true),
 			EffectOperation::Emboss {
 				angle: -30.,
 				height: 4.5,
@@ -1654,6 +1723,19 @@ mod tests {
 				mode: MinimumMaximumMode::Maximum,
 			},
 			EffectOperation::Adjustment(Adjustment::Solarize),
+			EffectOperation::Sharpen {
+				amount: 180.,
+				radius: 2.5,
+				threshold: 4.,
+				edges_only: false,
+			},
+			EffectOperation::HighPass { radius: 3.5 },
+			EffectOperation::Sharpen {
+				amount: 100.,
+				radius: 1.,
+				threshold: 0.,
+				edges_only: true,
+			},
 		];
 
 		for operation in operations {
@@ -1975,14 +2057,18 @@ mod tests {
 
 	#[test]
 	fn a_convolution_paints_nothing_past_the_content_but_reads_past_it() {
-		let sharpen = EffectOperation::convolution_kernel("0 -1 0\n-1 5 -1\n0 -1 0", Some(1.), 0.);
+		let sharpen = EffectOperation::convolution_kernel("0 -1 0\n-1 5 -1\n0 -1 0", Some(1.), 0., false);
 		assert_eq!(sharpen.painted_reach(), 0.);
+
+		// Weighing the coverage too, a kernel can spread it past the content
+		let spread = EffectOperation::convolution_kernel("1 1 1", None, 0., true);
+		assert_eq!(spread.painted_reach(), spread.reach());
 
 		// Its farthest copy a pixel away, a faint pixel's nearest visible color within the square around that, turned any way, and two pixels for rounding and copies between pixels
 		let reach = 1. + std::f64::consts::SQRT_2 + 2.;
 		assert_eq!((sharpen.working_reach(), sharpen.required_reach()), (reach, reach));
 
-		// Emboss, Find Edges, and Maximum keep or shrink the coverage too, while a Minimum grows it
+		// The stylize and sharpen filters keep or shrink the coverage too, while a Minimum grows it
 		let keeping = [
 			EffectOperation::Emboss {
 				angle: 135.,
@@ -1993,6 +2079,19 @@ mod tests {
 			EffectOperation::MinimumMaximum {
 				radius: 3.,
 				mode: MinimumMaximumMode::Maximum,
+			},
+			EffectOperation::Sharpen {
+				amount: 100.,
+				radius: 3.,
+				threshold: 0.,
+				edges_only: false,
+			},
+			EffectOperation::HighPass { radius: 3. },
+			EffectOperation::Sharpen {
+				amount: 100.,
+				radius: 1.,
+				threshold: 0.,
+				edges_only: true,
 			},
 		];
 		assert!(keeping.iter().all(|operation| operation.painted_reach() == 0. && operation.working_reach() > 0.));

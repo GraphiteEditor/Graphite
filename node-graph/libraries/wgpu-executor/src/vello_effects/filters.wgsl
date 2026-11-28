@@ -195,3 +195,162 @@ fn neighborhood_finish(@builtin(position) position: vec4<f32>) -> @location(0) v
 	let far = premultiplied_extremes(textureLoad(secondary, pixel, 0));
 	return mix(near, far, parameters.values.x);
 }
+
+// The texels (`source`) read `taps[i].xy` texels away between those around them, each weighted by `taps[i].z`, with none beyond the edges (`values.y` below 0), matching the CPU's `neighbors_average`.
+// A pass after others (`values.z` 1) adds to their sum (`content`), and the last (`values.w` 1) clamps it.
+@fragment
+fn sum_taps(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+
+	var sum = vec4<f32>(0.);
+	if parameters.values.z > 0.5 {
+		sum = textureLoad(content, pixel, 0);
+	}
+	for (var i = 0u; i < parameters.tap_count; i++) {
+		let tap = parameters.taps[i];
+		let position = vec2<f32>(pixel) + tap.xy;
+		let whole = vec2<i32>(floor(position));
+		let fraction = position - floor(position);
+
+		let top = mix(color_at(whole), color_at(whole + vec2<i32>(1, 0)), fraction.x);
+		let bottom = mix(color_at(whole + vec2<i32>(0, 1)), color_at(whole + vec2<i32>(1, 1)), fraction.x);
+		sum += mix(top, bottom, fraction.y) * tap.z;
+	}
+
+	if parameters.values.w > 0.5 {
+		return clamp(sum, vec4<f32>(0.), vec4<f32>(1.));
+	}
+	return sum;
+}
+
+// The texels' straight colors made opaque where visible in the full-strength content in `secondary` and the rest left out, so dividing their blur by its alpha averages the visible colors alone
+@fragment
+fn visible_only(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let color = textureLoad(source, pixel, 0);
+	let visible = color.a > 0. && textureLoad(secondary, pixel, 0).a >= parameters.values.z;
+	return select(vec4<f32>(0.), vec4<f32>(color.rgb / color.a, 1.), visible);
+}
+
+// The blurred visibilities between which unsharp masking eases from comparing a texel against its own color to the visible colors' average, matching the CPU's
+const AVERAGE_VISIBILITY_RAMP: vec2<f32> = vec2<f32>(8. / 255., 24. / 255.);
+
+// The average of the visible colors a texel's own straight color is compared against, from the blur of them made opaque among the rest left out (`blurred`),
+// easing into its own color where too little of the blur lands on visible colors to know their average
+fn visible_average(own: vec3<f32>, blurred: vec4<f32>) -> vec3<f32> {
+	let weight = clamp((blurred.a - AVERAGE_VISIBILITY_RAMP.x) / (AVERAGE_VISIBILITY_RAMP.y - AVERAGE_VISIBILITY_RAMP.x), 0., 1.);
+	return select(own, own + (blurred.rgb / blurred.a - own) * weight, weight > 0.);
+}
+
+// For PSD interop, the middle gray a high pass centers its differences on, matching the CPU's
+const HIGH_PASS_GRAY: f32 = 128. / 255.;
+
+// For PSD interop, the Sobel gradient lengths between which Edges Only ramps from no change to the whole of it, matching the CPU's
+const EDGE_GAIN_RAMP: vec2<f32> = vec2<f32>(0.25, 1.);
+
+// The image's coverage (`secondary`) at a position in texels from the first texel's center, interpolated between the four texels around it, with none beyond the edges
+fn coverage_between(position: vec2<f32>) -> f32 {
+	let whole = floor(position);
+	let fraction = position - whole;
+	let size = vec2<i32>(textureDimensions(secondary));
+
+	var corners = array<f32, 4>(0., 0., 0., 0.);
+	for (var corner = 0; corner < 4; corner++) {
+		let at = vec2<i32>(whole) + vec2<i32>(corner % 2, corner / 2);
+		if all(at >= vec2<i32>(0)) && all(at < size) {
+			corners[corner] = textureLoad(secondary, at, 0).a;
+		}
+	}
+	return mix(mix(corners[0], corners[1], fraction.x), mix(corners[2], corners[3], fraction.x), fraction.y);
+}
+
+// For PSD interop, the share of its change Edges Only makes in each channel, by the length of the channel's Sobel gradient, matching the CPU's `edge_gains`.
+// Each tap `taps[i].xy` texels away weighs `taps[i].z` across and `taps[i].w` down, read on the continued colors (`source`) and the image's coverage (`secondary`).
+@fragment
+fn edge_gains(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let center = vec2<f32>(vec2<i32>(position.xy));
+
+	var across = vec4<f32>(0.);
+	var down = vec4<f32>(0.);
+	for (var i = 0u; i < parameters.tap_count; i++) {
+		let tap = parameters.taps[i];
+		let value = vec4<f32>(color_between(center + tap.xy), coverage_between(center + tap.xy));
+		across += value * tap.z;
+		down += value * tap.w;
+	}
+
+	let gradient = sqrt(across * across + down * down);
+	return clamp((gradient - EDGE_GAIN_RAMP.x) / (EDGE_GAIN_RAMP.y - EDGE_GAIN_RAMP.x), vec4<f32>(0.), vec4<f32>(1.));
+}
+
+// What the unsharp mask compares the image (`source`) against for Edges Only: its straight colors moved toward their neighbors' visible average (`secondary`) by the share their edge gains (`content`) give,
+// made opaque so the unsharp mask reads them as the whole average. With `values.z` 1, it's the coverage moved toward its neighbors' average instead, matching the CPU's `unsharp_mask`.
+@fragment
+fn edges_only_average(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let image = textureLoad(source, pixel, 0);
+	let neighbors = textureLoad(secondary, pixel, 0);
+	let gains = textureLoad(content, pixel, 0);
+
+	if parameters.values.z > 0.5 {
+		return vec4<f32>(0., 0., 0., image.a + (neighbors.a - image.a) * gains.a);
+	}
+	if image.a <= 0. {
+		return vec4<f32>(0.);
+	}
+	let own = image.rgb / image.a;
+	return vec4<f32>(own + (visible_average(own, neighbors) - own) * gains.rgb, 1.);
+}
+
+// For PSD interop, unsharp masking's change to values lying `difference` above the blur around them, by the amount `values.x` and threshold `values.y`, matching the CPU's `unsharp_change`
+fn unsharp_change(difference: vec4<f32>) -> vec4<f32> {
+	return sign(difference) * max(parameters.values.x * abs(difference) - parameters.values.y, vec4<f32>(0.));
+}
+
+// Sharpens the straight colors and coverage of the image (`source`) against the blur of its visible colors (`secondary`) and of its coverage (`content`), matching the CPU's `unsharp_mask`.
+// With `values.w` 1, it's a high pass instead: the colors' difference from their blur around middle gray, with the coverage kept.
+@fragment
+fn unsharp_mask(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let image = textureLoad(source, pixel, 0);
+	if image.a <= 0. {
+		return vec4<f32>(0.);
+	}
+	let own = vec4<f32>(image.rgb / image.a, image.a);
+
+	let average = visible_average(own.rgb, textureLoad(secondary, pixel, 0));
+	let difference = own - vec4<f32>(average, textureLoad(content, pixel, 0).a);
+
+	var sharpened = clamp(own + unsharp_change(difference), vec4<f32>(0.), vec4<f32>(1.));
+	if parameters.values.w > 0.5 {
+		sharpened = vec4<f32>(clamp(difference.rgb + HIGH_PASS_GRAY, vec3<f32>(0.), vec3<f32>(1.)), image.a);
+	}
+	return vec4<f32>(sharpened.rgb * sharpened.a, sharpened.a);
+}
+
+// Each texel's share of the full-strength content's coverage (`content`) that the faded fill (`source`) left, matching the CPU's `fill_shares`
+@fragment
+fn fill_shares(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let filled = textureLoad(source, pixel, 0).a;
+	let full = textureLoad(content, pixel, 0).a;
+	return vec4<f32>(0., 0., 0., select(0., min(filled / full, 1.), full > 0.));
+}
+
+// The fill's filtered straight colors (`source`) at the coverage of the full-strength content's filtered result (`secondary`) scaled by each texel's share of it (`content`),
+// matching the CPU's `faded_by_shares`
+@fragment
+fn faded_by_shares(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let filled = textureLoad(source, pixel, 0);
+	let full = textureLoad(secondary, pixel, 0);
+	let alpha = full.a * textureLoad(content, pixel, 0).a;
+
+	var colors = vec3<f32>(0.);
+	if filled.a > 0. {
+		colors = filled.rgb / filled.a;
+	} else if full.a > 0. {
+		colors = full.rgb / full.a;
+	}
+	return vec4<f32>(colors * alpha, alpha);
+}

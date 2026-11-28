@@ -777,7 +777,7 @@ fn convolution_kernels_filter_endless_gradients_and_colors() {
 
 	let size = UVec2::new(64, 16);
 	let render_graphic = |graphic: Graphic| render(size, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default()));
-	let difference = EffectOperation::convolution_kernel("-1 0 1", Some(1.), 128.);
+	let difference = EffectOperation::convolution_kernel("-1 0 1", Some(1.), 128., false);
 
 	// A difference across a gradient from black to white over the view finds its slope, lifted from middle gray by the offset
 	let gradient = |effects: Vec<EffectOperation>| {
@@ -791,7 +791,7 @@ fn convolution_kernels_filter_endless_gradients_and_colors() {
 	assert!(sloped[0] > 128 && sloped[0] < 160 && sloped[0] != pixel(&plain, size, 32, 8)[0], "{sloped:?}");
 
 	// A flat color changes by its weights' sum and the offset exactly as a rectangle of it covering the view does
-	let halved_and_raised = EffectOperation::convolution_kernel("1", Some(2.), 64.);
+	let halved_and_raised = EffectOperation::convolution_kernel("1", Some(2.), 64., false);
 	let color = |effects: Vec<EffectOperation>| {
 		Graphic::ColorList(List::new_from_item(
 			Item::new_from_element(Color::WHITE).with_attribute(ATTR_EFFECTS, Effects::from_operations(effects)),
@@ -836,7 +836,7 @@ fn convolution_kernels_read_colors_continuing_past_the_edges() {
 	let size = UVec2::new(128, 128);
 
 	// A difference across the white square finds no edge at its silhouette, since the colors beyond it continue, so the offset leaves middle gray within it
-	let difference = EffectOperation::convolution_kernel("-1 0 1", Some(1.), 128.);
+	let difference = EffectOperation::convolution_kernel("-1 0 1", Some(1.), 128., false);
 	let Some(pixels) = render_square_with_effects(vec![difference], 1., 30., 80., size) else { return };
 	for x in [30, 55, 79] {
 		assert_eq!(pixel(&pixels, size, x, 55), [128, 128, 128, 255], "at x = {x}");
@@ -844,7 +844,7 @@ fn convolution_kernels_read_colors_continuing_past_the_edges() {
 	assert_eq!(pixel(&pixels, size, 28, 55)[3], 0, "the coverage stays as it is");
 
 	// An empty kernel, like an identity kernel, leaves the content as it is beside other effects
-	let empty = EffectOperation::convolution_kernel("", Some(1.), 0.);
+	let empty = EffectOperation::convolution_kernel("", Some(1.), 0., false);
 	let blur = EffectOperation::Blur {
 		radius_mask: Default::default(),
 		radius: 1.,
@@ -2420,8 +2420,17 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		columns: columns as u32,
 		scale,
 		offset,
+		apply_to_alpha: false,
 	};
 	let convolution_kernel = |kernel: Vec<f64>, scale, offset| kernel_of_width(kernel.clone(), kernel.len().isqrt(), scale, offset);
+	let applied_to_alpha = |kernel: Vec<f64>, scale| EffectOperation::ConvolutionKernel {
+		columns: kernel.len().isqrt() as u32,
+		kernel: kernel.into_iter().map(Item::new_from_element).collect(),
+		scale,
+		offset: 0.,
+		apply_to_alpha: true,
+	};
+	let sharpen_kernel = vec![0., -1., 0., -1., 8., -1., 0., -1., 0.];
 	let sparse = (0..81).map(|index| [(0, 2.), (40, 4.), (44, -1.), (80, 1.)].into_iter().find(|&(at, _)| at == index).map_or(0., |(_, weight)| weight));
 	paint_cases.extend([
 		checkered(convolution_kernel(vec![1.; 9], 9., 0.)),
@@ -2468,6 +2477,11 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		checkered(kernel_of_width(vec![-1., 0., 2., 0., -1.], 5, 1., 40.)),
 		checkered(kernel_of_width(vec![1., 2., 1.], 1, 4., 0.)),
 		checkered(kernel_of_width(vec![1., -1., 2., -2., 3., -3.], 2, 1., 128.)),
+		// Applied to the alpha too, the coverage sharpens, softens, and spreads past the content with the colors
+		checkered(applied_to_alpha(sharpen_kernel.clone(), 4.)),
+		vec![applied_to_alpha(sharpen_kernel.clone(), 4.)],
+		vec![applied_to_alpha(vec![1.; 25], 25.)],
+		vec![blur(3., false, false), applied_to_alpha(sharpen_kernel, 4.)],
 	]);
 	let emboss = |angle, height, amount| EffectOperation::Emboss { angle, height, amount };
 	paint_cases.extend([
@@ -2492,6 +2506,34 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		vec![blur(3., false, false), minimum_maximum(2., MinimumMaximumMode::Minimum)],
 		vec![blur(3., false, false), minimum_maximum(1.5, MinimumMaximumMode::Maximum)],
 		vec![blur(2., false, false), minimum_maximum(0., MinimumMaximumMode::Maximum)],
+	]);
+	let unsharp = |amount, radius, threshold| EffectOperation::Sharpen {
+		amount,
+		radius,
+		threshold,
+		edges_only: false,
+	};
+	let edges_only = |amount, threshold| EffectOperation::Sharpen {
+		amount,
+		radius: 0.,
+		threshold,
+		edges_only: true,
+	};
+	paint_cases.extend([
+		checkered(unsharp(150., 2., 0.)),
+		checkered(unsharp(400., 1.2, 20.)),
+		checkered(EffectOperation::HighPass { radius: 3. }),
+		checkered(edges_only(100., 0.)),
+		checkered(edges_only(250., 15.)),
+		// The coverage sharpens too, and the colors around the edges average only what's visible
+		vec![unsharp(300., 4., 0.)],
+		vec![EffectOperation::HighPass { radius: 12. }],
+		vec![edges_only(100., 0.)],
+		// Soft content, whose faint fringes ease into being compared against their own colors and whose gentle slopes Edges Only leaves, and a zero radius, which changes nothing
+		vec![blur(3., false, false), unsharp(200., 2., 0.)],
+		vec![blur(3., false, false), EffectOperation::HighPass { radius: 4. }],
+		vec![blur(2., false, false), edges_only(200., 0.)],
+		vec![blur(2., false, false), unsharp(150., 0., 0.)],
 	]);
 
 	for effects in cases.into_iter().chain(paint_cases).chain(mask_cases) {

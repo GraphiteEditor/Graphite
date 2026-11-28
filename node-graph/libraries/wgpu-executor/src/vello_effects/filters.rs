@@ -3,12 +3,30 @@
 use super::{PARAMETER_TAPS, Parameters, PassRecorder, SUMS_FORMAT, WORKING_FORMAT};
 use glam::{DMat2, DVec2};
 use graphic_types::effects::spans_along_axes;
-use graphic_types::filters::{Convolution, SOBEL_TAPS, Surroundings, VISIBLE_ALPHA, neighborhood_radii};
+use graphic_types::filters::{Convolution, SHARPEN_NEIGHBORS, SOBEL_TAPS, Surroundings, UnsharpBlur, VISIBLE_ALPHA, neighborhood_radii, sharpens_coverage, unsharp};
 use graphic_types::{EffectOperation, MinimumMaximumMode};
+use raster_kernels::effect_kernels::BlurKernel;
 use raster_kernels::filter_kernels::pixel_fill_shifts;
 
 /// The most texels a neighborhood's first pass reads each way, beyond which each further pass at most doubles its reach by reading two texels.
 const MAX_FIRST_NEIGHBORHOOD_PASS_RADIUS: u32 = 8;
+
+/// The `convolution`'s shifts mapped onto texels by `lengths_to_pixels`, with their weights divided by its divisor.
+fn convolution_taps(convolution: &Convolution, lengths_to_pixels: DMat2) -> Vec<[f32; 4]> {
+	let tap = |&(shift, weight): &(DVec2, f64)| {
+		let shift = lengths_to_pixels * shift;
+		[shift.x as f32, shift.y as f32, (weight / convolution.divisor) as f32, 0.]
+	};
+	convolution.taps.iter().map(tap).collect()
+}
+
+/// The [`SOBEL_TAPS`] mapped onto texels by `lengths_to_pixels`, with their weights across and down.
+fn sobel_taps(lengths_to_pixels: DMat2) -> [[f32; 4]; 8] {
+	SOBEL_TAPS.map(|(shift, [across, down])| {
+		let shift = lengths_to_pixels * shift;
+		[shift.x as f32, shift.y as f32, across as f32, down as f32]
+	})
+}
 
 impl PassRecorder<'_> {
 	/// Carries out a filter effect on both the full-strength content (`content` itself until a pass replaces it) and the faded fill, with its lengths mapped onto pixels by `lengths_to_pixels`.
@@ -22,15 +40,34 @@ impl PassRecorder<'_> {
 		lengths_to_pixels: DMat2,
 		capture: &mut dyn FnMut(&mut Self, usize, &wgpu::Texture),
 	) {
-		// The fill fades the content after the filter, so the full-strength content decides which of the fill's pixels are visible
+		// A filter sharpening the coverage fades the fill's result by the share of the full-strength coverage each texel's fill left, matching the CPU's `faded_by_shares`
 		let unfiltered = full.as_ref().unwrap_or(content);
-		let filtered_full = self.filtered(unfiltered, unfiltered, operation, lengths_to_pixels, 0, capture);
-		let filtered_filled = filled.as_ref().map(|filled| self.filtered(filled, unfiltered, operation, lengths_to_pixels, 1, capture));
+		let shares = filled
+			.as_ref()
+			.filter(|_| sharpens_coverage(operation))
+			.map(|filled| self.run("fill_shares", WORKING_FORMAT, self.size, filled, None, Some(unfiltered), Parameters::default()));
 
+		// The fill fades the content after the filter, so the full-strength content decides which of the fill's pixels are visible
+		let filtered_full = self.filtered(unfiltered, unfiltered, operation, lengths_to_pixels, 0, capture);
+		let filtered_filled = match filled.as_ref() {
+			Some(filled) if shares.is_some() => Some(self.filtered(filled, unfiltered, operation, lengths_to_pixels, 1, &mut |_, _, _| {})),
+			Some(filled) => Some(self.filtered(filled, unfiltered, operation, lengths_to_pixels, 1, capture)),
+			None => None,
+		};
 		self.replace_or_fill(full, filtered_full);
-		if let (Some(filled), Some(filtered)) = (filled.as_mut(), filtered_filled) {
-			self.replace(filled, filtered);
-		}
+		let (Some(filled), Some(filtered)) = (filled.as_mut(), filtered_filled) else { return };
+
+		let filtered = match shares {
+			Some(shares) => {
+				let full = full.as_ref().unwrap_or(content);
+				let faded = self.run("faded_by_shares", WORKING_FORMAT, self.size, &filtered, Some(full), Some(&shares), Parameters::default());
+				[filtered, shares].into_iter().for_each(|texture| self.textures.release(texture));
+				capture(self, 1, &faded);
+				faded
+			}
+			None => filtered,
+		};
+		self.replace(filled, filtered);
 	}
 
 	/// The image with a filter effect carried out on it, where the `full`-strength content covers it visibly, handing any map an SVG takes to `capture` as `plane`.
@@ -45,7 +82,24 @@ impl PassRecorder<'_> {
 	) -> wgpu::Texture {
 		if let Some(convolution) = operation.convolution() {
 			let convolved = self.convolve(image, full, &convolution, lengths_to_pixels);
-			return self.uncover_capturing(convolved, image, convolution.surroundings, plane, capture);
+			if !convolution.weighs_coverage {
+				return self.uncover_capturing(convolved, image, convolution.surroundings, plane, capture);
+			}
+
+			// A kernel weighing the coverage too gives the colors the coverage it weighs, so an SVG off the pixel lattice takes the whole result as its map
+			let coverage = self.run_in_chunks("sum_taps", SUMS_FORMAT, image, None, &convolution_taps(&convolution, lengths_to_pixels), [0., -1.]);
+			let uncovered = self.uncover(convolved, &coverage, convolution.surroundings);
+			self.textures.release(coverage);
+			capture(self, plane, &uncovered);
+			return uncovered;
+		}
+
+		// An SVG takes the whole result as its map where it can't sharpen natively, though a sharpened fill is captured once faded by shares
+		if let Some((blur, sharpening)) = unsharp(operation) {
+			let sharpening = sharpening.map(|[amount, threshold]| [amount as f32, threshold as f32]);
+			let sharpened = self.unsharp_mask(image, full, blur, sharpening, lengths_to_pixels);
+			capture(self, plane, &sharpened);
+			return sharpened;
 		}
 
 		match *operation {
@@ -102,15 +156,8 @@ impl PassRecorder<'_> {
 	/// The opaque weighted sum `convolution` describes of the image's colors, those visible judged by the `full`-strength content, matching the CPU's `convolve` before the image's coverage returns.
 	fn convolve(&mut self, image: &wgpu::Texture, full: &wgpu::Texture, convolution: &Convolution, lengths_to_pixels: DMat2) -> wgpu::Texture {
 		let colors = self.surrounded_colors(image, full, convolution.surroundings, convolution.reach(), lengths_to_pixels);
+		let taps = convolution_taps(convolution, lengths_to_pixels);
 
-		let taps: Vec<[f32; 4]> = convolution
-			.taps
-			.iter()
-			.map(|&(shift, weight)| {
-				let shift: DVec2 = lengths_to_pixels * shift;
-				[shift.x as f32, shift.y as f32, (weight / convolution.divisor) as f32, 0.]
-			})
-			.collect();
 		// Beyond the edges, continued colors read nothing, while matted ones read the gray they lie over
 		let beyond = match convolution.surroundings {
 			Surroundings::Continued => -1.,
@@ -181,14 +228,85 @@ impl PassRecorder<'_> {
 	/// The opaque result of Find Edges on the image matted over white, before its coverage returns, matching the CPU's `find_edges`.
 	fn find_edges(&mut self, image: &wgpu::Texture, lengths_to_pixels: DMat2) -> wgpu::Texture {
 		let colors = self.surrounded_colors(image, image, Surroundings::Matted(1.), 1., lengths_to_pixels);
-
-		let taps = SOBEL_TAPS.map(|(shift, [across, down])| {
-			let shift = lengths_to_pixels * shift;
-			[shift.x as f32, shift.y as f32, across as f32, down as f32]
-		});
-		let edges = self.run_in_chunks("find_edges", WORKING_FORMAT, &colors, None, &taps, [0., 1.]);
+		let edges = self.run_in_chunks("find_edges", WORKING_FORMAT, &colors, None, &sobel_taps(lengths_to_pixels), [0., 1.]);
 		self.textures.release(colors);
 		edges
+	}
+
+	/// For PSD interop, the share of its change Edges Only makes in each channel of each texel, the edge gain of the channel's Sobel gradient there, matching the CPU's `edge_gains`.
+	/// The colors are read continued past those visible in the `full`-strength content, and the coverage with none beyond it.
+	fn edge_gains(&mut self, image: &wgpu::Texture, full: &wgpu::Texture, lengths_to_pixels: DMat2) -> wgpu::Texture {
+		// A faint texel the gradient reads finds its nearest visible color within the square of a pixel around it
+		let colors = self.surrounded_colors(image, full, Surroundings::Continued, 1., lengths_to_pixels);
+		let gains = self.run_in_chunks("edge_gains", WORKING_FORMAT, &colors, Some(image), &sobel_taps(lengths_to_pixels), [0., -1.]);
+		self.textures.release(colors);
+		gains
+	}
+
+	/// What the unsharp mask compares the image against for Edges Only: its straight colors (or for `coverage`, its coverage) moved toward their `neighbors`' average, consumed here, by the share their `gains` give.
+	fn edges_only_average(&mut self, image: &wgpu::Texture, neighbors: wgpu::Texture, gains: &wgpu::Texture, coverage: bool) -> wgpu::Texture {
+		let parameters = Parameters {
+			values: [0., 0., if coverage { 1. } else { 0. }, 0.],
+			..Default::default()
+		};
+		let average = self.run("edges_only_average", WORKING_FORMAT, self.size, image, Some(&neighbors), Some(gains), parameters);
+		self.textures.release(neighbors);
+		average
+	}
+
+	/// The image with each straight color and its coverage sharpened against the `blur` around it, by the amount and threshold fractions in `sharpening`,
+	/// or with none, a high pass of its colors, those visible judged by the `full`-strength content, matching the CPU's `unsharp_mask`.
+	fn unsharp_mask(&mut self, image: &wgpu::Texture, full: &wgpu::Texture, blur: UnsharpBlur, sharpening: Option<[f32; 2]>, lengths_to_pixels: DMat2) -> wgpu::Texture {
+		let visibility = Parameters {
+			values: [0., 0., VISIBLE_ALPHA, 0.],
+			..Default::default()
+		};
+		let visible = self.run("visible_only", WORKING_FORMAT, self.size, image, Some(full), None, visibility);
+
+		// A high pass keeps the coverage, so only unsharp masking blurs it
+		let (blurred_colors, blurred_coverage) = match blur {
+			UnsharpBlur::Gaussian(radius) => {
+				let kernel = BlurKernel::Gaussian {
+					sigma: radius.max(0.) * lengths_to_pixels.determinant().abs().sqrt(),
+				};
+				let blurred_colors = self.blur(visible, kernel, false);
+				let blurred_coverage = sharpening.is_some().then(|| {
+					let coverage = self.scale(image, 1.);
+					self.blur(coverage, kernel, false)
+				});
+				(blurred_colors, blurred_coverage)
+			}
+			UnsharpBlur::EdgeNeighbors => {
+				let gains = self.edge_gains(image, full, lengths_to_pixels);
+				let neighbors = self.neighbors_average(&visible, lengths_to_pixels);
+				self.textures.release(visible);
+				let blurred_colors = self.edges_only_average(image, neighbors, &gains, false);
+				let blurred_coverage = sharpening.is_some().then(|| {
+					let neighbors = self.neighbors_average(image, lengths_to_pixels);
+					self.edges_only_average(image, neighbors, &gains, true)
+				});
+				self.textures.release(gains);
+				(blurred_colors, blurred_coverage)
+			}
+		};
+
+		let [amount, threshold] = sharpening.unwrap_or_default();
+		let parameters = Parameters {
+			values: [amount, threshold, 0., if sharpening.is_none() { 1. } else { 0. }],
+			..Default::default()
+		};
+		let sharpened = self.run("unsharp_mask", WORKING_FORMAT, self.size, image, Some(&blurred_colors), blurred_coverage.as_ref(), parameters);
+		[Some(blurred_colors), blurred_coverage].into_iter().flatten().for_each(|texture| self.textures.release(texture));
+		sharpened
+	}
+
+	/// The average in every channel of each texel's four nearest neighbors ([`SHARPEN_NEIGHBORS`]), with none beyond the edges, matching the CPU's `neighbors_average`.
+	fn neighbors_average(&mut self, texture: &wgpu::Texture, lengths_to_pixels: DMat2) -> wgpu::Texture {
+		let taps = SHARPEN_NEIGHBORS.map(|shift| {
+			let shift = lengths_to_pixels * shift;
+			[shift.x as f32, shift.y as f32, 0.25, 0.]
+		});
+		self.run_in_chunks("sum_taps", WORKING_FORMAT, texture, None, &taps, [0., -1.])
 	}
 
 	/// The image with each texel's color the lightest (or with `maximum` false, the darkest) in the square of `radius` document pixels around it,

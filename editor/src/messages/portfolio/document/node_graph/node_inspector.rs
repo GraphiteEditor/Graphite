@@ -3769,6 +3769,29 @@ pub fn offset_path_inspector(node_id: NodeId, context: &mut NodeInspectorContext
 	vec![LayoutGroup::row(distance), join, LayoutGroup::row(miter_limit)]
 }
 
+pub(crate) fn sharpen_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
+	use graphene_std::blending_nodes::filters::sharpen::*;
+
+	// Edges Only compares against the four nearest neighbors in place of the blur, so it doesn't read the radius
+	let edges_only = get_document_node(node_id, context)
+		.ok()
+		.and_then(|document_node| document_node.input(EdgesOnlyInput).and_then(|input| input.as_value()))
+		.is_some_and(|tagged| matches!(tagged, TaggedValue::Bool(true)));
+
+	let number_input = NumberInput::default().mode_range().unit("%").min(0.).range_max(Some(500.));
+	let amount = number_widget(ParameterWidgetsInfo::new(node_id, AmountInput, true, context), number_input);
+
+	let number_input = NumberInput::default().mode_range().unit(" px").min(0.).range_max(Some(250.)).disabled(edges_only);
+	let radius = number_widget(ParameterWidgetsInfo::new(node_id, RadiusInput, true, context), number_input);
+
+	let number_input = NumberInput::default().mode_range().min(0.).range_max(Some(255.));
+	let threshold = number_widget(ParameterWidgetsInfo::new(node_id, ThresholdInput, true, context), number_input);
+
+	let edges_only = bool_widget(ParameterWidgetsInfo::new(node_id, EdgesOnlyInput, true, context), CheckboxInput::default());
+
+	vec![LayoutGroup::row(amount), LayoutGroup::row(radius), LayoutGroup::row(threshold), LayoutGroup::row(edges_only)]
+}
+
 pub struct ParameterWidgetsInfo<'a> {
 	document_id: DocumentId,
 	network_interface: &'a NodeNetworkInterface,

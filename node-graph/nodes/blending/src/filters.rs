@@ -5,7 +5,7 @@ use graphic_types::{Adjustment, Effect, EffectOperation, Generator, Graphic, Min
 use vector_types::Gradient;
 
 /// Recolors each pixel of the input graphics from the pixels around it, weighted by a kernel of numbers, for sharpening, blurring, edge-finding, and embossing filters of your own design.
-#[node_macro::node(category("Raster: Filter"))]
+#[node_macro::node(category("Raster: Filter"), version(2))]
 fn convolution_kernel<T>(
 	_: impl Ctx,
 	/// The content to filter.
@@ -29,11 +29,14 @@ fn convolution_kernel<T>(
 	#[range]
 	#[soft(-255..255)]
 	offset: Item<f64>,
+	/// Whether the kernel also weighs the alpha, so edges sharpen, blur, or spread like the colors do, rather than keeping their transparency. The *Offset* brightens only the colors.
+	apply_to_alpha: Item<bool>,
 ) -> Item<T> {
 	let scale = has_scale.element().then_some(*scale.element());
+	let operation = EffectOperation::convolution_kernel(kernel.element(), scale, *offset.element(), *apply_to_alpha.element());
 
 	let mut content = content;
-	stamp_effect(&mut content, Effect::new(&EffectOperation::convolution_kernel(kernel.element(), scale, *offset.element())));
+	stamp_effect(&mut content, Effect::new(&operation));
 	content
 }
 
@@ -127,5 +130,68 @@ fn minimum_maximum<T>(
 
 	let mut content = content;
 	stamp_effect(&mut content, Effect::new(&operation));
+	content
+}
+
+// TODO: For PSD interop, import the Sharpen and Sharpen More filters as 'Convolution Kernel' nodes with Apply to Alpha and the automatic Scale, since both kernels sum to 4.
+// Sharpen's rows are `0 -1 0`, `-1 8 -1`, `0 -1 0`, and Sharpen More's `-1 -1 -1`, `-1 12 -1`, `-1 -1 -1`. Sharpen Edges is this node at 100% with Edges Only.
+/// Sharpens the input graphics by exaggerating how much each pixel differs from a blur of the pixels around it, deepening the contrast along edges and details.
+#[node_macro::node(category("Raster: Filter"), inspector("sharpen_inspector"))]
+fn sharpen<T>(
+	_: impl Ctx,
+	/// The content to sharpen.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
+	content: Item<T>,
+	/// How much each pixel's difference is exaggerated.
+	#[unit("%")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..500)]
+	#[default(50.)]
+	amount: Item<f64>,
+	/// How far the blur reaches, which sets how wide the details are that get sharpened.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..250)]
+	#[default(1.)]
+	radius: Item<f64>,
+	/// How much each exaggerated difference is softened toward none, in levels out of 255, so faint details like noise and grain stay as they are.
+	#[range]
+	#[hard(0..)]
+	#[soft(..255)]
+	threshold: Item<f64>,
+	/// Whether only edges are sharpened, fading in from soft edges to full strength at strong ones, so smooth areas and noise stay as they are. Each pixel is compared against the four beside, above, and below it, in place of the blur.
+	edges_only: Item<bool>,
+) -> Item<T> {
+	let operation = EffectOperation::Sharpen {
+		amount: *amount.element(),
+		radius: *radius.element(),
+		threshold: *threshold.element(),
+		edges_only: *edges_only.element(),
+	};
+
+	let mut content = content;
+	stamp_effect(&mut content, Effect::new(&operation));
+	content
+}
+
+/// Keeps only the fine details of the input graphics, how much each pixel differs from a blur of those around it, around middle gray where they're flat.
+#[node_macro::node(category("Raster: Filter"))]
+fn high_pass<T>(
+	_: impl Ctx,
+	/// The content to keep the details of.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
+	content: Item<T>,
+	/// How far the blur reaches, so details narrower than this are kept.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..250)]
+	#[default(10.)]
+	radius: Item<f64>,
+) -> Item<T> {
+	let mut content = content;
+	stamp_effect(&mut content, Effect::new(&EffectOperation::HighPass { radius: *radius.element() }));
 	content
 }
