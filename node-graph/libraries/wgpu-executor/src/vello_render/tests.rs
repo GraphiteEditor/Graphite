@@ -4141,13 +4141,22 @@ fn minified_adjusted_images_sample_their_adjusted_mipmaps() {
 	use graphic_types::Adjustment;
 	use graphic_types::raster_types::{Image, Raster};
 
-	// White inverted to black, drawn at an eighth of its size where only the smaller levels are sampled
-	let white = Raster::new_cpu(Image::new(64, 64, core_types::Color::WHITE));
-	let draw = |scene: &mut VelloSceneBuilder| scene.draw_raster(white.clone(), vec![Adjustment::Invert], peniko::ImageSampler::new(), Affine::scale(1. / 8.));
+	// Quarters of red, green, blue, and white, inverted and drawn at an eighth of their size where only the smaller levels are sampled, each staying in its quarter
+	let quarters = [core_types::Color::RED, core_types::Color::GREEN, core_types::Color::BLUE, core_types::Color::WHITE];
+	let quarter = |x: u32, y: u32, size: u32| (x * 2 / size + 2 * (y * 2 / size)) as usize;
+	let data = (0..64 * 64).map(|index| quarters[quarter(index % 64, index / 64, 64)]).collect();
+	let image = Raster::new_cpu(Image { width: 64, height: 64, data });
+	let draw = |scene: &mut VelloSceneBuilder| scene.draw_raster(image.clone(), vec![Adjustment::Invert], peniko::ImageSampler::new(), Affine::scale(1. / 8.));
 
-	let Some(pixels) = render(UVec2::new(8, 8), draw) else { return };
-	for (index, pixel) in pixels.iter().enumerate() {
-		assert!(pixel[0] <= 1 && pixel[3] == 255, "pixel {index} is {pixel:?} rather than black");
+	let inverted = [[0, 255, 255, 255], [255, 0, 255, 255], [255, 255, 0, 255], [0, 0, 0, 255]];
+	let size = UVec2::new(8, 8);
+	let Some(pixels) = render(size, draw) else { return };
+	for y in 0..size.y {
+		for x in 0..size.x {
+			let (actual, expected) = (pixel(&pixels, size, x, y), inverted[quarter(x, y, size.x)]);
+			let close = (0..4).all(|channel| actual[channel].abs_diff(expected[channel]) <= 1);
+			assert!(close, "pixel ({x}, {y}) is {actual:?} rather than {expected:?}");
+		}
 	}
 }
 

@@ -956,35 +956,41 @@ impl EffectPasses {
 		}
 		chained.into_iter().for_each(|texture| recorder.textures.release(texture));
 
-		self.record_mipmaps(device, &mut recorder.encoder, target);
+		self.record_mipmaps(device, &mut recorder.encoder, recorder.textures, target);
 		queue.submit([recorder.encoder.finish()]);
 	}
 
 	/// Records the averaging of each of `texture`'s smaller mip levels from the one above it, like the levels of an uploaded image.
-	pub(crate) fn record_mipmaps(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, texture: &wgpu::Texture) {
-		let level = |level: u32| {
-			texture.create_view(&wgpu::TextureViewDescriptor {
-				base_mip_level: level,
-				mip_level_count: Some(1),
-				..Default::default()
-			})
-		};
+	/// Each is halved into a pooled texture and copied into place, since WebGL sets the levels read for a whole texture, so none is drawn into while another is read.
+	pub(crate) fn record_mipmaps(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, textures: &mut EffectTextures, texture: &wgpu::Texture) {
+		let format = texture.format();
+		let mut above: Option<wgpu::Texture> = None;
 
 		for index in 1..texture.mip_level_count() {
 			let level_size = UVec2::new(texture.width() >> index, texture.height() >> index).max(UVec2::ONE);
-			self.record(
-				device,
-				encoder,
-				"halve",
-				texture.format(),
-				&level(index),
-				level_size,
-				&level(index - 1),
-				None,
-				None,
-				Parameters::default(),
-			);
+			let level = textures.acquire(device, level_size, format);
+
+			// The first level reads the top one through a view of every level
+			let source = above.as_ref().unwrap_or(texture).create_view(&wgpu::TextureViewDescriptor::default());
+			let target = level.create_view(&wgpu::TextureViewDescriptor::default());
+			self.record(device, encoder, "halve", format, &target, level_size, &source, None, None, Parameters::default());
+
+			let extent = wgpu::Extent3d {
+				width: level_size.x,
+				height: level_size.y,
+				depth_or_array_layers: 1,
+			};
+			let destination = wgpu::TexelCopyTextureInfo {
+				mip_level: index,
+				..texture.as_image_copy()
+			};
+			encoder.copy_texture_to_texture(level.as_image_copy(), destination, extent);
+
+			if let Some(above) = above.replace(level) {
+				textures.release(above);
+			}
 		}
+		above.into_iter().for_each(|texture| textures.release(texture));
 	}
 
 	/// Records the shader's `entry_point` into `target`, a view of `format` and `size`, reading the `source` view and optionally the `secondary` and `content` views.
