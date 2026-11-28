@@ -2,7 +2,7 @@
 //! operation mixed in. After every operation nothing may name a node the document no longer has.
 
 use super::simulation::{LEAF, Random, Scenario, below, empty_export, from_env, on, simulate, stack, value};
-use crate::{Implementation, Network, Node, NodeId, NodeInput, ROOT_NETWORK, Registry, RegistryDelta, Session};
+use crate::{Implementation, InputSlot, Network, Node, NodeId, NodeInput, ROOT_NETWORK, Registry, RegistryDelta, Session, TimeStamp};
 
 /// A slot that can name a node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -94,14 +94,16 @@ impl Scenario for Branching {
 			node.inputs[1].input = second;
 			node
 		};
+		// Nodes that still have an input past the primary one, the only ones an edit may write there
+		let wide: Vec<NodeId> = nodes.iter().copied().filter(|id| registry.node_instances[id].inputs.len() > 1).collect();
 		// Nodes with nothing hanging off their second input, so taking one does not leave a chain behind
-		let plain: Vec<NodeId> = nodes
+		let plain: Vec<NodeId> = wide
 			.iter()
 			.copied()
 			.filter(|id| !matches!(place_value(&registry, Place::Input(*id, 1)), Some(NodeInput::Node { .. })))
 			.collect();
 
-		match random.below(12) {
+		match random.below(14) {
 			// Draw a node on top of the chain off the export
 			0..=2 => {
 				let id = session.next_node_id();
@@ -122,7 +124,7 @@ impl Scenario for Branching {
 			}
 			// Hang a node on an input past the primary one, over whatever is there already
 			3..=5 => {
-				let Some(host) = random.pick(&nodes) else { return Vec::new() };
+				let Some(host) = random.pick(&wide) else { return Vec::new() };
 				let id = session.next_node_id();
 				let first = match place_value(&registry, Place::Input(host, 1)) {
 					Some(NodeInput::Node { id: under, index }) => NodeInput::Node { id: under, index },
@@ -178,6 +180,25 @@ impl Scenario for Branching {
 					index: 1,
 					new_input: value(random.below(100)),
 				}]
+			}
+			// Rewrite a node's whole input list, which an index-addressed write cannot express
+			11..=12 => {
+				let Some(node) = random.pick(&nodes) else { return Vec::new() };
+				let mut inputs = registry.node_instances[&node].inputs.clone();
+				match random.below(3) {
+					// Swap the first two, so what the node rested on moves past its primary input
+					0 if inputs.len() > 1 => inputs.swap(0, 1),
+					// One input more, holding a value
+					1 if inputs.len() < 4 => inputs.push(InputSlot {
+						input: value(random.below(100)),
+						timestamp: TimeStamp::ORIGIN,
+						attributes: Default::default(),
+					}),
+					// One input fewer, as removing a subgraph's import slot leaves the nodes wrapping it
+					_ if inputs.len() > 1 => _ = inputs.pop(),
+					_ => return Vec::new(),
+				}
+				vec![RegistryDelta::SetNodeInputs { id: node, inputs }]
 			}
 			// Cut the chain off an input past the primary one, taking its nodes with it
 			_ => {
