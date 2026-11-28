@@ -6,6 +6,7 @@
 use crate::WgpuExecutor;
 use core_types::blending::BlendMode;
 use glam::{DAffine2, UVec2};
+use graphic_types::MinimumMaximumMode;
 use rendering::vello_scene_builder::VelloSceneBuilder;
 use vello_gpu::kurbo::{Affine, BezPath, Line, ParamCurve, PathSeg, Point, Rect, Stroke, Vec2};
 use vello_gpu::peniko::{self, Color, Fill};
@@ -62,6 +63,11 @@ fn circle(center: (f64, f64), radius: f64) -> BezPath {
 
 fn pixel(pixels: &[[u8; 4]], size: UVec2, x: u32, y: u32) -> [u8; 4] {
 	pixels[(y * size.x + x) as usize]
+}
+
+/// A Minimum/Maximum effect of the `radius` in the `mode`.
+fn minimum_maximum(radius: f64, mode: MinimumMaximumMode) -> graphic_types::EffectOperation {
+	graphic_types::EffectOperation::MinimumMaximum { radius, mode }
 }
 
 const RED: Color = Color::from_rgb8(255, 0, 0);
@@ -800,6 +806,30 @@ fn convolution_kernels_filter_endless_gradients_and_colors() {
 }
 
 #[test]
+fn filters_carry_out_over_endless_colors() {
+	use core_types::list::{ATTR_EFFECTS, Item, List};
+	use graphic_types::{EffectOperation, Effects, Graphic};
+	use rendering::{Render, RenderParams};
+
+	let size = UVec2::splat(16);
+	let effects = Effects::from_operations([
+		EffectOperation::Emboss {
+			angle: 135.,
+			height: 3.,
+			amount: 100.,
+		},
+		EffectOperation::FindEdges,
+	]);
+	let color = Item::new_from_element(core_types::Color::from_gamma_srgb_channels(0.8, 0.2, 0.4, 1.)).with_attribute(ATTR_EFFECTS, effects);
+	let graphic = Graphic::ColorList(List::new_from_item(color));
+	let Some(pixels) = render(size, |scene| graphic.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default())) else {
+		return;
+	};
+	// Embossing a flat color grays it, and finding the edges of flat gray whitens it, as for a rectangle of it covering the view
+	assert_eq!(pixel(&pixels, size, 8, 8), [255, 255, 255, 255]);
+}
+
+#[test]
 fn convolution_kernels_read_colors_continuing_past_the_edges() {
 	use graphic_types::EffectOperation;
 
@@ -825,6 +855,34 @@ fn convolution_kernels_read_colors_continuing_past_the_edges() {
 		return;
 	};
 	assert_eq!(pixel(&pixels, size, 55, 55), [255; 4]);
+}
+
+#[test]
+fn stylize_filters_show_the_silhouette_and_move_its_coverage() {
+	use graphic_types::EffectOperation;
+
+	let size = UVec2::new(128, 128);
+	let render_square = |effect| render_square_with_effects(vec![effect], 1., 30., 80., size);
+
+	// Embossed with the light from the left, the flat inside is middle gray, and the edges show against the gray matted beyond them, dark on the left and light on the right
+	let emboss = EffectOperation::Emboss {
+		angle: 180.,
+		height: 2.,
+		amount: 100.,
+	};
+	let Some(pixels) = render_square(emboss) else { return };
+	let inside = pixel(&pixels, size, 55, 55);
+	assert!(inside[..3].iter().all(|channel| (127..=128).contains(channel)) && inside[3] == 255, "the flat inside is {inside:?}");
+	assert!(pixel(&pixels, size, 30, 55)[0] < 128 && pixel(&pixels, size, 79, 55)[0] > 128, "the edges in relief");
+	assert_eq!(pixel(&pixels, size, 28, 55)[3], 0, "nothing outside");
+
+	// The neighborhood maximum of the white square shrinks it, and the minimum grows it
+	let Some(pixels) = render_square(minimum_maximum(3., MinimumMaximumMode::Maximum)) else { return };
+	assert_eq!(pixel(&pixels, size, 32, 55)[3], 0, "within the radius of the edge");
+	assert_eq!(pixel(&pixels, size, 33, 55), [255; 4]);
+	let Some(pixels) = render_square(minimum_maximum(3., MinimumMaximumMode::Minimum)) else { return };
+	assert_eq!(pixel(&pixels, size, 27, 55), [255; 4], "within the radius past the edge");
+	assert_eq!(pixel(&pixels, size, 26, 55)[3], 0);
 }
 
 #[test]
@@ -2411,6 +2469,30 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		checkered(kernel_of_width(vec![1., 2., 1.], 1, 4., 0.)),
 		checkered(kernel_of_width(vec![1., -1., 2., -2., 3., -3.], 2, 1., 128.)),
 	]);
+	let emboss = |angle, height, amount| EffectOperation::Emboss { angle, height, amount };
+	paint_cases.extend([
+		checkered(emboss(135., 3., 100.)),
+		checkered(emboss(-20., 6.5, 300.)),
+		checkered(EffectOperation::FindEdges),
+		checkered(minimum_maximum(2., MinimumMaximumMode::Minimum)),
+		checkered(minimum_maximum(1.5, MinimumMaximumMode::Maximum)),
+		checkered(EffectOperation::Adjustment(Adjustment::Solarize)),
+		// The square's silhouette shows in relief and as an edge against what it's matted over, and its coverage moves the opposite way to its colors
+		vec![emboss(60., 2., 150.)],
+		vec![EffectOperation::FindEdges],
+		vec![minimum_maximum(40., MinimumMaximumMode::Minimum)],
+		vec![minimum_maximum(3.5, MinimumMaximumMode::Maximum)],
+		// Neighborhoods widened over several passes, out past the transparency around the square, and mixed between radii either side of a power of two
+		vec![minimum_maximum(40., MinimumMaximumMode::Maximum)],
+		vec![minimum_maximum(100.5, MinimumMaximumMode::Minimum)],
+		vec![minimum_maximum(100.5, MinimumMaximumMode::Maximum)],
+		checkered(minimum_maximum(15.5, MinimumMaximumMode::Minimum)),
+		checkered(minimum_maximum(15.5, MinimumMaximumMode::Maximum)),
+		// Soft content, whose faint fringes keep their colors, and a zero radius beside another effect, which changes nothing
+		vec![blur(3., false, false), minimum_maximum(2., MinimumMaximumMode::Minimum)],
+		vec![blur(3., false, false), minimum_maximum(1.5, MinimumMaximumMode::Maximum)],
+		vec![blur(2., false, false), minimum_maximum(0., MinimumMaximumMode::Maximum)],
+	]);
 
 	for effects in cases.into_iter().chain(paint_cases).chain(mask_cases) {
 		for fill in [1., 0.5] {
@@ -2495,6 +2577,56 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 			assert!(worst <= tolerance, "{effects:?} at fill {fill} differs from the GPU by up to {worst} levels");
 		}
 	}
+}
+
+#[test]
+fn gpu_neighborhood_extremes_match_the_cpu_kernels() {
+	use graphic_types::Effects;
+	use half::f16;
+
+	// Gradients across and down that a window off by a texel shifts, beside random colors, opaque out to the edges but for a translucent band and a hole
+	let (width, height) = (450, 40);
+	let texels: Vec<[f16; 4]> = (0..width * height)
+		.map(|index| {
+			let (x, y) = (index % width, index / width);
+			let alpha = match (x, y) {
+				(300..306, 10..14) => 0.,
+				(0..24, _) => 0.5,
+				_ => 1.,
+			};
+			let random = (index as u32).wrapping_mul(2_654_435_761) >> 24;
+			let straight = [x as f32 / (width - 1) as f32, y as f32 / (height - 1) as f32, random as f32 / 255.];
+			let [red, green, blue] = straight.map(|channel| channel * alpha);
+			[red, green, blue, alpha].map(f16::from_f32)
+		})
+		.collect();
+	let plane = raster_kernels::effect_kernels::Plane {
+		width,
+		height,
+		data: texels.iter().map(|texel| texel.map(f16::to_f32)).collect(),
+	};
+
+	// Radii one pass reads, those doubled several times (some near powers of two), and those reaching across the texture's height or both its sides
+	let mut strays = Vec::new();
+	for radius in [1., 2.5, 8., 9., 15.5, 31.5, 40., 64.5, 100.5, 400., 1000.] {
+		for maximum in [false, true] {
+			let mode = if maximum { MinimumMaximumMode::Maximum } else { MinimumMaximumMode::Minimum };
+			let operation = minimum_maximum(radius, mode);
+			let Some(gpu) = gpu_effect_texels(&Effects::from_operations([operation.clone()]), &texels, width, &[]) else {
+				return;
+			};
+			let cpu = raster_kernels::filter_kernels::neighborhood_extreme(&plane, radius, maximum, glam::DMat2::IDENTITY);
+
+			// In 8-bit levels, well below the 0.57 that one texel shifts the gradient across
+			let levels = (gpu.iter().zip(&cpu.data))
+				.flat_map(|(gpu, cpu)| (0..4).map(|channel| (gpu[channel] - cpu[channel]).abs() * 255.))
+				.fold(0_f32, f32::max);
+			if levels > 0.25 {
+				strays.push(format!("{operation:?} strays from the CPU's kernel by {levels} levels"));
+			}
+		}
+	}
+	assert!(strays.is_empty(), "{}", strays.join("\n"));
 }
 
 /// Colors across the RGB cube, among them black, white, grays, and saturated and near-black colors, each opaque, with some also translucent or fully transparent.
@@ -2736,6 +2868,7 @@ fn gpu_tone_adjustments_match_the_cpu_kernels() {
 			},
 		),
 		("Invert", Adjustment::Invert),
+		("Solarize", Adjustment::Solarize),
 		("Make Opaque", Adjustment::MakeOpaque),
 	];
 	assert_gpu_adjustments_match_the_cpu_kernels(runs.into_iter().map(|(name, adjustment)| (name, vec![adjustment])).collect());

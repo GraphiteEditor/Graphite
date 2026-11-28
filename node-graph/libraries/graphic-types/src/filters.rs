@@ -13,8 +13,17 @@ const MAX_WEIGHT: f64 = 1e6;
 /// This is halfway between the sixteenth and fifteenth of 255 levels, so it divides 8-bit renders the same way everywhere.
 pub const VISIBLE_ALPHA: f32 = 15.5 / 255.;
 
+/// What a filter reads beyond the content's visible colors, and how its result returns to the content's coverage.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Surroundings {
+	/// For PSD interop, a pixel too faint to be visible reads the nearest visible pixel's color (by [`fill_shifts`]) so colors continue past the edges, or with none within reach its own.
+	/// The result keeps the content's coverage.
+	Continued,
+	/// The content is composited over an opaque gray of this level and filtered, then lifted back off the gray within its coverage, so its silhouette shows as an edge.
+	Matted(f64),
+}
+
 /// A weighted sum of copies of the content's straight colors, each shifted by a length in document pixels, divided by a divisor and raised by an offset, keeping the content's coverage.
-/// For PSD interop, a pixel too faint to be visible reads the nearest visible pixel's color (by [`fill_shifts`]) so colors continue past the edges, or with none within reach its own.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Convolution {
 	/// Each copy's shift from the pixel it adds into toward the pixel it reads, in document pixels, with its weight.
@@ -23,6 +32,8 @@ pub struct Convolution {
 	pub divisor: f64,
 	/// How much the result's colors are raised, as a fraction of full brightness.
 	pub offset: f64,
+	/// What the sum reads beyond the content's visible colors, and how the result returns to the content's coverage.
+	pub surroundings: Surroundings,
 }
 
 impl Convolution {
@@ -43,6 +54,37 @@ impl Convolution {
 			taps,
 			divisor: 1.,
 			offset: if offset.is_finite() { offset / 255. } else { 0. },
+			surroundings: Surroundings::Continued,
+		}
+	}
+
+	/// For PSD interop, emboss's difference between two samples `height` pixels apart along the direction the light comes from at `angle` degrees, scaled by the `amount` percentage and lifted to middle gray.
+	/// Each sample spreads over the pixels less than a pixel from it, weighted by how far short of a pixel they lie.
+	pub fn emboss(angle: f64, height: f64, amount: f64) -> Self {
+		// The direction without the rounding left by sines and cosines of right angles, so samples on whole pixels land exactly on them
+		let angle = angle.to_radians();
+		let without_rounding = |value: f64| if value.abs() < 1e-12 { 0. } else { value };
+		let half = DVec2::new(without_rounding(angle.cos()), without_rounding(-angle.sin())) * height.max(0.) / 2.;
+		let spread = |shift: DVec2| (1. - shift.length()).max(0.);
+
+		// Only the four pixels around each sample are less than a pixel from it, whatever the height. O(1).
+		let mut shifts: Vec<DVec2> = [half, -half]
+			.into_iter()
+			.flat_map(|sample| [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|corner| sample.floor() + corner))
+			.collect();
+		shifts.sort_by(|a, b| a.y.total_cmp(&b.y).then(a.x.total_cmp(&b.x)));
+		shifts.dedup();
+		let taps = shifts
+			.into_iter()
+			.map(|shift| (shift, (spread(shift - half) - spread(shift + half)) * amount / 100.))
+			.filter(|(_, weight)| weight.abs() > 1e-12)
+			.collect();
+
+		Self {
+			taps,
+			divisor: 1.,
+			offset: 0.5,
+			surroundings: Surroundings::Matted(0.5),
 		}
 	}
 
@@ -52,10 +94,14 @@ impl Convolution {
 	}
 
 	/// How far from a pixel its result reads in any direction, which a rotation can turn along an axis, in document pixels.
-	/// That's the farthest copy, then a faint pixel's nearest visible color within the square of [`Self::reach`], plus two pixels for rounding and copies between pixels.
+	/// That's the farthest copy, then for continued colors a faint pixel's nearest visible one within the square of [`Self::reach`], plus two pixels for rounding and copies between pixels.
 	pub fn read_reach(&self) -> f64 {
 		let farthest = self.taps.iter().map(|(shift, _)| shift.length()).fold(0., f64::max);
-		farthest + std::f64::consts::SQRT_2 * self.reach().ceil() + 2.
+		let faint = match self.surroundings {
+			Surroundings::Continued => std::f64::consts::SQRT_2 * self.reach().ceil(),
+			Surroundings::Matted(_) => 0.,
+		};
+		farthest + faint + 2.
 	}
 
 	/// Whether the result is the content as it is.
@@ -106,12 +152,34 @@ fn kept_weights(weights: &[f64], columns: usize) -> impl Iterator<Item = (DVec2,
 
 /// Whether the operation is a pixel filter, which reads the content's details and edges.
 pub fn is_filter(operation: &EffectOperation) -> bool {
-	matches!(operation, EffectOperation::ConvolutionKernel { .. })
+	matches!(
+		operation,
+		EffectOperation::ConvolutionKernel { .. } | EffectOperation::Emboss { .. } | EffectOperation::FindEdges | EffectOperation::MinimumMaximum { .. }
+	)
 }
 
 /// Whether any of the effects is a pixel filter that changes something, which reads endless content with details, like a gradient, over the area in view.
 pub fn has_filters(effects: &Effects) -> bool {
 	effects.operations().any(|operation| is_filter(&operation) && !operation.changes_nothing())
+}
+
+/// For PSD interop, the shifts Find Edges reads its Sobel gradient from, in document pixels, with their weights across and down.
+pub const SOBEL_TAPS: [(DVec2, [f64; 2]); 8] = [
+	(DVec2::new(-1., -1.), [-1., -1.]),
+	(DVec2::new(0., -1.), [0., -2.]),
+	(DVec2::new(1., -1.), [1., -1.]),
+	(DVec2::new(-1., 0.), [-2., 0.]),
+	(DVec2::new(1., 0.), [2., 0.]),
+	(DVec2::new(-1., 1.), [-1., 1.]),
+	(DVec2::new(0., 1.), [0., 2.]),
+	(DVec2::new(1., 1.), [1., 1.]),
+];
+
+/// The whole radii a neighborhood minimum or maximum of `radius` document pixels mixes between, measured in pixels by `pixels_per_length`, with how far it lies toward the larger.
+pub fn neighborhood_radii(radius: f64, pixels_per_length: f64) -> ([u32; 2], f64) {
+	let radius = radius.max(0.);
+	let whole = |radius: f64| (radius * pixels_per_length).round() as u32;
+	([whole(radius.floor()), whole(radius.ceil())], radius.fract())
 }
 
 /// The whole-pixel shifts out to `reach` pixels along each axis, nearest first, which a faint pixel looks along for the visible pixel to read the color of.
@@ -202,6 +270,21 @@ mod tests {
 
 		let side = MAX_KERNEL_SIDE + 2;
 		assert_eq!(automatic_scale(&vec![1.; side * side], side), (MAX_KERNEL_SIDE * MAX_KERNEL_SIDE) as f64);
+	}
+
+	#[test]
+	fn emboss_differences_samples_spread_around_the_light_direction() {
+		// Light from the right at a height of 2 samples a pixel to each side, each exactly on one pixel
+		let emboss = Convolution::emboss(0., 2., 100.);
+		assert_eq!(emboss.taps, vec![(DVec2::new(-1., 0.), -1.), (DVec2::new(1., 0.), 1.)]);
+		assert_eq!(emboss.offset, 0.5);
+
+		// Halfway between pixels, each sample spreads over the two beside it
+		let between = Convolution::emboss(90., 1., 200.);
+		let weight = |shift: DVec2| between.taps.iter().find(|(tap, _)| *tap == shift).map_or(0., |(_, weight)| *weight);
+		assert!((weight(DVec2::new(0., -1.)) - 1.).abs() < 1e-12);
+		assert!((weight(DVec2::ZERO)).abs() < 1e-12);
+		assert!((weight(DVec2::new(0., 1.)) + 1.).abs() < 1e-12);
 	}
 
 	#[test]

@@ -425,11 +425,12 @@ impl<'a> VelloSceneBuilder<'a> {
 		let layers = EffectLayers::plan(effects, blend_mode, fill, layered);
 
 		// The texture follows the viewport's axes if the effect space only turns and evenly scales, or else its own axes, scaled evenly to keep every direction's detail.
-		// A box blur, which isn't round, turns with its space only along that space's axes.
-		let has_box_blur = effects
-			.operations()
-			.any(|operation| matches!(operation, EffectOperation::Blur { box_blur: true, .. }) && !operation.changes_nothing());
-		let follows_viewport = is_similarity(effect_to_device.matrix2) && (!has_box_blur || is_axis_aligned(effect_to_device.matrix2));
+		// A box blur or a minimum or maximum, whose square neighborhoods aren't round, turns with its space only along that space's axes.
+		let has_square_kernel = effects.operations().any(|operation| {
+			let square = matches!(operation, EffectOperation::Blur { box_blur: true, .. } | EffectOperation::MinimumMaximum { .. });
+			square && !operation.changes_nothing()
+		});
+		let follows_viewport = is_similarity(effect_to_device.matrix2) && (!has_square_kernel || is_axis_aligned(effect_to_device.matrix2));
 		let (frame_to_device, lengths_to_frame) = match follows_viewport {
 			true => (DAffine2::IDENTITY, effect_to_device.matrix2),
 			false => {

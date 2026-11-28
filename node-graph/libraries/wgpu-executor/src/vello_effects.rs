@@ -697,7 +697,7 @@ impl EffectPasses {
 					recorder.fade_by(content, &mut full, &mut filled, &strength);
 					recorder.textures.release(strength);
 				}
-				EffectOperation::ConvolutionKernel { .. } => {
+				EffectOperation::ConvolutionKernel { .. } | EffectOperation::Emboss { .. } | EffectOperation::FindEdges | EffectOperation::MinimumMaximum { .. } => {
 					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
 					recorder.filter(content, &mut full, &mut filled, operation, lengths_to_pixels, &mut |recorder, plane, map| {
 						capture_plane(recorder, plane, map, true)

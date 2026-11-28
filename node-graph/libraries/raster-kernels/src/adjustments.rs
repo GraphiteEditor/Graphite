@@ -223,6 +223,7 @@ pub fn visit_kernel<V: AdjustmentVisitor>(adjustment: &Adjustment, visitor: V) -
 			})
 		}
 		Adjustment::Invert => visitor.visit(Invert),
+		Adjustment::Solarize => visitor.visit(Solarize),
 		Adjustment::Threshold { min_luminance, max_luminance } => visitor.visit(Threshold {
 			min_luminance: (min_luminance / 100.) as f32,
 			max_luminance: (max_luminance / 100.) as f32,
@@ -1094,6 +1095,19 @@ impl MapColor for Invert {
 
 	fn encode_step(&self, steps: &mut AdjustmentSteps) {
 		steps.push(StepKind::Invert, []);
+	}
+}
+
+/// For PSD interop, inverts each channel past middle gray, folding it back down.
+struct Solarize;
+
+impl MapColor for Solarize {
+	fn map_cpu(&self, color: Color) -> Color {
+		color.map_gamma_rgb(|channel| channel.min(1. - channel))
+	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		steps.push(StepKind::Solarize, []);
 	}
 }
 

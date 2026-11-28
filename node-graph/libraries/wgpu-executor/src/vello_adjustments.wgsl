@@ -353,6 +353,11 @@ fn invert(color: vec4<f32>, at: u32) -> vec4<f32> {
 	return vec4<f32>(1. - color.rgb, color.a);
 }
 
+// Each channel inverted past middle gray, folding it back down
+fn solarize(color: vec4<f32>, at: u32) -> vec4<f32> {
+	return vec4<f32>(min(color.rgb, 1. - color.rgb), color.a);
+}
+
 // Matches `apply_levels` with the gamma of 1 that every caller here passes, so its power is left out
 fn apply_levels(value: f32, input_shadows: f32, input_highlights: f32, output_minimum: f32, output_maximum: f32) -> f32 {
 	let highlights_minus_shadows = clamp(input_highlights - input_shadows, F32_EPSILON, 1.);

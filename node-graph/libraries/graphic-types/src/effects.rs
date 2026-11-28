@@ -51,6 +51,12 @@ pub enum EffectKind {
 	Feather,
 	/// Sums each pixel's neighbors weighted by a kernel of numbers.
 	ConvolutionKernel,
+	/// Grays the content, showing its edges in relief as if lit from one side.
+	Emboss,
+	/// Outlines the content's edges in dark over white.
+	FindEdges,
+	/// Spreads each pixel's darkest or lightest neighboring colors.
+	MinimumMaximum,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
 	Desaturate,
 	GammaCorrection,
@@ -71,6 +77,7 @@ pub enum EffectKind {
 	ColorBalance,
 	PhotoFilter,
 	ColorLookup,
+	Solarize,
 }
 
 impl std::fmt::Display for EffectKind {
@@ -88,6 +95,9 @@ impl std::fmt::Display for EffectKind {
 			Self::Mask => "Mask",
 			Self::Feather => "Feather",
 			Self::ConvolutionKernel => "Convolution Kernel",
+			Self::Emboss => "Emboss",
+			Self::FindEdges => "Find Edges",
+			Self::MinimumMaximum => "Minimum/Maximum",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
 			Self::MakeOpaque => "Make Opaque",
@@ -107,6 +117,7 @@ impl std::fmt::Display for EffectKind {
 			Self::ColorBalance => "Color Balance",
 			Self::PhotoFilter => "Photo Filter",
 			Self::ColorLookup => "Color Lookup",
+			Self::Solarize => "Solarize",
 		})
 	}
 }
@@ -135,6 +146,19 @@ pub enum GlowSource {
 	Edge,
 	/// Glows outward from the center.
 	Center,
+}
+
+/// Which extreme of the colors around each pixel a Minimum/Maximum spreads.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum MinimumMaximumMode {
+	/// Spreads the darkest colors, growing the content's coverage by the radius.
+	#[default]
+	Minimum,
+	/// Spreads the lightest colors, shrinking the content's coverage by the radius.
+	Maximum,
 }
 
 /// One of the coverages an effect is drawn from, which a render can output in place of the effects' result, so an SVG can embed it as a map of what its filters can't work out.
@@ -901,6 +925,20 @@ pub enum EffectOperation {
 		/// On a scale of 0 to 255.
 		offset: f64,
 	},
+	Emboss {
+		/// The direction the light comes from, in degrees counterclockwise from the right.
+		angle: f64,
+		/// How far apart the two samples are, the difference between them showing as relief.
+		height: f64,
+		/// Percent.
+		amount: f64,
+	},
+	FindEdges,
+	MinimumMaximum {
+		/// How many pixels the square neighborhood reaches out from its center.
+		radius: f64,
+		mode: MinimumMaximumMode,
+	},
 	Adjustment(Adjustment),
 }
 
@@ -938,6 +976,9 @@ impl EffectOperation {
 			Self::Mask { .. } => EffectKind::Mask,
 			Self::Feather { .. } => EffectKind::Feather,
 			Self::ConvolutionKernel { .. } => EffectKind::ConvolutionKernel,
+			Self::Emboss { .. } => EffectKind::Emboss,
+			Self::FindEdges => EffectKind::FindEdges,
+			Self::MinimumMaximum { .. } => EffectKind::MinimumMaximum,
 			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
 	}
@@ -951,6 +992,7 @@ impl EffectOperation {
 				let convolution = Convolution::custom(&weights, *columns as usize, *scale, *offset);
 				(!weights.is_empty() && !convolution.is_identity()).then_some(convolution)
 			}
+			Self::Emboss { angle, height, amount } => Some(Convolution::emboss(*angle, *height, *amount)),
 			_ => None,
 		}
 	}
@@ -975,7 +1017,8 @@ impl EffectOperation {
 			Self::Mask { density, .. } => *density <= 0.,
 			Self::Feather { distance } => *distance <= 0.,
 			Self::ConvolutionKernel { .. } => self.convolution().is_none(),
-			Self::Adjustment(_) => false,
+			Self::Emboss { .. } | Self::FindEdges | Self::Adjustment(_) => false,
+			Self::MinimumMaximum { radius, .. } => *radius <= 0.,
 		}
 	}
 
@@ -988,7 +1031,7 @@ impl EffectOperation {
 	pub fn reads_pixels_around(&self) -> bool {
 		match self {
 			Self::Blur { .. } => true,
-			Self::ConvolutionKernel { .. } => true,
+			Self::ConvolutionKernel { .. } | Self::Emboss { .. } | Self::FindEdges | Self::MinimumMaximum { .. } => true,
 			// Cast from the content's shape, reading a mask's own image or a feather's map, or changing each pixel alone
 			Self::DropShadow { .. }
 			| Self::InnerShadow { .. }
@@ -1002,13 +1045,21 @@ impl EffectOperation {
 		}
 	}
 
-	/// How far past the content this operation paints, which is nowhere for an operation that changes nothing, a mask, a feather, or a convolution kernel, which keeps the content's coverage.
+	/// How far past the content this operation paints, which is nowhere for an operation that changes nothing, a mask, a feather, or a filter that keeps or shrinks the content's coverage.
 	pub fn painted_reach(&self) -> f64 {
-		if self.changes_nothing() || matches!(self, Self::Mask { .. } | Self::Feather { .. } | Self::ConvolutionKernel { .. }) {
-			0.
-		} else {
-			self.reach()
-		}
+		let keeps_coverage = matches!(
+			self,
+			Self::Mask { .. }
+				| Self::Feather { .. }
+				| Self::ConvolutionKernel { .. }
+				| Self::Emboss { .. }
+				| Self::FindEdges
+				| Self::MinimumMaximum {
+					mode: MinimumMaximumMode::Maximum,
+					..
+				}
+		);
+		if self.changes_nothing() || keeps_coverage { 0. } else { self.reach() }
 	}
 
 	/// How far past the content this operation paints or reads from, which the region it's worked out over covers, and nowhere for an operation that changes nothing.
@@ -1039,7 +1090,10 @@ impl EffectOperation {
 			Self::Mask { feather, .. } => 3. * mask_feather_sigma(*feather),
 			// A feather paints nothing past the content, but finds edges up to this far past it, which a render cut short there would miss
 			Self::Feather { distance } => distance.max(0.) + 1.,
-			Self::ConvolutionKernel { .. } => self.convolution().map_or(0., |convolution| convolution.read_reach()),
+			Self::ConvolutionKernel { .. } | Self::Emboss { .. } => self.convolution().map_or(0., |convolution| convolution.read_reach()),
+			// The Sobel taps' diagonal, which a rotation can turn along an axis, plus two pixels for rounding and copies between pixels
+			Self::FindEdges => std::f64::consts::SQRT_2 + 2.,
+			Self::MinimumMaximum { radius, .. } => radius.max(0.).ceil() + 1.,
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => 0.,
 		}
 	}
@@ -1119,7 +1173,9 @@ impl EffectOperation {
 			} => [depth, size, soften, angle, altitude, slope_range, texture_depth].into_iter().for_each(finite),
 			Self::Mask { density, feather, .. } => [density, feather].into_iter().for_each(finite),
 			Self::Feather { distance } => finite(distance),
-			Self::PaintOverlay { .. } | Self::ConvolutionKernel { .. } | Self::Adjustment(_) => {}
+			Self::Emboss { angle, height, amount } => [angle, height, amount].into_iter().for_each(finite),
+			Self::MinimumMaximum { radius, .. } => finite(radius),
+			Self::PaintOverlay { .. } | Self::ConvolutionKernel { .. } | Self::FindEdges | Self::Adjustment(_) => {}
 		}
 		self
 	}
@@ -1227,6 +1283,12 @@ impl EffectOperation {
 				scale: 0.,
 				offset: 0.,
 			},
+			EffectKind::Emboss => Self::Emboss { angle: 0., height: 0., amount: 0. },
+			EffectKind::FindEdges => Self::FindEdges,
+			EffectKind::MinimumMaximum => Self::MinimumMaximum {
+				radius: 0.,
+				mode: MinimumMaximumMode::default(),
+			},
 			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
 			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
 			EffectKind::MakeOpaque => Self::Adjustment(Adjustment::MakeOpaque),
@@ -1262,6 +1324,7 @@ impl EffectOperation {
 				preserve_luminosity: false,
 			}),
 			EffectKind::ColorLookup => Self::Adjustment(Adjustment::ColorLookup { lut_file: Default::default() }),
+			EffectKind::Solarize => Self::Adjustment(Adjustment::Solarize),
 		}
 	}
 
@@ -1440,6 +1503,17 @@ impl EffectOperation {
 				visitor.parameter("scale", scale, 1.);
 				visitor.parameter("offset", offset, 0.);
 			}
+			// For PSD interop, the defaults are those of the filters' dialogs
+			Self::Emboss { angle, height, amount } => {
+				visitor.parameter("angle", angle, 135.);
+				visitor.parameter("height", height, 3.);
+				visitor.parameter("amount", amount, 100.);
+			}
+			Self::FindEdges => {}
+			Self::MinimumMaximum { radius, mode } => {
+				visitor.parameter("radius", radius, 1.);
+				visitor.parameter("mode", mode, MinimumMaximumMode::default());
+			}
 			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
@@ -1565,6 +1639,21 @@ mod tests {
 				opacity: 100.,
 			}),
 			EffectOperation::convolution_kernel("-1 0 1\n-2 0 2\n-1 0 1", Some(4.), 128.),
+			EffectOperation::Emboss {
+				angle: -30.,
+				height: 4.5,
+				amount: 250.,
+			},
+			EffectOperation::FindEdges,
+			EffectOperation::MinimumMaximum {
+				radius: 2.5,
+				mode: MinimumMaximumMode::Minimum,
+			},
+			EffectOperation::MinimumMaximum {
+				radius: 7.,
+				mode: MinimumMaximumMode::Maximum,
+			},
+			EffectOperation::Adjustment(Adjustment::Solarize),
 		];
 
 		for operation in operations {
@@ -1809,6 +1898,7 @@ mod tests {
 			ColorBalance,
 			PhotoFilter,
 			ColorLookup,
+			Solarize,
 			PaintOverlay,
 		];
 		for kind in kinds {
@@ -1891,6 +1981,26 @@ mod tests {
 		// Its farthest copy a pixel away, a faint pixel's nearest visible color within the square around that, turned any way, and two pixels for rounding and copies between pixels
 		let reach = 1. + std::f64::consts::SQRT_2 + 2.;
 		assert_eq!((sharpen.working_reach(), sharpen.required_reach()), (reach, reach));
+
+		// Emboss, Find Edges, and Maximum keep or shrink the coverage too, while a Minimum grows it
+		let keeping = [
+			EffectOperation::Emboss {
+				angle: 135.,
+				height: 3.,
+				amount: 100.,
+			},
+			EffectOperation::FindEdges,
+			EffectOperation::MinimumMaximum {
+				radius: 3.,
+				mode: MinimumMaximumMode::Maximum,
+			},
+		];
+		assert!(keeping.iter().all(|operation| operation.painted_reach() == 0. && operation.working_reach() > 0.));
+		let minimum = EffectOperation::MinimumMaximum {
+			radius: 3.,
+			mode: MinimumMaximumMode::Minimum,
+		};
+		assert_eq!(minimum.painted_reach(), 4.);
 		assert_eq!(Effects::from_operations([sharpen]).read_reach(DAffine2::IDENTITY), reach);
 	}
 

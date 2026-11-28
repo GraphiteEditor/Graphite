@@ -15,7 +15,7 @@ pub use graphene_core::debug;
 pub use graphic_nodes;
 pub use graphic_types::{
 	Appearance, Artboard, BevelDirection, BevelStyle, BevelTechnique, Cover, CoverPlacement, Coverage, Effect, EffectKind, EffectOperation, Effects, GlowSource, GlowTechnique, Graphic, MaskMode,
-	Vector, stamp_coverage,
+	MinimumMaximumMode, Vector, stamp_coverage,
 };
 pub use math_nodes;
 pub use path_bool_nodes;
