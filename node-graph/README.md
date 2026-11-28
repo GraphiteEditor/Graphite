@@ -32,7 +32,7 @@ pub struct DocumentNodeDefinition {
 }
 ```
 
-Only the definitions of built-in nodes made from a nested network are written by hand in that file. A node implemented as a single proto-node has its definition generated from the metadata the `node` macro records about its function signature (see [Creating a new node](#creating-a-new-node)), keyed by the proto-node identifier, which for the Opacity node is `graphene_std::blending_nodes::opacity::IDENTIFIER`.
+None of these definitions are written by hand. A node implemented as a single proto-node has its definition generated from the metadata the `node` macro records about its function signature (see [Creating a new node](#creating-a-new-node)), keyed by the proto-node identifier, which for the Opacity node is `graphene_std::blending_nodes::opacity::IDENTIFIER`. A built-in node made from a subgraph has its definition generated from the `graph` macro (see [Creating a node from a subgraph](#creating-a-node-from-a-subgraph)), keyed by its name.
 
 ## Inspector
 
@@ -127,7 +127,29 @@ fn opacity<T>(
 
 ## Additional Macro Options
 
-The macro invocation can be extended with additional attributes. The currently supported attributes are (`name`, `path`, `skip_impl`, `category`). When using generics the `#[implementations()]` attribute can be used to automatically populate the node_registry for you. You can also use the `default`, `expose`, `soft`, `hard`, `range`, `unit`, `multiline`, and `progression` attributes to influence how the Inspector widgets are generated. The `#[unit("...")]` attribute appends a suffix like `%` or ` px` to a number's widget, while `#[multiline]` gives a `String` the text area widget and `#[progression]` splits a number into its whole and fractional parts. The `#[soft(a..b)]` and `#[hard(a..b)]` attributes set the slider's suggested extent and its enforced clamp, respectively (either endpoint may be omitted, e.g. `0..` or `..100`; both endpoints are inclusive, so there is no `..=` form), and `#[range]` renders the input as a draggable slider. Values typed into the input may exceed the soft extent but are clamped to the hard bounds, so `#[soft]` is only meaningful together with `#[range]`.
+The macro invocation can be extended with additional attributes. The currently supported attributes are (`name`, `path`, `skip_impl`, `category`). When using generics the `#[implementations()]` attribute can be used to automatically populate the node_registry for you. You can also use the `default`, `expose`, `soft`, `hard`, `range`, `step`, `display_decimal_places`, `unit`, `integer`, `labels`, `blank_assist`, `multiline`, and `progression` attributes to influence how the Inspector widgets are generated. The `#[unit("...")]` attribute appends a suffix like `%` or ` px` to a number's widget, `#[display_decimal_places(2)]` sets how many decimal places a number's widget shows, `#[integer]` makes a number or Vec2 widget take only integers, `#[labels("W", "H")]` names a Vec2 widget's two fields, and `#[blank_assist(false)]` drops the space a widget leaves for its assist area. `#[multiline]` gives a `String` the text area widget and `#[progression]` splits a number into its whole and fractional parts. The `#[soft(a..b)]` and `#[hard(a..b)]` attributes set the slider's suggested extent and its enforced clamp, respectively (either endpoint may be omitted, e.g. `0..` or `..100`; both endpoints are inclusive, so there is no `..=` form), and `#[range]` renders the input as a draggable slider. Values typed into the input may exceed the soft extent but are clamped to the hard bounds, so `#[soft]` is only meaningful together with `#[range]`.
+
+## Creating a node from a subgraph
+
+A node built from other nodes uses the `graph` macro, which registers the subgraph as a catalog definition. It takes `category`, `icon`, `name`, and `version` as `node` does, plus `layer` for a node that starts as a layer. Unlike a proto node's, a graph's name (or the title derived from its function name) is also its catalog identifier, which documents store. The function's parameters are the subgraph's imports, which are parsed like a proto node's parameters and take the same value and widget attributes. On an import, `#[hard]` bounds the Inspector widget without clamping a value wired into it. `out!(...)` names the exports. In the body, `>>` feeds its left side into the primary input of the node on its right, every other parameter is named in the call, and a bare name feeds the binding or import of that name into the parameter of the same name. State methods after a call, each written once, set the node's position in grid units (`.at(x, y)`), its display name (`.named("…")`), its flags (`.layer()`, `.hidden()`, `.locked()`, and `.pinned()`), and its call argument (`.call_argument::<Footprint>()`, or `impl Any` for a generic one). An output's name after the call or a binding, like `.captures`, wires from that output instead of the primary one, and goes after any state methods. The body ends with one value per export, as a final expression or with `return`. This is the Load Image node as it exists in `node-graph/nodes/gstd/src/subgraphs.rs`:
+
+```rs
+/// Loads an image from a given URL.
+#[node_macro::graph(category("Data: I/O"), icon("NodeLoadImage"))]
+pub fn load_image(
+	_: (),
+	/// The web address or local asset path of the image to load.
+	#[name("URL")]
+	url: Item<String>,
+) -> out!(
+	/// The loaded image.
+	image,
+) {
+	load_resource(url).at(0, 0) >> bytes_to_image().at(7, 0)
+}
+```
+
+Each node, parameter, and output name resolves through the module the `node` or `graph` macro generates for that node, named after its function, so a misspelled one is reported where it's written. The module's `PARAMETER_COUNT` lets the macro reject `>>` into a node with no parameters. Proto nodes don't name their outputs in that module, so only a graph's outputs can be chosen by name. Every input a call leaves out keeps the default from the node's own definition.
 
 ## Executing a document `NodeNetwork`
 

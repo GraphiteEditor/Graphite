@@ -137,6 +137,10 @@ pub struct ParsedField {
 	pub progression: bool,
 	pub constant: bool,
 	pub is_data_field: bool,
+	/// The X and Y labels of a Vec2 widget, from `#[labels("W", "H")]`.
+	pub labels: Option<(LitStr, LitStr)>,
+	pub integer: bool,
+	pub blank_assist: bool,
 }
 
 impl ParsedField {
@@ -170,6 +174,9 @@ impl ParsedField {
 			progression: false,
 			constant: false,
 			is_data_field: false,
+			labels: None,
+			integer: false,
+			blank_assist: true,
 		}
 	}
 
@@ -319,8 +326,8 @@ impl ToTokens for NumberBound {
 /// Unlike a Rust range there is no `..=` form, `..` is purely this attribute DSL's bounds operator.
 #[derive(Clone, Debug)]
 pub struct NumberRange {
-	start: Option<NumberBound>,
-	end: Option<NumberBound>,
+	pub(crate) start: Option<NumberBound>,
+	pub(crate) end: Option<NumberBound>,
 }
 
 impl Parse for NumberRange {
@@ -819,7 +826,8 @@ fn parse_node_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::
 	})
 }
 
-fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
+/// Parses a parameter and its attributes, for a proto node's field or a graph's import.
+pub(crate) fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
 	let ident = &pat_ident.ident;
 
 	// Checks for the #[data] attribute, indicating that this is a data field rather than an input parameter to the node.
@@ -978,6 +986,22 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		})
 		.transpose()?;
 
+	// `#[labels("W", "H")]` names a Vec2 widget's two fields, and `#[integer]` makes a number or Vec2 widget take only integers
+	let labels = extract_attribute(attrs, "labels")
+		.map(|attr| {
+			let labels: Vec<LitStr> = attr.parse_args_with(Punctuated::<LitStr, Comma>::parse_terminated)?.into_iter().collect();
+			let [x, y] = <[LitStr; 2]>::try_from(labels).map_err(|_| Error::new_spanned(attr, "Give a Vec2 widget two labels, like `#[labels(\"W\", \"H\")]`"))?;
+			Ok::<_, Error>((x, y))
+		})
+		.transpose()?;
+	let integer = extract_attribute(attrs, "integer").is_some();
+
+	// `#[blank_assist(false)]` drops the space a widget leaves for the assist area beside it
+	let blank_assist = extract_attribute(attrs, "blank_assist")
+		.map(|attr| attr.parse_args::<syn::LitBool>().map(|enabled| enabled.value))
+		.transpose()?
+		.unwrap_or(true);
+
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs
 		.iter()
@@ -1036,6 +1060,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			progression,
 			constant,
 			is_data_field,
+			labels,
+			integer,
+			blank_assist,
 		})
 	} else {
 		let implementations = extract_attribute(attrs, "implementations")
@@ -1088,6 +1115,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			progression,
 			constant,
 			is_data_field,
+			labels,
+			integer,
+			blank_assist,
 		})
 	}
 }
@@ -1387,6 +1417,9 @@ mod tests {
 				progression: false,
 				constant: false,
 				is_data_field: false,
+				labels: None,
+				integer: false,
+				blank_assist: true,
 			}],
 			body: TokenStream2::new(),
 			description: String::from("Multi\nLine\n"),
@@ -1449,6 +1482,9 @@ mod tests {
 					progression: false,
 					constant: false,
 					is_data_field: false,
+					labels: None,
+					integer: false,
+					blank_assist: true,
 				},
 				ParsedField {
 					pat_ident: pat_ident("translate"),
@@ -1473,6 +1509,9 @@ mod tests {
 					progression: false,
 					constant: false,
 					is_data_field: false,
+					labels: None,
+					integer: false,
+					blank_assist: true,
 				},
 			],
 			body: TokenStream2::new(),
@@ -1536,6 +1575,9 @@ mod tests {
 				progression: false,
 				constant: false,
 				is_data_field: false,
+				labels: None,
+				integer: false,
+				blank_assist: true,
 			}],
 			body: TokenStream2::new(),
 			description: "Test\n".into(),
@@ -1602,6 +1644,9 @@ mod tests {
 				progression: false,
 				constant: false,
 				is_data_field: false,
+				labels: None,
+				integer: false,
+				blank_assist: true,
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1671,6 +1716,9 @@ mod tests {
 				progression: false,
 				constant: false,
 				is_data_field: false,
+				labels: None,
+				integer: false,
+				blank_assist: true,
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1765,6 +1813,9 @@ mod tests {
 				progression: false,
 				constant: false,
 				is_data_field: false,
+				labels: None,
+				integer: false,
+				blank_assist: true,
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),

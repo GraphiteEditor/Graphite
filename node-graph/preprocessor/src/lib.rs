@@ -416,7 +416,8 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 				return NodeInput::value(TaggedValue::None, true);
 			};
 			let ty = ty.clone().normalize_rank();
-			let exposed = if index == 0 { ty != fn_type!(Context, ()) } else { field.exposed };
+			// A `()` primary has nothing to connect, whether it's a proto node's lazy input or a graph's import
+			let exposed = if index == 0 { ty != fn_type!(Context, ()) && ty != concrete!(()) } else { field.exposed };
 
 			match &field.value_source {
 				RegistryValueSource::None => {}
@@ -543,7 +544,7 @@ mod destructure_tests {
 	fn vec2_to_numbers_network() -> NodeNetwork {
 		let vec2_to_numbers = DocumentNode {
 			inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::new(3., 5.)), false)],
-			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER),
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::vec2_to_numbers::IDENTIFIER),
 			..Default::default()
 		};
 		multi_output_into_add_network(vec2_to_numbers, [1, 2])
@@ -561,7 +562,7 @@ mod destructure_tests {
 
 	#[test]
 	fn multi_output_node_expands_into_generated_destructure_network() {
-		let vec2_to_numbers_identifier = graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER;
+		let vec2_to_numbers_identifier = graphene_std::math_nodes::vec2_to_numbers::IDENTIFIER;
 		let destructure = registry::MULTI_OUTPUT_NODES
 			.get(&vec2_to_numbers_identifier)
 			.expect("Vec2 to Numbers should be registered as a multi-output node");

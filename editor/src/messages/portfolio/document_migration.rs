@@ -472,9 +472,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	// The old 'Vec2 Value' node took separate X and Y inputs, a role now filled by 'Numbers to Vec2', while the new 'Vec2 Value' node takes a single vec2 input.
-	// Old references (including these older aliases) are remapped here to `vec_2_value::IDENTIFIER` so the per-node migration in `migrate_node` can detect the leftover 3-input shape and convert it into a 'Numbers to Vec2' node.
+	// Old references (including these older aliases) are remapped here to `vec2_value::IDENTIFIER` so the per-node migration in `migrate_node` can detect the leftover 3-input shape and convert it into a 'Numbers to Vec2' node.
 	NodeReplacement {
-		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
+		node: graphene_std::math_nodes::vec2_value::IDENTIFIER,
 		aliases: &[
 			"graphene_math_nodes::Vec2ValueNode",
 			"graphene_core::ops::ConstructVector2",
@@ -484,7 +484,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::numbers_to_vec_2::IDENTIFIER,
+		node: graphene_std::math_nodes::numbers_to_vec2::IDENTIFIER,
 		aliases: &["math_nodes::CombineVec2Node"],
 	},
 	// ================================
@@ -1576,8 +1576,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	// A wrapper saved before these gained a hidden primary output had each field one output lower, so its wires shift up by one.
 	// Pre-pass for the same reason as the Brush, Transform, and Image migrations above: replacing the outer network impl orphans its child paths.
 	let split_wrapper_replacements = [
-		("Split Vec2", graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER),
-		("Split Vector2", graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER),
+		("Split Vec2", graphene_std::math_nodes::vec2_to_numbers::IDENTIFIER),
+		("Split Vector2", graphene_std::math_nodes::vec2_to_numbers::IDENTIFIER),
 		("Split Channels", graphene_std::raster_nodes::adjustments::image_to_channels::IDENTIFIER),
 	];
 	for (old_reference, new_identifier) in split_wrapper_replacements {
@@ -1641,7 +1641,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			let DocumentNodeImplementation::ProtoNode(protonode_id) = &node.implementation else { return None };
 			let name = protonode_id.as_str().split('<').next().unwrap_or_default();
 			if EXTRACT_XY.contains(&name) {
-				Some((*node_id, path, graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER, "Extract XY"))
+				Some((*node_id, path, graphene_std::math_nodes::vec2_to_numbers::IDENTIFIER, "Extract XY"))
 			} else if EXTRACT_CHANNEL.contains(&name) {
 				Some((*node_id, path, graphene_std::raster_nodes::adjustments::image_to_channels::IDENTIFIER, "Extract Channel"))
 			} else {
@@ -2856,8 +2856,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// Convert the old 'Vec2 Value' node, identified by its leftover 3-input shape with separate X and Y inputs,
 	// into the 'Numbers to Vec2' node which now fills that role (the new 'Vec2 Value' node instead takes a single vec2 input)
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::vec_2_value::IDENTIFIER) && inputs_count == 3 {
-		let numbers_to_vec2_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::numbers_to_vec_2::IDENTIFIER);
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::vec2_value::IDENTIFIER) && inputs_count == 3 {
+		let numbers_to_vec2_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::numbers_to_vec2::IDENTIFIER);
 		let mut node_template = resolve_document_node_type(&numbers_to_vec2_reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
@@ -5143,7 +5143,11 @@ mod tests {
 		let NodeTemplateImplementation::Network(network_template) = &mut node_template.implementation else {
 			panic!("Blend should be a network node")
 		};
-		let count_conversion = network_template.nodes.get_mut(&NodeId(3)).expect("Blend should have a count conversion node");
+		let (&count_conversion_id, count_conversion) = network_template
+			.nodes
+			.iter_mut()
+			.find(|(_, node)| node.inputs.iter().any(|input| matches!(input, NodeInput::Import { import_index: 1, .. })))
+			.expect("Blend should have a count conversion node");
 		count_conversion.implementation = NodeTemplateImplementation::ProtoNode(graphene_std::math_nodes::floor::IDENTIFIER);
 		count_conversion.inputs = vec![NodeInput::import(item!(f64), 1)];
 		document.network_interface.insert_node(node_id, node_template, &[]);
@@ -5160,7 +5164,7 @@ mod tests {
 			panic!("Blend should stay a network node")
 		};
 		assert_eq!(
-			inner.nodes[&shipped_node_id("Blend", NodeId(3))].implementation,
+			inner.nodes[&shipped_node_id("Blend", count_conversion_id)].implementation,
 			DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::as_number::IDENTIFIER)
 		);
 	}
@@ -5177,7 +5181,11 @@ mod tests {
 		let NodeTemplateImplementation::Network(network_template) = &mut node_template.implementation else {
 			panic!("Blend should be a network node")
 		};
-		let edited_subtract = network_template.nodes.get_mut(&NodeId(5)).expect("Blend should have an open-path denominator node");
+		let (&edited_subtract_id, edited_subtract) = network_template
+			.nodes
+			.iter_mut()
+			.find(|(_, node)| node.implementation == NodeTemplateImplementation::ProtoNode(graphene_std::math_nodes::subtract::IDENTIFIER))
+			.expect("Blend should have an open-path denominator node");
 		edited_subtract.inputs[1] = NodeInput::value(TaggedValue::Number(42.), false);
 		document.network_interface.insert_node(node_id, node_template, &[]);
 
@@ -5187,7 +5195,7 @@ mod tests {
 		let (DocumentNodeImplementation::Definition(definition), Some(inner)) = (implementation, document.network_interface.document_network().implementation_network(implementation)) else {
 			panic!("Blend should stay a network node")
 		};
-		let edited_subtract = derived_node_id(*definition, NodeId(5));
+		let edited_subtract = derived_node_id(*definition, edited_subtract_id);
 		assert_eq!(inner.nodes[&edited_subtract].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Number(42.)));
 	}
 
@@ -5269,8 +5277,15 @@ mod tests {
 		let NodeTemplateImplementation::Network(network_template) = &mut node_template.implementation else {
 			panic!("Regex Find should be a network node")
 		};
-		network_template.nodes.get_mut(&NodeId(0)).expect("Regex Find should have a find node").inputs[2] = NodeInput::import(item!(f64), 2);
-		network_template.nodes.get_mut(&NodeId(1)).expect("Regex Find should have an item-at-index node").inputs[1] = NodeInput::value(TaggedValue::Number(0.), false);
+		let inner_node_id = |identifier: graphene_std::ProtoNodeIdentifier| {
+			let implementation = NodeTemplateImplementation::ProtoNode(identifier);
+			network_template.nodes.iter().find(|(_, node)| node.implementation == implementation).map(|(&id, _)| id)
+		};
+		let find_id = inner_node_id(graphene_std::text_nodes::regex::regex_find::IDENTIFIER).expect("Regex Find should have a find node");
+		let item_at_index_id = inner_node_id(graphene_std::graphic::item_at_index::IDENTIFIER).expect("Regex Find should have an item-at-index node");
+
+		network_template.nodes.get_mut(&find_id).expect("the find node should exist").inputs[2] = NodeInput::import(item!(f64), 2);
+		network_template.nodes.get_mut(&item_at_index_id).expect("the item-at-index node should exist").inputs[1] = NodeInput::value(TaggedValue::Number(0.), false);
 		document.network_interface.insert_node(node_id, node_template, &[]);
 
 		migrate(&mut document);
@@ -5284,9 +5299,9 @@ mod tests {
 		let Some(inner) = document.network_interface.document_network().implementation_network(&node.implementation) else {
 			panic!("Regex Find should stay a network node")
 		};
-		assert_eq!(inner.nodes[&shipped_node_id("Regex Find", NodeId(0))].inputs.get(2), Some(&NodeInput::import(item!(i64), 2)));
+		assert_eq!(inner.nodes[&shipped_node_id("Regex Find", find_id)].inputs.get(2), Some(&NodeInput::import(item!(i64), 2)));
 		assert_eq!(
-			inner.nodes[&shipped_node_id("Regex Find", NodeId(1))].inputs.get(1).and_then(|input| input.as_value()).cloned(),
+			inner.nodes[&shipped_node_id("Regex Find", item_at_index_id)].inputs.get(1).and_then(|input| input.as_value()).cloned(),
 			Some(TaggedValue::Integer(0))
 		);
 	}

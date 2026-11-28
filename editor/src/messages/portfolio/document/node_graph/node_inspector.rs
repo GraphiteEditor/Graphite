@@ -238,7 +238,7 @@ pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<Widge
 }
 
 /// The presentation of a parameter's widget, sourced from the node's field metadata: numeric bounds, widget modes, and unit of measure.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 pub(crate) struct ParameterOptions {
 	pub soft_min: Option<f64>,
 	pub soft_max: Option<f64>,
@@ -250,6 +250,50 @@ pub(crate) struct ParameterOptions {
 	pub unit: Option<&'static str>,
 	pub display_decimal_places: Option<u32>,
 	pub step: Option<f64>,
+	pub labels: Option<(&'static str, &'static str)>,
+	pub integer: bool,
+	pub blank_assist: bool,
+}
+
+impl Default for ParameterOptions {
+	fn default() -> Self {
+		Self {
+			soft_min: None,
+			soft_max: None,
+			hard_min: None,
+			hard_max: None,
+			slider: false,
+			multiline: false,
+			progression: false,
+			unit: None,
+			display_decimal_places: None,
+			step: None,
+			labels: None,
+			integer: false,
+			blank_assist: true,
+		}
+	}
+}
+
+impl ParameterOptions {
+	/// The options a proto node's field or a graph's import gives its widget.
+	pub(crate) fn from_field(field: &graphene_std::registry::FieldMetadata) -> Self {
+		Self {
+			soft_min: field.number_soft_min,
+			soft_max: field.number_soft_max,
+			hard_min: field.number_hard_min,
+			hard_max: field.number_hard_max,
+			slider: field.number_mode_range,
+			multiline: field.multiline,
+			progression: field.progression,
+			unit: field.unit,
+			display_decimal_places: field.number_display_decimal_places,
+			step: field.number_step,
+			labels: field.labels,
+			integer: field.integer,
+			blank_assist: field.blank_assist,
+		}
+	}
 }
 
 /// The values a range slider's two ends map to linearly and the one its double-click restores, if known.
@@ -303,9 +347,12 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 		unit,
 		display_decimal_places,
 		step,
+		labels,
+		integer,
+		blank_assist,
 	} = options;
 
-	let mut number_input = NumberInput::default();
+	let mut number_input = NumberInput::default().is_integer(integer);
 	if slider {
 		number_input = number_input.mode_range();
 	}
@@ -348,7 +395,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 		}
 	};
 
-	let default_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+	let default_info = ParameterWidgetsInfo::at_index(node_id, index, blank_assist, context);
 
 	// A type with no widget can only be supplied through the graph, labeled with a placeholder row
 	let unsupported_widgets = |default_info: ParameterWidgetsInfo, type_label: String| {
@@ -392,7 +439,10 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 					true => text_area_widget(default_info).into(),
 					false => text_widget(default_info).into(),
 				},
-				Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", unit.unwrap_or(""), None, false, false),
+				Some(x) if id_is::<DVec2>(x) => {
+					let (x_label, y_label) = labels.unwrap_or(("X", "Y"));
+					vec2_widget(default_info, x_label, y_label, unit.unwrap_or(""), hard_min, hard_max, integer, false)
+				}
 				Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
 				Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
 				Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
@@ -894,7 +944,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	}
 }
 
-pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool, disabled: bool) -> LayoutGroup {
+pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, max: Option<f64>, is_integer: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(&parameter_widgets_info);
 
 	let Some(input) = parameter_widgets_info.input() else {
@@ -909,7 +959,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.label(x)
 					.unit(unit)
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
-					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.max(max.unwrap_or((1_u64 << f64::MANTISSA_DIGITS) as f64))
 					.is_integer(is_integer)
 					.disabled(disabled)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y))))
@@ -920,7 +970,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.label(y)
 					.unit(unit)
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
-					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.max(max.unwrap_or((1_u64 << f64::MANTISSA_DIGITS) as f64))
 					.is_integer(is_integer)
 					.disabled(disabled)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap()))))
@@ -935,7 +985,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.label(x)
 					.unit(unit)
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
-					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.max(max.unwrap_or((1_u64 << f64::MANTISSA_DIGITS) as f64))
 					.is_integer(is_integer)
 					.disabled(disabled)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), value))))
@@ -946,7 +996,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.label(y)
 					.unit(unit)
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
-					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.max(max.unwrap_or((1_u64 << f64::MANTISSA_DIGITS) as f64))
 					.is_integer(is_integer)
 					.disabled(disabled)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(value, input.value.unwrap()))))
@@ -2788,10 +2838,10 @@ pub(crate) fn grid_inspector(node_id: NodeId, context: &mut NodeInspectorContext
 				ParameterWidgetsInfo::new(node_id, SpacingInput, true, context),
 				NumberInput::default().label("H").min(0.).unit(" px"),
 			));
-			let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false, false);
+			let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, None, false, false);
 			widgets.extend([spacing, angles]);
 		} else {
-			let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false, false);
+			let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), None, false, false);
 			widgets.push(spacing);
 		}
 	}
@@ -3254,40 +3304,20 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 			}
 
 			let row = context.call_widget_override(&node_id, input_index).unwrap_or_else(|| {
+				let field = context.network_interface.field_metadata(&node_id, input_index, context.selection_network_path);
+				let options = field.as_ref().map(ParameterOptions::from_field).unwrap_or_default();
+
 				let Some(implementation) = context.network_interface.implementation(&node_id, context.selection_network_path) else {
 					log::error!("Could not get implementation for node {node_id}");
 					return Vec::new();
 				};
 
-				let mut options = ParameterOptions::default();
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
 						// Clone to end the `network_interface` borrow held via `implementation`, freeing the mutable borrow `input_type` needs below
 						let proto_node_identifier = proto_node_identifier.clone();
 
-						let mut default_type = None;
-						if let Some(field) = graphene_std::registry::NODE_METADATA
-							.lock()
-							.unwrap()
-							.get(&proto_node_identifier)
-							.and_then(|metadata| metadata.fields.get(input_index))
-						{
-							options = ParameterOptions {
-								soft_min: field.number_soft_min,
-								soft_max: field.number_soft_max,
-								hard_min: field.number_hard_min,
-								hard_max: field.number_hard_max,
-								slider: field.number_mode_range,
-								multiline: field.multiline,
-								progression: field.progression,
-								unit: field.unit,
-								display_decimal_places: field.number_display_decimal_places,
-								step: field.number_step,
-							};
-							default_type = field.default_type.clone();
-						}
-
-						if let Some(default) = default_type {
+						if let Some(default) = field.and_then(|field| field.default_type) {
 							break 'early_return default;
 						}
 
@@ -3303,12 +3333,21 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 						let Some(input_type) = input_type else { return Vec::new() };
 						input_type.clone()
 					}
-					_ => context
-						.network_interface
-						.input_type(&InputConnector::node_at_index(node_id, input_index), context.selection_network_path)
-						.compiled_nested_type()
-						.cloned()
-						.unwrap_or(concrete!(())),
+					_ => {
+						// A graph import's declared type still picks its widget while its wire's type is unresolved, such as during an error inside the subgraph
+						let declared_type = field.and_then(|field| field.default_type).map(|declared_type| match declared_type {
+							Type::Item(element) => *element,
+							declared_type => declared_type,
+						});
+
+						context
+							.network_interface
+							.input_type(&InputConnector::node_at_index(node_id, input_index), context.selection_network_path)
+							.compiled_nested_type()
+							.cloned()
+							.or(declared_type)
+							.unwrap_or(concrete!(()))
+					}
 				};
 
 				inspector_row_from_type(node_id, input_index, &input_type, options, context).unwrap_or_else(|value| value)

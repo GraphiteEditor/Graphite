@@ -398,7 +398,8 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 
 #[cfg(test)]
 mod tests {
-	use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, shipped_node_id};
+	use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
+	use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeTemplateImplementation, shipped_node_id};
 	use crate::test_utils::test_prelude::*;
 	use glam::UVec2;
 	use graph_craft::document::NodeId;
@@ -429,8 +430,20 @@ mod tests {
 		editor.draw_rect(0., 0., 10., 10.).await;
 		let layer = editor.get_selected_layer().await.expect("The drawn rectangle should be selected").to_node();
 
+		// The node adding Merge's content to the stack
+		let Some(NodeTemplateImplementation::Network(merge_network)) = resolve_network_node_type("Merge").map(|merge| &merge.node_template.implementation) else {
+			panic!("Merge should be a network node")
+		};
+		let Some((&extend_id, _)) = merge_network
+			.nodes
+			.iter()
+			.find(|(_, node)| node.implementation == NodeTemplateImplementation::ProtoNode(graphene_std::graphic::extend::IDENTIFIER))
+		else {
+			panic!("Merge should extend the stack with its content")
+		};
+
 		compile_and_run(&mut editor).await;
-		let merge_content = compiled_id(&editor, &[layer, layer_path_writer_id(shipped_node_id("Merge", NodeId(2)))]);
+		let merge_content = compiled_id(&editor, &[layer, layer_path_writer_id(shipped_node_id("Merge", extend_id))]);
 		assert!(merge_content.is_some(), "The Merge layer's content should be compiled");
 		assert_eq!(
 			editor.runtime.thumbnails.sources.get(&layer).copied(),
