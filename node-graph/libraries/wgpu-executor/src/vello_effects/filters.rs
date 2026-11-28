@@ -1,9 +1,11 @@
 //! The GPU passes of the filter effects, matching the CPU's `filter_kernels`.
 
 use super::{PARAMETER_TAPS, Parameters, PassRecorder, SUMS_FORMAT, WORKING_FORMAT};
-use glam::{DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::effects::spans_along_axes;
-use graphic_types::filters::{Convolution, SHARPEN_NEIGHBORS, SOBEL_TAPS, Surroundings, UnsharpBlur, VISIBLE_ALPHA, neighborhood_radii, sharpens_coverage, unsharp};
+use graphic_types::filters::{
+	Convolution, FieldSampling, NoiseDistribution, RandomField, SHARPEN_NEIGHBORS, SOBEL_TAPS, Surroundings, UnsharpBlur, VISIBLE_ALPHA, neighborhood_radii, noise_extent, sharpens_coverage, unsharp,
+};
 use graphic_types::{EffectOperation, MinimumMaximumMode};
 use raster_kernels::effect_kernels::BlurKernel;
 use raster_kernels::filter_kernels::pixel_fill_shifts;
@@ -28,18 +30,93 @@ fn sobel_taps(lengths_to_pixels: DMat2) -> [[f32; 4]; 8] {
 	})
 }
 
+/// The parameters placing a random field's samples in each texel as `sampling` describes, matching the shader's `field_values`, with its integers split into exact halves.
+fn field_parameters(sampling: &FieldSampling, first_seed: u32, second_seed: u32) -> Parameters {
+	let halves = |value: u32| [(value & 0xffff) as f32, (value >> 16) as f32];
+	let axes = sampling.pixel_axes;
+
+	let mut taps = [[0.; 4]; PARAMETER_TAPS];
+	taps[0] = [axes.x_axis.x, axes.x_axis.y, axes.y_axis.x, axes.y_axis.y].map(|value| value as f32);
+	taps[1] = [sampling.origin_fraction.x as f32, sampling.origin_fraction.y as f32, 0., 0.];
+	taps[2] = [sampling.counts.x as f32, sampling.counts.y as f32, sampling.spreads.x as f32, sampling.spreads.y as f32];
+	let ([first_low, first_high], [second_low, second_high]) = (halves(first_seed), halves(second_seed));
+	taps[3] = [first_low, first_high, second_low, second_high];
+	let ([x_low, x_high], [y_low, y_high]) = (halves(sampling.origin_cell.x as u32), halves(sampling.origin_cell.y as u32));
+	taps[4] = [x_low, x_high, y_low, y_high];
+	Parameters { taps, ..Default::default() }
+}
+
+/// The passes of a random field filter, rendering its map for an SVG and carrying it out, with their parameters, or `None` for any other operation.
+fn field_passes(operation: &EffectOperation, effect_to_pixels: DAffine2) -> Option<(&'static str, &'static str, Parameters)> {
+	let sampling = FieldSampling::new(effect_to_pixels.inverse());
+	match *operation {
+		EffectOperation::AddNoise {
+			amount,
+			distribution,
+			monochromatic,
+			seed,
+		} => {
+			let amount = amount / 100.;
+			let gaussian = if distribution == NoiseDistribution::Gaussian { 1. } else { 0. };
+			let parameters = Parameters {
+				values: [
+					(amount * sampling.deviation_scale) as f32,
+					noise_extent(amount, distribution) as f32,
+					gaussian,
+					if monochromatic { 1. } else { 0. },
+				],
+				..field_parameters(&sampling, RandomField::NoiseOffsets.seed(seed), RandomField::NoiseAngles.seed(seed))
+			};
+			Some(("noise_map", "add_noise", parameters))
+		}
+		EffectOperation::Dissolve { opacity, seed } => {
+			let parameters = Parameters {
+				values: [(opacity / 100.) as f32, sampling.deviation_scale as f32, 0., 0.],
+				..field_parameters(&sampling, RandomField::Dissolve.seed(seed), 0)
+			};
+			Some(("dissolve_map", "dissolve", parameters))
+		}
+		_ => None,
+	}
+}
+
 impl PassRecorder<'_> {
-	/// Carries out a filter effect on both the full-strength content (`content` itself until a pass replaces it) and the faded fill, with its lengths mapped onto pixels by `lengths_to_pixels`.
-	/// A filter whose result an SVG takes as a map hands it to `capture` as plane 0 for the content and 1 for the fill.
+	/// Carries out a filter effect on both the full-strength content (`content` itself until a pass replaces it) and the faded fill, with `effect_to_pixels` placing the effect space on their pixels.
+	/// A filter hands what an SVG takes as a map to `capture` as plane 0 for the content and 1 for the fill, and a random field's map, which an SVG asks for as `captured_plane` 0, serves both.
+	#[expect(clippy::too_many_arguments)]
 	pub(super) fn filter(
 		&mut self,
 		content: &wgpu::Texture,
 		full: &mut Option<wgpu::Texture>,
 		filled: &mut Option<wgpu::Texture>,
 		operation: &EffectOperation,
-		lengths_to_pixels: DMat2,
+		effect_to_pixels: DAffine2,
+		captured_plane: Option<usize>,
 		capture: &mut dyn FnMut(&mut Self, usize, &wgpu::Texture),
 	) {
+		// A random field doesn't depend on the content, so one map serves both planes, except where the fill forks them and an SVG takes each one's result
+		if let Some((map_entry_point, filter_entry_point, parameters)) = field_passes(operation, effect_to_pixels) {
+			let forked = filled.is_some();
+			if captured_plane == Some(0) && !forked {
+				let map = self.run(map_entry_point, WORKING_FORMAT, self.size, full.as_ref().unwrap_or(content), None, None, parameters);
+				capture(self, 0, &map);
+				self.textures.release(map);
+			}
+
+			let filtered = self.run(filter_entry_point, WORKING_FORMAT, self.size, full.as_ref().unwrap_or(content), None, None, parameters);
+			if forked {
+				capture(self, 0, &filtered);
+			}
+			self.replace_or_fill(full, filtered);
+
+			if let Some(filled) = filled {
+				let filtered = self.run(filter_entry_point, WORKING_FORMAT, self.size, filled, None, None, parameters);
+				capture(self, 1, &filtered);
+				self.replace(filled, filtered);
+			}
+			return;
+		}
+
 		// A filter sharpening the coverage fades the fill's result by the share of the full-strength coverage each texel's fill left, matching the CPU's `faded_by_shares`
 		let unfiltered = full.as_ref().unwrap_or(content);
 		let shares = filled
@@ -48,10 +125,10 @@ impl PassRecorder<'_> {
 			.map(|filled| self.run("fill_shares", WORKING_FORMAT, self.size, filled, None, Some(unfiltered), Parameters::default()));
 
 		// The fill fades the content after the filter, so the full-strength content decides which of the fill's pixels are visible
-		let filtered_full = self.filtered(unfiltered, unfiltered, operation, lengths_to_pixels, 0, capture);
+		let filtered_full = self.filtered(unfiltered, unfiltered, operation, effect_to_pixels, 0, capture);
 		let filtered_filled = match filled.as_ref() {
-			Some(filled) if shares.is_some() => Some(self.filtered(filled, unfiltered, operation, lengths_to_pixels, 1, &mut |_, _, _| {})),
-			Some(filled) => Some(self.filtered(filled, unfiltered, operation, lengths_to_pixels, 1, capture)),
+			Some(filled) if shares.is_some() => Some(self.filtered(filled, unfiltered, operation, effect_to_pixels, 1, &mut |_, _, _| {})),
+			Some(filled) => Some(self.filtered(filled, unfiltered, operation, effect_to_pixels, 1, capture)),
 			None => None,
 		};
 		self.replace_or_fill(full, filtered_full);
@@ -76,10 +153,11 @@ impl PassRecorder<'_> {
 		image: &wgpu::Texture,
 		full: &wgpu::Texture,
 		operation: &EffectOperation,
-		lengths_to_pixels: DMat2,
+		effect_to_pixels: DAffine2,
 		plane: usize,
 		capture: &mut dyn FnMut(&mut Self, usize, &wgpu::Texture),
 	) -> wgpu::Texture {
+		let lengths_to_pixels = effect_to_pixels.matrix2;
 		if let Some(convolution) = operation.convolution() {
 			let convolved = self.convolve(image, full, &convolution, lengths_to_pixels);
 			if !convolution.weighs_coverage {

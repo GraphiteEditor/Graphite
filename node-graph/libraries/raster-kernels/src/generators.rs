@@ -176,7 +176,7 @@ fn white_noise(seed: i32, cell: IVec2) -> f32 {
 }
 
 /// PCG3D from Jarzynski and Olano's "Hash Functions for GPU Rendering", which spreads every input bit across the result.
-fn pcg3d(input: [u32; 3]) -> [u32; 3] {
+pub(crate) fn pcg3d(input: [u32; 3]) -> [u32; 3] {
 	let mix = |[x, y, z]: [u32; 3]| {
 		let x = x.wrapping_add(y.wrapping_mul(z));
 		let y = y.wrapping_add(z.wrapping_mul(x));

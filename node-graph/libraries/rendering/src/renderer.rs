@@ -18,14 +18,15 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME,
-	ATTR_EFFECTS, ATTR_FONT, ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY,
-	ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_EFFECTS, ATTR_FONT, ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT,
+	ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_resource::Resource;
 use graphic_types::effect_layers::{EffectLayers, LayerPart, PiecePlace, content_image_effects, is_pixel_filter, piece_blend_mode};
 use graphic_types::effects::{EffectCapture, GlowFill, effect_space, spans_along_axes};
+use graphic_types::filters::is_random_field_filter;
 use graphic_types::generator::GeneratorPattern;
 use graphic_types::masks::{MaskMode, masked_radius_blur_levels};
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -1318,17 +1319,23 @@ impl SvgFilterPrimitives {
 	}
 
 	/// A placeholder for the map of an effect's coverage that `capture` names, which the GPU renders, returning the name of the result it stands for.
+	/// Until it's resolved, the placeholder covers nothing.
 	fn map(&mut self, capture: EffectCapture) -> String {
-		self.map_unresolved_as(capture, 0.)
+		self.map_unresolved_as(capture, Color::TRANSPARENT)
 	}
 
-	/// Like [`Self::map`], with the placeholder covering everything to the `coverage` from 0 to 1 until the GPU resolves it, which leaves out an effect multiplying the content by its map at 1.
-	fn map_unresolved_as(&mut self, capture: EffectCapture, coverage: f64) -> String {
+	/// Like [`Self::map`], with the placeholder flooding the region with `flood` until it's resolved, the value that leaves the effect out where it can.
+	/// A map already taken for the same capture is read again.
+	fn map_unresolved_as(&mut self, capture: EffectCapture, flood: Color) -> String {
+		if let Some(map) = self.maps.iter().find(|map| map.capture == capture) {
+			return map.result.clone();
+		}
+
 		self.count += 1;
 		let result = format!("effect-{}", self.count);
 		let id = generate_uuid();
 
-		self.markup.push_str(&deferred_image::map_placeholder(id, &result, coverage));
+		self.markup.push_str(&deferred_image::map_placeholder(id, &result, flood));
 		self.maps.push(SvgEffectMap { id, capture, result: result.clone() });
 		result
 	}
@@ -1796,7 +1803,7 @@ fn write_svg_effects_filter_on_lattice(
 
 				// The GPU's map gives the strength where embedding the markup as an image can't: with effects of the graphic's own, or markup that's live in the document
 				let strength = match masks::holds_effects(mask) || !carried_out {
-					true => primitives.map_unresolved_as(map_capture(0), 1.),
+					true => primitives.map_unresolved_as(map_capture(0), Color::BLACK),
 					false => {
 						let image = primitives.paint_image(markup, region);
 						primitives.mask_strength(&image, mode, density, masks::svg_feather_sigma(feather, DVec2::ONE), invert)
@@ -1827,7 +1834,7 @@ fn write_svg_effects_filter_on_lattice(
 				primitives.merge_beneath(&mut full, &mut filled, beneath.take());
 
 				// Until the GPU resolves it, the map leaves the content unfeathered
-				let strength = primitives.map_unresolved_as(map_capture(0), 1.);
+				let strength = primitives.map_unresolved_as(map_capture(0), Color::BLACK);
 				let mut faded = |image: &str| primitives.push("feComposite", &format!(r#"in="{image}" in2="{strength}" operator="in""#), "");
 				filled = filled.map(|filled| faded(&filled));
 				full = faded(&full);
@@ -1847,14 +1854,16 @@ fn write_svg_effects_filter_on_lattice(
 			| EffectOperation::FindEdges
 			| EffectOperation::MinimumMaximum { .. }
 			| EffectOperation::Sharpen { .. }
-			| EffectOperation::HighPass { .. } => {
+			| EffectOperation::HighPass { .. }
+			| EffectOperation::AddNoise { .. }
+			| EffectOperation::Dissolve { .. } => {
 				if !(shows_content || cuts_within) {
 					continue;
 				}
 				primitives.merge_beneath(&mut full, &mut filled, beneath.take());
 
 				// Those keeping the content's coverage leave alone all a layer cutting its pieces within the content reads
-				let changes_coverage = matches!(operation, EffectOperation::MinimumMaximum { .. }) || graphic_types::filters::sharpens_coverage(&operation);
+				let changes_coverage = matches!(operation, EffectOperation::MinimumMaximum { .. } | EffectOperation::Dissolve { .. }) || graphic_types::filters::sharpens_coverage(&operation);
 				if !shows_content && !changes_coverage {
 					continue;
 				}
@@ -4786,38 +4795,57 @@ const MAX_GENERATOR_IMAGE_PIXELS: f64 = 8192.;
 /// The most pixels across or down a thumbnail's image of a generator may have, whatever the size of the area it shows.
 const MAX_GENERATOR_THUMBNAIL_PIXELS: f64 = 256.;
 
-/// Emits one item of generator content as SVG, as an image of the part in view at the view's resolution.
+/// Emits one item of generator content as SVG, as an image of the part in view at the view's resolution, through its effects as for other endless content.
 fn render_generator_item_svg(item: ItemRef<'_, Generator>, render: &mut SvgRender, render_params: &RenderParams) {
 	let Some(&generator) = item.element() else { return };
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+	let compositing = item.compositing(render_params, transform);
 
-	// An image of the area in view, grown by how far its own effects and the filters of the groups around it read, so they find no edges in view, stands in for it
-	let own_reach = item
-		.attribute::<Effects>(ATTR_EFFECTS)
-		.map_or(0., |effects| effects.reach_along_axes_by(render.transform * transform, EffectOperation::working_reach).max_element());
-	let Some((area, width, height)) = generator_area_in_view(transform, render.ancestors_reach + own_reach, render, render_params) else {
+	// An image of the area in view, grown by how far its own filters and those of the groups around it read around each pixel, so they find no edges in view, stands in for it
+	let Some((area, width, height)) = area_in_view(
+		transform,
+		compositing.effects.map_or(0., |(effects, _)| effects.read_reach(render.transform * transform)) + render.ancestors_reach,
+		render,
+		render_params,
+	) else {
 		return;
 	};
-
-	// An image of the area, carrying the generator's attributes, stands in for it
 	let pattern = GeneratorPattern::decode(generator, &|key| item.attribute_any(key));
-	let pixels = match raster_kernels::generators::render_pattern(&pattern, area, width, height) {
-		Ok(pixels) => pixels,
+	let image = match raster_kernels::generators::render_pattern(&pattern, area, width, height) {
+		Ok(pixels) => Raster::new_cpu(pixels),
 		Err(error) => {
 			log::error!("Failed to render a generator as an SVG image: {error}");
 			return;
 		}
 	};
-	// Its effects keep measuring in the generator's space, as if the generator's geometry had shrunk into the image's unit square
-	let area_to_generator = DAffine2::from_translation(area[0]) * DAffine2::from_scale(area[1] - area[0]);
-	let mut image = Item::from_parts(Raster::new_cpu(pixels), item.clone_item_attributes());
-	image.set_attribute(ATTR_TRANSFORM, transform * area_to_generator);
-	graphic_types::graphic::rebase_stamped_transforms(image.attributes_mut(), area_to_generator.inverse());
-	render_raster_cpu_item_svg(ItemRef::Item(&image), render, render_params);
+	let image_transform = transform * DAffine2::from_translation(area[0]) * DAffine2::from_scale(area[1] - area[0]);
+	let bounds = (image_transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box();
+
+	// The generator has no bounds, so paints without a placement of their own stay unfitted, as for a color or gradient
+	let deferred = start_deferred_markup(render, render_params, &compositing, || RenderBoundingBox::Rectangle(bounds));
+	let filters = compositing.svg_filters_within(render, render_params, bounds, None, |keeps| {
+		let mut content = effects_content(item, generator, keeps);
+		content.set_attribute(ATTR_EFFECTS, compositing.effects.map(|(effects, _)| effects.clone()).unwrap_or_default());
+		Graphic::Generator(content)
+	});
+
+	// A filter's wrapping group takes the opacity and blend mode instead
+	let (opacity, blend_mode) = match filters {
+		Some(_) => (1., BlendMode::default()),
+		None => (compositing.opacity_without_effects(), blend_mode_attr),
+	};
+	render_svg_through_filters(render, filters, compositing.opacity, render_params.to_canvas(), |render| {
+		render_raster_cpu_image_svg(&image, image_transform, opacity, blend_mode, render, render_params)
+	});
+
+	finish_deferred_markup(render, deferred, render_params, &compositing, blend_mode_attr, || {
+		Graphic::Generator(without_opacity_and_blend_mode(item, generator))
+	});
 }
 
-/// The part of a generator's own space in view, which `transform` places, grown past the view by `reach` in document pixels, with the pixels across and down it covers in the view.
-fn generator_area_in_view(transform: DAffine2, reach: f64, render: &SvgRender, render_params: &RenderParams) -> Option<([DVec2; 2], u32, u32)> {
+/// The part of an item's own space in view, which `transform` places, grown past the view by `reach` in document pixels, with the pixels across and down it covers in the view.
+fn area_in_view(transform: DAffine2, reach: f64, render: &SvgRender, render_params: &RenderParams) -> Option<([DVec2; 2], u32, u32)> {
 	// A thumbnail's footprint starts at the document area it shows, one pixel per unit, rather than mapping the document into a view
 	let (footprint, document_to_view, max_pixels) = match (render_params.thumbnail, render_params.view) {
 		(true, _) => (
@@ -4840,8 +4868,11 @@ fn generator_area_in_view(transform: DAffine2, reach: f64, render: &SvgRender, r
 	let view = Quad::from_box([DVec2::splat(-reach), footprint.resolution.as_dvec2() + reach]);
 	let [min, max] = (local_to_view.inverse() * view).bounding_box();
 
+	// An area far larger than the view, as at a deep zoom with a wide blur, gets fewer pixels, each spanning more of it
 	let pixels_per_unit = DVec2::new(local_to_view.matrix2.x_axis.length(), local_to_view.matrix2.y_axis.length());
-	let pixels = ((max - min) * pixels_per_unit).ceil().clamp(DVec2::ONE, DVec2::splat(max_pixels));
+	let full_pixels = (max - min) * pixels_per_unit;
+	let resolution = deferred_image::budgeted_resolution(full_pixels, footprint.resolution.as_dvec2().element_product(), max_pixels);
+	let pixels = (full_pixels * resolution).ceil().max(DVec2::ONE);
 	Some(([min, max], pixels.x as u32, pixels.y as u32))
 }
 
@@ -5083,7 +5114,7 @@ fn render_color_item_svg(item: ItemRef<'_, Color>, render: &mut SvgRender, rende
 		let filtered = filters.is_some();
 		render_svg_through_filters(render, filters, compositing.opacity, render_params.to_canvas(), |render| match filtered {
 			true => emit_endless_color(render, color, 1., BlendMode::Normal, None),
-			false => render_edgeless_color_svg(render, &compositing, color, render_params),
+			false => render_edgeless_color_svg(item, render, &compositing, color, render_params),
 		});
 		finish_deferred_markup(render, deferred, render_params, &compositing, blend_mode, || {
 			Graphic::Color(without_opacity_and_blend_mode(item, color))
@@ -5091,7 +5122,7 @@ fn render_color_item_svg(item: ItemRef<'_, Color>, render: &mut SvgRender, rende
 		return;
 	}
 
-	render_edgeless_color_svg(render, &compositing, color, render_params);
+	render_edgeless_color_svg(item, render, &compositing, color, render_params);
 }
 
 /// The area in view in the current user space, grown past it by how far the `effects` and the groups around them read, for endless content whose filters read it there, if it has any.
@@ -5102,12 +5133,25 @@ fn filtered_endless_area(effects: &Effects, compositing: &ItemCompositing, rende
 	let own_reach = effects
 		.reach_along_axes_by(render.transform * compositing.content_transform, EffectOperation::working_reach)
 		.max_element();
-	generator_area_in_view(DAffine2::IDENTITY, render.ancestors_reach + own_reach, render, render_params).map(|(area, _, _)| area)
+	area_in_view(DAffine2::IDENTITY, render.ancestors_reach + own_reach, render, render_params).map(|(area, _, _)| area)
 }
 
 /// Emits a color filling everything, which its masks may confine, with its compositing carried out on the color and its masks rather than by filters.
-fn render_edgeless_color_svg(render: &mut SvgRender, compositing: &ItemCompositing, color: Color, render_params: &RenderParams) {
-	// SVG filters change nothing visible about an endless color, so its adjustments are carried out on the color itself
+fn render_edgeless_color_svg(item: ItemRef<'_, Color>, render: &mut SvgRender, compositing: &ItemCompositing, color: Color, render_params: &RenderParams) {
+	// Random field filters (like Add Noise) change it within the area in view, through filters taking the adjustments before them on the color itself
+	let field_filters = endless_field_filters(compositing, None, render, render_params, |effects, keeps, adjustments| {
+		let mut content = effects_content(item, adjusted_color(color, adjustments), keeps);
+		content.set_attribute(ATTR_EFFECTS, effects);
+		Graphic::ColorList(List::new_from_item(content))
+	});
+	if let Some((filters, adjustments)) = field_filters {
+		let color = adjusted_color(color, &adjustments);
+		return render_svg_through_filters(render, Some(filters), compositing.opacity, render_params.to_canvas(), |render| {
+			emit_endless_color(render, color, 1., BlendMode::Normal, None)
+		});
+	}
+
+	// SVG filters change nothing else visible about an endless color, so its adjustments are carried out on the color itself
 	let paint = compositing.endless_paint();
 	let shown = filled_color(color, &paint.adjustments, paint.fill);
 	let full_alpha = adjusted_color(color, &paint.adjustments).a();
@@ -5159,6 +5203,73 @@ fn emit_endless_shape(attributes: &mut SvgRenderAttrs, rect: Option<(DVec2, DVec
 	attributes.push("points", format!("{extent},{extent} -{extent},{extent} -{extent},-{extent} {extent},-{extent}"));
 }
 
+/// For endless content (a color or gradient filling everything) with random field filters (like Add Noise), the adjustments before the first of them, which its paint takes instead,
+/// and the effects from there that change it: the random field filters with the adjustments, blurs, and masks after them. Its other effects have no edges to cast from. `None` without a random field filter.
+fn endless_field_effects(compositing: &ItemCompositing) -> Option<(Vec<Adjustment>, Effects)> {
+	let (effects, fill) = compositing.effects?;
+	let shown_effects = effects.keeping(|operation| {
+		let changes_endless_content = matches!(operation, EffectOperation::Adjustment(_) | EffectOperation::Blur { .. } | EffectOperation::Mask { .. });
+		!operation.changes_nothing() && (changes_endless_content || is_random_field_filter(operation))
+	});
+	let shown: Vec<EffectOperation> = shown_effects.operations().collect();
+	if !shown.iter().any(is_random_field_filter) {
+		return None;
+	}
+
+	// The paint takes the leading adjustments as `ItemCompositing::leading_adjustments` does, where a fill limits them to those commuting with it
+	let layers = EffectLayers::plan(&shown_effects, compositing.blend_mode, fill, compositing.layered);
+	let leading = (shown.iter().enumerate())
+		.take_while(|(index, operation)| match operation {
+			EffectOperation::Adjustment(Adjustment::ColorOverlay { .. }) => {
+				let with_content = *index < layers.flattened || layers.layer_of(EffectCapture { index: *index, plane: 0 }) == layers.content_layer();
+				fill == 1. && with_content
+			}
+			EffectOperation::Adjustment(adjustment) => fill == 1. || raster_kernels::adjustments::preserves_alpha(adjustment),
+			_ => false,
+		})
+		.count();
+
+	let adjustments = shown[..leading]
+		.iter()
+		.filter_map(|operation| match operation {
+			EffectOperation::Adjustment(adjustment) => Some(adjustment.clone()),
+			_ => None,
+		})
+		.collect();
+	Some((adjustments, shown_effects.after(leading)))
+}
+
+/// For endless content, the SVG filters carrying out the effects [`endless_field_effects`] finds within the thumbnail's rectangle (from its corner and size) or else the area in view, with the adjustments its paint takes instead.
+/// `content` gives the item for the GPU to render the maps from, with the effects the filters number them by and the adjustments before them carried out on it.
+fn endless_field_filters(
+	compositing: &ItemCompositing,
+	thumbnail_rect: Option<(DVec2, DVec2)>,
+	render: &mut SvgRender,
+	render_params: &RenderParams,
+	content: impl FnOnce(Effects, bool, &[Adjustment]) -> Graphic,
+) -> Option<(SvgEffects, Vec<Adjustment>)> {
+	let (adjustments, remaining) = endless_field_effects(compositing)?;
+
+	// Only content with these filters depends on the view, so the area is asked for once they're found
+	let area = match thumbnail_rect {
+		Some((min, size)) => [min, min + size],
+		None => {
+			area_in_view(
+				DAffine2::IDENTITY,
+				compositing.effects.map_or(0., |(effects, _)| effects.read_reach(render.transform * compositing.content_transform)) + render.ancestors_reach,
+				render,
+				render_params,
+			)?
+			.0
+		}
+	};
+
+	let filters = compositing
+		.with_remaining_effects(&remaining)
+		.svg_filters_within(render, render_params, area, None, |keeps| content(remaining.clone(), keeps, &adjustments))?;
+	Some((filters, adjustments))
+}
+
 /// Draws an endless item's layer, whose content `draw` fills the viewport with, in `opacity` and `blend_mode`.
 fn draw_endless_layer(scene: &mut VelloSceneBuilder, opacity: f32, blend_mode: BlendMode, draw: impl FnOnce(&mut VelloSceneBuilder)) {
 	let layer = opacity < 1. || blend_mode != BlendMode::default();
@@ -5202,8 +5313,9 @@ fn draw_through_endless_masks(
 	masking.draw_with_effects(scene, parent_transform, render_params, || RenderBoundingBox::Infinite, draw);
 }
 
-/// Draws an endless item through its effects group, for leading masks that give it edges (see [`masks::masked_extent`]) or filters reading its details, pushing a layer of its own for its opacity and blend mode unless the group draws them.
-fn draw_masked_endless_item(
+/// Draws an endless item through its effects group, for leading masks that give it edges (see [`masks::masked_extent`]), filters reading its details, or random field filters (see [`endless_field_effects`]),
+/// pushing a layer of its own for its opacity and blend mode unless the group draws them.
+fn draw_endless_item_with_effects(
 	scene: &mut VelloSceneBuilder,
 	compositing: &ItemCompositing,
 	blend_mode: BlendMode,
@@ -5226,12 +5338,20 @@ fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut VelloSceneBu
 	let Some(&color) = item.element() else { return };
 	let compositing = item.compositing(render_params, parent_transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM));
 
+	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+
 	// Leading masks that give the color edges let its effects be carried out within them like any other content's, and filters, which change even a flat color, carry them out over the area in view, as in SVG
 	let carried_out = |effects: &Effects| masks::masked_extent(effects, compositing.placement).is_some() || graphic_types::filters::has_filters(effects);
 	if compositing.effects.is_some_and(|(effects, _)| carried_out(effects)) {
 		let vello_color = SRGBA8::from(color).to_peniko_color();
-		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-		return draw_masked_endless_item(scene, &compositing, blend_mode, parent_transform, render_params, |scene| scene.fill_viewport(vello_color, None));
+		return draw_endless_item_with_effects(scene, &compositing, blend_mode, parent_transform, render_params, |scene| scene.fill_viewport(vello_color, None));
+	}
+
+	// Random field filters change it with the effects after them, as in SVG, with the adjustments before them taken by the color itself
+	if let Some((adjustments, remaining)) = endless_field_effects(&compositing) {
+		let vello_color = SRGBA8::from(adjusted_color(color, &adjustments)).to_peniko_color();
+		let compositing = compositing.with_remaining_effects(&remaining);
+		return draw_endless_item_with_effects(scene, &compositing, blend_mode, parent_transform, render_params, |scene| scene.fill_viewport(vello_color, None));
 	}
 
 	let paint = compositing.endless_paint();
@@ -5369,7 +5489,33 @@ fn render_edgeless_gradient_svg(
 	render: &mut SvgRender,
 	render_params: &RenderParams,
 ) {
-	// SVG filters change nothing visible about an endless gradient, so its adjustments are carried out along its ramp
+	// Random field filters (like Add Noise) change it within the area in view, through filters taking the adjustments before them along its ramp
+	let field_filters = endless_field_filters(compositing, thumbnail_rect, render, render_params, |effects, keeps, adjustments| {
+		let mut content = match adjusted_gradient(source_gradient, settings, adjustments, 1.) {
+			// An adjusted ramp may be read with other settings
+			Some((adjusted, settings)) => {
+				let mut content = effects_content(item, adjusted, keeps);
+				content.set_attribute(ATTR_GRADIENT_SPACE, settings.space);
+				content.set_attribute(ATTR_GRADIENT_HUE_DIRECTION, settings.hue_direction);
+				content.set_attribute(ATTR_GRADIENT_INTERPOLATION, settings.interpolation);
+				content
+			}
+			None => effects_content(item, source_gradient.clone(), keeps),
+		};
+		content.set_attribute(ATTR_EFFECTS, effects);
+		Graphic::GradientList(List::new_from_item(content))
+	});
+	if let Some((filters, adjustments)) = field_filters {
+		let (gradient, settings) = match adjusted_gradient(source_gradient, settings, &adjustments, 1.) {
+			Some((adjusted, settings)) => (Cow::Owned(adjusted), settings),
+			None => (Cow::Borrowed(source_gradient), settings),
+		};
+		return render_svg_through_filters(render, Some(filters), compositing.opacity, render_params.to_canvas(), |render| {
+			render_gradient_shape_svg(item, &gradient, settings, thumbnail_rect, 1., BlendMode::Normal, render, render_params)
+		});
+	}
+
+	// SVG filters change nothing else visible about an endless gradient, so its adjustments are carried out along its ramp
 	let paint = compositing.endless_paint();
 	let (fill, opacity) = paint.ramp_fill_and_opacity();
 	let (gradient, settings) = match adjusted_gradient(source_gradient, settings, &paint.adjustments, fill) {
@@ -5474,12 +5620,26 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut VelloS
 	let compositing = item.compositing(render_params, parent_transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM));
 	let settings = gradient_settings_from_item(item);
 
+	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+
 	// Leading masks that give the gradient edges let its effects be carried out within them like any other content's, and filters reading its details carry them out over the area in view, as in SVG
 	let carried_out = |effects: &Effects| masks::masked_extent(effects, compositing.placement).is_some() || graphic_types::filters::has_filters(effects);
 	if compositing.effects.is_some_and(|(effects, _)| carried_out(effects)) {
 		let (brush, brush_transform) = gradient_brush(item, source_gradient, settings, parent_transform);
-		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-		return draw_masked_endless_item(scene, &compositing, blend_mode, parent_transform, render_params, |scene| {
+		return draw_endless_item_with_effects(scene, &compositing, blend_mode, parent_transform, render_params, |scene| {
+			scene.fill_viewport(&brush, Some(brush_transform))
+		});
+	}
+
+	// Random field filters change it with the effects after them, as in SVG, with the adjustments before them carried out along its ramp
+	if let Some((adjustments, remaining)) = endless_field_effects(&compositing) {
+		let (gradient, settings) = match adjusted_gradient(source_gradient, settings, &adjustments, 1.) {
+			Some((adjusted, settings)) => (Cow::Owned(adjusted), settings),
+			None => (Cow::Borrowed(source_gradient), settings),
+		};
+		let (brush, brush_transform) = gradient_brush(item, &gradient, settings, parent_transform);
+		let compositing = compositing.with_remaining_effects(&remaining);
+		return draw_endless_item_with_effects(scene, &compositing, blend_mode, parent_transform, render_params, |scene| {
 			scene.fill_viewport(&brush, Some(brush_transform))
 		});
 	}
@@ -6299,7 +6459,10 @@ mod tests {
 		assert_eq!(filter.maps.len(), 1);
 		assert_eq!(filter.maps[0].capture, EffectCapture { index: 0, plane: 0 });
 		assert!(
-			defs.contains(&format!(r#"<!--effect-map-{}--><feFlood flood-opacity="0" result="{}" />"#, filter.maps[0].id, filter.maps[0].result)),
+			defs.contains(&format!(
+				r##"<!--effect-map-{}--><feFlood flood-color="#000000" flood-opacity="0" result="{}" />"##,
+				filter.maps[0].id, filter.maps[0].result
+			)),
 			"{defs}"
 		);
 	}
@@ -7025,10 +7188,35 @@ mod tests {
 		assert_eq!(canvases(&without_view), Vec::new());
 		assert!(without_view.view_wanted.load(std::sync::atomic::Ordering::Relaxed));
 
-		// Content drawing all of itself doesn't depend on the view
-		let drawing_all = RenderParams::default();
-		orange_square(&[], 1., 1.).render_svg(&mut SvgRender::new(), &drawing_all);
-		assert!(!drawing_all.view_wanted.load(std::sync::atomic::Ordering::Relaxed));
+		// Content drawing all of itself doesn't depend on the view, nor do endless colors and gradients without random field filters, even as a mask's paint
+		let gradient_mask = graphic_types::EffectOperation::Mask {
+			mask: Graphic::from(Gradient::default()),
+			mode: graphic_types::MaskMode::Luminance,
+			density: 100.,
+			feather: 0.,
+			invert: false,
+		};
+		// A noise of no amount changes nothing either, beside another effect that keeps the effects from being dropped
+		let silent_noise = graphic_types::EffectOperation::AddNoise {
+			amount: 0.,
+			distribution: graphic_types::NoiseDistribution::Uniform,
+			monochromatic: false,
+			seed: 0,
+		};
+		let levels = graphic_types::EffectOperation::default_for(graphic_types::EffectKind::Levels);
+		let silently_noised = Item::new_from_element(Color::BLACK).with_attribute(ATTR_EFFECTS, Effects::from_operations([silent_noise, levels]));
+		let drawings_of_all: [&dyn Fn(&RenderParams); 5] = [
+			&|render_params| orange_square(&[], 1., 1.).render_svg(&mut SvgRender::new(), render_params),
+			&|render_params| List::new_from_element(Color::BLACK).render_svg(&mut SvgRender::new(), render_params),
+			&|render_params| List::new_from_element(Gradient::default()).render_svg(&mut SvgRender::new(), render_params),
+			&|render_params| orange_square(std::slice::from_ref(&gradient_mask), 1., 1.).render_svg(&mut SvgRender::new(), render_params),
+			&|render_params| List::new_from_item(silently_noised.clone()).render_svg(&mut SvgRender::new(), render_params),
+		];
+		for (index, draw) in drawings_of_all.iter().enumerate() {
+			let drawing_all = RenderParams::default();
+			draw(&drawing_all);
+			assert!(!drawing_all.view_wanted.load(std::sync::atomic::Ordering::Relaxed), "drawing {index} asked for the view");
+		}
 
 		// A 25 pixel view at half scale, drawn at the view's resolution
 		let view = Footprint {
@@ -7041,6 +7229,52 @@ mod tests {
 			..Default::default()
 		};
 		assert_eq!(canvases(&in_view), vec![(25, 25)]);
+
+		// A blur draws the image past the view by its reach, so the blur finds no edges in view
+		let blur = graphic_types::EffectOperation::Blur {
+			radius_mask: Default::default(),
+			radius: 4.,
+			box_blur: false,
+			gamma: false,
+		};
+		let reach = Effects::from_operations([blur.clone()]).reach() * 0.5;
+		let with_effects = |operations: Vec<graphic_types::EffectOperation>| {
+			let mut item = item.clone();
+			operations.iter().for_each(|operation| graphic_types::stamp_effect(&mut item, graphic_types::Effect::new(operation)));
+			item
+		};
+		let mut render = SvgRender::new();
+		List::new_from_item(with_effects(vec![blur])).render_svg(&mut render, &in_view);
+		let sizes: Vec<_> = render.image_data.values().map(|canvas| (canvas.raster.width, canvas.raster.height)).collect();
+		let grown = 25. + 2. * reach;
+		assert!(matches!(sizes[..], [(width, height)] if width == height && (width as f64 - grown).abs() <= 1.), "{sizes:?} for {grown}");
+		assert!(render.svg_defs.contains("<filter"), "{}", render.svg_defs);
+
+		// The filters reading the pixels around each one read its details, as on the GPU, so a sharpen takes a filter
+		let canvas_sizes = |effects: Vec<graphic_types::EffectOperation>| {
+			let mut render = SvgRender::new();
+			List::new_from_item(with_effects(effects)).render_svg(&mut render, &in_view);
+			(
+				render.image_data.values().map(|canvas| (canvas.raster.width, canvas.raster.height)).collect::<Vec<_>>(),
+				render.svg_defs,
+			)
+		};
+		let (sizes, defs) = canvas_sizes(vec![graphic_types::EffectOperation::default_for(graphic_types::EffectKind::Sharpen)]);
+		assert!(sizes.len() == 1 && defs.contains("<filter"), "{defs}");
+
+		// A shadow is cast from the content's shape, reading none of its pixels, so it grows nothing
+		let (sizes, _) = canvas_sizes(vec![graphic_types::EffectOperation::default_for(graphic_types::EffectKind::DropShadow)]);
+		assert_eq!(sizes, vec![(25, 25)]);
+
+		// A blur reaching far past the view gets no more pixels than four views hold, each spanning more of it
+		let wide_blur = graphic_types::EffectOperation::Blur {
+			radius_mask: Default::default(),
+			radius: 100.,
+			box_blur: false,
+			gamma: false,
+		};
+		let (sizes, _) = canvas_sizes(vec![wide_blur]);
+		assert!(matches!(sizes[..], [(width, height)] if width == height && (width as f64 - 50.).abs() <= 1.), "{sizes:?}");
 	}
 
 	#[test]
@@ -7197,6 +7431,44 @@ mod tests {
 	}
 
 	#[test]
+	fn endless_random_fields_leave_overlays_and_alpha_changes_to_the_effects_below_a_full_fill() {
+		use core_types::transfer_curve::TransferCurve;
+		use graphic_types::adjustment::CurvesSettings;
+		use graphic_types::{Effect, EffectOperation, NoiseDistribution, stamp_effect};
+
+		let overlay = EffectOperation::Adjustment(Adjustment::ColorOverlay {
+			color: Color::RED,
+			blend_mode: BlendMode::Normal,
+			opacity: 100.,
+		});
+		let noise = EffectOperation::AddNoise {
+			amount: 20.,
+			distribution: NoiseDistribution::Uniform,
+			monochromatic: false,
+			seed: 0,
+		};
+		let taken = |leading: &EffectOperation, fill: f64| {
+			let mut item = Item::new_from_element(Color::BLUE).with_attribute(core_types::ATTR_OPACITY_FILL, fill);
+			stamp_effect(&mut item, Effect::new(leading));
+			stamp_effect(&mut item, Effect::new(&noise));
+			let compositing = ItemRef::Item(&item).compositing(&RenderParams::default(), DAffine2::IDENTITY);
+			endless_field_effects(&compositing).map(|(adjustments, _)| adjustments.len())
+		};
+
+		// The fill fades the paint and not the overlay, so the paint takes the overlay only at a full fill
+		assert_eq!(taken(&overlay, 1.), Some(1));
+		assert_eq!(taken(&overlay, 0.5), Some(0));
+
+		// A fill fades the paint before an alpha curve bends it, so the paint takes the curve only at a full fill too
+		let alpha_curve = EffectOperation::Adjustment(Adjustment::Curves(Box::new(CurvesSettings {
+			alpha: TransferCurve::new(vec![DVec2::ZERO, DVec2::new(0.5, 0.8), DVec2::ONE]),
+			..Default::default()
+		})));
+		assert_eq!(taken(&alpha_curve, 1.), Some(1));
+		assert_eq!(taken(&alpha_curve, 0.5), Some(0));
+	}
+
+	#[test]
 	fn content_with_effects_svg_cannot_express_defers_to_an_image() {
 		use graphic_types::raster_types::Image;
 		use graphic_types::{Effect, EffectOperation, stamp_effect};
@@ -7317,7 +7589,7 @@ mod tests {
 			.try_into()
 			.unwrap_or_else(|_| panic!("blurs and masks draw one layer"));
 		assert_eq!(filter.maps.len(), 1);
-		assert!(!defs.contains("<feImage") && defs.contains(r#"<feFlood flood-opacity="1""#), "{defs}");
+		assert!(!defs.contains("<feImage") && defs.contains(r##"<feFlood flood-color="#000000" flood-opacity="1""##), "{defs}");
 	}
 
 	#[test]

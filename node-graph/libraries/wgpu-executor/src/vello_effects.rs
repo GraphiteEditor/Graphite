@@ -5,7 +5,7 @@ use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use core_types::blending::BlendMode;
 use core_types::transfer_curve::TransferCurve;
-use glam::{DMat2, DVec2, UVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use graphic_types::effect_layers::{EffectLayers, EffectPiece, LayerPart, PiecePlace, is_pixel_filter};
 use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GRADIENT_TABLE_SIZE, GlowFill, OutlineFill, bevel_light, contour_gradient_span, grow_and_tent, outline_extents, shadow_offset};
 use graphic_types::masks::{mask_feather_sigma, masked_radius_blur_levels};
@@ -220,7 +220,7 @@ impl EffectPasses {
 	}
 
 	/// Carries out `effects` on `content`, a texture of premultiplied pixels, returning each of the `layers` they draw in a pooled texture of [`WORKING_FORMAT`] the same size, with the mode it blends by.
-	/// `lengths_to_pixels` maps the effects' lengths onto the texture's pixels, `fill` fades the content but not the shadows and glows cast from it, and `opacity` fades the layers.
+	/// `effect_to_pixels` places the effects' space on the texture's pixels, `fill` fades the content but not the shadows and glows cast from it, and `opacity` fades the layers.
 	/// `paints` holds the effects' drawn paints in order, each rendered over the same pixels as the content.
 	/// With a `capture`, the only result is instead that effect's coverage, as black with it in alpha, or the share [`EffectCapture::THROUGH_MASK`] names.
 	#[expect(clippy::too_many_arguments)]
@@ -234,7 +234,7 @@ impl EffectPasses {
 		layers: &EffectLayers,
 		fill: f32,
 		opacity: f32,
-		lengths_to_pixels: DMat2,
+		effect_to_pixels: DAffine2,
 		paints: &[wgpu::Texture],
 		capture: Option<EffectCapture>,
 	) -> Vec<(wgpu::Texture, BlendMode)> {
@@ -246,6 +246,7 @@ impl EffectPasses {
 			textures,
 			size: UVec2::new(content.width(), content.height()),
 		};
+		let lengths_to_pixels = effect_to_pixels.matrix2;
 		let length_scale = lengths_to_pixels.determinant().abs().sqrt();
 
 		// The content at full strength, which casts every silhouette, read from the content itself (whatever its format) until a pass replaces it
@@ -702,9 +703,12 @@ impl EffectPasses {
 				| EffectOperation::FindEdges
 				| EffectOperation::MinimumMaximum { .. }
 				| EffectOperation::Sharpen { .. }
-				| EffectOperation::HighPass { .. } => {
+				| EffectOperation::HighPass { .. }
+				| EffectOperation::AddNoise { .. }
+				| EffectOperation::Dissolve { .. } => {
 					recorder.merge_beneath(content, &mut full, &mut filled, beneath.take());
-					recorder.filter(content, &mut full, &mut filled, operation, lengths_to_pixels, &mut |recorder, plane, map| {
+					let captured_plane = capture.filter(|capture| capture.index == index).map(|capture| capture.plane);
+					recorder.filter(content, &mut full, &mut filled, operation, effect_to_pixels, captured_plane, &mut |recorder, plane, map| {
 						capture_plane(recorder, plane, map, true)
 					});
 				}
@@ -1798,7 +1802,7 @@ mod tests {
 		let apply = |textures: &mut EffectTextures, effects: &Effects| {
 			textures.drawn_passes.clear();
 			let layers = EffectLayers::plan(effects, BlendMode::Normal, 1., false);
-			let results = passes.apply(&context.device, &queue, textures, &content, effects, &layers, 1., 1., DMat2::IDENTITY, &[], None);
+			let results = passes.apply(&context.device, &queue, textures, &content, effects, &layers, 1., 1., DAffine2::IDENTITY, &[], None);
 			results.into_iter().for_each(|(result, _)| textures.release(result));
 		};
 		let draw = |textures: &mut EffectTextures| {
@@ -1820,7 +1824,7 @@ mod tests {
 			textures.drawn_passes.clear();
 			let effects = Effects::from_operations(operations);
 			let layers = EffectLayers::plan(&effects, BlendMode::Normal, fill, false);
-			let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, fill, 1., DMat2::IDENTITY, &[], None);
+			let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, fill, 1., DAffine2::IDENTITY, &[], None);
 			results.into_iter().for_each(|(result, _)| textures.release(result));
 			textures.drawn_passes.clone()
 		};
@@ -1864,7 +1868,7 @@ mod tests {
 		let mut drawn = |layered: bool| {
 			textures.drawn_passes.clear();
 			let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., layered);
-			let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, 1., 1., DMat2::IDENTITY, &[], None);
+			let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, 1., 1., DAffine2::IDENTITY, &[], None);
 			results.into_iter().for_each(|(result, _)| textures.release(result));
 			textures.drawn_passes.clone()
 		};
@@ -1886,7 +1890,7 @@ mod tests {
 		let content = textures.acquire(&context.device, UVec2::splat(16), wgpu::TextureFormat::Rgba8Unorm);
 		let queue = context.queue.lock();
 		let layers = EffectLayers::plan(&effects, BlendMode::Normal, 1., false);
-		let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, 1., 1., DMat2::IDENTITY, &[], None);
+		let results = passes.apply(&context.device, &queue, &mut textures, &content, &effects, &layers, 1., 1., DAffine2::IDENTITY, &[], None);
 		results.into_iter().for_each(|(result, _)| textures.release(result));
 
 		let drawn = |label: &str| textures.drawn_passes.iter().filter(|&&drawn| drawn == label).count();

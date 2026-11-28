@@ -354,3 +354,138 @@ fn faded_by_shares(@builtin(position) position: vec4<f32>) -> @location(0) vec4<
 	}
 	return vec4<f32>(colors * alpha, alpha);
 }
+
+// =============
+// Random fields
+// =============
+
+// For PSD interop, how many standard deviations Gaussian noise reaches, matching the CPU's
+const GAUSSIAN_NOISE_LIMIT: f32 = 3.5;
+
+// PCG3D from Jarzynski and Olano's "Hash Functions for GPU Rendering", matching the CPU's
+fn pcg3d(input: vec3<u32>) -> vec3<u32> {
+	var v = input * 1664525u + 1013904223u;
+	v.x += v.y * v.z;
+	v.y += v.z * v.x;
+	v.z += v.x * v.y;
+	v ^= v >> vec3<u32>(16u);
+	v.x += v.y * v.z;
+	v.y += v.z * v.x;
+	v.z += v.x * v.y;
+	return v;
+}
+
+// Values strictly between 0 and 1 from the top 23 bits of each hash, which an f32 holds exactly with the half added, matching the CPU's `unit_interval`
+fn unit_interval(hash: vec3<u32>) -> vec3<f32> {
+	return (vec3<f32>(hash >> vec3<u32>(9u)) + 0.5) / 8388608.;
+}
+
+// A 32-bit integer from its exact low (x) and high (y) 16-bit halves
+fn joined_halves(halves: vec2<f32>) -> u32 {
+	return u32(halves.x) | (u32(halves.y) << 16u);
+}
+
+// The first or `second` field's seed, from its exact halves in `taps[3]`
+fn field_seed(second: bool) -> u32 {
+	return joined_halves(select(parameters.taps[3].xy, parameters.taps[3].zw, second));
+}
+
+// The three values a field of the `seed` holds at the cell `offset` texels from the texel's middle at `position`, matching the CPU's `FieldSampling`.
+// `taps[0]` holds the texels' axes in cells, `taps[1].xy` the rest of the way to the origin, and `taps[4]` the origin's cell in exact halves.
+fn field_values(position: vec2<f32>, offset: vec2<f32>, seed: u32) -> vec3<f32> {
+	let axes = mat2x2<f32>(parameters.taps[0].xy, parameters.taps[0].zw);
+	let origin_cell = vec2<u32>(joined_halves(parameters.taps[4].xy), joined_halves(parameters.taps[4].zw));
+	let cell = origin_cell + bitcast<vec2<u32>>(vec2<i32>(floor(parameters.taps[1].xy + axes * (position + offset))));
+	return unit_interval(pcg3d(vec3<u32>(cell, seed)));
+}
+
+// How many samples a texel takes along each axis, from `taps[2].xy`
+fn sample_counts() -> vec2<u32> {
+	return vec2<u32>(parameters.taps[2].xy);
+}
+
+// The offset in texels of a texel's sample in `column` and `row`, spread as far as `taps[2].zw` from the first to the last
+fn sample_offset(column: u32, row: u32) -> vec2<f32> {
+	return ((vec2<f32>(f32(column), f32(row)) + 0.5) / parameters.taps[2].xy - 0.5) * parameters.taps[2].zw;
+}
+
+// The offsets Add Noise gives a texel's colors, matching the CPU's `add_noise`: its noise averaged over its samples (Gaussian with `values.z` 1), the same for every color with `values.w` 1,
+// scaled by `values.x` and kept within `values.y` either way
+fn noise_offsets(position: vec2<f32>) -> vec3<f32> {
+	let counts = sample_counts();
+	var sum = vec3<f32>(0.);
+	for (var row = 0u; row < counts.y; row++) {
+		for (var column = 0u; column < counts.x; column++) {
+			let offset = sample_offset(column, row);
+			let offsets = field_values(position, offset, field_seed(false));
+
+			// The Box-Muller transform of two uniform values into one with a normal distribution
+			if parameters.values.z > 0.5 {
+				let angles = field_values(position, offset, field_seed(true));
+				sum += clamp(sqrt(-2. * log(offsets)) * cos(6.2831855 * angles), vec3<f32>(-GAUSSIAN_NOISE_LIMIT), vec3<f32>(GAUSSIAN_NOISE_LIMIT));
+			} else {
+				sum += 2. * offsets - 1.;
+			}
+		}
+	}
+
+	var noise = sum / f32(counts.x * counts.y);
+	if parameters.values.w > 0.5 {
+		noise = vec3<f32>(noise.x);
+	}
+	return clamp(noise * parameters.values.x, vec3<f32>(-parameters.values.y), vec3<f32>(parameters.values.y));
+}
+
+// The offsets Add Noise gives each color, around middle gray and scaled to fill the range, which an SVG adds to the colors
+@fragment
+fn noise_map(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	return vec4<f32>(0.5 + noise_offsets(position.xy) / (2. * parameters.values.y), 1.);
+}
+
+// Each straight color offset by noise and clamped, with the coverage kept
+@fragment
+fn add_noise(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let color = textureLoad(source, vec2<i32>(position.xy), 0);
+	if color.a <= 0. {
+		return vec4<f32>(0.);
+	}
+	let noisy = clamp(color.rgb / color.a + noise_offsets(position.xy), vec3<f32>(0.), vec3<f32>(1.));
+	return vec4<f32>(noisy * color.a, color.a);
+}
+
+// How much of a texel Dissolve shows, matching the CPU's `dissolve_field`: the share of its samples passing the opacity `values.x`, deviating from it less by `values.y`,
+// and the threshold level from 0 to 254 its coverage must pass
+fn dissolve_field(position: vec2<f32>) -> vec2<f32> {
+	let counts = sample_counts();
+	let seed = field_seed(false);
+	var shown = 0.;
+	for (var row = 0u; row < counts.y; row++) {
+		for (var column = 0u; column < counts.x; column++) {
+			shown += select(0., 1., field_values(position, sample_offset(column, row), seed).x < parameters.values.x);
+		}
+	}
+
+	let opacity = parameters.values.x;
+	let share = clamp(opacity + (shown / f32(counts.x * counts.y) - opacity) * parameters.values.y, 0., 1.);
+	let threshold = floor(field_values(position, vec2<f32>(0.), seed).y * 255.);
+	return vec2<f32>(share, threshold);
+}
+
+// The threshold level as a gray, a fraction of 255, at the share shown as its alpha, which an SVG combines with the coverage. Gray survives a conversion between color spaces.
+@fragment
+fn dissolve_map(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let field = dissolve_field(position.xy);
+	return vec4<f32>(vec3<f32>(field.y / 255. * field.x), field.x);
+}
+
+// The content shown fully opaque by the share where its coverage is at least one 8-bit level above the threshold, and hidden elsewhere
+@fragment
+fn dissolve(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let color = textureLoad(source, vec2<i32>(position.xy), 0);
+	if color.a <= 0. {
+		return vec4<f32>(0.);
+	}
+	let field = dissolve_field(position.xy);
+	let shown = select(0., field.x, color.a * 255. > field.y + 0.5);
+	return vec4<f32>(color.rgb / color.a * shown, shown);
+}

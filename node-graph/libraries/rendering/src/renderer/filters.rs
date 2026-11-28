@@ -1,9 +1,11 @@
 //! The SVG filter primitives carrying out the filter effects like the GPU passes do.
 
 use super::SvgFilterPrimitives;
+use core_types::Color;
+use core_types::color::SRGBA8;
 use glam::DVec2;
 use graphic_types::effects::EffectCapture;
-use graphic_types::filters::{AVERAGE_VISIBILITY_RAMP, Convolution, HIGH_PASS_GRAY, Surroundings, UnsharpBlur, fill_shifts, unsharp, unsharp_change};
+use graphic_types::filters::{AVERAGE_VISIBILITY_RAMP, Convolution, HIGH_PASS_GRAY, Surroundings, UnsharpBlur, fill_shifts, noise_extent, unsharp, unsharp_change};
 use graphic_types::{EffectOperation, Effects, MinimumMaximumMode};
 use raster_kernels::effect_kernels::{MAX_DIRECT_BOX_RADIUS, box_weight};
 use std::collections::BTreeMap;
@@ -94,8 +96,11 @@ impl SvgFilterPrimitives {
 		match *operation {
 			// The Euclidean length of the gradient loses too much precision through the 8-bit results between primitives
 			EffectOperation::FindEdges => self.uncovered_map(image, capture, Surroundings::Matted(1.)),
-			EffectOperation::MinimumMaximum { .. } if forked => self.map_showing(capture, image),
+			EffectOperation::MinimumMaximum { .. } | EffectOperation::AddNoise { .. } | EffectOperation::Dissolve { .. } if forked => self.map_showing(capture, image),
 			EffectOperation::MinimumMaximum { radius, mode } => self.neighborhood_extreme(image, radius, mode == MinimumMaximumMode::Maximum),
+			// Random fields come from the GPU, one map for both the content and the fill since they don't depend on either
+			EffectOperation::AddNoise { amount, distribution, .. } => self.add_noise(image, noise_extent(amount / 100., distribution), EffectCapture { plane: 0, ..capture }),
+			EffectOperation::Dissolve { .. } => self.dissolve(image, EffectCapture { plane: 0, ..capture }),
 			_ => image.to_string(),
 		}
 	}
@@ -117,7 +122,10 @@ impl SvgFilterPrimitives {
 	pub(super) fn reads_input_often(&self, operation: &EffectOperation, native: bool) -> bool {
 		match operation.convolution() {
 			Some(convolution) => native && LatticeKernel::new(&convolution).is_some(),
-			None => matches!(operation, EffectOperation::MinimumMaximum { .. } | EffectOperation::Sharpen { .. } | EffectOperation::HighPass { .. }),
+			None => matches!(
+				operation,
+				EffectOperation::MinimumMaximum { .. } | EffectOperation::Sharpen { .. } | EffectOperation::HighPass { .. } | EffectOperation::AddNoise { .. } | EffectOperation::Dissolve { .. }
+			),
 		}
 	}
 
@@ -262,6 +270,37 @@ impl SvgFilterPrimitives {
 		self.push("feComposite", &format!(r#"in="{colors}" in2="{coverage}" operator="in""#), "")
 	}
 
+	/// The image's straight colors made opaque, for composites that combine colors without their coverage.
+	fn opaque_colors(&mut self, image: &str) -> String {
+		self.push("feColorMatrix", &format!(r#"in="{image}" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 255 0""#), "")
+	}
+
+	/// The image with each straight color offset by the noise in the GPU's map for `capture`, which holds offsets up to `extent` either way around middle gray, matching the GPU's `add_noise`.
+	/// Until the map is resolved, its middle gray offsets nothing.
+	fn add_noise(&mut self, image: &str, extent: f64, capture: EffectCapture) -> String {
+		let colors = self.opaque_colors(image);
+		let noise = self.map_unresolved_as(capture, Color::from(SRGBA8::new(128, 128, 128, 255)));
+		let attributes = format!(r#"in="{colors}" in2="{noise}" operator="arithmetic" k2="1" k3="{}" k4="{}""#, 2. * extent, -extent);
+		let noisy = self.push("feComposite", &attributes, "");
+		self.push("feComposite", &format!(r#"in="{noisy}" in2="{image}" operator="in""#), "")
+	}
+
+	/// The image shown fully opaque where its coverage passes the threshold level of the GPU's map for `capture` (its gray), by the share of it (its alpha), matching the GPU's `dissolve`.
+	/// Until the map is resolved, its opaque black shows every covered pixel.
+	fn dissolve(&mut self, image: &str, capture: EffectCapture) -> String {
+		let field = self.map_unresolved_as(capture, Color::BLACK);
+		let thresholds = self.push("feColorMatrix", &format!(r#"in="{field}" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0""#), "");
+
+		// The coverage less the threshold, which passes at one 8-bit level or more
+		let above = self.push("feComposite", &format!(r#"in="{image}" in2="{thresholds}" operator="arithmetic" k2="1" k3="-1""#), "");
+		let passing = ["0"].into_iter().chain(std::iter::repeat_n("1", 255)).collect::<Vec<_>>().join(" ");
+		let passed = self.push("feComponentTransfer", &format!(r#"in="{above}""#), &format!(r#"<feFuncA type="discrete" tableValues="{passing}" />"#));
+
+		let shown = self.push("feComposite", &format!(r#"in="{passed}" in2="{field}" operator="in""#), "");
+		let colors = self.opaque_colors(image);
+		self.push("feComposite", &format!(r#"in="{colors}" in2="{shown}" operator="in""#), "")
+	}
+
 	/// The image with each pixel's color the lightest (or with `maximum` false, the darkest) in the square of `radius` document pixels around it,
 	/// and its coverage the opposite extreme, matching the GPU's `neighborhood_extreme`, by `feMorphology` of the opaque colors and of the coverage.
 	fn neighborhood_extreme(&mut self, image: &str, radius: f64, maximum: bool) -> String {
@@ -330,9 +369,11 @@ impl SvgFilterPrimitives {
 mod tests {
 	use super::super::{write_svg_effects_filter, write_svg_effects_filter_on_lattice};
 	use core_types::blending::BlendMode;
-	use glam::DVec2;
+	use core_types::list::Item;
+	use glam::{DAffine2, DVec2};
 	use graphic_types::effect_layers::EffectLayers;
 	use graphic_types::effects::EffectCapture;
+	use graphic_types::filters::NoiseDistribution;
 	use graphic_types::{EffectOperation, Effects, MinimumMaximumMode};
 
 	fn convolution_kernel(text: &str, scale: f64, offset: f64) -> EffectOperation {
@@ -674,5 +715,119 @@ mod tests {
 		let (defs, maps) = filter(vec![sharpen], false);
 		assert_eq!(maps, 1);
 		assert!(!defs.contains("feConvolveMatrix"), "{defs}");
+	}
+
+	#[test]
+	fn random_fields_come_from_the_gpu_combined_with_the_live_content() {
+		// Add Noise adds the map's offsets, scaled out from middle gray to their extent, to the opaque colors within the live coverage
+		let noise = EffectOperation::AddNoise {
+			amount: 40.,
+			distribution: NoiseDistribution::Uniform,
+			monochromatic: false,
+			seed: 0,
+		};
+		let (defs, maps) = filter(vec![noise], true);
+		assert_eq!(maps, 1);
+		assert!(defs.contains(r#"operator="arithmetic" k2="1" k3="0.8" k4="-0.4""#), "{defs}");
+		assert!(defs.contains(r#"in2="SourceGraphic" operator="in""#), "{defs}");
+		// Until the map is resolved, its middle gray offsets nothing
+		assert!(defs.contains(r##"<feFlood flood-color="#808080" flood-opacity="1""##), "{defs}");
+
+		// Dissolve shows the opaque colors where the coverage is at least a level above the map's threshold (its gray), by the share the map gives (its alpha)
+		let (defs, maps) = filter(vec![EffectOperation::Dissolve { opacity: 50., seed: 0 }], true);
+		assert_eq!(maps, 1);
+		assert!(defs.contains(r#"in="SourceGraphic" in2="effect-2" operator="arithmetic" k2="1" k3="-1""#), "{defs}");
+		assert!(defs.contains(r#"in2="effect-1" operator="in""#), "{defs}");
+		// Until the map is resolved, its opaque black shows every covered pixel
+		assert!(defs.contains(r##"<feFlood flood-color="#000000" flood-opacity="1""##), "{defs}");
+
+		// Where the fill forks the content, each plane takes its whole result as a map, so chains of them don't multiply their reads
+		let mut faded = String::new();
+		let effects = Effects::from_operations([EffectOperation::Dissolve { opacity: 50., seed: 0 }]);
+		let filter = write_svg_effects_filter(&mut faded, &effects, &one_layer(&effects), 0, 0.5, 1., [DVec2::ZERO, DVec2::splat(10.)], 0, &[], 0..effects.len(), 1.).unwrap();
+		assert_eq!(filter.maps.len(), 2);
+		let table = defs
+			.split(r#"<feFuncA type="discrete" tableValues=""#)
+			.nth(1)
+			.and_then(|rest| rest.split('"').next())
+			.unwrap_or_default();
+		assert_eq!(table.split(' ').collect::<Vec<_>>(), [vec!["0"], vec!["1"; 255]].concat(), "{defs}");
+	}
+
+	#[test]
+	fn random_fields_change_endless_colors_within_the_view() {
+		use crate::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
+		use core_types::list::{ATTR_EFFECTS, List};
+		use core_types::transform::Footprint;
+
+		// A color with Add Noise after Levels draws through a filter over the view, with the noise's map and the Levels within it
+		let levels = graphic_types::Adjustment::Exposure {
+			exposure: 1.,
+			offset: 0.,
+			gamma_correction: 1.,
+		};
+		let noise = EffectOperation::AddNoise {
+			amount: 20.,
+			distribution: NoiseDistribution::Uniform,
+			monochromatic: false,
+			seed: 0,
+		};
+		let effects = Effects::from_operations([noise, EffectOperation::Adjustment(levels)]);
+		let color = Item::new_from_element(core_types::Color::BLUE).with_attribute(ATTR_EFFECTS, effects);
+		let params = RenderParams {
+			view: Some(Footprint {
+				transform: DAffine2::IDENTITY,
+				resolution: glam::UVec2::splat(32),
+				..Default::default()
+			}),
+			..Default::default()
+		};
+
+		let mut render = SvgRender::new();
+		List::new_from_item(color).render_svg(&mut render, &params);
+		assert_eq!(render.effect_maps.len(), 1);
+		assert!(render.svg.to_svg_string().contains(r#"filter="url(#"#), "{}", render.svg.to_svg_string());
+		assert!(render.svg_defs.contains(r#"x="0" y="0" width="32" height="32""#), "{}", render.svg_defs);
+	}
+
+	#[test]
+	fn random_fields_leave_an_unplaced_mask_on_endless_colors_unfitted_to_the_view() {
+		use crate::{Render, RenderParams, SvgRender};
+		use core_types::list::{ATTR_EFFECTS, List};
+		use core_types::transform::Footprint;
+		use graphic_types::vector_types::gradient::{Gradient, GradientStop};
+		use graphic_types::{Graphic, MaskMode};
+
+		// A gradient mask without a placement of its own lies across the color's own space, as on the GPU, rather than stretching across the view
+		let stops = [(0., core_types::Color::BLACK), (1., core_types::Color::WHITE)].map(|(position, color)| GradientStop { position, midpoint: 0.5, color });
+		let noise = EffectOperation::AddNoise {
+			amount: 20.,
+			distribution: NoiseDistribution::Uniform,
+			monochromatic: false,
+			seed: 0,
+		};
+		let mask = EffectOperation::Mask {
+			mask: Graphic::from(Gradient::new(stops)),
+			mode: MaskMode::Luminance,
+			density: 100.,
+			feather: 0.,
+			invert: false,
+		};
+		let color = Item::new_from_element(core_types::Color::BLUE).with_attribute(ATTR_EFFECTS, Effects::from_operations([noise, mask]));
+
+		let params = RenderParams {
+			view: Some(Footprint {
+				transform: DAffine2::IDENTITY,
+				resolution: glam::UVec2::splat(64),
+				..Default::default()
+			}),
+			..Default::default()
+		};
+		let mut render = SvgRender::new();
+		List::new_from_item(color).render_svg(&mut render, &params);
+
+		// The gradient spans its own unit square, which fitting it to the view would transform across the 64 units in view
+		let defs = &render.svg_defs;
+		assert!(defs.contains("<mask") && defs.contains(r#"x1="0" y1="0" x2="1" y2="0">"#), "{defs}");
 	}
 }

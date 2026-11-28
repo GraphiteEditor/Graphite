@@ -5,7 +5,9 @@
 
 use crate::renderer::{CanvasImage, Render, RenderOutputType, RenderParams, RenderSvgSegmentList, SvgRender, render_raster_cpu_image_svg};
 use crate::vello_scene_builder::{MAX_EFFECTS_AREA_PER_VIEWPORT_AREA, VelloSceneBuilder};
+use core_types::Color;
 use core_types::blending::BlendMode;
+use core_types::color::SRGBA8;
 use core_types::math::quad::Quad;
 use core_types::transform::Footprint;
 use glam::{DAffine2, DVec2, UVec2};
@@ -112,10 +114,11 @@ fn map_markers(id: u64) -> (String, String) {
 	(format!("<!--effect-map-{id}-->"), format!("<!--/effect-map-{id}-->"))
 }
 
-/// The filter primitive standing for the map `id` names until it's resolved, covering everything to the `coverage` from 0 to 1.
-/// Coverage that is added leaves the effect out at 0, and coverage the content is multiplied by leaves it out at 1.
-pub(crate) fn map_placeholder(id: u64, result: &str, coverage: f64) -> String {
-	map_placeholder_primitive(id, &format!(r#"<feFlood flood-opacity="{coverage}" result="{result}" />"#))
+/// The filter primitive standing for the map `id` names until it's resolved, flooding the region with `flood`, which leaves the effect out.
+/// Coverage that is added leaves the effect out when transparent, coverage the content is multiplied by leaves it out when opaque, and data a filter combines in other ways takes whatever value is neutral for it.
+pub(crate) fn map_placeholder(id: u64, result: &str, flood: Color) -> String {
+	let color = SRGBA8::from(flood.with_alpha(1.)).to_rgb_hex();
+	map_placeholder_primitive(id, &format!(r##"<feFlood flood-color="#{color}" flood-opacity="{}" result="{result}" />"##, flood.a()))
 }
 
 /// The filter `primitive` standing for the map `id` names until it's resolved, which gives the result the map stands for.

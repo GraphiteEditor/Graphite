@@ -35,7 +35,7 @@ use graphene_std::vector::style::{
 use graphene_std::vector::{CurveType, Path, PointId, QRCodeErrorCorrectionLevel, SegmentId, Vector};
 use graphene_std::{
 	Appearance, Artboard, BevelDirection, BevelStyle, BevelTechnique, Color, ContextFeatures, ContextOverrides, Cover, Coverage, Effect, EffectKind, Effects, GlowSource, GlowTechnique, Graphic,
-	MaskMode, MinimumMaximumMode,
+	MaskMode, MinimumMaximumMode, NoiseDistribution,
 };
 use kurbo::BezPath;
 use std::any::Any;
@@ -1282,6 +1282,7 @@ impl_table_item_layout_for_choice_enum!(
 	GradientHueDirection,
 	GradientInterpolation,
 	GlowTechnique,
+	NoiseDistribution,
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
@@ -1471,6 +1472,7 @@ macro_rules! known_item_types {
 			GradientHueDirection,
 			GradientInterpolation,
 			GlowTechnique,
+			NoiseDistribution,
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,

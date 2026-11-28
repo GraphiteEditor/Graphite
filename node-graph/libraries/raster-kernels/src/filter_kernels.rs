@@ -1,17 +1,20 @@
 //! The pixel filters on the CPU, which mirror the renderer's GPU passes on premultiplied gamma-encoded channels.
 
 use crate::effect_kernels::{BlurKernel, Plane};
-use glam::{DMat2, DVec2};
+use crate::generators::pcg3d;
+use glam::{DAffine2, DMat2, DVec2, IVec2};
 use graphic_types::effects::spans_along_axes;
 use graphic_types::filters::{
-	Convolution, HIGH_PASS_GRAY, SHARPEN_NEIGHBORS, SOBEL_TAPS, Surroundings, UnsharpBlur, VISIBLE_ALPHA, average_weight, edge_gain, fill_shifts, neighborhood_radii, unsharp, unsharp_change,
+	Convolution, FieldSampling, GAUSSIAN_NOISE_LIMIT, HIGH_PASS_GRAY, NoiseDistribution, RandomField, SHARPEN_NEIGHBORS, SOBEL_TAPS, Surroundings, UnsharpBlur, VISIBLE_ALPHA, average_weight,
+	edge_gain, fill_shifts, neighborhood_radii, noise_extent, unsharp, unsharp_change,
 };
 use graphic_types::{EffectOperation, MinimumMaximumMode};
 use raster_types::parallel_rows::fill_rows;
 
-/// Carries out a filter effect on premultiplied gamma-encoded pixels, with its lengths measured through `document_to_pixels`, or returns them as they are for any other operation.
+/// Carries out a filter effect on premultiplied gamma-encoded pixels, which `pixels_to_effect` places in the effect space, or returns them as they are for any other operation.
 /// The pixels visible in the `full`-strength content (the plane itself for `None`) are those whose colors the filter reads.
-pub fn filter(plane: Plane<[f32; 4]>, full: Option<&Plane<[f32; 4]>>, operation: &EffectOperation, document_to_pixels: DMat2) -> Plane<[f32; 4]> {
+pub fn filter(plane: Plane<[f32; 4]>, full: Option<&Plane<[f32; 4]>>, operation: &EffectOperation, pixels_to_effect: DAffine2) -> Plane<[f32; 4]> {
+	let document_to_pixels = pixels_to_effect.matrix2.inverse();
 	if let Some(convolution) = operation.convolution() {
 		return convolve(&plane, full.unwrap_or(&plane), &convolution, document_to_pixels);
 	}
@@ -24,6 +27,13 @@ pub fn filter(plane: Plane<[f32; 4]>, full: Option<&Plane<[f32; 4]>>, operation:
 	match *operation {
 		EffectOperation::FindEdges => find_edges(&plane, document_to_pixels),
 		EffectOperation::MinimumMaximum { radius, mode } => neighborhood_extreme(&plane, radius, mode == MinimumMaximumMode::Maximum, document_to_pixels),
+		EffectOperation::AddNoise {
+			amount,
+			distribution,
+			monochromatic,
+			seed,
+		} => add_noise(&plane, amount / 100., distribution, monochromatic, seed, pixels_to_effect),
+		EffectOperation::Dissolve { opacity, seed } => dissolve(&plane, opacity / 100., seed, pixels_to_effect),
 		_ => plane,
 	}
 }
@@ -449,6 +459,102 @@ fn window_extremes(source: &[[f32; 4]], target: &mut [[f32; 4]], radius: usize, 
 	}
 }
 
+/// A value strictly between 0 and 1 from the top 23 bits of a hash, which an f32 holds exactly with the half added, matching the GPU's.
+fn unit_interval(hash: u32) -> f32 {
+	((hash >> 9) as f32 + 0.5) / (1_u32 << 23) as f32
+}
+
+/// The three random values one field of the `seed` holds at a cell of the effect space.
+fn field_values(cell: IVec2, seed: u32) -> [f32; 3] {
+	pcg3d([cell.x as u32, cell.y as u32, seed]).map(unit_interval)
+}
+
+/// The noise each of a pixel's colors takes before the amount scales it, averaged over the pixel's samples of the field: uniform from -1 to 1, or Gaussian with a deviation of 1 cut off at [`GAUSSIAN_NOISE_LIMIT`].
+fn noise_at(sampling: &FieldSampling, pixel: [usize; 2], distribution: NoiseDistribution, monochromatic: bool, seed: i64) -> [f32; 3] {
+	let (offsets_seed, angles_seed) = (RandomField::NoiseOffsets.seed(seed), RandomField::NoiseAngles.seed(seed));
+
+	let mut sum = [0.; 3];
+	let mut count = 0.;
+	for cell in sampling.sample_cells(pixel) {
+		let offsets = field_values(cell, offsets_seed);
+		let noise = match distribution {
+			NoiseDistribution::Uniform => offsets.map(|value| 2. * value - 1.),
+			// The Box-Muller transform of two uniform values into one with a normal distribution
+			NoiseDistribution::Gaussian => {
+				let angles = field_values(cell, angles_seed);
+				std::array::from_fn(|channel| ((-2. * offsets[channel].ln()).sqrt() * (std::f32::consts::TAU * angles[channel]).cos()).clamp(-GAUSSIAN_NOISE_LIMIT, GAUSSIAN_NOISE_LIMIT))
+			}
+		};
+		(0..3).for_each(|channel| sum[channel] += noise[channel]);
+		count += 1.;
+	}
+
+	let average = sum.map(|channel| channel / count);
+	if monochromatic { [average[0]; 3] } else { average }
+}
+
+/// For PSD interop, each straight color offset by noise of `amount` (a fraction of full brightness) with its `distribution`, the same for every color of a pixel if it's `monochromatic`, and clamped.
+/// The coverage is kept. The noise is fixed to the cells of the effect space, which `pixels_to_effect` places the plane's pixels among. O(width × height × samples per pixel).
+pub fn add_noise(plane: &Plane<[f32; 4]>, amount: f64, distribution: NoiseDistribution, monochromatic: bool, seed: i64, pixels_to_effect: DAffine2) -> Plane<[f32; 4]> {
+	let sampling = FieldSampling::new(pixels_to_effect);
+	let extent = noise_extent(amount, distribution) as f32;
+	let scale = (amount * sampling.deviation_scale) as f32;
+
+	let mut result = Plane::new(plane.width, plane.height);
+	fill_rows(&mut result.data, plane.width, |y, row| {
+		for (x, pixel) in row.iter_mut().enumerate() {
+			let [red, green, blue, alpha] = plane.data[y * plane.width + x];
+			if alpha <= 0. {
+				continue;
+			}
+
+			let noise = noise_at(&sampling, [x, y], distribution, monochromatic, seed);
+			let noisy = |channel: f32, noise: f32| (channel / alpha + (noise * scale).clamp(-extent, extent)).clamp(0., 1.) * alpha;
+			*pixel = [noisy(red, noise[0]), noisy(green, noise[1]), noisy(blue, noise[2]), alpha];
+		}
+	});
+	result
+}
+
+/// For PSD interop, how much of a pixel Dissolve shows, from 0 to 1: the share of its samples passing the `opacity` (a fraction), and the threshold level from 0 to 254 its coverage must pass.
+/// For pixels spanning more cells than they sample, the share deviates from the opacity less, as it would over them all.
+fn dissolve_field(sampling: &FieldSampling, pixel: [usize; 2], opacity: f32, seed: i64) -> (f32, f32) {
+	let seed = RandomField::Dissolve.seed(seed);
+
+	let (mut shown, mut count) = (0., 0.);
+	for cell in sampling.sample_cells(pixel) {
+		shown += if field_values(cell, seed)[0] < opacity { 1. } else { 0. };
+		count += 1.;
+	}
+	let share = (opacity + (shown / count - opacity) * sampling.deviation_scale as f32).clamp(0., 1.);
+
+	let threshold = (field_values(sampling.center_cell(pixel), seed)[1] * 255.).floor();
+	(share, threshold)
+}
+
+/// For PSD interop, the content shown fully opaque where the `opacity` (a fraction) and the coverage each pass a threshold of their own, random for each cell of the effect space, and hidden elsewhere.
+/// The thresholds are fixed to those cells, which `pixels_to_effect` places the plane's pixels among, and pixels spanning several show the share of them passing. O(width × height × samples per pixel).
+pub fn dissolve(plane: &Plane<[f32; 4]>, opacity: f64, seed: i64, pixels_to_effect: DAffine2) -> Plane<[f32; 4]> {
+	let sampling = FieldSampling::new(pixels_to_effect);
+	let opacity = opacity as f32;
+
+	let mut result = Plane::new(plane.width, plane.height);
+	fill_rows(&mut result.data, plane.width, |y, row| {
+		for (x, pixel) in row.iter_mut().enumerate() {
+			let [red, green, blue, alpha] = plane.data[y * plane.width + x];
+			if alpha <= 0. {
+				continue;
+			}
+
+			// The coverage passes a threshold level when it's at least one 8-bit level above it, a half level counting as the level below as browsers truncate it
+			let (share, threshold) = dissolve_field(&sampling, [x, y], opacity, seed);
+			let shown = if alpha * 255. > threshold + 0.5 { share } else { 0. };
+			*pixel = [red / alpha * shown, green / alpha * shown, blue / alpha * shown, shown];
+		}
+	});
+	result
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -709,5 +815,98 @@ mod tests {
 		// Otherwise, the coverage stays as it is
 		let kept = convolve(&line, &line, &average, DMat2::IDENTITY);
 		assert!(kept.data.iter().zip(&line.data).all(|(kept, line)| kept[3] == line[3]));
+	}
+
+	/// The mean and standard deviation of each color's offset from middle gray, and the correlation between the first two colors' offsets.
+	fn offset_statistics(noisy: &Plane<[f32; 4]>) -> ([f64; 3], [f64; 3], f64) {
+		let count = noisy.data.len() as f64;
+		let offsets: Vec<[f64; 3]> = noisy.data.iter().map(|pixel| std::array::from_fn(|channel| pixel[channel] as f64 / pixel[3] as f64 - 0.5)).collect();
+		let mean: [f64; 3] = std::array::from_fn(|channel| offsets.iter().map(|offset| offset[channel]).sum::<f64>() / count);
+		let deviation: [f64; 3] = std::array::from_fn(|channel| (offsets.iter().map(|offset| (offset[channel] - mean[channel]).powi(2)).sum::<f64>() / count).sqrt());
+		let covariance = offsets.iter().map(|offset| (offset[0] - mean[0]) * (offset[1] - mean[1])).sum::<f64>() / count;
+		(mean, deviation, covariance / (deviation[0] * deviation[1]))
+	}
+
+	#[test]
+	fn noise_follows_its_distribution_independently_for_each_color() {
+		let gray = plane(256, 256, vec![[0.5, 0.5, 0.5, 1.]; 256 * 256]);
+		let amount = 0.2;
+
+		// Uniform noise spreads evenly up to the amount, with a deviation of the amount over √3
+		let uniform = add_noise(&gray, amount, NoiseDistribution::Uniform, false, 0, DAffine2::IDENTITY);
+		let (mean, deviation, correlation) = offset_statistics(&uniform);
+		for channel in 0..3 {
+			assert!(
+				mean[channel].abs() < 0.002 && (deviation[channel] / (amount / 3_f64.sqrt()) - 1.).abs() < 0.02,
+				"{mean:?} {deviation:?}"
+			);
+		}
+		assert!(correlation.abs() < 0.02, "{correlation}");
+		assert!(uniform.data.iter().all(|pixel| (pixel[0] - 0.5).abs() <= amount as f32 && pixel[3] == 1.));
+
+		// Gaussian noise deviates by the amount, cut off at its limit
+		let gaussian = add_noise(&gray, amount, NoiseDistribution::Gaussian, false, 0, DAffine2::IDENTITY);
+		let (_, deviation, _) = offset_statistics(&gaussian);
+		assert!((deviation[0] / amount - 1.).abs() < 0.03, "{deviation:?}");
+
+		// Monochromatic noise shifts every color of a pixel together, and another seed gives other noise
+		let monochromatic = add_noise(&gray, amount, NoiseDistribution::Gaussian, true, 0, DAffine2::IDENTITY);
+		assert!(monochromatic.data.iter().all(|pixel| pixel[0] == pixel[1] && pixel[1] == pixel[2]));
+		let reseeded = add_noise(&gray, amount, NoiseDistribution::Uniform, false, 1, DAffine2::IDENTITY);
+		assert_ne!(reseeded.data[..64], uniform.data[..64]);
+	}
+
+	#[test]
+	fn noise_is_fixed_to_the_effect_spaces_cells_and_averages_where_pixels_span_several() {
+		let gray = |size: usize| plane(size, size, vec![[0.5, 0.5, 0.5, 1.]; size * size]);
+		let noise = |plane: &Plane<[f32; 4]>, pixels_to_effect| add_noise(plane, 0.3, NoiseDistribution::Uniform, false, 4, pixels_to_effect);
+
+		// A plane placed three cells right and five down holds the same noise at the same cells
+		let placed = noise(&gray(16), DAffine2::IDENTITY);
+		let moved = noise(&gray(16), DAffine2::from_translation(DVec2::new(3., 5.)));
+		assert_eq!(moved.data[0], placed.data[5 * 16 + 3]);
+		assert_eq!(moved.data[16 + 2], placed.data[6 * 16 + 5]);
+
+		// Pixels spanning eight cells each deviate as an average over all 64 would, an eighth as much
+		let zoomed_out = noise(&gray(128), DAffine2::from_scale(DVec2::splat(8.)));
+		let (_, deviation, _) = offset_statistics(&zoomed_out);
+		assert!((deviation[0] / (0.3 / 3_f64.sqrt() / 8.) - 1.).abs() < 0.05, "{deviation:?}");
+
+		// Pixels at exactly one cell each take one sample, like zoomed in
+		assert_eq!(FieldSampling::new(DAffine2::IDENTITY).counts, glam::UVec2::ONE);
+		assert_eq!(FieldSampling::new(DAffine2::from_scale(DVec2::splat(0.25))).counts, glam::UVec2::ONE);
+	}
+
+	#[test]
+	fn dissolve_shows_opaque_pixels_by_the_opacity_and_the_coverage() {
+		let shown_share = |plane: &Plane<[f32; 4]>| plane.data.iter().filter(|pixel| pixel[3] > 0.).count() as f64 / plane.data.len() as f64;
+		let red = |alpha: f32| plane(256, 256, vec![[alpha, 0., 0., alpha]; 256 * 256]);
+
+		// Where the content is opaque, the opacity's share shows, and a larger opacity shows those and more
+		let some = dissolve(&red(1.), 0.3, 0, DAffine2::IDENTITY);
+		let more = dissolve(&red(1.), 0.6, 0, DAffine2::IDENTITY);
+		assert!((shown_share(&some) - 0.3).abs() < 0.01 && (shown_share(&more) - 0.6).abs() < 0.01);
+		assert!(some.data.iter().zip(&more.data).all(|(some, more)| some[3] <= more[3]));
+
+		// Half-covered content shows half as much, each shown pixel fully opaque in its straight color
+		let half = dissolve(&red(0.5), 1., 0, DAffine2::IDENTITY);
+		assert!((shown_share(&half) - 127. / 255.).abs() < 0.01, "{}", shown_share(&half));
+		assert!(half.data.iter().all(|pixel| *pixel == [0.; 4] || *pixel == [1., 0., 0., 1.]));
+
+		// Pixels spanning several cells show the share of them passing the opacity
+		let zoomed_out = dissolve(&red(1.), 0.3, 0, DAffine2::from_scale(DVec2::splat(2.)));
+		let average = zoomed_out.data.iter().map(|pixel| pixel[3] as f64).sum::<f64>() / zoomed_out.data.len() as f64;
+		assert!((average - 0.3).abs() < 0.01 && zoomed_out.data.iter().any(|pixel| pixel[3] == 0.5), "{average}");
+
+		// For PSD interop, the opacity and the coverage pass thresholds of their own, so equal products show different pixels, neither set holding the other
+		let quarter = dissolve(&red(64. / 255.), 1., 0, DAffine2::IDENTITY);
+		let half_at_half = dissolve(&red(128. / 255.), 0.5, 0, DAffine2::IDENTITY);
+		let only_in = |first: &Plane<[f32; 4]>, second: &Plane<[f32; 4]>| first.data.iter().zip(&second.data).filter(|(first, second)| first[3] > 0. && second[3] <= 0.).count();
+		assert!(only_in(&quarter, &half_at_half) > 1000 && only_in(&half_at_half, &quarter) > 1000);
+	}
+
+	#[test]
+	fn random_values_lie_strictly_between_zero_and_one() {
+		assert!(unit_interval(u32::MAX) < 1. && unit_interval(0) > 0.);
 	}
 }

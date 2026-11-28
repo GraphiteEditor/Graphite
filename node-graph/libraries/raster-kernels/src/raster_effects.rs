@@ -551,14 +551,18 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 			| EffectOperation::FindEdges
 			| EffectOperation::MinimumMaximum { .. }
 			| EffectOperation::Sharpen { .. }
-			| EffectOperation::HighPass { .. } => {
+			| EffectOperation::HighPass { .. }
+			| EffectOperation::AddNoise { .. }
+			| EffectOperation::Dissolve { .. } => {
 				merge_beneath(&mut full, &mut filled, &mut beneath);
 				// A filter sharpening the coverage fades the fill's result by the share of the full-strength coverage each pixel's fill left, as if the fill faded the result
 				let shares = filled.as_ref().filter(|_| sharpens_coverage(operation)).map(|filled| crate::filter_kernels::fill_shares(&full, filled));
 
+				// The effect space's origin is the content's, at the image's corner past the margin
+				let pixels_to_effect = DAffine2::from_mat2(effect_to_pixels.inverse()) * DAffine2::from_translation(-DVec2::new(margin_x as f64, margin_y as f64));
 				// The fill fades the content after the filter, so the full-strength content decides which of the fill's pixels are visible
-				let filtered_filled = filled.map(|filled| crate::filter_kernels::filter(filled, Some(&full), operation, effect_to_pixels));
-				full = crate::filter_kernels::filter(full, None, operation, effect_to_pixels);
+				let filtered_filled = filled.map(|filled| crate::filter_kernels::filter(filled, Some(&full), operation, pixels_to_effect));
+				full = crate::filter_kernels::filter(full, None, operation, pixels_to_effect);
 				filled = filtered_filled.map(|filtered| match &shares {
 					Some(shares) => crate::filter_kernels::faded_by_shares(&filtered, &full, shares),
 					None => filtered,
@@ -1323,6 +1327,33 @@ mod tests {
 			let far_edge = (width - 20) / 2 + 50;
 			let soft = (far_edge - 4..far_edge + 4).filter(|&x| (0.05..0.95).contains(&alpha(x))).count();
 			assert!(soft >= 4, "only {soft} pixels soften the shadow's far edge with a map {map_width} by {map_height}");
+		}
+	}
+
+	#[test]
+	fn random_fields_move_and_scale_with_the_content_after_them() {
+		let noise = EffectOperation::AddNoise {
+			amount: 30.,
+			distribution: graphic_types::NoiseDistribution::Uniform,
+			monochromatic: false,
+			seed: 3,
+		};
+		let dissolve = EffectOperation::Dissolve { opacity: 50., seed: 3 };
+
+		// A gray image at an uneven spot, with the field stamped there before a later transform places it
+		let placement = DAffine2::from_translation(DVec2::new(3.3, -7.6)) * DAffine2::from_scale(DVec2::splat(32.));
+		let evaluated = |operation: &EffectOperation, later: DAffine2| {
+			let mut item = Item::new_from_element(Raster::new_cpu(Image::new(32, 32, Color::from_rgbaf32_unchecked(0.5, 0.5, 0.5, 1.)))).with_attribute(ATTR_TRANSFORM, placement);
+			graphic_types::stamp_effect(&mut item, graphic_types::Effect::new(operation));
+			item.set_attribute(ATTR_TRANSFORM, later * placement);
+			evaluate_raster_effects(item).element().data.clone()
+		};
+
+		// Each of the image's pixels takes the same part of the field wherever the later transform moves it and however it scales it
+		for operation in [noise, dissolve] {
+			let still = evaluated(&operation, DAffine2::IDENTITY);
+			assert_eq!(evaluated(&operation, DAffine2::from_translation(DVec2::new(100.5, 41.25))), still, "{operation:?} moved");
+			assert_eq!(evaluated(&operation, DAffine2::from_scale(DVec2::splat(3.))), still, "{operation:?} scaled");
 		}
 	}
 

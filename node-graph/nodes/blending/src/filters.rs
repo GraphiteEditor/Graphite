@@ -1,7 +1,7 @@
 use core_types::list::Item;
 use core_types::{Color, Ctx};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Adjustment, Effect, EffectOperation, Generator, Graphic, MinimumMaximumMode, Vector, stamp_effect};
+use graphic_types::{Adjustment, Effect, EffectOperation, Generator, Graphic, MinimumMaximumMode, NoiseDistribution, Vector, stamp_effect};
 use vector_types::Gradient;
 
 /// Recolors each pixel of the input graphics from the pixels around it, weighted by a kernel of numbers, for sharpening, blurring, edge-finding, and embossing filters of your own design.
@@ -193,5 +193,68 @@ fn high_pass<T>(
 ) -> Item<T> {
 	let mut content = content;
 	stamp_effect(&mut content, Effect::new(&EffectOperation::HighPass { radius: *radius.element() }));
+	content
+}
+
+/// Scatters random offsets across the colors of the input graphics, like film grain, fixed in place on the content.
+#[node_macro::node(category("Raster: Filter"))]
+fn add_noise<T>(
+	_: impl Ctx,
+	/// The content to add noise to.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
+	content: Item<T>,
+	/// How strong the noise is, as a percentage of full brightness: the most a color shifts for uniform noise, or the standard deviation of its shifts for Gaussian noise.
+	#[unit("%")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..100)]
+	#[default(12.5)]
+	amount: Item<f64>,
+	/// How the shifts are spread: evenly up to the amount, or clustered around none so most are subtle and a few are strong.
+	distribution: Item<NoiseDistribution>,
+	/// Whether each pixel's colors all shift together, so the noise changes only their brightness.
+	monochromatic: Item<bool>,
+	/// The random variation of the noise. The same seed always gives the same noise.
+	#[hard(0..)]
+	seed: Item<i64>,
+) -> Item<T> {
+	let mut content = content;
+	stamp_effect(
+		&mut content,
+		Effect::new(&EffectOperation::AddNoise {
+			amount: *amount.element(),
+			distribution: *distribution.element(),
+			monochromatic: *monochromatic.element(),
+			seed: *seed.element(),
+		}),
+	);
+	content
+}
+
+/// Shows a random scattering of the pixels of the input graphics fully opaque and hides the rest, showing more where the content is more opaque, fixed in place on the content.
+#[node_macro::node(category("Raster: Filter"))]
+fn dissolve<T>(
+	_: impl Ctx,
+	/// The content to dissolve.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
+	content: Item<T>,
+	/// The percentage of pixels shown where the content is fully opaque.
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(50.)]
+	opacity: Item<f64>,
+	/// The random variation of the scattering. The same seed always gives the same scattering.
+	#[hard(0..)]
+	seed: Item<i64>,
+) -> Item<T> {
+	let mut content = content;
+	stamp_effect(
+		&mut content,
+		Effect::new(&EffectOperation::Dissolve {
+			opacity: *opacity.element(),
+			seed: *seed.element(),
+		}),
+	);
 	content
 }
