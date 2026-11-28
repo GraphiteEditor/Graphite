@@ -474,13 +474,6 @@ impl Effects {
 		}
 	}
 
-	/// The mask and feather rows alone, with the transforms they were stamped at, or `None` without any. They shape what clips to the content as they shape the content itself, unlike the other effects.
-	pub fn shaping_only(&self) -> Option<Effects> {
-		let shapes = |index: &usize| self.0.element(*index).is_some_and(|effect| matches!(effect.kind(), EffectKind::Mask | EffectKind::Feather));
-		let shaping: List<Effect> = (0..self.len()).filter(shapes).filter_map(|index| self.0.clone_item(index)).collect();
-		(!shaping.is_empty()).then_some(Effects(shaping))
-	}
-
 	/// The effects of a run of rows, borrowed when the run is every row.
 	pub fn run(&self, rows: Range<usize>) -> Cow<'_, Effects> {
 		match rows == (0..self.len()) {

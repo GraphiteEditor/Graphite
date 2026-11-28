@@ -24,7 +24,7 @@ use core_types::{
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_resource::Resource;
-use graphic_types::effect_layers::{EffectLayers, LayerPart, PiecePlace, is_pixel_filter, piece_blend_mode};
+use graphic_types::effect_layers::{EffectLayers, LayerPart, PiecePlace, content_image_effects, is_pixel_filter, piece_blend_mode};
 use graphic_types::effects::{EffectCapture, GlowFill, effect_space, spans_along_axes};
 use graphic_types::generator::GeneratorPattern;
 use graphic_types::masks::{MaskMode, masked_radius_blur_levels};
@@ -2576,26 +2576,97 @@ unsafe impl dyn_any::StaticType for dyn Render + Send + Sync {
 	type Static = dyn Render + Send + Sync;
 }
 
-/// Leaves only the masks and feathers among a clipping base's effects, which shape what clips to it as they shape the base, unlike the shadows and glows it casts, which don't widen it.
-fn keep_only_shaping<T>(masker: &mut Item<T>) {
-	match masker.attribute::<Effects>(ATTR_EFFECTS).and_then(Effects::shaping_only) {
-		Some(masks) => masker.set_attribute(ATTR_EFFECTS, masks),
-		None => {
-			masker.remove_attribute::<Effects>(ATTR_EFFECTS);
+/// The graphic with the effects of its items at every depth cut down to those carried out in their content's own image (see [`content_image_effects`]), which is the shape it clips by as a clipping base.
+/// `None` if that leaves nothing out.
+fn content_image(graphic: &Graphic) -> Option<Graphic> {
+	fn reduced_effects(effects: Option<&Effects>) -> Option<Effects> {
+		match content_image_effects(effects?) {
+			Cow::Owned(reduced) => Some(reduced),
+			Cow::Borrowed(_) => None,
 		}
+	}
+	fn reduced_item<T: Clone>(item: &Item<T>, nested: fn(&T) -> Option<T>) -> Option<Item<T>> {
+		let effects = reduced_effects(item.attribute::<Effects>(ATTR_EFFECTS));
+		let element = nested(item.element());
+		if effects.is_none() && element.is_none() {
+			return None;
+		}
+
+		let mut reduced = Item::from_parts(element.unwrap_or_else(|| item.element().clone()), item.attributes().clone());
+		if let Some(effects) = effects {
+			reduced.set_attribute(ATTR_EFFECTS, effects);
+		}
+		Some(reduced)
+	}
+	fn reduced_list<T: Clone>(list: &List<T>, nested: fn(&T) -> Option<T>) -> Option<List<T>> {
+		let mut reduced: Option<List<T>> = None;
+		for index in 0..list.len() {
+			let effects = reduced_effects(list.attribute::<Effects>(ATTR_EFFECTS, index));
+			let element = list.element(index).and_then(nested);
+			if effects.is_none() && element.is_none() {
+				continue;
+			}
+
+			let reduced = reduced.get_or_insert_with(|| list.clone());
+			if let Some(effects) = effects {
+				reduced.set_attribute(ATTR_EFFECTS, index, effects);
+			}
+			if let Some(element) = element
+				&& let Some(slot) = reduced.element_mut(index)
+			{
+				*slot = element;
+			}
+		}
+		reduced
+	}
+	fn none<T>(_: &T) -> Option<T> {
+		None
+	}
+
+	match graphic {
+		Graphic::None(_) | Graphic::NoneList(_) | Graphic::StrokeList(_) => None,
+		Graphic::Graphic(item) => reduced_item(item, content_image).map(|item| Graphic::Graphic(Box::new(item))),
+		Graphic::Vector(item) => reduced_item(item, none).map(|item| Graphic::Vector(Box::new(item))),
+		Graphic::RasterCPU(item) => reduced_item(item, none).map(|item| Graphic::RasterCPU(Box::new(item))),
+		Graphic::RasterGPU(item) => reduced_item(item, none).map(Graphic::RasterGPU),
+		Graphic::Color(item) => reduced_item(item, none).map(Graphic::Color),
+		Graphic::Gradient(item) => reduced_item(item, none).map(Graphic::Gradient),
+		Graphic::Generator(item) => reduced_item(item, none).map(Graphic::Generator),
+		Graphic::Text(item) => reduced_item(item, none).map(Graphic::Text),
+		Graphic::GraphicList(list) => reduced_list(list, content_image).map(Graphic::GraphicList),
+		Graphic::VectorList(list) => reduced_list(list, none).map(Graphic::VectorList),
+		Graphic::RasterCPUList(list) => reduced_list(list, none).map(Graphic::RasterCPUList),
+		Graphic::RasterGPUList(list) => reduced_list(list, none).map(Graphic::RasterGPUList),
+		Graphic::ColorList(list) => reduced_list(list, none).map(Graphic::ColorList),
+		Graphic::GradientList(list) => reduced_list(list, none).map(Graphic::GradientList),
+		Graphic::GeneratorList(list) => reduced_list(list, none).map(Graphic::GeneratorList),
+		Graphic::TextList(list) => reduced_list(list, none).map(Graphic::TextList),
 	}
 }
 
-/// The clipping base an item makes of its `element` placed by `item_transform`: the element alone, or nested in a group taking the item's masks and feathers if it has any (see [`keep_only_shaping`]).
-fn clipping_base<'a>(element: &'a Graphic, item_transform: DAffine2, effects: Option<&Effects>) -> Cow<'a, Graphic> {
-	match effects.and_then(Effects::shaping_only) {
-		Some(masks) => Cow::Owned(Graphic::Graphic(Box::new(
-			Item::new_from_element(element.clone())
+/// The clipping base an item makes of its `element` placed by `item_transform` with its `effects`, as its content's image (see [`content_image`]),
+/// and whether it's nested in a group taking the item's transform and the effects left, rather than being the element alone.
+fn clipping_base<'a>(element: &'a Graphic, item_transform: DAffine2, effects: Option<&Effects>) -> (Cow<'a, Graphic>, bool) {
+	let element = content_image(element).map_or(Cow::Borrowed(element), Cow::Owned);
+
+	match effects.map(content_image_effects).filter(|effects| !effects.change_nothing()) {
+		Some(effects) => {
+			let nested = Item::new_from_element(element.into_owned())
 				.with_attribute(ATTR_TRANSFORM, item_transform)
-				.with_attribute(ATTR_EFFECTS, masks),
-		))),
-		None => Cow::Borrowed(element),
+				.with_attribute(ATTR_EFFECTS, effects.into_owned());
+			(Cow::Owned(Graphic::Graphic(Box::new(nested))), true)
+		}
+		None => (element, false),
 	}
+}
+
+/// The clipping base the item of a `vector` makes as its content's image (see [`content_image`]), in a list of its own.
+fn vector_clipping_base(vector: &Vector, item: ItemRef<'_, Vector>) -> List<Vector> {
+	let mut base = Item::from_parts(vector.clone(), item.clone_item_attributes());
+	if let Some(Cow::Owned(effects)) = item.attribute::<Effects>(ATTR_EFFECTS).map(content_image_effects) {
+		base.set_attribute(ATTR_EFFECTS, effects);
+	}
+	List::new_from_item(base)
 }
 
 /// The region a mask of the `masker` placed by `transform` covers in the user space: its drawn bounds grown by the reach of the effects nested inside, or `None` without edges.
@@ -2627,13 +2698,13 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 
 	if next_clips && mask_state.is_none() {
 		let uuid = generate_uuid();
-		let base = clipping_base(element, transform, item.attribute::<Effects>(ATTR_EFFECTS));
+		let (base, nested) = clipping_base(element, transform, item.attribute::<Effects>(ATTR_EFFECTS));
 		let mask_type = if base.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 
-		// A base nested to take the item's masks carries the item's transform itself
-		let nested = matches!(base, Cow::Owned(_));
+		// A base nested to take the item's effects carries the item's transform itself
+		let base_transform = if nested { DAffine2::IDENTITY } else { transform };
 		let mut svg = SvgRender::new();
-		svg.transform = if nested { render.transform } else { render.transform * transform };
+		svg.transform = render.transform * base_transform;
 		svg.ancestors_reach = render.ancestors_reach;
 		base.render_svg(&mut svg, &render_params.for_clipper());
 
@@ -2645,7 +2716,7 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 
 		render.svg_defs.push_str(&svg.svg_defs);
 		render.effect_maps.extend(svg.effect_maps);
-		mask_type.write_to_defs(&mut render.svg_defs, uuid, masker, masker_region(element, transform));
+		mask_type.write_to_defs(&mut render.svg_defs, uuid, masker, masker_region(&base, base_transform));
 
 		*mask_state = Some((uuid, mask_type));
 	} else if let Some((uuid, mask_type)) = *mask_state {
@@ -2800,9 +2871,9 @@ fn render_graphic_item_to_vello<'a>(
 	};
 
 	if next_clips && mask_element_and_transform.is_none() {
-		// A base nested to take the item's masks carries the item's transform itself
-		let base = clipping_base(element, item_transform, item.attribute::<Effects>(ATTR_EFFECTS));
-		let base_transform = if matches!(base, Cow::Owned(_)) { parent_transform } else { transform };
+		// A base nested to take the item's effects carries the item's transform itself
+		let (base, nested) = clipping_base(element, item_transform, item.attribute::<Effects>(ATTR_EFFECTS));
+		let base_transform = if nested { parent_transform } else { transform };
 		*mask_element_and_transform = Some((base, base_transform));
 
 		draw_content(scene);
@@ -3627,9 +3698,7 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 	let mut masked_by = None;
 
 	if next_clips && clip_mask_state.is_none() {
-		let mut masker = Item::from_parts(vector.clone(), item.clone_item_attributes());
-		keep_only_shaping(&mut masker);
-		let masker = Graphic::VectorList(List::new_from_item(masker));
+		let masker = Graphic::VectorList(vector_clipping_base(vector, item));
 		let mask_type = if masker.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 		let uuid = generate_uuid();
 
@@ -3800,9 +3869,7 @@ fn render_vector_item_to_vello(
 	let stroke_inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true)).max(get_outline_styles(render_params).0.width);
 	if !overlaps_scene(scene, layer_bounds, multiplied_transform, stroke_inflation, element_transform, compositing.reach().length()) {
 		if next_clips && clip_masker.is_none() {
-			let mut masker = Item::from_parts(element.clone(), item.clone_item_attributes());
-			keep_only_shaping(&mut masker);
-			*clip_masker = Some(List::new_from_item(masker));
+			*clip_masker = Some(vector_clipping_base(element, item));
 		} else if clip_masker.is_some() && !next_clips {
 			*clip_masker = None;
 		}
@@ -3848,9 +3915,7 @@ fn render_vector_item_to_vello(
 	// Pushed inside the blend layer so the mask cuts this item's own paint rather than the composited result
 	let mut clip_layers = false;
 	if next_clips && clip_masker.is_none() {
-		let mut masker = Item::from_parts(element.clone(), item.clone_item_attributes());
-		keep_only_shaping(&mut masker);
-		*clip_masker = Some(List::new_from_item(masker));
+		*clip_masker = Some(vector_clipping_base(element, item));
 	} else if let Some(masker) = clip_masker.as_ref() {
 		if let Some((layer_affine, layer_rect)) = layer_geometry {
 			let layer_rect = layer_rect_with_effects(layer_rect);
@@ -7266,10 +7331,36 @@ mod tests {
 		assert!(!render.svg_defs.contains("data-canvas-placeholder") && render.image_data.is_empty(), "{}", render.svg_defs);
 	}
 
+	/// The def in `defs` that the `url(#…)` reference starting `reference` names, through its closing tag.
+	fn referenced_def<'a>(defs: &'a str, reference: &str) -> &'a str {
+		let id: String = reference.trim_start_matches("url(#").chars().take_while(|&character| character != ')').collect();
+		let Some(position) = defs.find(&format!(r#"id="{id}""#)) else { panic!("no def for {id}: {defs}") };
+
+		let start = defs[..position].rfind('<').unwrap_or_default();
+		let tag: String = defs[start + 1..].chars().take_while(char::is_ascii_alphabetic).collect();
+		let closing = format!("</{tag}>");
+		let end = defs[start..].find(&closing).map_or(defs.len(), |end| start + end + closing.len());
+		&defs[start..end]
+	}
+
+	/// The def of the clip or mask that the last clipped item in `render` is drawn through.
+	fn clip_def(render: &SvgRender) -> &str {
+		let body = render.svg.to_svg_string();
+		let Some(reference) = body.rfind("url(#mask-") else { panic!("nothing is clipped: {body}") };
+		referenced_def(&render.svg_defs, &body[reference..])
+	}
+
 	#[test]
-	fn svg_masks_on_a_clipping_base_shape_what_clips_to_it_unlike_its_shadows() {
+	fn svg_clipping_bases_clip_by_their_filters_but_not_the_shadows_they_cast() {
 		use graphic_types::{EffectOperation, MaskMode};
 
+		let blur = EffectOperation::Blur {
+			radius_mask: Graphic::default(),
+			radius: 2.,
+			box_blur: false,
+			gamma: false,
+		};
+		let shadow = drop_shadow(135., 3., 0.);
 		let mut half = Vector::item_from_bezpath(&kurbo::Rect::new(0., 0., 5., 10.).to_path(0.1));
 		half.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(Color::WHITE))));
 		let mask = EffectOperation::Mask {
@@ -7279,28 +7370,81 @@ mod tests {
 			feather: 0.,
 			invert: false,
 		};
-		let export = RenderParams {
-			for_export: true,
-			..Default::default()
-		};
-		let clipped_by = |base_effects: &[EffectOperation]| {
-			let mut list = orange_square(base_effects, 1., 1.);
+
+		// An orange square with the base's effects and fill, clipping another after it
+		let clipped_by = |base_effects: &[EffectOperation], fill: f64| {
+			let mut list = orange_square(base_effects, fill, 1.);
 			list.push(orange_square_item(&[], 1., 1.).with_attribute(ATTR_CLIPPING_MASK, true));
 			let mut render = SvgRender::new();
+			let export = RenderParams {
+				for_export: true,
+				..Default::default()
+			};
 			list.render_svg(&mut render, &export);
-			render.svg_defs
+			render
+		};
+		let clip_maps = |render: &SvgRender| render.effect_maps.iter().filter(|map| map.render_params.for_mask).count();
+
+		// A shadow cast from the base doesn't reach the clip, which follows the base's outline
+		let render = clipped_by(std::slice::from_ref(&shadow), 1.);
+		let clip = clip_def(&render);
+		assert!(clip.starts_with("<clipPath") && !clip.contains("filter=") && clip_maps(&render) == 0, "{clip}");
+
+		// A blur shapes the clip, unfaded by the base's fill
+		let render = clipped_by(std::slice::from_ref(&blur), 0.);
+		let clip = clip_def(&render);
+		let Some(filter) = clip.find("url(#effects-") else { panic!("the clip is blurred: {clip}") };
+		let filter = referenced_def(&render.svg_defs, &clip[filter..]);
+		assert!(filter.contains("<feGaussianBlur") && !filter.contains("<feFuncA"), "{filter}");
+
+		// A shadow the blur merges into the content's image is part of the clip, while one cast after it isn't
+		let render = clipped_by(&[shadow.clone(), blur.clone()], 1.);
+		assert!(clip_def(&render).contains("filter=") && clip_maps(&render) == 1, "{}", clip_def(&render));
+		let render = clipped_by(&[blur, shadow.clone()], 1.);
+		assert!(clip_def(&render).contains("filter=") && clip_maps(&render) == 0, "{}", clip_def(&render));
+
+		// A mask after the shadow still shapes the clip, fading the content's image
+		let render = clipped_by(&[shadow, mask], 1.);
+		assert!(clip_def(&render).contains(r#"mask="url(#mask-"#) && clip_maps(&render) == 0, "{}", clip_def(&render));
+	}
+
+	#[test]
+	fn svg_clipping_layers_clip_by_the_filters_on_their_row_or_inside_it() {
+		use graphic_types::EffectOperation;
+
+		let blur = EffectOperation::Blur {
+			radius_mask: Graphic::default(),
+			radius: 4.,
+			box_blur: false,
+			gamma: false,
+		};
+		let shadow = drop_shadow(135., 3., 0.);
+
+		// A layer holds its square with the effects on the square's row, or for an effect on the whole stack, on the layer's own row
+		let layer = |effects: &[EffectOperation]| Item::new_from_element(Graphic::VectorList(orange_square(effects, 1., 1.)));
+		let on_layer_row = |effects: &[EffectOperation]| layer(&[]).with_attribute(ATTR_EFFECTS, Effects::from_operations(effects.iter().cloned()));
+		let clip = |base: Item<Graphic>| {
+			let clipped = Item::new_from_element(Graphic::VectorList(List::new_from_item(orange_square_item(&[], 1., 1.).with_attribute(ATTR_CLIPPING_MASK, true))));
+			let list: List<Graphic> = [base, clipped].into_iter().collect();
+			let mut render = SvgRender::new();
+			list.render_svg(&mut render, &RenderParams::default());
+			clip_def(&render).to_string()
 		};
 
-		// A base casting only a shadow clips by its outline, and one with a mask clips by a mask that takes the base's mask too
-		let shadowed = clipped_by(&[drop_shadow(135., 3., 0.)]);
-		assert!(shadowed.contains("<clipPath") && !shadowed.contains("<mask"), "{shadowed}");
-		let masked = clipped_by(&[mask, drop_shadow(135., 3., 0.)]);
-		assert!(!masked.contains("<clipPath"), "{masked}");
-		let clip = masked
-			.split("<mask id=")
-			.find(|mask| mask.contains(r#"<g mask="url(#mask-"#))
-			.expect("the clip's mask nests the base's");
-		assert!(!clip.contains("filter="), "the base's shadow doesn't reach the clip: {clip}");
+		for base in [layer(std::slice::from_ref(&shadow)), on_layer_row(std::slice::from_ref(&shadow))] {
+			let shadowed = clip(base);
+			assert!(shadowed.starts_with("<clipPath") && !shadowed.contains("filter="), "{shadowed}");
+		}
+
+		// The clip's mask covers as far as the blur reaches past the square
+		for base in [layer(std::slice::from_ref(&blur)), on_layer_row(std::slice::from_ref(&blur))] {
+			let blurred = clip(base);
+			let region: Vec<f64> = (["x", "width"].iter())
+				.filter_map(|name| blurred.split(&format!(r#" {name}=""#)).nth(1)?.split('"').next()?.parse().ok())
+				.collect();
+			let [x, width] = region[..] else { panic!("the blurred clip covers a region: {blurred}") };
+			assert!(blurred.contains("filter=") && x <= -blur.reach() + 1e-9 && x + width >= 10. + blur.reach() - 1e-9, "{blurred}");
+		}
 	}
 
 	#[test]
