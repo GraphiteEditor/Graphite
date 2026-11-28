@@ -5,11 +5,12 @@ pub mod adjustments;
 mod blending;
 pub mod color_lookup_table;
 pub mod effect_kernels;
+pub mod filter_kernels;
 pub mod generators;
 mod kernel;
 pub mod layer_blending;
 pub mod mandelbrot;
-mod masks;
+pub mod masks;
 pub mod raster_effects;
 pub mod value_effects;
 

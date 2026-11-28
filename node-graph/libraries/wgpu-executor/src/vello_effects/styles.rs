@@ -1,6 +1,6 @@
 //! The GPU passes of the layer styles' finer options: the outline's paints, and the bevel's contour and texture.
 
-use super::{COVERAGE_FORMAT, GRADIENT_SAMPLES, MAX_TAPS, Parameters, PassRecorder, Seeds, WORKING_FORMAT};
+use super::{COVERAGE_FORMAT, GRADIENT_SAMPLES, PARAMETER_TAPS, Parameters, PassRecorder, Seeds, WORKING_FORMAT};
 use core_types::transfer_curve::TransferCurve;
 use glam::{DVec2, DVec3};
 use graphic_types::BevelStyle;
@@ -109,7 +109,7 @@ impl PassRecorder<'_> {
 			BevelStyle::Emboss | BevelStyle::PillowEmboss => 2.,
 		};
 
-		let mut taps = [[0.; 4]; MAX_TAPS];
+		let mut taps = [[0.; 4]; PARAMETER_TAPS];
 		taps[0] = [style_number, (surface.slope_range.clamp(1., 100.) / 100.) as f32, start_slope as f32, end_slope as f32];
 		taps[1] = [
 			if reshaped { 1. } else { 0. },
@@ -135,7 +135,7 @@ impl PassRecorder<'_> {
 	/// Matches the CPU's `bevel_shading` and `foot_faded`.
 	pub(super) fn bevel_amount(&mut self, brighter: &wgpu::Texture, height: &wgpu::Texture, gloss: Option<&(wgpu::Texture, bool)>, light_z: f64, shadow: bool, fades_at_foot: bool) -> wgpu::Texture {
 		let flag = |on: bool| if on { 1. } else { 0. };
-		let mut taps = [[0.; 4]; MAX_TAPS];
+		let mut taps = [[0.; 4]; PARAMETER_TAPS];
 		taps[0] = [flag(fades_at_foot), 0., 0., 0.];
 		let parameters = Parameters {
 			amount: BEVEL_FOOT_FADE as f32,

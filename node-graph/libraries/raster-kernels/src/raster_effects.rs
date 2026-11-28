@@ -3,10 +3,10 @@
 
 use crate::adjustments::adjust_colors;
 use crate::blending::blend_gamma;
-use crate::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, Plane};
+use crate::effect_kernels::{BlurKernel, MAX_DIRECT_BOX_RADIUS, NEGLIGIBLE_LENGTH, Plane};
 use crate::generators::pattern_sampler;
 use crate::layer_blending::blend_layer;
-use crate::masks::{feather_strength, mask_strength, masked, masked_radius_blur, masked_radius_blur_codes};
+use crate::masks::{feather_strength, mask_strength, masked, masked_box_blur_luminances, masked_radius_blur, masked_radius_blur_codes, variable_box_blur};
 use crate::value_effects::{adjustments, evaluate_gradient_effects, filled_color};
 use core_types::FallibleVec2Operations;
 use core_types::blending::BlendMode;
@@ -138,9 +138,9 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 		));
 	}
 
-	// A margin around the image to hold the blur and shadows cast past its edges, cut short evenly for an image that would grow too large
+	// A margin around the image to hold the blur and shadows cast past its edges and the colors filters read past them, cut short evenly for an image that would grow too large
 	let reach_in_pixels: DVec2 = (rows[leading..].iter())
-		.map(|(operation, effect_to_pixels, _)| operation.painted_reach() * spans_along_axes(*effect_to_pixels))
+		.map(|(operation, effect_to_pixels, _)| operation.required_reach() * spans_along_axes(*effect_to_pixels))
 		.sum();
 	let mut margin = reach_in_pixels.ceil();
 	// A feather needs the pixels past the image's edges, which are absent, to find those edges
@@ -207,6 +207,15 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				}
 
 				merge_beneath(&mut full, &mut filled, &mut beneath);
+
+				// Past the widest box blurred directly, a box sums running sums as a masked box does with every pixel at the full radius, exact rather than blurred on a halved image
+				if box_blur && radius.max_element() > MAX_DIRECT_BOX_RADIUS {
+					let full_radius = vec![1.; full.width * full.height];
+					full = variable_box_blur(&full, &full_radius, radius, !gamma);
+					filled = filled.map(|filled| variable_box_blur(&filled, &full_radius, radius, !gamma));
+					continue;
+				}
+
 				let kernels = match box_blur {
 					true => (BlurKernel::Box { radius: radius.x }, BlurKernel::Box { radius: radius.y }),
 					false => (BlurKernel::Gaussian { sigma: radius.x }, BlurKernel::Gaussian { sigma: radius.y }),
@@ -224,12 +233,19 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				};
 				merge_beneath(&mut full, &mut filled, &mut beneath);
 
+				if box_blur {
+					let luminances = masked_box_blur_luminances(&map_colors);
+					full = variable_box_blur(&full, &luminances, radius * pixels_per_length, !gamma);
+					filled = filled.map(|filled| variable_box_blur(&filled, &luminances, radius * pixels_per_length, !gamma));
+					continue;
+				}
 				let codes = masked_radius_blur_codes(&map_colors);
+
 				// The levels are chosen at the GPU's scale, so both renderers blur by the same ones
 				let length_scale = effect_to_pixels.determinant().abs().sqrt();
 				let levels: Vec<DVec2> = masked_radius_blur_levels(radius, length_scale).into_iter().map(|level| level * pixels_per_length).collect();
-				full = masked_radius_blur(&full, &codes, &levels, box_blur, !gamma);
-				filled = filled.map(|filled| masked_radius_blur(&filled, &codes, &levels, box_blur, !gamma));
+				full = masked_radius_blur(&full, &codes, &levels, !gamma);
+				filled = filled.map(|filled| masked_radius_blur(&filled, &codes, &levels, !gamma));
 			}
 			EffectOperation::DropShadow {
 				color,
@@ -529,6 +545,12 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				full = adjust(&full, adjustment);
 				filled = filled.map(|filled| adjust(&filled, adjustment));
 			}
+			EffectOperation::ConvolutionKernel { .. } => {
+				merge_beneath(&mut full, &mut filled, &mut beneath);
+				// The fill fades the content after the filter, so the full-strength content decides which of the fill's pixels are visible
+				filled = filled.map(|filled| crate::filter_kernels::filter(filled, Some(&full), operation, effect_to_pixels));
+				full = crate::filter_kernels::filter(full, None, operation, effect_to_pixels);
+			}
 		}
 	}
 
@@ -600,7 +622,7 @@ fn adjust(plane: &Plane<[f32; 4]>, adjustment: &Adjustment) -> Plane<[f32; 4]> {
 }
 
 /// Premultiplied channels with `transfer` applied to their straight color.
-fn transferred(transfer: fn(f32) -> f32) -> impl Fn([f32; 4]) -> [f32; 4] + Sync {
+pub(crate) fn transferred(transfer: fn(f32) -> f32) -> impl Fn([f32; 4]) -> [f32; 4] + Sync {
 	move |[red, green, blue, alpha]| {
 		if alpha <= 0. {
 			return [0.; 4];
@@ -1144,6 +1166,38 @@ fn gradient_position(item: &Item<Gradient>) -> Option<Box<dyn Fn(DVec2) -> f64 +
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn box_blurs_with_a_white_radius_mask_match_those_without_at_any_radius() {
+		// Boxes at and just past the widest blurred directly, and well past it where both sum the same running sums
+		for (radius, gamma) in [24., 25., 40.].into_iter().flat_map(|radius| [(radius, false), (radius, true)]) {
+			let blurred = |radius_mask: Graphic| {
+				let blur = EffectOperation::Blur {
+					radius_mask,
+					radius,
+					box_blur: true,
+					gamma,
+				};
+				let image = Image::new(20, 20, Color::from_rgbaf32_unchecked(0.9, 0.3, 0.1, 1.));
+				let mut item = Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(20.)));
+				graphic_types::stamp_effect(&mut item, graphic_types::Effect::new(&blur));
+				evaluate_raster_effects(item).element().data.clone()
+			};
+
+			let (plain, masked) = (blurred(Graphic::default()), blurred(Graphic::from(Color::WHITE)));
+			assert_eq!(plain.len(), masked.len());
+			let worst = plain
+				.iter()
+				.zip(&masked)
+				.map(|(plain, masked)| (plain.to_vec4() - masked.to_vec4()).abs().max_element())
+				.fold(0., f32::max);
+			assert!(
+				worst * 255. < 0.3,
+				"a white radius mask differs from none by {} levels (radius: {radius}, gamma: {gamma})",
+				worst * 255.
+			);
+		}
+	}
 
 	#[test]
 	fn a_margin_too_large_is_cut_short_to_fit_the_pixel_limit() {

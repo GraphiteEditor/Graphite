@@ -1,4 +1,5 @@
 pub mod effects;
+pub mod filters;
 pub mod masks;
 
 use core_types::list::Item;

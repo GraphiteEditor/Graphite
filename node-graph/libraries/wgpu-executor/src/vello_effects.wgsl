@@ -14,8 +14,8 @@ struct Parameters {
 	color: vec4<f32>,
 	// Each pass's own settings, described where it reads them
 	values: vec4<f32>,
-	// Each kernel tap's distance in steps (x) and weight (y)
-	taps: array<vec4<f32>, 25>,
+	// Each kernel tap's distance in steps (x) and weight (y), a filter tap's shift in texels (xy) and weight (z), or values described where a pass reads them
+	taps: array<vec4<f32>, 81>,
 }
 
 @group(0) @binding(0) var source: texture_2d<f32>;

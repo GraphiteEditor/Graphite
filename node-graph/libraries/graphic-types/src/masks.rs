@@ -67,8 +67,8 @@ pub const MASKED_RADIUS_BLUR_MAX_LEVELS: usize = 12;
 /// The most levels finer than a document pixel that a masked radius blur adds when zoomed in, enough to reach an output pixel at a zoom of 25600%.
 pub const MASKED_RADIUS_BLUR_MAX_FINER_LEVELS: usize = 8;
 
-/// The radii, in document pixels, of the blurs a masked radius blur of `radius` interpolates between: none, then the radius halved while it spans a document pixel, or an output pixel at more `pixels_per_length` than one.
-/// Each is a Gaussian's standard deviation or a box's half width. Levels a factor of 2 apart interpolate into what reads as one blur, and under a pixel a blur hardly differs from none.
+/// The standard deviations, in document pixels, of the Gaussians a masked radius blur of `radius` interpolates between: none, then the radius halved while it spans a document pixel, or an output pixel at more `pixels_per_length` than one.
+/// Levels a factor of 2 apart interpolate into what reads as one blur, and under a pixel a blur hardly differs from none.
 pub fn masked_radius_blur_levels(radius: f64, pixels_per_length: f64) -> Vec<f64> {
 	let finest = 1. / pixels_per_length.max(1.);
 
@@ -94,7 +94,7 @@ pub fn masked_radius_blur_code(channels: [f32; 4]) -> u8 {
 
 /// For a masked radius blur map's luminance as an 8-bit `code`, the level below it among the `levels` (from [`masked_radius_blur_levels`]) and how many of 255 parts of the interpolation the level above takes, the rest going to the level below.
 ///
-/// Each pixel of a masked radius blur is the sum of its levels (its content blurred by Gaussians or boxes of their radii) weighed by their parts, on premultiplied gamma-encoded channels.
+/// Each pixel of a Gaussian masked radius blur is the sum of its levels (its content blurred by Gaussians of their radii) weighed by their parts, on premultiplied gamma-encoded channels.
 /// The map value's fraction of the full radius falls between two levels. The parts are linear in the radius from no blur to the first level, and linear in its logarithm between blurred levels.
 /// On opaque hard edges, between Gaussian levels a factor of 2 apart, that strays at most about 20 of 255 sRGB levels from a true Gaussian of the map value's radius, against about 32 for the sum in linear light.
 /// Summing in gamma, even when the levels blur in linear light, is deliberate: a power space near 2.7 strays only about 12, but SVG would need a 256-entry table per level for it, where gamma costs nothing.

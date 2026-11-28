@@ -86,11 +86,10 @@ impl BlurKernel {
 				let reach = ((3. * sigma).ceil() as usize).min(MAX_KERNEL_REACH);
 				(0..=reach).map(|i| (-((i * i) as f64) / (2. * sigma * sigma)).exp()).collect()
 			}
-			// The texels at the ends weigh only the fraction of them the box covers, so the blur grows smoothly with its radius
 			Self::Box { radius } => {
 				let radius = radius / level_scale;
 				let reach = (radius.ceil() as usize).min(MAX_KERNEL_REACH);
-				(0..=reach).map(|i| (radius + 1. - i as f64).clamp(0., 1.)).collect()
+				(0..=reach).map(|i| box_weight(radius, i)).collect()
 			}
 			Self::Tent { radius } => {
 				let radius = radius / level_scale;
@@ -106,6 +105,22 @@ impl BlurKernel {
 		let total = weights[0] + 2. * weights[1..].iter().sum::<f64>();
 		weights.into_iter().map(|weight| weight / total).collect()
 	}
+}
+
+/// How much a box of half width `radius` weighs the texel `distance` from its center, before normalizing: all of it within the box,
+/// and at each end the fraction of it the box covers, so the blur grows smoothly with its radius.
+pub fn box_weight(radius: f64, distance: usize) -> f64 {
+	(radius + 1. - distance as f64).clamp(0., 1.)
+}
+
+/// The greatest channel value a variable box blur counts, past 1 to keep bright high dynamic range values, which `vello_masks.wgsl` matches.
+pub const VARIABLE_BOX_MAX_VALUE: f32 = 16.;
+
+/// How many steps from 0 to 1 a variable box blur counts each channel of an image of `pixels` in, up to [`VARIABLE_BOX_MAX_VALUE`].
+/// The GPU's running sums of those counts then stay exact in f32 digits (see `RUNNING_SUM_DIGIT` in `vello_masks.wgsl`): 2^12 up to 8192 by 8192 pixels, halving for each doubling past it.
+pub fn variable_box_scale(pixels: usize) -> f64 {
+	let pixel_bits = (pixels.max(1) as f64).log2().ceil();
+	2_f64.powf((38. - pixel_bits).clamp(0., 12.))
 }
 
 /// A pixel value the operations can weigh, sum, and compare: one coverage channel, or premultiplied color channels.

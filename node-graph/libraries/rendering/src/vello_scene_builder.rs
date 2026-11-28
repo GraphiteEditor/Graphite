@@ -440,10 +440,10 @@ impl<'a> VelloSceneBuilder<'a> {
 		let device_to_frame = frame_to_device.inverse();
 		let document_to_frame = Affine::new(device_to_frame.to_cols_array()) * self.view;
 		let length_scale = lengths_to_frame.determinant().abs().sqrt();
-		let (reach, working_reach) = (effects.reach() * length_scale, effects.working_reach() * length_scale);
+		let (reach, working_reach) = (effects.required_reach() * length_scale, effects.working_reach() * length_scale);
 
 		// The content and what its effects read past it, reaching into the viewport and rounded out to whole pixels of the frame.
-		// Past the view, what they read without painting (like a mask's feather) is kept as far as it fits without lowering the resolution.
+		// Past the view, what they read without painting or reading around each pixel (like a mask's feather) is kept as far as it fits without lowering the resolution.
 		let viewport = Rect::new(0., 0., self.width() as f64, self.height() as f64);
 		let viewport_in_frame = Affine::new(device_to_frame.to_cols_array()).transform_rect_bbox(viewport);
 		let content_bounds = bounds.map_or(viewport_in_frame, |bounds| document_to_frame.transform_rect_bbox(bounds));

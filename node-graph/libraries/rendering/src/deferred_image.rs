@@ -115,8 +115,13 @@ fn map_markers(id: u64) -> (String, String) {
 /// The filter primitive standing for the map `id` names until it's resolved, covering everything to the `coverage` from 0 to 1.
 /// Coverage that is added leaves the effect out at 0, and coverage the content is multiplied by leaves it out at 1.
 pub(crate) fn map_placeholder(id: u64, result: &str, coverage: f64) -> String {
+	map_placeholder_primitive(id, &format!(r#"<feFlood flood-opacity="{coverage}" result="{result}" />"#))
+}
+
+/// The filter `primitive` standing for the map `id` names until it's resolved, which gives the result the map stands for.
+pub(crate) fn map_placeholder_primitive(id: u64, primitive: &str) -> String {
 	let (opening, closing) = map_markers(id);
-	format!(r#"{opening}<feFlood flood-opacity="{coverage}" result="{result}" />{closing}"#)
+	format!("{opening}{primitive}{closing}")
 }
 
 impl EffectMap {
