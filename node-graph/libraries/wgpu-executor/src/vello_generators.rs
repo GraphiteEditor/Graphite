@@ -398,7 +398,7 @@ impl GeneratorPasses {
 			sample_count: 1,
 			dimension: wgpu::TextureDimension::D2,
 			format: TEXTURE_FORMAT,
-			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
 			view_formats: &[],
 		})
 	}

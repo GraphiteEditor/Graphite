@@ -285,7 +285,10 @@ impl RenderContext<'_> {
 		// Supply the textures of the images the scene draws, under the IDs it drew them with
 		let mut texture_bindings = TextureBindings::new();
 		for (id, image) in images.iter().enumerate() {
-			let view = self.canvas.images.prepare(device, &queue, &mut encoder, self.renderer, image, max_texture_size);
+			let view = self
+				.canvas
+				.images
+				.prepare(device, &queue, &mut encoder, &mut self.canvas.effect_textures, self.renderer, image, max_texture_size);
 
 			// Adjustments draw a copy of the texture they're carried out on
 			let view = match image {
@@ -460,11 +463,13 @@ struct ImageTextures {
 impl ImageTextures {
 	/// A view of the premultiplied texture for `image`, uploading CPU pixels or rendering a generator's tile the first time they're drawn.
 	/// GPU textures are converted again at every render since the texture cache hands their textures out again with new contents.
+	#[expect(clippy::too_many_arguments)]
 	fn prepare(
 		&mut self,
 		device: &wgpu::Device,
 		queue: &wgpu::Queue,
 		encoder: &mut wgpu::CommandEncoder,
+		effect_textures: &mut EffectTextures,
 		renderer: &VelloRenderer,
 		image: &SceneImage,
 		max_texture_size: u32,
@@ -496,7 +501,7 @@ impl ImageTextures {
 					let texture = (self.spare_generator_tiles.pop()).unwrap_or_else(|| GeneratorPasses::tile_texture(device, GeneratorTile::SAMPLES));
 					let (corner, texel) = tile.corner_and_texel();
 					renderer.generator_passes.render_tile(device, queue, encoder, &texture, pattern, corner, texel);
-					renderer.effect_passes.record_mipmaps(device, encoder, &texture);
+					renderer.effect_passes.record_mipmaps(device, encoder, effect_textures, &texture);
 					texture
 				}
 				SceneImage::Rendered(_) => return None,
@@ -581,7 +586,7 @@ impl ImageTextures {
 					sample_count: 1,
 					dimension: wgpu::TextureDimension::D2,
 					format: precise_format,
-					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
 					view_formats: &[],
 				});
 				image_texture.adjusted.push(AdjustedTexture {
